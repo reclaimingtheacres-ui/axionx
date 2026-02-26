@@ -1,0 +1,193 @@
+1. REPLACE THE JOBS TABLE (in init_db())
+
+Replace your entire CREATE TABLE jobs block with:
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    job_prefix TEXT NOT NULL,          -- YYMM
+    job_seq INTEGER NOT NULL,          -- 001-999
+    internal_job_number TEXT NOT NULL UNIQUE,
+
+    client_reference TEXT,
+
+    client_id INTEGER,
+    customer_id INTEGER,
+    asset_id INTEGER,
+
+    job_type TEXT NOT NULL,
+    visit_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    priority TEXT NOT NULL,
+
+    job_address TEXT,
+    description TEXT,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    FOREIGN KEY(client_id) REFERENCES clients(id),
+    FOREIGN KEY(customer_id) REFERENCES customers(id),
+    FOREIGN KEY(asset_id) REFERENCES assets(id)
+)
+""")
+🔧 2. ADD THESE HELPER FUNCTIONS (place near top of app.py)
+def current_prefix():
+    now = datetime.now()
+    return now.strftime("%y%m")  # YYMM
+
+
+def next_sequence_for_prefix(prefix):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(job_seq) as max_seq FROM jobs WHERE job_prefix = ?", (prefix,))
+    row = cur.fetchone()
+    conn.close()
+    if row["max_seq"]:
+        return row["max_seq"] + 1
+    return 1
+
+
+def build_internal_number(prefix, seq):
+    return f"{prefix}{str(seq).zfill(3)}"
+🔧 3. UPDATE NEW JOB FORM (job_new.html)
+
+Replace the job number section with:
+
+<div class="row g-3">
+  <div class="col-12 col-lg-4">
+    <label class="form-label">Job Prefix (YYMM)</label>
+    <input class="form-control" name="job_prefix" value="{{ default_prefix }}">
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <label class="form-label">Sequence (001-999)</label>
+    <input class="form-control" name="job_seq" placeholder="Leave blank to auto-generate">
+  </div>
+
+  <div class="col-12 col-lg-4">
+    <label class="form-label">Client Reference</label>
+    <input class="form-control" name="client_reference">
+  </div>
+</div>
+🔧 4. UPDATE job_new() ROUTE
+
+Modify:
+
+@app.get("/jobs/new")
+def job_new():
+
+Add:
+
+default_prefix = current_prefix()
+
+And update return:
+
+return render_template("job_new.html",
+                       clients=clients,
+                       customers=customers,
+                       assets=assets,
+                       visit_types=visit_types,
+                       job_types=job_types,
+                       statuses=statuses,
+                       priorities=priorities,
+                       default_prefix=default_prefix)
+🔧 5. REPLACE job_create() WITH THIS
+@app.post("/jobs/new")
+def job_create():
+    job_prefix = request.form.get("job_prefix", "").strip()
+    job_seq_input = request.form.get("job_seq", "").strip()
+    client_reference = request.form.get("client_reference", "").strip()
+
+    client_id = request.form.get("client_id") or None
+    customer_id = request.form.get("customer_id") or None
+    asset_id = request.form.get("asset_id") or None
+
+    job_type = request.form.get("job_type", "Field Call").strip()
+    visit_type = request.form.get("visit_type", "New Visit").strip()
+    status = request.form.get("status", "New").strip()
+    priority = request.form.get("priority", "Normal").strip()
+    job_address = request.form.get("job_address", "").strip()
+    description = request.form.get("description", "").strip()
+
+    if not job_prefix or len(job_prefix) != 4:
+        flash("Prefix must be 4 digits (YYMM).", "danger")
+        return redirect(url_for("job_new"))
+
+    if job_seq_input:
+        if not job_seq_input.isdigit():
+            flash("Sequence must be numeric.", "danger")
+            return redirect(url_for("job_new"))
+        job_seq = int(job_seq_input)
+    else:
+        job_seq = next_sequence_for_prefix(job_prefix)
+
+    internal_job_number = build_internal_number(job_prefix, job_seq)
+
+    conn = db()
+    cur = conn.cursor()
+
+    # Check for collision
+    cur.execute("SELECT id FROM jobs WHERE internal_job_number = ?", (internal_job_number,))
+    if cur.fetchone():
+        conn.close()
+        flash("Job number already exists for that prefix/sequence.", "danger")
+        return redirect(url_for("job_new"))
+
+    now = datetime.now().isoformat(timespec="seconds")
+
+    cur.execute("""
+        INSERT INTO jobs (
+            job_prefix, job_seq, internal_job_number,
+            client_reference,
+            client_id, customer_id, asset_id,
+            job_type, visit_type, status, priority,
+            job_address, description,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        job_prefix, job_seq, internal_job_number,
+        client_reference or None,
+        client_id, customer_id, asset_id,
+        job_type, visit_type, status, priority,
+        job_address, description,
+        now, now
+    ))
+
+    job_id = cur.lastrowid
+
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        job_id,
+        "System",
+        f"Job created: {internal_job_number}",
+        now,
+        now
+    ))
+
+    conn.commit()
+    conn.close()
+
+    flash("Job created.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+🔧 6. UPDATE JOB LIST DISPLAY
+
+In jobs.html, replace:
+
+{{ j.display_ref }}
+
+with:
+
+{{ j.internal_job_number }}{% if j.client_reference %} ({{ j.client_reference }}){% endif %}
+🔧 7. UPDATE JOB DETAIL HEADER
+
+In job_detail.html, use:
+
+<h3>{{ job.internal_job_number }}</h3>
+{% if job.client_reference %}
+<div class="text-muted">Client Ref: {{ job.client_reference }}</div>
+{% endif %}

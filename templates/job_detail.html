@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start">
+  <div>
+    <h3 class="mb-1">{{ job.job_ref }}</h3>
+    <div class="text-muted">
+      {{ job.job_type }} | {{ job.visit_type }} | Priority: {{ job.priority }}
+    </div>
+  </div>
+  <span class="badge bg-dark fs-6">{{ job.status }}</span>
+</div>
+
+<div class="row g-3 mt-2">
+  <div class="col-12 col-lg-6">
+    <div class="card p-3">
+      <div class="h6">Customer</div>
+      <div class="fw-semibold">{{ job.customer_name or "—" }}</div>
+      {% if job.customer_phone %}<div><a href="tel:{{ job.customer_phone }}">{{ job.customer_phone }}</a></div>{% endif %}
+      {% if job.customer_email %}<div><a href="mailto:{{ job.customer_email }}">{{ job.customer_email }}</a></div>{% endif %}
+      {% if job.customer_dob %}<div class="text-muted">DOB: {{ job.customer_dob }}</div>{% endif %}
+      {% if job.customer_address %}<div class="text-muted">{{ job.customer_address }}</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card p-3">
+      <div class="h6">Client</div>
+      <div class="fw-semibold">{{ job.client_name or "—" }}</div>
+      {% if job.client_phone %}<div><a href="tel:{{ job.client_phone }}">{{ job.client_phone }}</a></div>{% endif %}
+      {% if job.client_email %}<div><a href="mailto:{{ job.client_email }}">{{ job.client_email }}</a></div>{% endif %}
+      {% if job.client_address %}<div class="text-muted">{{ job.client_address }}</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Asset</div>
+  <div class="row">
+    <div class="col-12 col-lg-6">
+      <div>Reg: <span class="fw-semibold">{{ job.asset_reg or "—" }}</span></div>
+      <div>VIN: <span class="fw-semibold">{{ job.asset_vin or "—" }}</span></div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div>{{ (job.asset_year or "") }} {{ (job.asset_make or "") }} {{ (job.asset_model or "") }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Job Address</div>
+  <div class="d-flex justify-content-between align-items-center">
+    <div class="me-3">{{ job.job_address or "—" }}</div>
+    {% if job.job_address %}
+      <a class="btn btn-outline-primary btn-sm"
+         target="_blank"
+         href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
+         Open in Google Maps
+      </a>
+    {% endif %}
+  </div>
+  {% if job.description %}
+    <div class="mt-2 text-muted">{{ job.description }}</div>
+  {% endif %}
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Update Status / Visit Type</div>
+  <form method="post" action="/jobs/{{ job.id }}/update" class="row g-2">
+    <div class="col-12 col-lg-4">
+      <select class="form-select" name="status">
+        {% for s in statuses %}
+          <option value="{{s}}" {% if s == job.status %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-4">
+      <select class="form-select" name="visit_type">
+        {% for v in visit_types %}
+          <option value="{{v}}" {% if v == job.visit_type %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-4">
+      <button class="btn btn-primary w-100">Save</button>
+    </div>
+  </form>
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Add Interaction</div>
+  <form method="post" action="/jobs/{{ job.id }}/interactions/new">
+    <div class="row g-2">
+      <div class="col-12 col-lg-3">
+        <select class="form-select" name="event_type">
+          <option>Attendance</option>
+          <option>Call</option>
+          <option>SMS</option>
+          <option>Email</option>
+          <option>Card Left</option>
+          <option>Neighbour Interview</option>
+          <option>Repo Attempt</option>
+          <option>Note</option>
+        </select>
+      </div>
+      <div class="col-12 col-lg-3">
+        <input class="form-control" name="occurred_at" placeholder="YYYY-MM-DDTHH:MM:SS (blank = now)">
+      </div>
+      <div class="col-12 col-lg-6">
+        <input class="form-control" name="narrative" placeholder="Write the story line (e.g., call diverted to voicemail, message left, SMS sent)..." required>
+      </div>
+    </div>
+    <div class="mt-2">
+      <button class="btn btn-outline-primary">Add</button>
+    </div>
+  </form>
+</div>
+
+<div class="mt-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h5 class="m-0">Timeline</h5>
+  </div>
+
+  <div class="list-group mt-2">
+    {% for i in interactions %}
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between">
+          <div class="fw-semibold">{{ i.event_type }}</div>
+          <div class="text-muted small">{{ i.occurred_at }}</div>
+        </div>
+        <div>{{ i.narrative }}</div>
+      </div>
+    {% else %}
+      <div class="text-muted">No interactions yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
