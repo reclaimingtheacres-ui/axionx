@@ -59,18 +59,27 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_ref TEXT NOT NULL,
+
+        internal_job_number TEXT NOT NULL,
+        client_reference TEXT,
+
+        display_ref TEXT NOT NULL,
+
         client_id INTEGER,
         customer_id INTEGER,
         asset_id INTEGER,
+
         job_type TEXT NOT NULL,
         visit_type TEXT NOT NULL,
         status TEXT NOT NULL,
         priority TEXT NOT NULL,
+
         job_address TEXT,
         description TEXT,
+
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+
         FOREIGN KEY(client_id) REFERENCES clients(id),
         FOREIGN KEY(customer_id) REFERENCES customers(id),
         FOREIGN KEY(asset_id) REFERENCES assets(id)
@@ -146,9 +155,9 @@ def jobs_list():
         params.append(status)
 
     if q:
-        sql += " AND (j.job_ref LIKE ? OR j.description LIKE ? OR cu.full_name LIKE ? OR a.reg LIKE ?)"
+        sql += " AND (j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR j.display_ref LIKE ? OR j.description LIKE ? OR cu.full_name LIKE ? OR a.reg LIKE ?)"
         like = f"%{q}%"
-        params.extend([like, like, like, like])
+        params.extend([like, like, like, like, like, like])
 
     sql += " ORDER BY j.updated_at DESC"
 
@@ -190,9 +199,11 @@ def job_new():
                            visit_types=visit_types, job_types=job_types, statuses=statuses, priorities=priorities)
 
 
+
 @app.post("/jobs/new")
 def job_create():
-    job_ref = request.form.get("job_ref", "").strip()
+    internal_job_number = request.form.get("internal_job_number", "").strip()
+    client_reference = request.form.get("client_reference", "").strip()
     client_id = request.form.get("client_id") or None
     customer_id = request.form.get("customer_id") or None
     asset_id = request.form.get("asset_id") or None
@@ -203,24 +214,38 @@ def job_create():
     job_address = request.form.get("job_address", "").strip()
     description = request.form.get("description", "").strip()
 
-    if not job_ref:
-        flash("Job reference is required.", "danger")
+    if not internal_job_number:
+        flash("Internal job number is required.", "danger")
         return redirect(url_for("job_new"))
+
+    display_ref = internal_job_number
+    if client_reference:
+        display_ref = f"{internal_job_number} ({client_reference})"
 
     now = datetime.now().isoformat(timespec="seconds")
 
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO jobs (job_ref, client_id, customer_id, asset_id, job_type, visit_type, status, priority, job_address, description, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (job_ref, client_id, customer_id, asset_id, job_type, visit_type, status, priority, job_address, description, now, now))
+        INSERT INTO jobs (
+            internal_job_number, client_reference, display_ref,
+            client_id, customer_id, asset_id,
+            job_type, visit_type, status, priority,
+            job_address, description, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        internal_job_number, client_reference or None, display_ref,
+        client_id, customer_id, asset_id,
+        job_type, visit_type, status, priority,
+        job_address, description, now, now
+    ))
     job_id = cur.lastrowid
 
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
-    """, (job_id, "System", f"Job created with status '{status}' and visit type '{visit_type}'.", now, now))
+    """, (job_id, "System", f"Job created: {display_ref}. Status '{status}'. Visit type '{visit_type}'.", now, now))
 
     conn.commit()
     conn.close()

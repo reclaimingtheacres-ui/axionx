@@ -27,7 +27,7 @@
     <a class="list-group-item list-group-item-action" href="/jobs/{{ j.id }}">
       <div class="d-flex justify-content-between">
         <div>
-          <div class="fw-semibold">{{ j.job_ref }} — {{ j.customer_name or "No customer" }}</div>
+          <div class="fw-semibold">{{ j.display_ref }} — {{ j.customer_name or "No customer" }}</div>
           <div class="text-muted small">{{ j.client_name or "No client" }}{% if j.asset_reg %} | Reg: {{ j.asset_reg }}{% endif %}</div>
           <div class="small">{{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}</div>
         </div>

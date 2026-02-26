@@ -2,8 +2,11 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-start">
   <div>
-    <h3 class="mb-1">{{ job.job_ref }}</h3>
-    <div class="text-muted">
+    <h3 class="mb-1">{{ job.display_ref }}</h3>
+    <div class="text-muted small">
+      Internal: {{ job.internal_job_number }}{% if job.client_reference %} | Client Ref: {{ job.client_reference }}{% endif %}
+    </div>
+    <div class="text-muted mt-1">
       {{ job.job_type }} | {{ job.visit_type }} | Priority: {{ job.priority }}
     </div>
   </div>

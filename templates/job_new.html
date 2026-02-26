@@ -3,9 +3,15 @@
 <h3>New Job</h3>
 
 <form method="post" class="mt-3">
-  <div class="mb-3">
-    <label class="form-label">Job Reference</label>
-    <input class="form-control" name="job_ref" placeholder="e.g., 2602042-MCKENZIE-ARN (238139)" required>
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-lg-6">
+      <label class="form-label">Internal Job Number</label>
+      <input class="form-control" name="internal_job_number" placeholder="e.g., 2602042" required>
+    </div>
+    <div class="col-12 col-lg-6">
+      <label class="form-label">Client Reference</label>
+      <input class="form-control" name="client_reference" placeholder="e.g., 238139 (optional)">
+    </div>
   </div>
 
   <div class="row g-3">
