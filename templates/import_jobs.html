@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block content %}
+<h3>Import Jobs from CSV</h3>
+
+<div class="card p-3 mt-3 mb-4">
+  <div class="h6 mb-2">Expected CSV columns</div>
+  <code>InternalJobNumber, ClientReference, JobType, VisitType, Status, Priority, JobAddress, Description</code>
+  <div class="text-muted small mt-2">
+    <strong>InternalJobNumber</strong> is required. All other columns are optional and will fall back to defaults.
+    Rows with a duplicate InternalJobNumber are skipped.
+  </div>
+</div>
+
+<form method="post" enctype="multipart/form-data">
+  <div class="mb-3">
+    <label class="form-label">CSV File</label>
+    <input class="form-control" type="file" name="file" accept=".csv" required>
+  </div>
+  <button class="btn btn-primary">Upload &amp; Import</button>
+  <a class="btn btn-outline-secondary ms-2" href="/jobs">Cancel</a>
+</form>
+{% endblock %}

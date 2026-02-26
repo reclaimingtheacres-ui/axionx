@@ -1,6 +1,6 @@
 # Axion Prototype
 
-A Flask-based field operations management app for tracking jobs, clients, customers, and assets.
+A Flask-based field operations management app for tracking jobs, clients, customers, and assets, with staff login and role-based access.
 
 ## Stack
 
@@ -12,39 +12,57 @@ A Flask-based field operations management app for tracking jobs, clients, custom
 
 The app runs via the "Start application" workflow: `python app.py` on port 5000.
 
+## Default Login
+
+A seed admin account is created automatically on first run if no users exist:
+- **Email**: `admin@axion.local`
+- **Password**: `admin`
+
+Change this immediately via the Users section after first login.
+
 ## Structure
 
 ```
-app.py                  # Flask app, all routes and DB logic
+app.py                  # Flask app — all routes, DB logic, auth
 templates/
-  layout.html           # Base template with navbar and flash messages
+  login.html            # Login page (standalone, no navbar)
+  layout.html           # Base template with navbar, flash messages, user info
   index.html            # Dashboard with counts
-  jobs.html             # Job list with search/filter
-  job_new.html          # New job form
-  job_detail.html       # Job detail, status update, interaction timeline
+  jobs.html             # Job list with search/filter + assigned agent
+  job_new.html          # New job form (includes assign-to dropdown)
+  job_detail.html       # Job detail, update status/visit/assignment, timeline
   clients.html          # Client list
   client_new.html       # New client form
   customers.html        # Customer list
   customer_new.html     # New customer form
   assets.html           # Asset list
   asset_new.html        # New asset form
+  users.html            # User list (admin only)
+  user_new.html         # New user form (admin only)
+  import_jobs.html      # CSV import for jobs (admin only)
 axion.db                # SQLite database (auto-created on first run)
 requirements.txt        # Python dependencies
 ```
 
 ## Database Schema
 
+- **users** — staff accounts (admin / agent roles)
 - **clients** — companies/creditors who assign jobs
 - **customers** — debtors/subjects of jobs
 - **assets** — vehicles (reg, VIN, make, model, year)
-- **jobs** — core entity linking client, customer, asset; has status, priority, job type, visit type, address
-- **interactions** — timestamped timeline entries on a job (calls, attendances, notes, etc.)
+- **jobs** — core entity; stores internal_job_number, client_reference, display_ref, and assigned_user_id
+- **interactions** — timestamped timeline entries per job
 
-## Features
+## Auth & Role Logic
 
-- Dashboard with counts of all entity types
-- Jobs: create, list (with status/text filter), detail view
-- Job status and visit type quick-update
-- Interaction/timeline log per job (Attendance, Call, SMS, Email, Card Left, Neighbour Interview, Repo Attempt, Note)
-- Clients, Customers, Assets: create and list
-- Google Maps link for job addresses
+- All routes (except `/login`) require login via `@login_required`
+- Admin users see all jobs; agents only see jobs assigned to them
+- Users, Import routes are `@admin_required`
+- Job detail enforces agent can only view their assigned jobs
+
+## CSV Import (Jobs)
+
+Upload a CSV at `/import/jobs` (admin only). Expected columns:
+`InternalJobNumber, ClientReference, JobType, VisitType, Status, Priority, JobAddress, Description`
+
+Rows with duplicate `InternalJobNumber` are skipped.

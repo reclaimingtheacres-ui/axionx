@@ -29,7 +29,7 @@
         <div>
           <div class="fw-semibold">{{ j.display_ref }} — {{ j.customer_name or "No customer" }}</div>
           <div class="text-muted small">{{ j.client_name or "No client" }}{% if j.asset_reg %} | Reg: {{ j.asset_reg }}{% endif %}</div>
-          <div class="small">{{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}</div>
+          <div class="small">{{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}{% if j.assigned_name %} | {{ j.assigned_name }}{% endif %}</div>
         </div>
         <div class="text-end">
           <span class="badge bg-dark">{{ j.status }}</span>
