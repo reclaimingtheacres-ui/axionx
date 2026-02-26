@@ -1,0 +1,800 @@
+Create a new Repl → Python.
+
+Add a file called requirements.txt with:
+
+flask==3.0.3
+
+Then create these files:
+
+app.py
+
+templates/layout.html
+
+templates/index.html
+
+templates/jobs.html
+
+templates/job_new.html
+
+templates/job_detail.html
+
+templates/clients.html
+
+templates/client_new.html
+
+templates/customers.html
+
+templates/customer_new.html
+
+templates/assets.html
+
+templates/asset_new.html
+
+Run the Repl.
+
+app.py
+from flask import Flask, render_template, request, redirect, url_for, flash
+import sqlite3
+from datetime import datetime
+
+app = Flask(__name__)
+app.secret_key = "axion-dev-secret"  # change later
+
+DB_PATH = "axion.db"
+
+
+def db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        address TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        full_name TEXT NOT NULL,
+        phone TEXT,
+        email TEXT,
+        dob TEXT,
+        address TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS assets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reg TEXT,
+        vin TEXT,
+        make TEXT,
+        model TEXT,
+        year INTEGER,
+        notes TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_ref TEXT NOT NULL,
+        client_id INTEGER,
+        customer_id INTEGER,
+        asset_id INTEGER,
+        job_type TEXT NOT NULL,
+        visit_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        job_address TEXT,
+        description TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(client_id) REFERENCES clients(id),
+        FOREIGN KEY(customer_id) REFERENCES customers(id),
+        FOREIGN KEY(asset_id) REFERENCES assets(id)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS interactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        narrative TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+@app.before_request
+def _ensure_db():
+    init_db()
+
+
+# -------- Home --------
+@app.get("/")
+def index():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS c FROM jobs")
+    jobs_count = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) AS c FROM clients")
+    clients_count = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) AS c FROM customers")
+    customers_count = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) AS c FROM assets")
+    assets_count = cur.fetchone()["c"]
+    conn.close()
+    return render_template("index.html",
+                           jobs_count=jobs_count,
+                           clients_count=clients_count,
+                           customers_count=customers_count,
+                           assets_count=assets_count)
+
+
+# -------- Jobs --------
+@app.get("/jobs")
+def jobs_list():
+    status = request.args.get("status", "").strip()
+    q = request.args.get("q", "").strip()
+
+    conn = db()
+    cur = conn.cursor()
+
+    sql = """
+    SELECT j.*,
+           c.name AS client_name,
+           cu.full_name AS customer_name,
+           a.reg AS asset_reg
+    FROM jobs j
+    LEFT JOIN clients c ON c.id = j.client_id
+    LEFT JOIN customers cu ON cu.id = j.customer_id
+    LEFT JOIN assets a ON a.id = j.asset_id
+    WHERE 1=1
+    """
+    params = []
+
+    if status:
+        sql += " AND j.status = ?"
+        params.append(status)
+
+    if q:
+        sql += " AND (j.job_ref LIKE ? OR j.description LIKE ? OR cu.full_name LIKE ? OR a.reg LIKE ?)"
+        like = f"%{q}%"
+        params.extend([like, like, like, like])
+
+    sql += " ORDER BY j.updated_at DESC"
+
+    cur.execute(sql, params)
+    rows = cur.fetchall()
+    conn.close()
+
+    statuses = [
+        "New",
+        "Active",
+        "Active - Phone work only",
+        "Suspended",
+        "Awaiting info from client",
+        "Completed",
+        "Invoiced"
+    ]
+
+    return render_template("jobs.html", jobs=rows, statuses=statuses, status=status, q=q)
+
+
+@app.get("/jobs/new")
+def job_new():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name FROM clients ORDER BY name")
+    clients = cur.fetchall()
+    cur.execute("SELECT id, full_name FROM customers ORDER BY full_name")
+    customers = cur.fetchall()
+    cur.execute("SELECT id, reg, make, model FROM assets ORDER BY reg")
+    assets = cur.fetchall()
+    conn.close()
+
+    visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
+    job_types = ["Field Call", "Repo/Collect", "Repo Only", "Locate", "Phone Work"]
+    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
+    priorities = ["Low", "Normal", "High", "Urgent"]
+
+    return render_template("job_new.html", clients=clients, customers=customers, assets=assets,
+                           visit_types=visit_types, job_types=job_types, statuses=statuses, priorities=priorities)
+
+
+@app.post("/jobs/new")
+def job_create():
+    job_ref = request.form.get("job_ref", "").strip()
+    client_id = request.form.get("client_id") or None
+    customer_id = request.form.get("customer_id") or None
+    asset_id = request.form.get("asset_id") or None
+    job_type = request.form.get("job_type", "Field Call").strip()
+    visit_type = request.form.get("visit_type", "New Visit").strip()
+    status = request.form.get("status", "New").strip()
+    priority = request.form.get("priority", "Normal").strip()
+    job_address = request.form.get("job_address", "").strip()
+    description = request.form.get("description", "").strip()
+
+    if not job_ref:
+        flash("Job reference is required.", "danger")
+        return redirect(url_for("job_new"))
+
+    now = datetime.now().isoformat(timespec="seconds")
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO jobs (job_ref, client_id, customer_id, asset_id, job_type, visit_type, status, priority, job_address, description, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_ref, client_id, customer_id, asset_id, job_type, visit_type, status, priority, job_address, description, now, now))
+    job_id = cur.lastrowid
+
+    # Create a first “story” entry automatically (optional but useful)
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (job_id, "System", f"Job created with status '{status}' and visit type '{visit_type}'.", now, now))
+
+    conn.commit()
+    conn.close()
+
+    flash("Job created.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.get("/jobs/<int:job_id>")
+def job_detail(job_id: int):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT j.*,
+           c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
+           cu.full_name AS customer_name, cu.phone AS customer_phone, cu.email AS customer_email, cu.dob AS customer_dob, cu.address AS customer_address,
+           a.reg AS asset_reg, a.vin AS asset_vin, a.make AS asset_make, a.model AS asset_model, a.year AS asset_year
+    FROM jobs j
+    LEFT JOIN clients c ON c.id = j.client_id
+    LEFT JOIN customers cu ON cu.id = j.customer_id
+    LEFT JOIN assets a ON a.id = j.asset_id
+    WHERE j.id = ?
+    """, (job_id,))
+    job = cur.fetchone()
+    if not job:
+        conn.close()
+        return ("Not found", 404)
+
+    cur.execute("""
+    SELECT * FROM interactions
+    WHERE job_id = ?
+    ORDER BY occurred_at DESC, id DESC
+    """, (job_id,))
+    interactions = cur.fetchall()
+
+    conn.close()
+
+    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
+    visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
+
+    return render_template("job_detail.html", job=job, interactions=interactions, statuses=statuses, visit_types=visit_types)
+
+
+@app.post("/jobs/<int:job_id>/update")
+def job_update(job_id: int):
+    status = request.form.get("status", "").strip()
+    visit_type = request.form.get("visit_type", "").strip()
+    now = datetime.now().isoformat(timespec="seconds")
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("UPDATE jobs SET status = ?, visit_type = ?, updated_at = ? WHERE id = ?",
+                (status, visit_type, now, job_id))
+
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (job_id, "Status/Visit Update", f"Status set to '{status}'. Visit type set to '{visit_type}'.", now, now))
+
+    conn.commit()
+    conn.close()
+    flash("Job updated.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/interactions/new")
+def interaction_add(job_id: int):
+    event_type = request.form.get("event_type", "Note").strip()
+    narrative = request.form.get("narrative", "").strip()
+    occurred_at = request.form.get("occurred_at", "").strip()
+
+    if not narrative:
+        flash("Narrative text is required.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    if not occurred_at:
+        occurred_at = datetime.now().isoformat(timespec="seconds")
+
+    now = datetime.now().isoformat(timespec="seconds")
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (job_id, event_type, narrative, occurred_at, now))
+    cur.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (now, job_id))
+    conn.commit()
+    conn.close()
+
+    flash("Interaction added.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+# -------- Clients --------
+@app.get("/clients")
+def clients_list():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM clients ORDER BY name")
+    rows = cur.fetchall()
+    conn.close()
+    return render_template("clients.html", clients=rows)
+
+
+@app.get("/clients/new")
+def client_new():
+    return render_template("client_new.html")
+
+
+@app.post("/clients/new")
+def client_create():
+    name = request.form.get("name", "").strip()
+    phone = request.form.get("phone", "").strip()
+    email = request.form.get("email", "").strip()
+    address = request.form.get("address", "").strip()
+    notes = request.form.get("notes", "").strip()
+    if not name:
+        flash("Client name is required.", "danger")
+        return redirect(url_for("client_new"))
+
+    now = datetime.now().isoformat(timespec="seconds")
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO clients (name, phone, email, address, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (name, phone, email, address, notes, now))
+    conn.commit()
+    conn.close()
+    flash("Client created.", "success")
+    return redirect(url_for("clients_list"))
+
+
+# -------- Customers --------
+@app.get("/customers")
+def customers_list():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM customers ORDER BY full_name")
+    rows = cur.fetchall()
+    conn.close()
+    return render_template("customers.html", customers=rows)
+
+
+@app.get("/customers/new")
+def customer_new():
+    return render_template("customer_new.html")
+
+
+@app.post("/customers/new")
+def customer_create():
+    full_name = request.form.get("full_name", "").strip()
+    phone = request.form.get("phone", "").strip()
+    email = request.form.get("email", "").strip()
+    dob = request.form.get("dob", "").strip()
+    address = request.form.get("address", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    if not full_name:
+        flash("Customer name is required.", "danger")
+        return redirect(url_for("customer_new"))
+
+    now = datetime.now().isoformat(timespec="seconds")
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO customers (full_name, phone, email, dob, address, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (full_name, phone, email, dob, address, notes, now))
+    conn.commit()
+    conn.close()
+    flash("Customer created.", "success")
+    return redirect(url_for("customers_list"))
+
+
+# -------- Assets --------
+@app.get("/assets")
+def assets_list():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM assets ORDER BY reg")
+    rows = cur.fetchall()
+    conn.close()
+    return render_template("assets.html", assets=rows)
+
+
+@app.get("/assets/new")
+def asset_new():
+    return render_template("asset_new.html")
+
+
+@app.post("/assets/new")
+def asset_create():
+    reg = request.form.get("reg", "").strip()
+    vin = request.form.get("vin", "").strip()
+    make = request.form.get("make", "").strip()
+    model = request.form.get("model", "").strip()
+    year = request.form.get("year", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    now = datetime.now().isoformat(timespec="seconds")
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO assets (reg, vin, make, model, year, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (reg, vin, make, model, int(year) if year.isdigit() else None, notes, now))
+    conn.commit()
+    conn.close()
+    flash("Asset created.", "success")
+    return redirect(url_for("assets_list"))
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=3000, debug=True)
+templates/layout.html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axion Prototype</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">Axion</a>
+    <div class="navbar-nav">
+      <a class="nav-link" href="/jobs">Jobs</a>
+      <a class="nav-link" href="/clients">Clients</a>
+      <a class="nav-link" href="/customers">Customers</a>
+      <a class="nav-link" href="/assets">Assets</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container my-4">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{category}}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>
+templates/index.html
+{% extends "layout.html" %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Jobs</div><div class="h3">{{ jobs_count }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Clients</div><div class="h3">{{ clients_count }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Customers</div><div class="h3">{{ customers_count }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Assets</div><div class="h3">{{ assets_count }}</div></div></div>
+</div>
+
+<div class="mt-4 d-flex gap-2">
+  <a class="btn btn-primary" href="/jobs/new">New Job</a>
+  <a class="btn btn-outline-secondary" href="/clients/new">New Client</a>
+  <a class="btn btn-outline-secondary" href="/customers/new">New Customer</a>
+  <a class="btn btn-outline-secondary" href="/assets/new">New Asset</a>
+</div>
+{% endblock %}
+templates/jobs.html
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="m-0">Jobs</h3>
+  <a class="btn btn-primary" href="/jobs/new">New Job</a>
+</div>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-12 col-lg-4">
+    <input class="form-control" name="q" placeholder="Search ref, customer, reg, notes..." value="{{ q }}">
+  </div>
+  <div class="col-12 col-lg-3">
+    <select class="form-select" name="status">
+      <option value="">All statuses</option>
+      {% for s in statuses %}
+        <option value="{{s}}" {% if s == status %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-12 col-lg-2">
+    <button class="btn btn-outline-secondary w-100">Filter</button>
+  </div>
+</form>
+
+<div class="list-group">
+  {% for j in jobs %}
+    <a class="list-group-item list-group-item-action" href="/jobs/{{ j.id }}">
+      <div class="d-flex justify-content-between">
+        <div>
+          <div class="fw-semibold">{{ j.job_ref }} — {{ j.customer_name or "No customer" }}</div>
+          <div class="text-muted small">{{ j.client_name or "No client" }}{% if j.asset_reg %} | Reg: {{ j.asset_reg }}{% endif %}</div>
+          <div class="small">{{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}</div>
+        </div>
+        <div class="text-end">
+          <span class="badge bg-dark">{{ j.status }}</span>
+          <div class="text-muted small mt-1">{{ j.updated_at }}</div>
+        </div>
+      </div>
+    </a>
+  {% else %}
+    <div class="text-muted">No jobs found.</div>
+  {% endfor %}
+</div>
+{% endblock %}
+templates/job_new.html
+{% extends "layout.html" %}
+{% block content %}
+<h3>New Job</h3>
+
+<form method="post" class="mt-3">
+  <div class="mb-3">
+    <label class="form-label">Job Reference</label>
+    <input class="form-control" name="job_ref" placeholder="e.g., 2602042-MCKENZIE-ARN (238139)" required>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-4">
+      <label class="form-label">Client</label>
+      <select class="form-select" name="client_id">
+        <option value="">Select client</option>
+        {% for c in clients %}
+          <option value="{{c.id}}">{{ c.name }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text"><a href="/clients/new">Create client</a></div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <label class="form-label">Customer</label>
+      <select class="form-select" name="customer_id">
+        <option value="">Select customer</option>
+        {% for c in customers %}
+          <option value="{{c.id}}">{{ c.full_name }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text"><a href="/customers/new">Create customer</a></div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <label class="form-label">Asset</label>
+      <select class="form-select" name="asset_id">
+        <option value="">Select asset</option>
+        {% for a in assets %}
+          <option value="{{a.id}}">{{ a.reg }}{% if a.make %} — {{a.make}} {{a.model}}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <div class="form-text"><a href="/assets/new">Create asset</a></div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <div class="col-12 col-lg-3">
+      <label class="form-label">Job Type</label>
+      <select class="form-select" name="job_type">
+        {% for jt in job_types %}<option value="{{jt}}">{{jt}}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-3">
+      <label class="form-label">Visit Type</label>
+      <select class="form-select" name="visit_type">
+        {% for vt in visit_types %}<option value="{{vt}}">{{vt}}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-3">
+      <label class="form-label">Status</label>
+      <select class="form-select" name="status">
+        {% for st in statuses %}<option value="{{st}}">{{st}}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-3">
+      <label class="form-label">Priority</label>
+      <select class="form-select" name="priority">
+        {% for p in priorities %}<option value="{{p}}">{{p}}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="mt-3">
+    <label class="form-label">Job Address</label>
+    <input class="form-control" name="job_address" placeholder="Street, Suburb, State, Postcode">
+  </div>
+
+  <div class="mt-3">
+    <label class="form-label">Description / Instructions</label>
+    <textarea class="form-control" name="description" rows="4"></textarea>
+  </div>
+
+  <div class="mt-4 d-flex gap-2">
+    <button class="btn btn-primary">Create Job</button>
+    <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+templates/job_detail.html
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start">
+  <div>
+    <h3 class="mb-1">{{ job.job_ref }}</h3>
+    <div class="text-muted">
+      {{ job.job_type }} | {{ job.visit_type }} | Priority: {{ job.priority }}
+    </div>
+  </div>
+  <span class="badge bg-dark fs-6">{{ job.status }}</span>
+</div>
+
+<div class="row g-3 mt-2">
+  <div class="col-12 col-lg-6">
+    <div class="card p-3">
+      <div class="h6">Customer</div>
+      <div class="fw-semibold">{{ job.customer_name or "—" }}</div>
+      {% if job.customer_phone %}<div><a href="tel:{{ job.customer_phone }}">{{ job.customer_phone }}</a></div>{% endif %}
+      {% if job.customer_email %}<div><a href="mailto:{{ job.customer_email }}">{{ job.customer_email }}</a></div>{% endif %}
+      {% if job.customer_dob %}<div class="text-muted">DOB: {{ job.customer_dob }}</div>{% endif %}
+      {% if job.customer_address %}<div class="text-muted">{{ job.customer_address }}</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card p-3">
+      <div class="h6">Client</div>
+      <div class="fw-semibold">{{ job.client_name or "—" }}</div>
+      {% if job.client_phone %}<div><a href="tel:{{ job.client_phone }}">{{ job.client_phone }}</a></div>{% endif %}
+      {% if job.client_email %}<div><a href="mailto:{{ job.client_email }}">{{ job.client_email }}</a></div>{% endif %}
+      {% if job.client_address %}<div class="text-muted">{{ job.client_address }}</div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Asset</div>
+  <div class="row">
+    <div class="col-12 col-lg-6">
+      <div>Reg: <span class="fw-semibold">{{ job.asset_reg or "—" }}</span></div>
+      <div>VIN: <span class="fw-semibold">{{ job.asset_vin or "—" }}</span></div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div>{{ (job.asset_year or "") }} {{ (job.asset_make or "") }} {{ (job.asset_model or "") }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Job Address</div>
+  <div class="d-flex justify-content-between align-items-center">
+    <div class="me-3">{{ job.job_address or "—" }}</div>
+    {% if job.job_address %}
+      <a class="btn btn-outline-primary btn-sm"
+         target="_blank"
+         href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
+         Open in Google Maps
+      </a>
+    {% endif %}
+  </div>
+  {% if job.description %}
+    <div class="mt-2 text-muted">{{ job.description }}</div>
+  {% endif %}
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Update Status / Visit Type</div>
+  <form method="post" action="/jobs/{{ job.id }}/update" class="row g-2">
+    <div class="col-12 col-lg-4">
+      <select class="form-select" name="status">
+        {% for s in statuses %}
+          <option value="{{s}}" {% if s == job.status %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-4">
+      <select class="form-select" name="visit_type">
+        {% for v in visit_types %}
+          <option value="{{v}}" {% if v == job.visit_type %}selected{% endif %}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-4">
+      <button class="btn btn-primary w-100">Save</button>
+    </div>
+  </form>
+</div>
+
+<div class="card p-3 mt-3">
+  <div class="h6 mb-2">Add Interaction</div>
+  <form method="post" action="/jobs/{{ job.id }}/interactions/new">
+    <div class="row g-2">
+      <div class="col-12 col-lg-3">
+        <select class="form-select" name="event_type">
+          <option>Attendance</option>
+          <option>Call</option>
+          <option>SMS</option>
+          <option>Email</option>
+          <option>Card Left</option>
+          <option>Neighbour Interview</option>
+          <option>Repo Attempt</option>
+          <option>Note</option>
+        </select>
+      </div>
+      <div class="col-12 col-lg-3">
+        <input class="form-control" name="occurred_at" placeholder="YYYY-MM-DDTHH:MM:SS (blank = now)">
+      </div>
+      <div class="col-12 col-lg-6">
+        <input class="form-control" name="narrative" placeholder="Write the story line (e.g., call diverted to voicemail, message left, SMS sent)..." required>
+      </div>
+    </div>
+    <div class="mt-2">
+      <button class="btn btn-outline-primary">Add</button>
+    </div>
+  </form>
+</div>
+
+<div class="mt-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h5 class="m-0">Timeline</h5>
+  </div>
+
+  <div class="list-group mt-2">
+    {% for i in interactions %}
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between">
+          <div class="fw-semibold">{{ i.event_type }}</div>
+          <div class="text-muted small">{{ i.occurred_at }}</div>
+        </div>
+        <div>{{ i.narrative }}</div>
+      </div>
+    {% else %}
+      <div class="text-muted">No interactions yet.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
