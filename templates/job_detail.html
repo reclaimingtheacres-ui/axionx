@@ -529,6 +529,12 @@ function showItemFields(type) {
           <div class="mb-1" style="color:var(--muted);font-size:.75rem;">VIN</div>
           <div id="vicRoadsVin"
                style="font-size:1.1rem;font-weight:600;letter-spacing:.08em;color:var(--muted);">—</div>
+          <button id="vicRoadsCopyBtn" type="button"
+                  class="btn btn-sm mt-2"
+                  style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);border-radius:8px;font-size:.8rem;"
+                  onclick="axCopyVin(this)">
+            Copy VIN
+          </button>
         </div>
         <div id="vicRoadsNoVin" class="mb-4" style="display:none;color:var(--muted);font-size:.8rem;">No VIN recorded</div>
         <button type="button" class="btn btn-lg px-5"
@@ -562,5 +568,22 @@ function showItemFields(type) {
     }
   });
 })();
+
+function axCopyVin(btn) {
+  var vin = document.getElementById('vicRoadsVin').textContent;
+  if (!vin || vin === '—') return;
+  navigator.clipboard.writeText(vin).then(function () {
+    btn.textContent = 'Copied!';
+    btn.style.background = 'rgba(34,197,94,.2)';
+    btn.style.color = '#22c55e';
+    btn.style.borderColor = 'rgba(34,197,94,.4)';
+    setTimeout(function () {
+      btn.textContent = 'Copy VIN';
+      btn.style.background = 'rgba(96,165,250,.15)';
+      btn.style.color = 'var(--accent)';
+      btn.style.borderColor = 'rgba(96,165,250,.3)';
+    }, 1800);
+  });
+}
 </script>
 {% endblock %}
