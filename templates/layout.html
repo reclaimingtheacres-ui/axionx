@@ -119,7 +119,9 @@
       border: 1px solid var(--line);
       border-radius: 18px;
       box-shadow: 0 10px 30px rgba(0,0,0,.25);
+      overflow: visible;
     }
+    .pac-container { z-index: 2147483647 !important; }
     .ax-card .ax-card-h{
       padding: 14px 16px;
       border-bottom: 1px solid var(--line);
@@ -285,24 +287,40 @@
     </main>
   </div>
 
-  {% if GOOGLE_MAPS_API_KEY %}
-  <script src="https://maps.googleapis.com/maps/api/js?key={{ GOOGLE_MAPS_API_KEY }}&libraries=places&loading=async&callback=initMapsAutocomplete" async defer></script>
   <script>
-  function initMapsAutocomplete() {
+  function initPlaces() {
+    if (!window.google || !google.maps || !google.maps.places) return;
+
     document.querySelectorAll('[data-maps-autocomplete]').forEach(function(input) {
+      if (input.dataset.placesAttached === '1') return;
+      input.dataset.placesAttached = '1';
+
       var ac = new google.maps.places.Autocomplete(input, {
-        types: ['geocode'],
+        types: ['address'],
         componentRestrictions: { country: 'au' }
       });
+
       ac.addListener('place_changed', function() {
         var place = ac.getPlace();
-        if (place && place.formatted_address) {
+        if (!place || !place.geometry) return;
+
+        if (place.formatted_address) {
           input.value = place.formatted_address;
         }
+
+        var form = input.closest('form');
+        if (!form) return;
+        var lat = form.querySelector('input[name="latitude"]');
+        var lng = form.querySelector('input[name="longitude"]');
+        if (lat) lat.value = place.geometry.location.lat();
+        if (lng) lng.value = place.geometry.location.lng();
       });
     });
   }
   </script>
+  {% if GOOGLE_MAPS_API_KEY %}
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key={{ GOOGLE_MAPS_API_KEY }}&libraries=places&callback=initPlaces&loading=async"></script>
   {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
