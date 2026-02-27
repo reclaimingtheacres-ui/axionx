@@ -17,36 +17,36 @@
         </div>
         <div class="col-12 col-lg-6">
           <label class="form-label">Client Reference</label>
-          <input class="form-control" name="client_reference" placeholder="e.g., 238139 (optional)">
+          <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., 238139 (optional)" value="{{ prefill_client_reference }}">
         </div>
       </div>
 
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-6">
           <label class="form-label">Client</label>
-          <select class="form-select" name="client_id">
+          <select class="form-select" name="client_id" id="client_id_select">
             <option value="">Select client</option>
             {% for c in clients %}
-              <option value="{{c.id}}">{{ c.name }}</option>
+              <option value="{{c.id}}" {% if new_client_id == c.id %}selected{% endif %}>{{ c.name }}</option>
             {% endfor %}
           </select>
-          <div class="form-text"><a href="/clients/new" style="color:var(--accent)">Create client</a></div>
+          <div class="form-text"><a href="/clients/new?next=/jobs/new" style="color:var(--accent)">Create client</a></div>
         </div>
         <div class="col-12 col-lg-6">
           <label class="form-label">Customer</label>
-          <select class="form-select" name="customer_id">
+          <select class="form-select" name="customer_id" id="customer_id_select">
             <option value="">Select customer</option>
             {% for c in customers %}
-              <option value="{{c.id}}">{{ c.first_name }} {{ c.last_name }}{% if c.company %} ({{ c.company }}){% endif %}</option>
+              <option value="{{c.id}}" {% if new_customer_id == c.id %}selected{% endif %}>{{ c.first_name }} {{ c.last_name }}{% if c.company %} ({{ c.company }}){% endif %}</option>
             {% endfor %}
           </select>
-          <div class="form-text"><a href="/customers/new" style="color:var(--accent)">Create customer</a></div>
+          <div class="form-text"><a href="/customers/new?next=/jobs/new" style="color:var(--accent)">Create customer</a></div>
         </div>
       </div>
 
       <div class="mb-3">
         <label class="form-label">Customer Address</label>
-        <input class="form-control" id="customer_address" name="customer_address" placeholder="Street, Suburb, State, Postcode" data-maps-autocomplete autocomplete="off" spellcheck="false">
+        <input class="form-control" id="customer_address" name="customer_address" placeholder="Street, Suburb, State, Postcode" data-maps-autocomplete autocomplete="off" spellcheck="false" value="{{ prefill_customer_address }}">
       </div>
 
       <div class="mb-3">
@@ -299,4 +299,28 @@
     </form>
   </div>
 </div>
+
+<script>
+(function () {
+  var CR_KEY = 'axion_job_new_client_ref';
+
+  var crField = document.getElementById('client_reference');
+
+  if (crField) {
+    var saved = localStorage.getItem(CR_KEY);
+    if (saved && !crField.value) {
+      crField.value = saved;
+    }
+    document.querySelector('form').addEventListener('submit', function () {
+      localStorage.removeItem(CR_KEY);
+    });
+  }
+
+  document.querySelectorAll('a[href*="/clients/new"], a[href*="/customers/new"]').forEach(function (link) {
+    link.addEventListener('click', function () {
+      if (crField) localStorage.setItem(CR_KEY, crField.value);
+    });
+  });
+})();
+</script>
 {% endblock %}

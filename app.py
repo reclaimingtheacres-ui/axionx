@@ -695,6 +695,18 @@ def job_new():
     users = cur.fetchall()
     cur.execute("SELECT * FROM system_settings WHERE id = 1")
     settings = cur.fetchone()
+
+    new_client_id   = request.args.get("new_client_id",   type=int)
+    new_customer_id = request.args.get("new_customer_id", type=int)
+
+    prefill_customer_address = ""
+    prefill_client_reference = request.args.get("client_reference", "")
+    if new_customer_id:
+        cur.execute("SELECT address FROM customers WHERE id = ?", (new_customer_id,))
+        row = cur.fetchone()
+        if row:
+            prefill_customer_address = row["address"] or ""
+
     conn.close()
 
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
@@ -707,7 +719,11 @@ def job_new():
     return render_template("job_new.html", clients=clients, customers=customers,
                            users=users, visit_types=visit_types, job_types=job_types,
                            statuses=statuses, priorities=priorities,
-                           next_number=next_number)
+                           next_number=next_number,
+                           new_client_id=new_client_id,
+                           new_customer_id=new_customer_id,
+                           prefill_customer_address=prefill_customer_address,
+                           prefill_client_reference=prefill_client_reference)
 
 
 @app.post("/jobs/new")
@@ -997,7 +1013,8 @@ def clients_list():
 @app.get("/clients/new")
 @login_required
 def client_new():
-    return render_template("client_new.html")
+    next_url = request.args.get("next", "")
+    return render_template("client_new.html", next_url=next_url)
 
 
 @app.post("/clients/new")
@@ -1019,9 +1036,13 @@ def client_create():
         INSERT INTO clients (name, phone, email, address, notes, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (name, phone, email, address, notes, now))
+    new_id = cur.lastrowid
     conn.commit()
     conn.close()
     flash("Client created.", "success")
+    next_url = request.form.get("next_url", "")
+    if next_url:
+        return redirect(f"{next_url}?new_client_id={new_id}")
     return redirect(url_for("clients_list"))
 
 
@@ -1133,7 +1154,8 @@ def customers_list():
 @app.get("/customers/new")
 @login_required
 def customer_new():
-    return render_template("customer_new.html")
+    next_url = request.args.get("next", "")
+    return render_template("customer_new.html", next_url=next_url)
 
 
 @app.post("/customers/new")
@@ -1176,9 +1198,13 @@ def customer_create():
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (first_name, last_name, company or None, email or None, dob or None, address or None,
           notes or None, id_image_filename, id_image_path, ts, ts))
+    new_id = cur.lastrowid
     conn.commit()
     conn.close()
     flash("Customer created.", "success")
+    next_url = request.form.get("next_url", "")
+    if next_url:
+        return redirect(f"{next_url}?new_customer_id={new_id}")
     return redirect(url_for("customers_list"))
 
 

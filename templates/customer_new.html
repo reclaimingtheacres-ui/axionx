@@ -7,6 +7,7 @@
   <div class="ax-card-h">Customer Details</div>
   <div class="ax-card-b">
     <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="next_url" value="{{ next_url }}">
       <div class="row g-2">
         <div class="col-12 col-md-4">
           <label class="form-label">First name *</label>
@@ -53,7 +54,7 @@
 
       <div class="mt-3 d-flex gap-2">
         <button class="btn btn-primary">Create Customer</button>
-        <a class="btn btn-outline-secondary" href="/customers">Cancel</a>
+        <a class="btn btn-outline-secondary" href="{{ next_url or '/customers' }}">Cancel</a>
       </div>
     </form>
   </div>
