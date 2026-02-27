@@ -8,16 +8,16 @@
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3">
     <div class="card p-3 border-warning">
-      <div class="h6 text-muted">Cues Today</div>
+      <div class="h6 text-muted">Queue Today</div>
       <div class="h3">{{ cues_today }}</div>
-      <a class="small" href="/cues?date={{ today }}">View →</a>
+      <a class="small" href="/queue?date={{ today }}">View →</a>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="card p-3 border-danger">
-      <div class="h6 text-muted">Overdue Cues</div>
+      <div class="h6 text-muted">Overdue</div>
       <div class="h3 text-danger">{{ cues_overdue }}</div>
-      <a class="small" href="/cues">View →</a>
+      <a class="small" href="/queue">View →</a>
     </div>
   </div>
   <div class="col-6 col-lg-3">
@@ -70,7 +70,7 @@
 </div>
 
 <div class="mt-4 d-flex gap-2 flex-wrap">
-  <a class="btn btn-outline-primary" href="/cues?date={{ today }}">Today's Cues</a>
+  <a class="btn btn-outline-primary" href="/queue?date={{ today }}">Job Queue</a>
   <a class="btn btn-outline-primary" href="/assign?date={{ today }}">Assignment Board</a>
   <a class="btn btn-outline-secondary" href="/reports/monthly">Monthly Report</a>
   <a class="btn btn-outline-secondary" href="/users">Manage Users</a>

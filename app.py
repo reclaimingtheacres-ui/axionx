@@ -1420,9 +1420,9 @@ def admin_settings_update():
 
 
 # -------- Cues --------
-@app.get("/cues")
+@app.get("/queue")
 @admin_required
-def cues_list():
+def job_queue():
     date = request.args.get("date", datetime.now().date().isoformat())
     conn = db()
     cur = conn.cursor()
@@ -1445,10 +1445,10 @@ def cues_list():
     agents = cur.fetchall()
 
     conn.close()
-    return render_template("cues.html", cues=cues, agents=agents, date=date)
+    return render_template("queue.html", cues=cues, agents=agents, date=date)
 
 
-@app.post("/cues/new")
+@app.post("/queue/new")
 @admin_required
 def cue_create():
     job_id = request.form.get("job_id", "").strip()
@@ -1460,7 +1460,7 @@ def cue_create():
 
     if not job_id or not due_date:
         flash("Job ID and due date are required.", "danger")
-        return redirect(url_for("cues_list", date=due_date))
+        return redirect(url_for("job_queue", date=due_date))
 
     ts = now_ts()
     conn = db()
@@ -1477,8 +1477,8 @@ def cue_create():
           f"Cue created for job {job_id} due {due_date} ({visit_type}).",
           {"job_id": job_id, "due_date": due_date, "visit_type": visit_type, "assigned_user_id": assigned_user_id})
 
-    flash("Cue added.", "success")
-    return redirect(url_for("cues_list", date=due_date))
+    flash("Item added to queue.", "success")
+    return redirect(url_for("job_queue", date=due_date))
 
 
 @app.post("/cue/<int:cue_id>/complete")
