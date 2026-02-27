@@ -27,10 +27,21 @@
                   var(--bg);
       color: var(--text);
     }
+    body::before{
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: url('/static/images/axion-logo.png') center center / 400px auto no-repeat;
+      opacity: .045;
+      pointer-events: none;
+      z-index: 0;
+    }
     .ax-shell{
       min-height: 100vh;
       display: grid;
       grid-template-columns: 260px 1fr;
+      position: relative;
+      z-index: 1;
     }
     .ax-sidebar{
       background: linear-gradient(180deg, var(--panel), #0b1326);

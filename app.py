@@ -714,6 +714,7 @@ def job_new():
 
     new_client_id   = request.args.get("new_client_id",   type=int)
     new_customer_id = request.args.get("new_customer_id", type=int)
+    new_user_id     = request.args.get("new_user_id",     type=int)
 
     prefill_customer_address = ""
     prefill_client_reference = request.args.get("client_reference", "")
@@ -738,6 +739,7 @@ def job_new():
                            next_number=next_number,
                            new_client_id=new_client_id,
                            new_customer_id=new_customer_id,
+                           new_user_id=new_user_id,
                            prefill_customer_address=prefill_customer_address,
                            prefill_client_reference=prefill_client_reference)
 
@@ -1503,7 +1505,8 @@ def users_list():
 @app.get("/users/new")
 @admin_required
 def user_new():
-    return render_template("user_new.html")
+    next_url = request.args.get("next", "").strip()
+    return render_template("user_new.html", next_url=next_url)
 
 
 @app.post("/users/new")
@@ -1513,14 +1516,19 @@ def user_create():
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "").strip()
     role = request.form.get("role", "agent").strip()
+    next_url = request.form.get("next_url", "").strip()
 
     if not full_name or not email or not password:
         flash("Name, email and password are required.", "danger")
-        return redirect(url_for("user_new"))
+        dest = url_for("user_new")
+        if next_url:
+            dest += "?next=" + next_url
+        return redirect(dest)
 
     hashed = generate_password_hash(password)
     conn = db()
     cur = conn.cursor()
+    user_id = None
     try:
         cur.execute("""
             INSERT INTO users (full_name, email, password, role, active, created_at)
@@ -1535,6 +1543,8 @@ def user_create():
     finally:
         conn.close()
 
+    if next_url and user_id:
+        return redirect(f"{next_url}?new_user_id={user_id}")
     return redirect(url_for("users_list"))
 
 
