@@ -1,0 +1,174 @@
+Database
+
+Add this in init_db():
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS job_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    doc_type TEXT NOT NULL,            -- Instructions/PPSR/Contract/Invoice/Authority/Form/Other
+    title TEXT,
+    original_filename TEXT NOT NULL,
+    stored_filename TEXT NOT NULL,     -- what we store in /uploads
+    mime_type TEXT,
+    file_size INTEGER,
+    uploaded_by_user_id INTEGER,
+    uploaded_at TEXT NOT NULL,
+    notes TEXT,
+    FOREIGN KEY(job_id) REFERENCES jobs(id),
+    FOREIGN KEY(uploaded_by_user_id) REFERENCES users(id)
+)
+""")
+
+If you’re already using uploads/ and allowed_file() from earlier, keep that. Update allowed extensions so you can upload common office docs:
+
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf", "doc", "docx", "xls", "xlsx", "csv"}
+Secure file serving
+
+If you don’t already have a protected uploads route, add this (it keeps docs behind login):
+
+from flask import send_from_directory, abort
+
+@app.get("/uploads/<path:filename>")
+@login_required
+def uploaded_file(filename):
+    # NOTE: for production you’d add stronger checks per job access.
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename, as_attachment=False)
+Upload route
+
+Add this route to app.py:
+
+import mimetypes
+from werkzeug.utils import secure_filename
+
+@app.post("/jobs/<int:job_id>/documents/upload")
+@login_required
+def job_document_upload(job_id: int):
+    doc_type = (request.form.get("doc_type") or "Other").strip()
+    title = (request.form.get("title") or "").strip()
+    notes = (request.form.get("notes") or "").strip()
+    file = request.files.get("file")
+
+    if not file or not file.filename:
+        flash("Select a file to upload.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    if not allowed_file(file.filename):
+        flash("Unsupported file type.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    original_filename = secure_filename(file.filename)
+    ts = now_ts().replace(":", "").replace("-", "")
+    stored_filename = f"job_{job_id}_{ts}_{original_filename}"
+
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
+    file.save(filepath)
+
+    mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
+    file_size = os.path.getsize(filepath)
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO job_documents
+        (job_id, doc_type, title, original_filename, stored_filename, mime_type, file_size, uploaded_by_user_id, uploaded_at, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, doc_type, title or None, original_filename, stored_filename, mime_type, file_size,
+          session.get("user_id"), now_ts(), notes or None))
+    doc_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    try:
+        audit("job_document", doc_id, "create", "Job document uploaded",
+              {"job_id": job_id, "doc_type": doc_type, "filename": original_filename})
+    except Exception:
+        pass
+
+    flash("Document uploaded.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+Fetch documents in job detail
+
+In your job_detail() route, after you load job, add:
+
+cur.execute("""
+    SELECT d.*, u.full_name AS uploaded_by
+    FROM job_documents d
+    LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+    WHERE d.job_id = ?
+    ORDER BY d.id DESC
+""", (job_id,))
+documents = cur.fetchall()
+
+Then pass documents=documents into render_template(...).
+
+Job detail UI section
+
+In templates/job_detail.html, add this block where you want “Job Documents” to appear (usually above Field Notes):
+
+<div class="ax-card mt-3">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>Job documents</div>
+  </div>
+  <div class="ax-card-b">
+
+    <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data" class="mb-3">
+      <div class="row g-2">
+        <div class="col-12 col-lg-3">
+          <select class="form-select" name="doc_type">
+            <option>Instructions</option>
+            <option>PPSR</option>
+            <option>Contract</option>
+            <option>Invoice</option>
+            <option>Authority</option>
+            <option>Form</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="col-12 col-lg-4">
+          <input class="form-control" name="title" placeholder="Title (optional)">
+        </div>
+        <div class="col-12 col-lg-5">
+          <input class="form-control" type="file" name="file" required>
+        </div>
+      </div>
+      <div class="mt-2">
+        <input class="form-control" name="notes" placeholder="Notes (optional)">
+      </div>
+      <div class="mt-2">
+        <button class="btn btn-primary">Upload document</button>
+      </div>
+    </form>
+
+    {% if documents and documents|length > 0 %}
+      <div class="list-group">
+        {% for d in documents %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="fw-semibold">
+                  {{ d.doc_type }}{% if d.title %}: {{ d.title }}{% endif %}
+                </div>
+                <div class="text-muted small">
+                  {{ d.original_filename }}
+                  {% if d.uploaded_by %} | Uploaded by {{ d.uploaded_by }}{% endif %}
+                  | {{ d.uploaded_at }}
+                </div>
+                {% if d.notes %}
+                  <div class="text-muted small">{{ d.notes }}</div>
+                {% endif %}
+              </div>
+              <div class="d-flex gap-2">
+                <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ d.stored_filename }}">Open</a>
+                <a class="btn btn-outline-secondary btn-sm" href="/uploads/{{ d.stored_filename }}" download>Download</a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-muted">No documents uploaded for this job.</div>
+    {% endif %}
+
+  </div>
+</div>

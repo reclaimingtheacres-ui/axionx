@@ -6,6 +6,7 @@ import sqlite3
 import csv
 import json
 import os
+import mimetypes
 from datetime import datetime
 
 app = Flask(__name__)
@@ -14,7 +15,7 @@ app.secret_key = "axion-dev-secret"
 DB_PATH = "axion.db"
 
 UPLOAD_FOLDER = "uploads"
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf", "doc", "docx"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf", "doc", "docx", "xls", "xlsx", "csv"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -90,6 +91,24 @@ def init_db():
             cur.execute(f"ALTER TABLE clients ADD COLUMN {col} {definition}")
         except Exception:
             pass
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        doc_type TEXT NOT NULL,
+        title TEXT,
+        original_filename TEXT NOT NULL,
+        stored_filename TEXT NOT NULL,
+        mime_type TEXT,
+        file_size INTEGER,
+        uploaded_by_user_id INTEGER,
+        uploaded_at TEXT NOT NULL,
+        notes TEXT,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(uploaded_by_user_id) REFERENCES users(id)
+    )
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS contact_phone_numbers (
@@ -642,16 +661,27 @@ def job_detail(job_id: int):
         files = cur.fetchall()
         field_notes.append({"note": note, "files": files})
 
+    cur.execute("""
+        SELECT d.*, u.full_name AS uploaded_by
+        FROM job_documents d
+        LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+        WHERE d.job_id = ?
+        ORDER BY d.id DESC
+    """, (job_id,))
+    documents = cur.fetchall()
+
     conn.close()
 
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
     item_types = ["vehicle", "property", "equipment", "other"]
+    doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
 
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, users=users,
-                           field_notes=field_notes)
+                           field_notes=field_notes, documents=documents,
+                           doc_types=doc_types)
 
 
 @app.post("/jobs/<int:job_id>/update")
@@ -1105,6 +1135,51 @@ def add_job_note(job_id: int):
 @login_required
 def serve_upload(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+
+@app.post("/jobs/<int:job_id>/documents/upload")
+@login_required
+def job_document_upload(job_id: int):
+    doc_type = (request.form.get("doc_type") or "Other").strip()
+    title = (request.form.get("title") or "").strip()
+    notes = (request.form.get("notes") or "").strip()
+    file = request.files.get("file")
+
+    if not file or not file.filename:
+        flash("Select a file to upload.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    if not allowed_file(file.filename):
+        flash("Unsupported file type.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    original_filename = secure_filename(file.filename)
+    ts_safe = now_ts().replace(":", "").replace("-", "").replace(" ", "")
+    stored_filename = f"job_{job_id}_{ts_safe}_{original_filename}"
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
+    file.save(filepath)
+
+    mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
+    file_size = os.path.getsize(filepath)
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO job_documents
+            (job_id, doc_type, title, original_filename, stored_filename,
+             mime_type, file_size, uploaded_by_user_id, uploaded_at, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, doc_type, title or None, original_filename, stored_filename,
+          mime_type, file_size, session.get("user_id"), now_ts(), notes or None))
+    doc_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    audit("job_document", doc_id, "create", "Job document uploaded",
+          {"job_id": job_id, "doc_type": doc_type, "filename": original_filename})
+
+    flash("Document uploaded.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
 
 
 # -------- Users (admin only) --------
