@@ -1,0 +1,102 @@
+Add this to your home() route (or wherever you render the dashboard) after you open the DB cursor:
+
+# Job counts for dashboard tiles
+cur.execute("SELECT COUNT(*) AS c FROM jobs")
+jobs_all = cur.fetchone()["c"]
+
+cur.execute("SELECT COUNT(*) AS c FROM jobs WHERE status = 'New'")
+jobs_new = cur.fetchone()["c"]
+
+cur.execute("SELECT COUNT(*) AS c FROM jobs WHERE status LIKE 'Active%'")
+jobs_active = cur.fetchone()["c"]
+
+cur.execute("SELECT COUNT(*) AS c FROM jobs WHERE status = 'Suspended'")
+jobs_suspended = cur.fetchone()["c"]
+
+cur.execute("SELECT COUNT(*) AS c FROM jobs WHERE status = 'Invoiced'")
+jobs_invoiced = cur.fetchone()["c"]
+
+Then pass these into your render call:
+
+return render_template(
+    "home.html",
+    jobs_all=jobs_all,
+    jobs_new=jobs_new,
+    jobs_active=jobs_active,
+    jobs_suspended=jobs_suspended,
+    jobs_invoiced=jobs_invoiced
+)
+
+Now update templates/home.html where the tiles currently show Jobs/Clients/Customers. Replace that whole tile section with this:
+
+<div class="row g-3">
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-all" href="/jobs">
+      <div class="ax-tile-title">All jobs</div>
+      <div class="ax-tile-value">{{ jobs_all }}</div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-new" href="/jobs?status=New">
+      <div class="ax-tile-title">New jobs</div>
+      <div class="ax-tile-value">{{ jobs_new }}</div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-active" href="/jobs?status=Active">
+      <div class="ax-tile-title">Active jobs</div>
+      <div class="ax-tile-value">{{ jobs_active }}</div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-suspended" href="/jobs?status=Suspended">
+      <div class="ax-tile-title">Suspended jobs</div>
+      <div class="ax-tile-value">{{ jobs_suspended }}</div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-invoiced" href="/jobs?status=Invoiced">
+      <div class="ax-tile-title">Invoiced jobs</div>
+      <div class="ax-tile-value">{{ jobs_invoiced }}</div>
+    </a>
+  </div>
+</div>
+
+Now add the styling once in your main CSS (where your dark theme styles live):
+
+.ax-tile{
+  display:block;
+  text-decoration:none;
+  border-radius:16px;
+  padding:18px 18px;
+  border:1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+}
+.ax-tile:hover{ transform: translateY(-1px); transition: .12s ease; }
+
+.ax-tile-title{
+  font-size: 13px;
+  opacity: .8;
+  margin-bottom: 6px;
+}
+
+.ax-tile-value{
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+/* Colour coding */
+.ax-tile-all .ax-tile-value{ color: #ffffff; }
+.ax-tile-new .ax-tile-value{ color: #3ddc84; }       /* green */
+.ax-tile-active .ax-tile-value{ color: #ffd166; }    /* yellow */
+.ax-tile-suspended .ax-tile-value{ color: #ff5c5c; } /* red */
+.ax-tile-invoiced .ax-tile-value{ color: #b8b8b8; }  /* grey */
+
+One small note: your “Active” family currently includes “Active” and “Active - Phone work only”. The SQL above counts both by using LIKE 'Active%'. If you want “Active - Phone work only” to have its own tile later, we’ll split it out cleanly.
+
+If you paste your current jobs list route (the part that reads status from the query string), I’ll match the /jobs?status=Active behaviour so clicking “Active jobs” filters correctly (including the “Active - Phone work only” variant).

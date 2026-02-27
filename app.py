@@ -449,11 +449,23 @@ def index():
     role = session.get("role")
     user_id = session.get("user_id")
 
+    def jcount(where="", params=()):
+        cur.execute(f"SELECT COUNT(*) AS c FROM jobs{(' WHERE ' + where) if where else ''}", params)
+        return cur.fetchone()["c"]
+
     if role == "admin":
-        cur.execute("SELECT COUNT(*) AS c FROM jobs")
+        jobs_all       = jcount()
+        jobs_new       = jcount("status = 'New'")
+        jobs_active    = jcount("status LIKE 'Active%'")
+        jobs_suspended = jcount("status = 'Suspended'")
+        jobs_invoiced  = jcount("status = 'Invoiced'")
     else:
-        cur.execute("SELECT COUNT(*) AS c FROM jobs WHERE assigned_user_id = ?", (user_id,))
-    jobs_count = cur.fetchone()["c"]
+        base = "assigned_user_id = ?"
+        jobs_all       = jcount(base, (user_id,))
+        jobs_new       = jcount(f"{base} AND status = 'New'", (user_id,))
+        jobs_active    = jcount(f"{base} AND status LIKE 'Active%'", (user_id,))
+        jobs_suspended = jcount(f"{base} AND status = 'Suspended'", (user_id,))
+        jobs_invoiced  = jcount(f"{base} AND status = 'Invoiced'", (user_id,))
 
     cur.execute("SELECT COUNT(*) AS c FROM clients")
     clients_count = cur.fetchone()["c"]
@@ -461,7 +473,9 @@ def index():
     customers_count = cur.fetchone()["c"]
     conn.close()
     return render_template("index.html",
-                           jobs_count=jobs_count,
+                           jobs_all=jobs_all, jobs_new=jobs_new,
+                           jobs_active=jobs_active, jobs_suspended=jobs_suspended,
+                           jobs_invoiced=jobs_invoiced,
                            clients_count=clients_count,
                            customers_count=customers_count)
 
@@ -498,8 +512,11 @@ def jobs_list():
         params.append(user_id)
 
     if status:
-        sql += " AND j.status = ?"
-        params.append(status)
+        if status == "Active":
+            sql += " AND j.status LIKE 'Active%'"
+        else:
+            sql += " AND j.status = ?"
+            params.append(status)
 
     if q:
         sql += " AND (j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR j.display_ref LIKE ? OR j.description LIKE ? OR cu.full_name LIKE ?)"

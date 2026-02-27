@@ -4,15 +4,40 @@
 
 {% block content %}
 <div class="row g-3 mb-4">
-  <div class="col-6 col-lg-4">
-    <a href="/jobs" class="text-decoration-none">
-      <div class="ax-card p-3 text-center">
-        <div class="small mb-1" style="color:var(--muted)">Jobs</div>
-        <div class="display-6 fw-bold" style="color:var(--accent)">{{ jobs_count }}</div>
-      </div>
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-all" href="/jobs">
+      <div class="ax-tile-title">All Jobs</div>
+      <div class="ax-tile-value">{{ jobs_all }}</div>
     </a>
   </div>
-  <div class="col-6 col-lg-4">
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-new" href="/jobs?status=New">
+      <div class="ax-tile-title">New</div>
+      <div class="ax-tile-value">{{ jobs_new }}</div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-active" href="/jobs?status=Active">
+      <div class="ax-tile-title">Active</div>
+      <div class="ax-tile-value">{{ jobs_active }}</div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-suspended" href="/jobs?status=Suspended">
+      <div class="ax-tile-title">Suspended</div>
+      <div class="ax-tile-value">{{ jobs_suspended }}</div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-xl">
+    <a class="ax-tile ax-tile-invoiced" href="/jobs?status=Invoiced">
+      <div class="ax-tile-title">Invoiced</div>
+      <div class="ax-tile-value">{{ jobs_invoiced }}</div>
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
     <a href="/clients" class="text-decoration-none">
       <div class="ax-card p-3 text-center">
         <div class="small mb-1" style="color:var(--muted)">Clients</div>
@@ -20,7 +45,7 @@
       </div>
     </a>
   </div>
-  <div class="col-6 col-lg-4">
+  <div class="col-6 col-lg-3">
     <a href="/customers" class="text-decoration-none">
       <div class="ax-card p-3 text-center">
         <div class="small mb-1" style="color:var(--muted)">Customers</div>
