@@ -1256,7 +1256,7 @@ def job_status_update(job_id: int):
     """, (job_id, "Status Update", f"Status changed to '{status}'.", now, now))
     conn.commit()
     conn.close()
-    return redirect(url_for("jobs_list"))
+    return redirect(url_for("job_detail", job_id=job_id))
 
 
 @app.post("/jobs/<int:job_id>/update")
