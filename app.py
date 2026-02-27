@@ -299,6 +299,13 @@ def init_db():
 
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
 
+    for col, coltype in [
+        ("lender_name",    "TEXT"),
+        ("account_number", "TEXT"),
+        ("regulation_type","TEXT"),
+    ]:
+        add_column_if_missing(cur, "job_items", col, coltype)
+
     conn.commit()
     conn.close()
 
@@ -963,6 +970,29 @@ def job_update(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+@app.post("/jobs/<int:job_id>/lender")
+@login_required
+def job_lender_update(job_id: int):
+    lender_name     = request.form.get("lender_name", "").strip()
+    account_number  = request.form.get("account_number", "").strip()
+    regulation_type = request.form.get("regulation_type", "").strip()
+    arrears_cents   = money_to_cents(request.form.get("arrears", ""))
+    costs_cents     = money_to_cents(request.form.get("costs", ""))
+    mmp_cents       = money_to_cents(request.form.get("mmp", ""))
+    conn = db()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE jobs SET lender_name=?, account_number=?, regulation_type=?,
+        arrears_cents=?, costs_cents=?, mmp_cents=?, updated_at=? WHERE id=?
+    """, (lender_name or None, account_number or None, regulation_type or None,
+          arrears_cents or None, costs_cents or None, mmp_cents or None,
+          now_ts(), job_id))
+    conn.commit()
+    conn.close()
+    flash("Lender details updated.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
 @app.post("/jobs/<int:job_id>/interactions/new")
 @login_required
 def interaction_add(job_id: int):
@@ -1349,18 +1379,21 @@ def customer_edit_post(customer_id: int):
 @app.post("/jobs/<int:job_id>/items/new")
 @login_required
 def job_item_create(job_id: int):
-    item_type = request.form.get("item_type", "vehicle").strip()
-    description = request.form.get("description", "").strip()
-    reg = request.form.get("reg", "").strip()
-    vin = request.form.get("vin", "").strip()
-    make = request.form.get("make", "").strip()
-    model = request.form.get("model", "").strip()
-    year = request.form.get("year", "").strip()
+    item_type        = request.form.get("item_type", "vehicle").strip()
+    description      = request.form.get("description", "").strip()
+    reg              = request.form.get("reg", "").strip()
+    vin              = request.form.get("vin", "").strip()
+    make             = request.form.get("make", "").strip()
+    model            = request.form.get("model", "").strip()
+    year             = request.form.get("year", "").strip()
     property_address = request.form.get("property_address", "").strip()
-    lot_details = request.form.get("lot_details", "").strip()
-    serial_number = request.form.get("serial_number", "").strip()
-    identifier = request.form.get("identifier", "").strip()
-    notes = request.form.get("notes", "").strip()
+    lot_details      = request.form.get("lot_details", "").strip()
+    serial_number    = request.form.get("serial_number", "").strip()
+    identifier       = request.form.get("identifier", "").strip()
+    notes            = request.form.get("notes", "").strip()
+    item_lender      = request.form.get("item_lender_name", "").strip()
+    item_account     = request.form.get("item_account_number", "").strip()
+    item_regulation  = request.form.get("item_regulation_type", "").strip()
 
     conn = db()
     cur = conn.cursor()
@@ -1370,14 +1403,16 @@ def job_item_create(job_id: int):
             reg, vin, make, model, year,
             property_address, lot_details,
             serial_number, identifier,
-            notes, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            notes, lender_name, account_number, regulation_type,
+            created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         job_id, item_type, description or None,
         reg or None, vin or None, make or None, model or None, year or None,
         property_address or None, lot_details or None,
         serial_number or None, identifier or None,
-        notes or None, now_ts()
+        notes or None, item_lender or None, item_account or None, item_regulation or None,
+        now_ts()
     ))
     conn.commit()
     conn.close()

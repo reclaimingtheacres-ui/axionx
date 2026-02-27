@@ -46,6 +46,84 @@
   </div>
 </div>
 
+<!-- -------- Lender Details -------- -->
+<div class="ax-card mb-3">
+  <div class="ax-card-h">Lender Details</div>
+  <div class="ax-card-b">
+    <div class="row g-2 mb-2">
+      <div class="col-12 col-lg-4">
+        <span style="color:var(--muted);font-size:.8rem">LENDER</span>
+        <div class="fw-semibold">{{ job.lender_name or '—' }}</div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <span style="color:var(--muted);font-size:.8rem">ACCOUNT NUMBER</span>
+        <div class="fw-semibold">{{ job.account_number or '—' }}</div>
+      </div>
+      <div class="col-12 col-lg-4">
+        <span style="color:var(--muted);font-size:.8rem">REGULATION TYPE</span>
+        <div class="fw-semibold">{{ job.regulation_type or '—' }}</div>
+      </div>
+    </div>
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-lg-3">
+        <span style="color:var(--muted);font-size:.8rem">ARREARS</span>
+        <div class="fw-semibold">{{ cents_to_money(job.arrears_cents) }}</div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <span style="color:var(--muted);font-size:.8rem">COSTS</span>
+        <div class="fw-semibold">{{ cents_to_money(job.costs_cents) }}</div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <span style="color:var(--muted);font-size:.8rem">MMP</span>
+        <div class="fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <span style="color:var(--muted);font-size:.8rem">TOTAL DUE NOW</span>
+        <div class="fw-semibold" style="color:var(--accent)">{{ cents_to_money(job.total_due_now_cents) }}</div>
+      </div>
+    </div>
+    <details>
+      <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
+      <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-2">
+        <div class="row g-2 mb-2">
+          <div class="col-12 col-lg-4">
+            <label class="form-label">Lender Name</label>
+            <input class="form-control" name="lender_name" value="{{ job.lender_name or '' }}" placeholder="e.g. Macquarie Bank">
+          </div>
+          <div class="col-12 col-lg-4">
+            <label class="form-label">Account Number</label>
+            <input class="form-control" name="account_number" value="{{ job.account_number or '' }}">
+          </div>
+          <div class="col-12 col-lg-4">
+            <label class="form-label">Regulation Type</label>
+            <select class="form-select" name="regulation_type">
+              <option value="">— Select —</option>
+              {% for rt in ['Regulated','Unregulated','N/A'] %}
+                <option value="{{ rt }}" {% if job.regulation_type == rt %}selected{% endif %}>{{ rt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6 col-lg-3">
+            <label class="form-label">Arrears ($)</label>
+            <input class="form-control" name="arrears" value="{{ cents_to_money(job.arrears_cents) if job.arrears_cents else '' }}" placeholder="0.00">
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label">Costs ($)</label>
+            <input class="form-control" name="costs" value="{{ cents_to_money(job.costs_cents) if job.costs_cents else '' }}" placeholder="0.00">
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label">MMP ($)</label>
+            <input class="form-control" name="mmp" value="{{ cents_to_money(job.mmp_cents) if job.mmp_cents else '' }}" placeholder="0.00">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm">Save Lender Details</button>
+      </form>
+    </details>
+  </div>
+</div>
+
 <!-- -------- Job Items -------- -->
 <div class="ax-card mb-3">
   <div class="ax-card-h">Job Items</div>
@@ -75,6 +153,12 @@
                   <span class="fw-semibold">{{ item.description or "Item" }}</span>
                 {% endif %}
                 {% if item.notes %}<div class="small mt-1" style="color:var(--muted); font-style:italic">{{ item.notes }}</div>{% endif %}
+                {% if item.lender_name or item.account_number %}
+                  <div class="small mt-1">
+                    <span style="color:var(--muted)">Lender:</span>
+                    {{ item.lender_name or '' }}{% if item.account_number %} &mdash; Acct: {{ item.account_number }}{% endif %}{% if item.regulation_type %} <span style="color:var(--muted)">({{ item.regulation_type }})</span>{% endif %}
+                  </div>
+                {% endif %}
               </div>
               <div class="d-flex gap-2 ms-2 align-items-start">
                 {% if item.item_type == 'vehicle' %}
@@ -134,37 +218,35 @@
           <input class="form-control" name="notes" placeholder="Optional notes about this item">
         </div>
 
+        <div class="mb-3 pt-2" style="border-top:1px solid var(--line)">
+          <div class="small fw-bold mb-2" style="color:var(--muted)">LENDER DETAILS (optional)</div>
+          <div class="row g-2">
+            <div class="col-12 col-lg-5">
+              <label class="form-label">Lender Name</label>
+              <input class="form-control" name="item_lender_name" placeholder="e.g. Macquarie Bank">
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Account Number</label>
+              <input class="form-control" name="item_account_number">
+            </div>
+            <div class="col-12 col-lg-3">
+              <label class="form-label">Regulation Type</label>
+              <select class="form-select" name="item_regulation_type">
+                <option value="">— Select —</option>
+                <option>Regulated</option>
+                <option>Unregulated</option>
+                <option>N/A</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <button class="btn btn-primary btn-sm">Add Item</button>
       </form>
     </details>
   </div>
 </div>
 
-<!-- -------- Lender / Financials -------- -->
-{% if job.lender_name or job.account_number or job.regulation_type or job.arrears_cents or job.costs_cents or job.mmp_cents or job.job_due_date %}
-<div class="ax-card mb-3">
-  <div class="ax-card-h">Lender / Financials</div>
-  <div class="ax-card-b">
-    <div class="row g-2">
-      <div class="col-12 col-lg-4"><span style="color:var(--muted)">Lender:</span> {{ job.lender_name or '—' }}</div>
-      <div class="col-12 col-lg-4"><span style="color:var(--muted)">Account:</span> {{ job.account_number or '—' }}</div>
-      <div class="col-12 col-lg-4"><span style="color:var(--muted)">Regulation:</span> {{ job.regulation_type or '—' }}</div>
-    </div>
-    <div class="row g-2 mt-1">
-      <div class="col-12 col-md-3"><span style="color:var(--muted)">Arrears:</span> {{ cents_to_money(job.arrears_cents) }}</div>
-      <div class="col-12 col-md-3"><span style="color:var(--muted)">Costs:</span> {{ cents_to_money(job.costs_cents) }}</div>
-      <div class="col-12 col-md-3"><span style="color:var(--muted)">MMP:</span> {{ cents_to_money(job.mmp_cents) }}</div>
-      <div class="col-12 col-md-3"><span style="color:var(--muted)">Due:</span> {{ job.due_date_display or '—' }}</div>
-    </div>
-    <div class="mt-2 fw-semibold">
-      Total due now: {{ cents_to_money(job.total_due_now_cents) }}
-      {% if job.mmp_cents and not job.mmp_included_in_total %}
-        <span class="small fw-normal ms-2" style="color:var(--muted)">(MMP not yet due)</span>
-      {% endif %}
-    </div>
-  </div>
-</div>
-{% endif %}
 
 <!-- -------- Update Status -------- -->
 <div class="ax-card mb-3">
