@@ -8,7 +8,7 @@ import json
 import os
 import re
 import mimetypes
-from datetime import datetime
+from datetime import date, datetime
 
 app = Flask(__name__)
 app.secret_key = "axion-dev-secret"
@@ -334,7 +334,39 @@ def cents_to_money(cents) -> str:
     return f"${int(cents or 0) / 100:,.2f}"
 
 
-app.jinja_env.globals.update(cents_to_money=cents_to_money)
+def format_ddmmyyyy(d):
+    if d is None:
+        return ""
+    if isinstance(d, str):
+        try:
+            d = datetime.strptime(d[:10], "%Y-%m-%d").date()
+        except Exception:
+            return d
+    if isinstance(d, datetime):
+        d = d.date()
+    return d.strftime("%d/%m/%Y")
+
+
+def calc_total_due_now(arrears, costs, mmp, due_date):
+    arrears = float(arrears or 0)
+    costs = float(costs or 0)
+    mmp = float(mmp or 0)
+    if isinstance(due_date, str):
+        try:
+            due_date = datetime.strptime(due_date[:10], "%Y-%m-%d").date()
+        except Exception:
+            due_date = None
+    if isinstance(due_date, datetime):
+        due_date = due_date.date()
+    today = date.today()
+    total = arrears + costs
+    include_mmp = bool(due_date and due_date < today)
+    if include_mmp:
+        total += mmp
+    return round(total, 2), include_mmp
+
+
+app.jinja_env.globals.update(cents_to_money=cents_to_money, format_ddmmyyyy=format_ddmmyyyy)
 
 
 def users_count():
@@ -744,6 +776,17 @@ def job_detail(job_id: int):
     if not job:
         conn.close()
         return ("Not found", 404)
+
+    job = dict(job)
+    total_dollars, include_mmp = calc_total_due_now(
+        (job.get("arrears_cents") or 0) / 100,
+        (job.get("costs_cents") or 0) / 100,
+        (job.get("mmp_cents") or 0) / 100,
+        job.get("job_due_date")
+    )
+    job["due_date_display"] = format_ddmmyyyy(job.get("job_due_date"))
+    job["total_due_now_cents"] = int(round(total_dollars * 100))
+    job["mmp_included_in_total"] = include_mmp
 
     role = session.get("role")
     user_id = session.get("user_id")

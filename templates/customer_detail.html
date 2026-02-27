@@ -33,15 +33,11 @@
           <div>{% if customer.email %}<a href="mailto:{{ customer.email }}" style="color:var(--accent)">{{ customer.email }}</a>{% else %}&mdash;{% endif %}</div>
         </div>
         <div class="mb-2">
-          <div class="small" style="color:var(--muted)">Date of Birth</div>
-          <div>{{ customer.dob or '&mdash;' }}</div>
-        </div>
-      </div>
-      <div class="col-12 col-md-6">
-        <div class="mb-2">
           <div class="small" style="color:var(--muted)">Address</div>
           <div>{{ customer.address or '&mdash;' }}</div>
         </div>
+      </div>
+      <div class="col-12 col-md-6">
         <div class="mb-2">
           <div class="small" style="color:var(--muted)">Internal Notes</div>
           <div style="white-space:pre-wrap">{{ customer.notes or '&mdash;' }}</div>
