@@ -5,41 +5,56 @@
 {% block content %}
 <form method="get" action="/jobs" class="mb-4">
   <div class="input-group input-group-lg">
-    <input type="text"
-           name="q"
-           class="form-control ax-search"
-           placeholder="Search jobs, customer, rego, VIN..."
-           autocomplete="off">
+    <input type="text" name="q" class="form-control ax-search"
+           placeholder="Search jobs, customer, rego, VIN..." autocomplete="off">
     <button class="btn btn-primary ax-search-btn" type="submit">Search</button>
   </div>
 </form>
 
-<div class="row g-3 mb-4">
-  <div class="col-12 col-md-6 col-xl">
+<div class="row g-2 mb-4">
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-all" href="/jobs">
       <div class="ax-tile-title">All Jobs</div>
       <div class="ax-tile-value">{{ jobs_all }}</div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-xl">
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-new" href="/jobs?status=New">
       <div class="ax-tile-title">New</div>
       <div class="ax-tile-value">{{ jobs_new }}</div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-xl">
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-active" href="/jobs?status=Active">
       <div class="ax-tile-title">Active</div>
       <div class="ax-tile-value">{{ jobs_active }}</div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-xl">
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
+    <a class="ax-tile ax-tile-phone" href="/jobs?status=Active+-+Phone+work+only">
+      <div class="ax-tile-title">Active Phone Work</div>
+      <div class="ax-tile-value">{{ jobs_phone }}</div>
+    </a>
+  </div>
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-suspended" href="/jobs?status=Suspended">
       <div class="ax-tile-title">Suspended</div>
       <div class="ax-tile-value">{{ jobs_suspended }}</div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-xl">
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
+    <a class="ax-tile ax-tile-awaiting" href="/jobs?status=Awaiting+info+from+client">
+      <div class="ax-tile-title">Awaiting Instructions</div>
+      <div class="ax-tile-value">{{ jobs_awaiting }}</div>
+    </a>
+  </div>
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
+    <a class="ax-tile ax-tile-completed" href="/jobs?status=Completed">
+      <div class="ax-tile-title">Completed</div>
+      <div class="ax-tile-value">{{ jobs_completed }}</div>
+    </a>
+  </div>
+  <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-invoiced" href="/jobs?status=Invoiced">
       <div class="ax-tile-title">Invoiced</div>
       <div class="ax-tile-value">{{ jobs_invoiced }}</div>
@@ -47,5 +62,55 @@
   </div>
 </div>
 
-<a class="btn btn-primary" href="/jobs/new">New Job</a>
+{% set label_map = {
+  'New':                       ('New',                   '#3ddc84'),
+  'Active':                    ('Active',                '#ffd166'),
+  'Active - Phone work only':  ('Active Phone Work',     '#60a5fa'),
+  'Suspended':                 ('Suspended',             '#ff5c5c'),
+  'Awaiting info from client': ('Awaiting Instructions', '#f59e0b'),
+  'Completed':                 ('Completed',             '#14b8a6'),
+  'Invoiced':                  ('Invoiced',              '#b8b8b8'),
+} %}
+
+{% for status, key in status_list %}
+  {% set jobs = rows_by_status[status] %}
+  {% if jobs %}
+  {% set lbl, colour = label_map[status] %}
+  <div class="ax-card mb-3">
+    <div class="ax-card-h d-flex align-items-center gap-2" style="padding-bottom:10px">
+      <span style="width:8px;height:8px;border-radius:50%;background:{{ colour }};flex-shrink:0;display:inline-block"></span>
+      <span style="color:{{ colour }};font-size:.85rem;font-weight:600">{{ lbl }}</span>
+      <span class="badge rounded-pill ms-1" style="background:{{ colour }}22;color:{{ colour }};border:1px solid {{ colour }}44;font-size:.75rem">{{ jobs|length }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm mb-0" style="font-size:.85rem">
+        <thead>
+          <tr style="color:var(--muted)">
+            <th style="font-weight:500;border-color:var(--line)">Job Ref</th>
+            <th style="font-weight:500;border-color:var(--line)">Customer</th>
+            <th style="font-weight:500;border-color:var(--line)">Agent</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for j in jobs %}
+          <tr style="cursor:pointer;border-color:var(--line)" onclick="window.location='/jobs/{{ j.id }}'">
+            <td style="border-color:var(--line);color:var(--accent);font-weight:600">{{ j.display_ref }}</td>
+            <td style="border-color:var(--line);color:var(--text)">{{ j.customer_name }}</td>
+            <td style="border-color:var(--line);color:var(--muted)">{{ j.assigned_name or '&#8212;' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}
+
+{% if jobs_all == 0 %}
+<div style="color:var(--muted);text-align:center;padding:2rem 0;font-size:.9rem">No jobs yet.</div>
+{% endif %}
+
+<div class="mt-3">
+  <a class="btn btn-primary" href="/jobs/new">+ New Job</a>
+</div>
 {% endblock %}

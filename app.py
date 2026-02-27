@@ -679,26 +679,77 @@ def dashboard():
         cur.execute(q, params)
         return cur.fetchone()["c"]
 
+    STATUS_LIST = [
+        ("New",                       "new"),
+        ("Active",                    "active"),
+        ("Active - Phone work only",  "phone"),
+        ("Suspended",                 "suspended"),
+        ("Awaiting info from client", "awaiting"),
+        ("Completed",                 "completed"),
+        ("Invoiced",                  "invoiced"),
+    ]
+
+    def jrows(status):
+        if role == "agent":
+            sql = """
+                SELECT j.id, j.display_ref, j.status,
+                       COALESCE(cu.first_name || ' ' || cu.last_name,
+                                cu.company, 'No customer') AS customer_name,
+                       u.full_name AS assigned_name
+                FROM jobs j
+                LEFT JOIN customers cu ON cu.id = j.customer_id
+                LEFT JOIN users u ON u.id = j.assigned_user_id
+                WHERE j.status = ? AND j.assigned_user_id = ?
+                ORDER BY j.updated_at DESC
+            """
+            cur.execute(sql, (status, user_id))
+        else:
+            sql = """
+                SELECT j.id, j.display_ref, j.status,
+                       COALESCE(cu.first_name || ' ' || cu.last_name,
+                                cu.company, 'No customer') AS customer_name,
+                       u.full_name AS assigned_name
+                FROM jobs j
+                LEFT JOIN customers cu ON cu.id = j.customer_id
+                LEFT JOIN users u ON u.id = j.assigned_user_id
+                WHERE j.status = ?
+                ORDER BY j.updated_at DESC
+            """
+            cur.execute(sql, (status,))
+        return cur.fetchall()
+
     if role == "agent":
         base = "assigned_user_id = ?"
         p    = (user_id,)
         jobs_all       = jcount(base, p)
-        jobs_new       = jcount(base + " AND status = 'New'",       (user_id,))
-        jobs_active    = jcount(base + " AND status LIKE 'Active%'", (user_id,))
-        jobs_suspended = jcount(base + " AND status = 'Suspended'",  (user_id,))
-        jobs_invoiced  = jcount(base + " AND status = 'Invoiced'",   (user_id,))
+        jobs_new       = jcount(base + " AND status = 'New'",                      (user_id,))
+        jobs_active    = jcount(base + " AND status = 'Active'",                   (user_id,))
+        jobs_phone     = jcount(base + " AND status = 'Active - Phone work only'", (user_id,))
+        jobs_suspended = jcount(base + " AND status = 'Suspended'",                (user_id,))
+        jobs_awaiting  = jcount(base + " AND status = 'Awaiting info from client'",(user_id,))
+        jobs_completed = jcount(base + " AND status = 'Completed'",                (user_id,))
+        jobs_invoiced  = jcount(base + " AND status = 'Invoiced'",                 (user_id,))
     else:
         jobs_all       = jcount()
         jobs_new       = jcount("status = 'New'")
-        jobs_active    = jcount("status LIKE 'Active%'")
+        jobs_active    = jcount("status = 'Active'")
+        jobs_phone     = jcount("status = 'Active - Phone work only'")
         jobs_suspended = jcount("status = 'Suspended'")
+        jobs_awaiting  = jcount("status = 'Awaiting info from client'")
+        jobs_completed = jcount("status = 'Completed'")
         jobs_invoiced  = jcount("status = 'Invoiced'")
+
+    rows_by_status = {status: jrows(status) for status, _ in STATUS_LIST}
 
     conn.close()
     return render_template("index.html",
-        jobs_all=jobs_all, jobs_new=jobs_new,
-        jobs_active=jobs_active, jobs_suspended=jobs_suspended,
-        jobs_invoiced=jobs_invoiced)
+        jobs_all=jobs_all,
+        jobs_new=jobs_new,       jobs_active=jobs_active,
+        jobs_phone=jobs_phone,   jobs_suspended=jobs_suspended,
+        jobs_awaiting=jobs_awaiting, jobs_completed=jobs_completed,
+        jobs_invoiced=jobs_invoiced,
+        rows_by_status=rows_by_status,
+        status_list=STATUS_LIST)
 
 
 
