@@ -1,0 +1,286 @@
+Below is a drop-in Flask/Jinja template + CSS + minimal JS. Replace URLs/endpoints to match Axion.
+
+1) Template: templates/auth/login.html
+{% extends "layout_public.html" %}
+{% block content %}
+
+<div class="login-shell">
+  <div class="login-left">
+    <div class="brand">
+      <img src="{{ url_for('static', filename='images/axion-logo.svg') }}" alt="Axion" class="brand-logo">
+      <span class="brand-text">Axion</span>
+    </div>
+
+    <div class="login-card">
+      <h1>Sign In</h1>
+
+      <form method="POST" action="{{ url_for('auth.login') }}" autocomplete="on">
+        {# If you use CSRF: {{ form.csrf_token }} #}
+
+        <div class="field">
+          <label for="username">Username:</label>
+          <input id="username" name="username" type="text" value="{{ request.form.get('username','') }}" required>
+        </div>
+
+        <div class="field">
+          <label for="password">Password:</label>
+          <div class="password-wrap">
+            <input id="password" name="password" type="password" required>
+            <button type="button" class="pw-toggle" aria-label="Show password" onclick="togglePw()">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path fill="currentColor" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="row">
+          <button class="btn-primary" type="submit">Sign In</button>
+
+          <label class="checkbox">
+            <input type="checkbox" name="remember" value="1" {% if request.form.get('remember') %}checked{% endif %}>
+            Keep me logged in
+          </label>
+        </div>
+
+        <div class="links">
+          <div>
+            Forgot your Login?
+            <a href="{{ url_for('auth.reset_request') }}">Reset here</a>
+          </div>
+          <div class="divider"></div>
+          <div>
+            New to Axion?
+            <a href="{{ url_for('auth.register') }}">Sign up here</a>
+          </div>
+        </div>
+
+        {% if error %}
+          <div class="error">{{ error }}</div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <div class="login-right">
+    <div class="promo">
+      <img src="{{ url_for('static', filename='images/login-illustration.png') }}" alt="" class="promo-img">
+      <div class="promo-title">Get paid faster</div>
+      <div class="promo-sub">Create detailed invoices and email or text them to your customers</div>
+
+      <div class="dots" aria-hidden="true">
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span class="dot active"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function togglePw() {
+  const pw = document.getElementById("password");
+  pw.type = (pw.type === "password") ? "text" : "password";
+}
+</script>
+
+{% endblock %}
+2) CSS: static/css/login.css
+:root{
+  --bg-left:#ffffff;
+  --bg-right:#cfe6ff;
+  --text:#0b1220;
+  --muted:#6b7280;
+  --border:#cfd6e4;
+  --primary:#2f7dd6;
+  --shadow: 0 10px 22px rgba(0,0,0,.10);
+}
+
+.login-shell{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.login-left{
+  background:var(--bg-left);
+  display:flex;
+  flex-direction:column;
+  padding:36px 48px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:40px;
+}
+.brand-logo{ height:34px; width:auto; }
+.brand-text{ font-size:28px; font-weight:700; color:var(--text); letter-spacing:.2px; }
+
+.login-card{
+  margin:auto 0;
+  max-width:420px;
+}
+
+.login-card h1{
+  margin:0 0 16px 0;
+  font-size:34px;
+  font-weight:650;
+  color:var(--text);
+}
+
+.field{ margin:14px 0; }
+.field label{
+  display:block;
+  font-size:13px;
+  color:var(--muted);
+  margin:0 0 6px 0;
+}
+
+.field input{
+  width:100%;
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:12px 12px;
+  font-size:15px;
+  outline:none;
+}
+.field input:focus{
+  border-color: rgba(47,125,214,.8);
+  box-shadow:0 0 0 3px rgba(47,125,214,.15);
+}
+
+.password-wrap{
+  position:relative;
+}
+.password-wrap input{
+  padding-right:44px;
+}
+.pw-toggle{
+  position:absolute;
+  right:8px;
+  top:50%;
+  transform:translateY(-50%);
+  border:none;
+  background:transparent;
+  color:#6b7280;
+  cursor:pointer;
+  padding:8px;
+  border-radius:6px;
+}
+.pw-toggle:hover{ background:rgba(0,0,0,.04); }
+
+.row{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  margin-top:16px;
+}
+
+.btn-primary{
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  border-radius:4px;
+  padding:10px 18px;
+  font-weight:600;
+  box-shadow: var(--shadow);
+  cursor:pointer;
+}
+.btn-primary:hover{ filter:brightness(.97); }
+
+.checkbox{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:13px;
+  color:var(--muted);
+  user-select:none;
+}
+
+.links{
+  margin-top:16px;
+  font-size:13px;
+  color:var(--muted);
+}
+.links a{ color:var(--primary); text-decoration:none; }
+.links a:hover{ text-decoration:underline; }
+.divider{
+  margin:14px 0;
+  height:1px;
+  background:#e5e7eb;
+}
+
+.error{
+  margin-top:14px;
+  padding:10px 12px;
+  border-radius:6px;
+  background:rgba(220,38,38,.08);
+  color:#b91c1c;
+  font-size:13px;
+}
+
+.login-right{
+  background:var(--bg-right);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:36px;
+}
+
+.promo{
+  text-align:center;
+  max-width:420px;
+}
+.promo-img{
+  width:260px;
+  height:auto;
+  margin:0 auto 14px;
+  display:block;
+}
+.promo-title{
+  font-size:18px;
+  font-weight:650;
+  color:var(--text);
+  margin-top:6px;
+}
+.promo-sub{
+  font-size:12.5px;
+  color:rgba(11,18,32,.65);
+  margin-top:6px;
+}
+
+.dots{
+  display:flex;
+  justify-content:center;
+  gap:8px;
+  margin-top:16px;
+}
+.dot{
+  width:8px; height:8px;
+  border-radius:999px;
+  background:rgba(11,18,32,.25);
+}
+.dot.active{
+  width:12px; height:12px;
+  background:rgba(11,18,32,.85);
+}
+
+@media (max-width: 900px){
+  .login-shell{ grid-template-columns: 1fr; }
+  .login-right{ display:none; }
+  .login-left{ padding:28px 22px; }
+}
+3) Include the CSS in your public layout
+
+In templates/layout_public.html (or wherever you load styles):
+
+<link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+4) Assets you’ll need
+
+static/images/axion-logo.svg (or png)
+
+static/images/login-illustration.png (any illustration you like; can be replaced later)
+
+If you tell me what your current auth endpoints are (login/reset/register route names), I’ll swap the url_for(...) references to match your Axion project exactly.
