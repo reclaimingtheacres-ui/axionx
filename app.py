@@ -60,19 +60,6 @@ def init_db():
     """)
 
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS assets (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        reg TEXT,
-        vin TEXT,
-        make TEXT,
-        model TEXT,
-        year INTEGER,
-        notes TEXT,
-        created_at TEXT NOT NULL
-    )
-    """)
-
-    cur.execute("""
     CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -82,7 +69,6 @@ def init_db():
 
         client_id INTEGER,
         customer_id INTEGER,
-        asset_id INTEGER,
         assigned_user_id INTEGER,
 
         job_type TEXT NOT NULL,
@@ -98,8 +84,34 @@ def init_db():
 
         FOREIGN KEY(client_id) REFERENCES clients(id),
         FOREIGN KEY(customer_id) REFERENCES customers(id),
-        FOREIGN KEY(asset_id) REFERENCES assets(id),
         FOREIGN KEY(assigned_user_id) REFERENCES users(id)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+
+        item_type TEXT NOT NULL,
+        description TEXT,
+
+        reg TEXT,
+        vin TEXT,
+        make TEXT,
+        model TEXT,
+        year TEXT,
+
+        property_address TEXT,
+        lot_details TEXT,
+
+        serial_number TEXT,
+        identifier TEXT,
+
+        notes TEXT,
+
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
     )
     """)
 
@@ -310,14 +322,11 @@ def index():
     clients_count = cur.fetchone()["c"]
     cur.execute("SELECT COUNT(*) AS c FROM customers")
     customers_count = cur.fetchone()["c"]
-    cur.execute("SELECT COUNT(*) AS c FROM assets")
-    assets_count = cur.fetchone()["c"]
     conn.close()
     return render_template("index.html",
                            jobs_count=jobs_count,
                            clients_count=clients_count,
-                           customers_count=customers_count,
-                           assets_count=assets_count)
+                           customers_count=customers_count)
 
 
 # -------- Jobs --------
@@ -337,12 +346,11 @@ def jobs_list():
     SELECT j.*,
            c.name AS client_name,
            cu.full_name AS customer_name,
-           a.reg AS asset_reg,
+           (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
            u.full_name AS assigned_name
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
     LEFT JOIN customers cu ON cu.id = j.customer_id
-    LEFT JOIN assets a ON a.id = j.asset_id
     LEFT JOIN users u ON u.id = j.assigned_user_id
     WHERE 1=1
     """
@@ -357,9 +365,9 @@ def jobs_list():
         params.append(status)
 
     if q:
-        sql += " AND (j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR j.display_ref LIKE ? OR j.description LIKE ? OR cu.full_name LIKE ? OR a.reg LIKE ?)"
+        sql += " AND (j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR j.display_ref LIKE ? OR j.description LIKE ? OR cu.full_name LIKE ?)"
         like = f"%{q}%"
-        params.extend([like, like, like, like, like, like])
+        params.extend([like, like, like, like, like])
 
     sql += " ORDER BY j.updated_at DESC"
 
@@ -389,8 +397,6 @@ def job_new():
     clients = cur.fetchall()
     cur.execute("SELECT id, full_name FROM customers ORDER BY full_name")
     customers = cur.fetchall()
-    cur.execute("SELECT id, reg, make, model FROM assets ORDER BY reg")
-    assets = cur.fetchall()
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
     conn.close()
@@ -400,7 +406,7 @@ def job_new():
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     priorities = ["Low", "Normal", "High", "Urgent"]
 
-    return render_template("job_new.html", clients=clients, customers=customers, assets=assets,
+    return render_template("job_new.html", clients=clients, customers=customers,
                            users=users, visit_types=visit_types, job_types=job_types,
                            statuses=statuses, priorities=priorities)
 
@@ -412,7 +418,6 @@ def job_create():
     client_reference = request.form.get("client_reference", "").strip()
     client_id = request.form.get("client_id") or None
     customer_id = request.form.get("customer_id") or None
-    asset_id = request.form.get("asset_id") or None
     assigned_user_id = request.form.get("assigned_user_id") or None
     job_type = request.form.get("job_type", "Field Call").strip()
     visit_type = request.form.get("visit_type", "New Visit").strip()
@@ -436,14 +441,14 @@ def job_create():
     cur.execute("""
         INSERT INTO jobs (
             internal_job_number, client_reference, display_ref,
-            client_id, customer_id, asset_id, assigned_user_id,
+            client_id, customer_id, assigned_user_id,
             job_type, visit_type, status, priority,
             job_address, description, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         internal_job_number, client_reference or None, display_ref,
-        client_id, customer_id, asset_id, assigned_user_id,
+        client_id, customer_id, assigned_user_id,
         job_type, visit_type, status, priority,
         job_address, description, now, now
     ))
@@ -471,12 +476,10 @@ def job_detail(job_id: int):
     SELECT j.*,
            c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
            cu.full_name AS customer_name, cu.phone AS customer_phone, cu.email AS customer_email, cu.dob AS customer_dob, cu.address AS customer_address,
-           a.reg AS asset_reg, a.vin AS asset_vin, a.make AS asset_make, a.model AS asset_model, a.year AS asset_year,
            u.full_name AS assigned_name
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
     LEFT JOIN customers cu ON cu.id = j.customer_id
-    LEFT JOIN assets a ON a.id = j.asset_id
     LEFT JOIN users u ON u.id = j.assigned_user_id
     WHERE j.id = ?
     """, (job_id,))
@@ -499,6 +502,9 @@ def job_detail(job_id: int):
     """, (job_id,))
     interactions = cur.fetchall()
 
+    cur.execute("SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,))
+    job_items = cur.fetchall()
+
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
 
@@ -506,8 +512,10 @@ def job_detail(job_id: int):
 
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
+    item_types = ["vehicle", "property", "equipment", "other"]
 
     return render_template("job_detail.html", job=job, interactions=interactions,
+                           job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, users=users)
 
 
@@ -653,45 +661,57 @@ def customer_create():
     return redirect(url_for("customers_list"))
 
 
-# -------- Assets --------
-@app.get("/assets")
+# -------- Job Items --------
+@app.post("/jobs/<int:job_id>/items/new")
 @login_required
-def assets_list():
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM assets ORDER BY reg")
-    rows = cur.fetchall()
-    conn.close()
-    return render_template("assets.html", assets=rows)
-
-
-@app.get("/assets/new")
-@login_required
-def asset_new():
-    return render_template("asset_new.html")
-
-
-@app.post("/assets/new")
-@login_required
-def asset_create():
+def job_item_create(job_id: int):
+    item_type = request.form.get("item_type", "vehicle").strip()
+    description = request.form.get("description", "").strip()
     reg = request.form.get("reg", "").strip()
     vin = request.form.get("vin", "").strip()
     make = request.form.get("make", "").strip()
     model = request.form.get("model", "").strip()
     year = request.form.get("year", "").strip()
+    property_address = request.form.get("property_address", "").strip()
+    lot_details = request.form.get("lot_details", "").strip()
+    serial_number = request.form.get("serial_number", "").strip()
+    identifier = request.form.get("identifier", "").strip()
     notes = request.form.get("notes", "").strip()
 
-    now = datetime.now().isoformat(timespec="seconds")
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO assets (reg, vin, make, model, year, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (reg, vin, make, model, int(year) if year.isdigit() else None, notes, now))
+        INSERT INTO job_items (
+            job_id, item_type, description,
+            reg, vin, make, model, year,
+            property_address, lot_details,
+            serial_number, identifier,
+            notes, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        job_id, item_type, description or None,
+        reg or None, vin or None, make or None, model or None, year or None,
+        property_address or None, lot_details or None,
+        serial_number or None, identifier or None,
+        notes or None, now_ts()
+    ))
     conn.commit()
     conn.close()
-    flash("Asset created.", "success")
-    return redirect(url_for("assets_list"))
+
+    flash("Item added.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/items/<int:item_id>/delete")
+@login_required
+def job_item_delete(job_id: int, item_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM job_items WHERE id = ? AND job_id = ?", (item_id, job_id))
+    conn.commit()
+    conn.close()
+    flash("Item removed.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
 
 
 # -------- Users (admin only) --------
@@ -871,12 +891,12 @@ def cues_list():
     cur.execute("""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.status job_status,
                j.job_address,
-               cu.full_name customer_name, a.reg asset_reg,
+               cu.full_name customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg,
                u.full_name assigned_name
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
-        LEFT JOIN assets a ON a.id = j.asset_id
         LEFT JOIN users u ON u.id = ci.assigned_user_id
         WHERE ci.due_date = ?
         ORDER BY ci.priority DESC, ci.id DESC
@@ -959,11 +979,11 @@ def assign_board():
 
     cur.execute("""
         SELECT ci.*, j.internal_job_number, j.client_reference,
-               cu.full_name customer_name, a.reg asset_reg
+               cu.full_name customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
-        LEFT JOIN assets a ON a.id = j.asset_id
         WHERE ci.due_date = ? AND ci.status IN ('Pending','In Progress')
         ORDER BY ci.priority DESC, ci.id DESC
     """, (date,))
@@ -1051,11 +1071,11 @@ def my_today():
     cur = conn.cursor()
     cur.execute("""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
-               cu.full_name customer_name, a.reg asset_reg
+               cu.full_name customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
-        LEFT JOIN assets a ON a.id = j.asset_id
         WHERE ci.due_date = ? AND ci.assigned_user_id = ?
           AND ci.status IN ('Pending','In Progress')
         ORDER BY ci.priority DESC, ci.id

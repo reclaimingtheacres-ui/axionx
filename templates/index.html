@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3">
+  <div class="col-6 col-lg-4">
     <a href="/jobs" class="text-decoration-none">
       <div class="ax-card p-3 text-center">
         <div class="small mb-1" style="color:var(--muted)">Jobs</div>
@@ -12,7 +12,7 @@
       </div>
     </a>
   </div>
-  <div class="col-6 col-lg-3">
+  <div class="col-6 col-lg-4">
     <a href="/clients" class="text-decoration-none">
       <div class="ax-card p-3 text-center">
         <div class="small mb-1" style="color:var(--muted)">Clients</div>
@@ -20,19 +20,11 @@
       </div>
     </a>
   </div>
-  <div class="col-6 col-lg-3">
+  <div class="col-6 col-lg-4">
     <a href="/customers" class="text-decoration-none">
       <div class="ax-card p-3 text-center">
         <div class="small mb-1" style="color:var(--muted)">Customers</div>
         <div class="display-6 fw-bold" style="color:var(--text)">{{ customers_count }}</div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-lg-3">
-    <a href="/assets" class="text-decoration-none">
-      <div class="ax-card p-3 text-center">
-        <div class="small mb-1" style="color:var(--muted)">Assets</div>
-        <div class="display-6 fw-bold" style="color:var(--text)">{{ assets_count }}</div>
       </div>
     </a>
   </div>
@@ -42,6 +34,5 @@
   <a class="btn btn-primary" href="/jobs/new">New Job</a>
   <a class="btn btn-outline-secondary" href="/clients/new">New Client</a>
   <a class="btn btn-outline-secondary" href="/customers/new">New Customer</a>
-  <a class="btn btn-outline-secondary" href="/assets/new">New Asset</a>
 </div>
 {% endblock %}

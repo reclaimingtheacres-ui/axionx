@@ -29,7 +29,7 @@ templates/
   jobs.html / job_new.html / job_detail.html
   clients.html / client_new.html
   customers.html / customer_new.html
-  assets.html / asset_new.html
+  (job items are managed inline in job_detail.html)
   users.html / user_new.html          Admin only
   admin.html                          Admin dashboard
   cues.html                           Cue management (admin)
@@ -44,7 +44,7 @@ templates/
 - **users** — staff (admin / agent roles)
 - **clients** — companies/creditors
 - **customers** — debtors/subjects
-- **assets** — vehicles
+- **job_items** — items linked to a job (vehicle, property, equipment, other)
 - **jobs** — core entity with internal_job_number, client_reference, display_ref, assigned_user_id
 - **interactions** — timestamped job timeline entries
 - **cue_items** — scheduled field visits/tasks per job (due date, visit type, priority, assignment, status)
