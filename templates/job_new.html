@@ -207,7 +207,7 @@
         const clone = first.cloneNode(true);
         clone.querySelectorAll("input").forEach(i => { i.value = ""; delete i._pacElement; });
         clone.querySelectorAll("select").forEach(s => s.selectedIndex = 0);
-        clone.querySelectorAll("[data-places-attached]").forEach(i => delete i.dataset.placesAttached);
+        clone.querySelectorAll("[data-gmp-bound]").forEach(i => delete i.dataset.gmpBound);
         clone.querySelectorAll("gmp-place-autocomplete").forEach(pac => pac.remove());
         clone.querySelectorAll("input[type='hidden'][name]").forEach(i => { i.type = "text"; i.className = "form-control asset-address"; });
         wrap.appendChild(clone);
