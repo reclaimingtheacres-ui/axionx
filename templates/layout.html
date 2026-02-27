@@ -268,7 +268,7 @@
 
       <div class="ax-nav">
         <div class="hint">Workspace</div>
-        <a href="/" class="{% if request.path == '/' %}active{% endif %}">Home</a>
+        <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
         <a href="/clients" class="{% if request.path.startswith('/clients') %}active{% endif %}">Clients</a>
         <a href="/customers" class="{% if request.path.startswith('/customers') %}active{% endif %}">Customers</a>

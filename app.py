@@ -627,9 +627,45 @@ def logout():
 
 # -------- Home --------
 @app.get("/")
-@login_required
 def index():
-    return redirect(url_for("jobs_list"))
+    if session.get("user_id"):
+        return redirect(url_for("jobs_list"))
+    return redirect(url_for("login"))
+
+
+@app.get("/dashboard")
+@login_required
+def dashboard():
+    user_id = session.get("user_id")
+    role    = session.get("role")
+    conn = db()
+    cur  = conn.cursor()
+
+    def jcount(where="", params=()):
+        q = f"SELECT COUNT(*) AS c FROM jobs{(' WHERE ' + where) if where else ''}"
+        cur.execute(q, params)
+        return cur.fetchone()["c"]
+
+    if role == "agent":
+        base = "assigned_user_id = ?"
+        p    = (user_id,)
+        jobs_all       = jcount(base, p)
+        jobs_new       = jcount(base + " AND status = 'New'",       (user_id,))
+        jobs_active    = jcount(base + " AND status LIKE 'Active%'", (user_id,))
+        jobs_suspended = jcount(base + " AND status = 'Suspended'",  (user_id,))
+        jobs_invoiced  = jcount(base + " AND status = 'Invoiced'",   (user_id,))
+    else:
+        jobs_all       = jcount()
+        jobs_new       = jcount("status = 'New'")
+        jobs_active    = jcount("status LIKE 'Active%'")
+        jobs_suspended = jcount("status = 'Suspended'")
+        jobs_invoiced  = jcount("status = 'Invoiced'")
+
+    conn.close()
+    return render_template("index.html",
+        jobs_all=jobs_all, jobs_new=jobs_new,
+        jobs_active=jobs_active, jobs_suspended=jobs_suspended,
+        jobs_invoiced=jobs_invoiced)
 
 
 
