@@ -1281,6 +1281,44 @@ def add_booking_type_ajax():
     conn.close()
     return jsonify({"ok": True, "id": new_id, "name": name})
 
+
+
+@app.post("/booking-type/delete")
+@login_required
+@admin_required
+def booking_type_delete():
+    ids = request.form.getlist("bt_ids")
+    if not ids:
+        flash("No booking types selected.", "warning")
+        return redirect(url_for("admin_settings"))
+    conn = db()
+    cur = conn.cursor()
+    deleted, blocked = [], []
+    for bt_id in ids:
+        try:
+            bt_id = int(bt_id)
+        except ValueError:
+            continue
+        cur.execute("SELECT name FROM booking_types WHERE id = ?", (bt_id,))
+        row = cur.fetchone()
+        if not row:
+            continue
+        name = row["name"]
+        cur.execute("SELECT COUNT(*) cnt FROM schedules WHERE booking_type_id = ?", (bt_id,))
+        count = cur.fetchone()["cnt"]
+        if count > 0:
+            blocked.append(f"'{name}' ({count} schedule{'s' if count != 1 else ''})")
+        else:
+            cur.execute("DELETE FROM booking_types WHERE id = ?", (bt_id,))
+            deleted.append(name)
+    conn.commit()
+    conn.close()
+    if deleted:
+        flash(f"Deleted: {', '.join(deleted)}.", "success")
+    if blocked:
+        flash(f"Cannot delete — booking type(s) with existing schedules: {', '.join(blocked)}.", "warning")
+    return redirect(url_for("admin_settings"))
+
 @app.post("/job-type")
 @login_required
 @admin_required
@@ -2434,8 +2472,10 @@ def admin_settings():
     cur = conn.cursor()
     cur.execute("SELECT * FROM system_settings WHERE id = 1")
     settings = cur.fetchone()
+    cur.execute("SELECT * FROM booking_types ORDER BY name")
+    booking_types = cur.fetchall()
     conn.close()
-    return render_template("settings.html", settings=settings)
+    return render_template("settings.html", settings=settings, booking_types=booking_types)
 
 
 @app.post("/admin/settings")
