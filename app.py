@@ -655,9 +655,8 @@ def forgot_password_post():
         try:
             send_reset_email(email, link)
         except Exception as e:
-            conn.close()
-            flash(f"Could not send email: {e}", "danger")
-            return redirect(url_for("forgot_password"))
+            import sys
+            print(f"[SMTP ERROR] {e}", file=sys.stderr)
     conn.close()
     flash(generic_msg, "success")
     return redirect(url_for("forgot_password"))
