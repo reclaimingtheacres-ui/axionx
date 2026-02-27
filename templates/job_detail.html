@@ -19,7 +19,16 @@
 <div class="row g-3 mb-3">
   <div class="col-12 col-lg-6">
     <div class="ax-card p-3">
-      <div class="small fw-bold mb-2" style="color:var(--muted)">CUSTOMER</div>
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div class="small fw-bold" style="color:var(--muted)">CUSTOMER</div>
+        {% if job.job_address %}
+          <a class="btn btn-outline-secondary btn-sm"
+             target="_blank"
+             href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
+            Open in Maps
+          </a>
+        {% endif %}
+      </div>
       <div class="fw-semibold">{{ job.customer_name or "—" }}</div>
       {% if job.customer_company %}<div class="small" style="color:var(--muted)">{{ job.customer_company }}</div>{% endif %}
       {% if job.customer_email %}<div class="small"><a href="mailto:{{ job.customer_email }}" style="color:var(--accent)">{{ job.customer_email }}</a></div>{% endif %}
@@ -34,25 +43,6 @@
       {% if job.client_phone %}<div class="small"><a href="tel:{{ job.client_phone }}" style="color:var(--accent)">{{ job.client_phone }}</a></div>{% endif %}
       {% if job.client_email %}<div class="small"><a href="mailto:{{ job.client_email }}" style="color:var(--accent)">{{ job.client_email }}</a></div>{% endif %}
     </div>
-  </div>
-</div>
-
-<div class="ax-card mb-3">
-  <div class="ax-card-h d-flex justify-content-between align-items-center">
-    <div>Job Address</div>
-    {% if job.job_address %}
-      <a class="btn btn-outline-secondary btn-sm"
-         target="_blank"
-         href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
-         Open in Maps
-      </a>
-    {% endif %}
-  </div>
-  <div class="ax-card-b">
-    <div>{{ job.job_address or "—" }}</div>
-    {% if job.description %}
-      <div class="mt-2 small" style="color:var(--muted)">{{ job.description }}</div>
-    {% endif %}
   </div>
 </div>
 
