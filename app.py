@@ -1522,6 +1522,51 @@ def clients_list():
     return render_template("clients.html", clients=rows)
 
 
+
+@app.post("/clients/delete")
+@login_required
+@admin_required
+def clients_delete():
+    ids = request.form.getlist("client_ids")
+    if not ids:
+        flash("No clients selected.", "warning")
+        return redirect(url_for("clients_list"))
+
+    conn = db()
+    cur = conn.cursor()
+    deleted, blocked = [], []
+    for cid in ids:
+        try:
+            cid = int(cid)
+        except ValueError:
+            continue
+        cur.execute("SELECT name FROM clients WHERE id = ?", (cid,))
+        row = cur.fetchone()
+        if not row:
+            continue
+        name = row["name"]
+        cur.execute(
+            "SELECT COUNT(*) cnt FROM jobs WHERE client_id = ? OR bill_to_client_id = ?",
+            (cid, cid)
+        )
+        job_count = cur.fetchone()["cnt"]
+        if job_count > 0:
+            blocked.append(f"'{name}' ({job_count} job{'s' if job_count != 1 else ''})")
+        else:
+            cur.execute("DELETE FROM clients WHERE id = ?", (cid,))
+            deleted.append(name)
+    conn.commit()
+    conn.close()
+
+    if deleted:
+        flash(f"Deleted: {', '.join(deleted)}.", "success")
+    if blocked:
+        flash(
+            f"Could not delete — client(s) with existing jobs: {', '.join(blocked)}.",
+            "warning"
+        )
+    return redirect(url_for("clients_list"))
+
 @app.get("/clients/new")
 @login_required
 @admin_required

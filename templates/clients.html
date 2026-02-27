@@ -6,20 +6,90 @@
 <div class="ax-card">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>Clients</div>
-    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/clients/new">New Client</a>{% endif %}
+    <div class="d-flex gap-2 align-items-center">
+      {% if session.get('role') == 'admin' %}
+        <button type="button" id="deleteBtn" class="btn btn-danger btn-sm" style="display:none"
+                onclick="confirmDelete()">Delete Selected</button>
+        <a class="btn btn-primary btn-sm" href="/clients/new">New Client</a>
+      {% endif %}
+    </div>
   </div>
   <div class="ax-card-b">
-    <div class="list-group list-group-flush">
-      {% for c in clients %}
-        <a href="/clients/{{ c.id }}" class="list-group-item list-group-item-action">
-          <div class="fw-semibold">{{ c.name }}</div>
-          {% if c.email %}<div class="small" style="color:var(--muted)">{{ c.email }}</div>{% endif %}
-          {% if c.address %}<div class="small" style="color:var(--muted)">{{ c.address }}</div>{% endif %}
-        </a>
-      {% else %}
-        <div style="color:var(--muted)" class="py-3 text-center">No clients yet.</div>
-      {% endfor %}
+    {% if session.get('role') == 'admin' and clients %}
+    <div class="px-3 py-2 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
+      <input type="checkbox" id="selectAll" class="form-check-input mt-0"
+             onchange="toggleAll(this)" title="Select all">
+      <label for="selectAll" class="small mb-0" style="color:var(--muted);cursor:pointer">Select all</label>
+    </div>
+    {% endif %}
+    <form id="deleteForm" method="post" action="/clients/delete">
+      <div class="list-group list-group-flush">
+        {% for c in clients %}
+          <div class="list-group-item d-flex align-items-center gap-3 px-3" style="background:transparent;border-color:var(--line)">
+            {% if session.get('role') == 'admin' %}
+            <input type="checkbox" name="client_ids" value="{{ c.id }}"
+                   class="form-check-input mt-0 client-cb"
+                   onchange="updateDeleteBtn()">
+            {% endif %}
+            <a href="/clients/{{ c.id }}" class="flex-grow-1 text-decoration-none">
+              <div class="fw-semibold" style="color:var(--text)">{{ c.name }}</div>
+              {% if c.email %}<div class="small" style="color:var(--muted)">{{ c.email }}</div>{% endif %}
+              {% if c.address %}<div class="small" style="color:var(--muted)">{{ c.address }}</div>{% endif %}
+            </a>
+          </div>
+        {% else %}
+          <div style="color:var(--muted)" class="py-3 text-center">No clients yet.</div>
+        {% endfor %}
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if session.get('role') == 'admin' %}
+<div class="modal fade" id="deleteModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" style="color:var(--text)">Delete Clients</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text)">Are you sure you want to delete <strong id="deleteCount"></strong>?</p>
+        <p class="small mb-0" style="color:var(--muted)">
+          Clients with existing jobs cannot be deleted. Only clients with no jobs will be removed.
+        </p>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-danger" onclick="submitDelete()">Yes, Delete</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
+
+<script>
+  function updateDeleteBtn() {
+    var checked = document.querySelectorAll('.client-cb:checked').length;
+    var btn = document.getElementById('deleteBtn');
+    btn.style.display = checked > 0 ? '' : 'none';
+  }
+
+  function toggleAll(cb) {
+    document.querySelectorAll('.client-cb').forEach(function(el) { el.checked = cb.checked; });
+    updateDeleteBtn();
+  }
+
+  function confirmDelete() {
+    var checked = document.querySelectorAll('.client-cb:checked').length;
+    if (!checked) return;
+    document.getElementById('deleteCount').textContent =
+      checked === 1 ? '1 client' : checked + ' clients';
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+  }
+
+  function submitDelete() {
+    document.getElementById('deleteForm').submit();
+  }
+</script>
+{% endif %}
 {% endblock %}
