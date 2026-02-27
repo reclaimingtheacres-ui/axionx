@@ -289,38 +289,55 @@
 
   <script>
   function initPlaces() {
-    if (!window.google || !google.maps || !google.maps.places) return;
+    if (!window.google || !google.maps || !google.maps.places || !google.maps.places.Autocomplete) {
+      console.warn('[Axion] Google Places not available — address fields are plain text.');
+      return;
+    }
 
     document.querySelectorAll('[data-maps-autocomplete]').forEach(function(input) {
       if (input.dataset.placesAttached === '1') return;
       input.dataset.placesAttached = '1';
 
-      var ac = new google.maps.places.Autocomplete(input, {
-        types: ['address'],
-        componentRestrictions: { country: 'au' }
-      });
+      try {
+        var ac = new google.maps.places.Autocomplete(input, {
+          types: ['address'],
+          componentRestrictions: { country: 'au' }
+        });
 
-      ac.addListener('place_changed', function() {
-        var place = ac.getPlace();
-        if (!place || !place.geometry) return;
+        ac.addListener('place_changed', function() {
+          var place = ac.getPlace && ac.getPlace();
+          if (!place || !place.geometry) return;
 
-        if (place.formatted_address) {
-          input.value = place.formatted_address;
-        }
+          if (place.formatted_address) {
+            input.value = place.formatted_address;
+          }
 
-        var form = input.closest('form');
-        if (!form) return;
-        var lat = form.querySelector('input[name="latitude"]');
-        var lng = form.querySelector('input[name="longitude"]');
-        if (lat) lat.value = place.geometry.location.lat();
-        if (lng) lng.value = place.geometry.location.lng();
-      });
+          var form = input.closest('form');
+          if (!form) return;
+          var lat = form.querySelector('input[name="latitude"]');
+          var lng = form.querySelector('input[name="longitude"]');
+          if (lat) lat.value = place.geometry.location.lat();
+          if (lng) lng.value = place.geometry.location.lng();
+        });
+
+        console.info('[Axion] Google Places initialised on', input.name || input.id || 'input');
+      } catch (err) {
+        console.warn('[Axion] Places init failed — restoring plain text input.', err);
+        delete input.dataset.placesAttached;
+        var clone = input.cloneNode(true);
+        input.parentNode.replaceChild(clone, input);
+        clone.setAttribute('autocomplete', 'off');
+      }
     });
   }
   </script>
   {% if GOOGLE_MAPS_API_KEY %}
-  <script async defer
-    src="https://maps.googleapis.com/maps/api/js?key={{ GOOGLE_MAPS_API_KEY }}&libraries=places&callback=initPlaces&loading=async"></script>
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key={{ GOOGLE_MAPS_API_KEY }}&libraries=places"
+    async
+    defer
+  ></script>
+  <script>window.addEventListener('load', initPlaces);</script>
   {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
