@@ -11,7 +11,8 @@ import mimetypes
 from datetime import date, datetime
 
 app = Flask(__name__)
-app.secret_key = "axion-dev-secret"
+app.secret_key = os.environ.get("SESSION_SECRET", "axion-dev-secret")
+app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(days=30)
 
 DB_PATH = "axion.db"
 
@@ -610,6 +611,7 @@ def login_post():
         flash("Invalid email or password.", "danger")
         return redirect(url_for("login"))
 
+    session.permanent = True
     session["user_id"] = user["id"]
     session["user_name"] = user["full_name"]
     session["role"] = user["role"]
