@@ -76,9 +76,17 @@
                 {% endif %}
                 {% if item.notes %}<div class="small mt-1" style="color:var(--muted); font-style:italic">{{ item.notes }}</div>{% endif %}
               </div>
-              <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete" class="ms-2">
-                <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove this item?')">Remove</button>
-              </form>
+              <div class="d-flex gap-2 ms-2 align-items-start">
+                {% if item.item_type == 'vehicle' %}
+                  <button type="button" class="btn btn-sm"
+                          style="background:#16a34a;color:#fff;border:0;white-space:nowrap"
+                          data-bs-toggle="modal" data-bs-target="#vicRoadsModal"
+                          data-rego="{{ item.reg or '' }}">VicRoads</button>
+                {% endif %}
+                <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
+                  <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove this item?')">Remove</button>
+                </form>
+              </div>
             </div>
           </div>
         {% endfor %}
@@ -405,6 +413,43 @@ function showItemFields(type) {
       e.target.value = nums + suffix;
     });
   }
+})();
+</script>
+
+<!-- VicRoads Modal -->
+<div class="modal fade" id="vicRoadsModal" tabindex="-1" aria-labelledby="vicRoadsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);">
+        <h5 class="modal-title" id="vicRoadsModalLabel" style="color:var(--text)">VicRoads Registration Check</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center py-4">
+        <div class="mb-1" style="color:var(--muted);font-size:.85rem;">Registration Plate</div>
+        <div id="vicRoadsRego" class="mb-4"
+             style="font-size:2rem;font-weight:800;letter-spacing:.12em;color:var(--text);">—</div>
+        <a id="vicRoadsLink"
+           href="https://www.vicroads.vic.gov.au/registration/buy-sell-or-transfer-a-vehicle/check-vehicle-registration/vehicle-registration-enquiry"
+           target="_blank" rel="noopener"
+           class="btn btn-lg px-5"
+           style="background:#16a34a;color:#fff;border:0;border-radius:12px;font-weight:700;">
+          Open VicRoads &rarr;
+        </a>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById('vicRoadsModal');
+  if (!modal) return;
+  modal.addEventListener('show.bs.modal', function (e) {
+    var rego = e.relatedTarget ? e.relatedTarget.getAttribute('data-rego') : '';
+    document.getElementById('vicRoadsRego').textContent = rego || '—';
+  });
 })();
 </script>
 {% endblock %}
