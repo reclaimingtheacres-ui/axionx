@@ -693,7 +693,7 @@ def jobs_list():
         like = f"%{q}%"
         params.extend([like] * 12)
 
-    sql += " ORDER BY j.updated_at DESC"
+    sql += " ORDER BY CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC"
 
     cur.execute(sql, params)
     rows = cur.fetchall()
