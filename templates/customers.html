@@ -14,10 +14,7 @@
         <a href="/customers/{{ c.id }}" class="list-group-item list-group-item-action">
           <div class="d-flex justify-content-between align-items-start">
             <div>
-              <div class="fw-semibold">{{ c.first_name }} {{ c.last_name }}{% if c.company %} <span class="small" style="color:var(--muted)">({{ c.company }})</span>{% endif %}</div>
-              {% if c.email %}<div class="small" style="color:var(--muted)">{{ c.email }}</div>{% endif %}
-              {% if c.dob %}<div class="small" style="color:var(--muted)">DOB: {{ c.dob }}</div>{% endif %}
-              {% if c.address %}<div class="small" style="color:var(--muted)">{{ c.address }}</div>{% endif %}
+              <div class="fw-semibold">{{ c.last_name }}, {{ c.first_name }}{% if c.company %} <span class="small" style="color:var(--muted)">({{ c.company }})</span>{% endif %}</div>
             </div>
             {% if c.id_image_path %}
               <span class="badge ms-2 mt-1" style="background:rgba(96,165,250,.12);color:var(--accent);border:1px solid rgba(96,165,250,.25);font-size:.75rem">ID on file</span>
