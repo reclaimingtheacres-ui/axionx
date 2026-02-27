@@ -122,6 +122,34 @@
       overflow: visible;
     }
     .pac-container { z-index: 2147483647 !important; }
+    gmp-place-autocomplete {
+      display: block;
+      width: 100%;
+      background: rgba(17, 28, 51, .75);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 12px;
+      overflow: hidden;
+      --gmp-input-border: none;
+      --gmp-input-border-radius: 0;
+      --gmp-input-background-color: transparent;
+      --gmp-input-color: #e5e7eb;
+      --gmp-input-placeholder-color: rgba(229,231,235,.45);
+      --gmp-input-font-size: 1rem;
+      --gmp-input-line-height: 1.5;
+      --gmp-input-padding: 0.375rem 0.75rem;
+    }
+    gmp-place-autocomplete input {
+      background: transparent !important;
+      color: #e5e7eb !important;
+      border: none !important;
+      width: 100% !important;
+      padding: 0.375rem 0.75rem !important;
+      font-size: 1rem !important;
+      line-height: 1.5 !important;
+      outline: none !important;
+      box-shadow: none !important;
+    }
+    gmp-place-autocomplete input::placeholder { color: rgba(229,231,235,.45) !important; }
     .ax-card .ax-card-h{
       padding: 14px 16px;
       border-bottom: 1px solid var(--line);
@@ -291,41 +319,88 @@
   (function () {
     var GOOGLE_KEY = {{ GOOGLE_MAPS_API_KEY | tojson if GOOGLE_MAPS_API_KEY else 'null' }};
 
+    function attachNewApi(input) {
+      var el = new google.maps.places.PlaceAutocompleteElement({
+        types: ['address'],
+        componentRestrictions: { country: 'au' }
+      });
+      el.setAttribute('placeholder', input.getAttribute('placeholder') || '');
+
+      input.parentNode.insertBefore(el, input);
+      input.type = 'hidden';
+      input.removeAttribute('autocomplete');
+      input.removeAttribute('spellcheck');
+      input.removeAttribute('placeholder');
+      input.removeAttribute('class');
+
+      el.addEventListener('gmp-placeselect', function (e) {
+        var place = e.place;
+        if (!place) return;
+        place.fetchFields({ fields: ['formattedAddress'] }).then(function () {
+          input.value = place.formattedAddress || '';
+        }).catch(function (err) {
+          console.warn('[Axion] fetchFields error', err);
+        });
+      });
+
+      var form = input.closest('form');
+      if (form && !form._axionSubmitBound) {
+        form._axionSubmitBound = true;
+        form.addEventListener('submit', function () {
+          form.querySelectorAll('gmp-place-autocomplete').forEach(function (pac) {
+            var hidden = pac.nextElementSibling;
+            if (hidden && hidden.type === 'hidden' && !hidden.value) {
+              var inner = pac.shadowRoot
+                ? pac.shadowRoot.querySelector('input')
+                : pac.querySelector('input');
+              if (inner) hidden.value = inner.value;
+            }
+          });
+        });
+      }
+
+      console.info('[Axion] PlaceAutocompleteElement on', input.name);
+    }
+
+    function attachLegacyApi(input) {
+      var ac = new google.maps.places.Autocomplete(input, {
+        types: ['address'],
+        componentRestrictions: { country: 'au' }
+      });
+      ac.addListener('place_changed', function () {
+        var place = ac.getPlace && ac.getPlace();
+        if (!place || !place.geometry) return;
+        if (place.formatted_address) input.value = place.formatted_address;
+      });
+      console.info('[Axion] Autocomplete (legacy) on', input.name);
+    }
+
     function safeInitPlaces() {
-      if (!window.google || !google.maps || !google.maps.places || !google.maps.places.Autocomplete) {
+      if (!window.google || !google.maps || !google.maps.places) {
         console.warn('[Axion] Places library unavailable. Address fields remain plain text.');
         return;
       }
+
+      var hasNew = typeof google.maps.places.PlaceAutocompleteElement === 'function';
+      var hasLegacy = typeof google.maps.places.Autocomplete === 'function';
 
       document.querySelectorAll('[data-maps-autocomplete]').forEach(function (input) {
         if (input.dataset.placesAttached === '1') return;
         input.dataset.placesAttached = '1';
 
         try {
-          var ac = new google.maps.places.Autocomplete(input, {
-            types: ['address'],
-            componentRestrictions: { country: 'au' }
-          });
-
-          ac.addListener('place_changed', function () {
-            var place = ac.getPlace && ac.getPlace();
-            if (!place || !place.geometry) return;
-            if (place.formatted_address) input.value = place.formatted_address;
-            var form = input.closest('form');
-            if (!form) return;
-            var lat = form.querySelector('input[name="latitude"]');
-            var lng = form.querySelector('input[name="longitude"]');
-            if (lat) lat.value = place.geometry.location.lat();
-            if (lng) lng.value = place.geometry.location.lng();
-          });
-
-          console.info('[Axion] Places enabled on', input.name || input.id || 'input');
+          if (hasNew) {
+            attachNewApi(input);
+          } else if (hasLegacy) {
+            attachLegacyApi(input);
+          } else {
+            console.warn('[Axion] No Places API available on', input.name);
+          }
         } catch (err) {
-          console.warn('[Axion] Places init failed — reverting to plain text.', err);
+          console.warn('[Axion] Places init failed — leaving as plain text.', err);
           delete input.dataset.placesAttached;
-          var clone = input.cloneNode(true);
-          input.parentNode.replaceChild(clone, input);
-          clone.setAttribute('autocomplete', 'off');
+          input.type = 'text';
+          input.setAttribute('autocomplete', 'off');
         }
       });
     }
@@ -340,7 +415,7 @@
 
       var s = document.createElement('script');
       s.dataset.axionGoogle = '1';
-      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_KEY) + '&libraries=places';
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_KEY) + '&libraries=places&loading=async';
       s.async = true;
       s.defer = true;
       s.onload = safeInitPlaces;
