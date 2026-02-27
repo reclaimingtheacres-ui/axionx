@@ -1,0 +1,155 @@
+make New Client, New Customer, and Bill to Other (Client) all open as modal pop-ups from within Create Job, just like GeoOp.
+
+The clean way to do it in Axion (Flask/Jinja + vanilla JS) is:
+
+Keep Create Job on one page
+
+Use a modal that loads the “new client/customer” form via GET
+
+Submit that form via POST (AJAX)
+
+On success, return JSON with the new record’s id + display label
+
+Auto-select it in the Create Job dropdown/search field without reloading
+
+UI behaviour
+
+On Create Job:
+
+Client field has a “+” button → opens New Client modal
+
+Customer field has a “+” button → opens New Customer modal
+
+Bill to Other field has a “+” button → opens New Client modal (same modal, but on success it populates Bill to Other instead of Client)
+
+What you need to implement
+
+Add three small pieces:
+
+1) Modal container in create_job.html
+
+One modal reused for all three actions.
+
+<div id="entityModal" class="ax-modal hidden" role="dialog" aria-modal="true">
+  <div class="ax-modal-backdrop" onclick="closeEntityModal()"></div>
+  <div class="ax-modal-panel">
+    <button type="button" class="ax-modal-close" onclick="closeEntityModal()">×</button>
+    <div id="entityModalBody"></div>
+  </div>
+</div>
+2) Buttons next to each field
+
+Example:
+
+<button type="button" class="btn btn-sm btn-outline-secondary"
+        onclick="openEntityModal('client','{{ url_for('clients.new_popup') }}')">+</button>
+
+<button type="button" class="btn btn-sm btn-outline-secondary"
+        onclick="openEntityModal('bill_to_other','{{ url_for('clients.new_popup') }}')">+</button>
+
+<button type="button" class="btn btn-sm btn-outline-secondary"
+        onclick="openEntityModal('customer','{{ url_for('customers.new_popup') }}')">+</button>
+
+The first argument is the “target field” to populate after save.
+
+3) Modal JS loader + submit handler
+<script>
+let modalTarget = null;
+
+function openEntityModal(target, url) {
+  modalTarget = target;
+  const modal = document.getElementById("entityModal");
+  const body = document.getElementById("entityModalBody");
+  modal.classList.remove("hidden");
+  body.innerHTML = "Loading...";
+
+  fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+    .then(r => r.text())
+    .then(html => { body.innerHTML = html; wireModalForm(); })
+    .catch(() => { body.innerHTML = "Could not load form."; });
+}
+
+function closeEntityModal() {
+  document.getElementById("entityModal").classList.add("hidden");
+  document.getElementById("entityModalBody").innerHTML = "";
+  modalTarget = null;
+}
+
+function wireModalForm() {
+  const form = document.querySelector("#entityModalBody form");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+
+    const res = await fetch(form.action, {
+      method: "POST",
+      body: fd,
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    });
+
+    const data = await res.json();
+    if (!data.ok) {
+      // Render server-side validation HTML if provided
+      if (data.html) document.getElementById("entityModalBody").innerHTML = data.html;
+      return;
+    }
+
+    // data.id + data.label returned from server
+    applyNewEntity(modalTarget, data.id, data.label);
+    closeEntityModal();
+  });
+}
+
+function applyNewEntity(target, id, label) {
+  // Adjust these IDs to your form fields
+  if (target === "client") {
+    setSelectValue("client_id", id, label);
+  } else if (target === "bill_to_other") {
+    setSelectValue("bill_to_other_id", id, label);
+  } else if (target === "customer") {
+    setSelectValue("customer_id", id, label);
+  }
+}
+
+function setSelectValue(selectId, id, label) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  let opt = [...sel.options].find(o => o.value == String(id));
+  if (!opt) {
+    opt = new Option(label, id, true, true);
+    sel.add(opt);
+  }
+  sel.value = String(id);
+  sel.dispatchEvent(new Event("change", { bubbles:true }));
+}
+</script>
+4) Server-side endpoints return HTML on GET and JSON on POST
+
+For example, clients.new_popup:
+
+GET: return a partial template containing just the form
+
+POST: validate, create, then return JSON: { ok: true, id: X, label: "Client Name" }
+
+If validation fails: return { ok: false, html: "<form>...</form>" }
+
+This keeps the modal reusable and avoids page navigation.
+
+Styling
+
+If you’re already using Bootstrap, you can use Bootstrap modals. If not, the ax-modal wrapper above is enough; I can give you the CSS to match your dark theme.
+
+Bill to Other
+
+Bill to Other is the same modal as New Client; only difference is which field gets set after save. That’s handled by modalTarget.
+
+If you paste the Create Job field IDs you currently have for:
+
+Client
+
+Bill to Other
+
+Customer
+I’ll align the setSelectValue() calls exactly so you can drop it in without renaming anything.
