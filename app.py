@@ -1475,6 +1475,42 @@ def add_job_note(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/delete")
+@login_required
+def delete_job_note(job_id: int, note_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM job_field_notes WHERE id = ? AND job_id = ?", (note_id, job_id))
+    note = cur.fetchone()
+    if not note:
+        conn.close()
+        flash("Note not found.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    caller_id   = session.get("user_id")
+    caller_role = session.get("role", "")
+    if caller_role != "admin" and note["created_by_user_id"] != caller_id:
+        conn.close()
+        flash("You can only delete your own notes.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    cur.execute("SELECT filepath FROM job_note_files WHERE job_field_note_id = ?", (note_id,))
+    files = cur.fetchall()
+    for f in files:
+        try:
+            os.remove(f["filepath"])
+        except OSError:
+            pass
+    cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (note_id,))
+    cur.execute("DELETE FROM job_field_notes WHERE id = ?", (note_id,))
+    conn.commit()
+    conn.close()
+
+    audit("job_note", note_id, "delete", "Field note deleted", {"job_id": job_id})
+    flash("Field note deleted.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
 @app.get("/uploads/<path:filename>")
 @login_required
 def serve_upload(filename):

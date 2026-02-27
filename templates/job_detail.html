@@ -424,7 +424,19 @@
           <div class="list-group-item">
             <div class="d-flex justify-content-between align-items-center mb-1">
               <span class="small fw-semibold">{{ entry.note.author_name or "Unknown" }}</span>
-              <span class="small" style="color:var(--muted)">{{ entry.note.created_at }}</span>
+              <div class="d-flex align-items-center gap-3">
+                <span class="small" style="color:var(--muted)">{{ entry.note.created_at }}</span>
+                {% if session.get('role') == 'admin' or session.get('user_id') == entry.note.created_by_user_id %}
+                <form method="post"
+                      action="/jobs/{{ job.id }}/notes/{{ entry.note.id }}/delete"
+                      style="margin:0"
+                      onsubmit="return confirm('Delete this field note? This cannot be undone.')">
+                  <button type="submit" class="btn btn-link p-0 border-0"
+                          style="color:#ef4444;font-size:.8rem;text-decoration:none;"
+                          title="Delete note">&#128465; Delete</button>
+                </form>
+                {% endif %}
+              </div>
             </div>
             {% if entry.note.note_text %}
               <div class="mb-2" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
