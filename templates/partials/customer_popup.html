@@ -1,0 +1,30 @@
+<h5 class="mb-3" style="color:var(--text)">New Customer</h5>
+<form action="/customers/new-popup" method="post">
+  <div class="row g-2 mb-3">
+    <div class="col-6">
+      <label class="form-label" style="color:var(--muted);font-size:.85rem">First Name <span style="color:#ef4444">*</span></label>
+      <input class="form-control" name="first_name" placeholder="First" required autofocus>
+    </div>
+    <div class="col-6">
+      <label class="form-label" style="color:var(--muted);font-size:.85rem">Last Name <span style="color:#ef4444">*</span></label>
+      <input class="form-control" name="last_name" placeholder="Last" required>
+    </div>
+  </div>
+  <div class="mb-3">
+    <label class="form-label" style="color:var(--muted);font-size:.85rem">Company (optional)</label>
+    <input class="form-control" name="company" placeholder="e.g. Smith Pty Ltd">
+  </div>
+  <div class="mb-3">
+    <label class="form-label" style="color:var(--muted);font-size:.85rem">Phone (optional)</label>
+    <input class="form-control" name="phone" placeholder="e.g. 0412 345 678">
+  </div>
+  <div class="mb-3">
+    <label class="form-label" style="color:var(--muted);font-size:.85rem">Address (optional)</label>
+    <input class="form-control" name="address" placeholder="Street, Suburb, State, Postcode">
+  </div>
+  <div id="popup-error" class="text-danger small mb-2 d-none"></div>
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">Create Customer</button>
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+  </div>
+</form>

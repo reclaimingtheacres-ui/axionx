@@ -23,28 +23,50 @@
 
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-6">
-          <label class="form-label">Client</label>
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <label class="form-label mb-0">Client</label>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                    onclick="openEntityModal('client','/clients/new-popup')"
+                    title="Create new client">+&nbsp;New</button>
+          </div>
           <div class="position-relative">
             <input type="text" class="form-control" id="client_search"
                    placeholder="Type to search client..." autocomplete="off" spellcheck="false">
             <input type="hidden" name="client_id" id="client_id_val">
             <div id="client_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:rgba(11,18,32,.98); border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
           </div>
-          <div id="client_create_wrap" class="form-text" style="display:none;">
-            <a href="/clients/new?next=/jobs/new" id="client_create_link" style="color:var(--accent)">+ Create client</a>
-          </div>
         </div>
         <div class="col-12 col-lg-6">
-          <label class="form-label">Customer</label>
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <label class="form-label mb-0">Customer</label>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                    onclick="openEntityModal('customer','/customers/new-popup')"
+                    title="Create new customer">+&nbsp;New</button>
+          </div>
           <div class="position-relative">
             <input type="text" class="form-control" id="customer_search"
                    placeholder="Type to search customer..." autocomplete="off" spellcheck="false">
             <input type="hidden" name="customer_id" id="customer_id_val">
             <div id="customer_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:rgba(11,18,32,.98); border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
           </div>
-          <div id="customer_create_wrap" class="form-text" style="display:none;">
-            <a href="/customers/new?next=/jobs/new" id="customer_create_link" style="color:var(--accent)">+ Create customer</a>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-6">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <label class="form-label mb-0">Bill to Other Client</label>
+            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                    onclick="openEntityModal('bill_to','/clients/new-popup')"
+                    title="Create new billing client">+&nbsp;New</button>
           </div>
+          <div class="position-relative">
+            <input type="text" class="form-control" id="bill_to_search"
+                   placeholder="Leave blank if same as Client..." autocomplete="off" spellcheck="false">
+            <input type="hidden" name="bill_to_client_id" id="bill_to_client_id">
+            <div id="bill_to_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:rgba(11,18,32,.98); border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
+          </div>
+          <div class="form-text" style="color:var(--muted)">Leave blank if billing client is the same as Client.</div>
         </div>
       </div>
 
@@ -343,8 +365,6 @@
     var searchEl = document.getElementById(cfg.searchId);
     var hiddenEl = document.getElementById(cfg.hiddenId);
     var dropEl   = document.getElementById(cfg.dropId);
-    var createWrap = document.getElementById(cfg.createWrapId);
-    var createLink = document.getElementById(cfg.createLinkId);
     if (!searchEl) return;
 
     if (cfg.preselect) {
@@ -356,10 +376,8 @@
       dropEl.innerHTML = '';
       if (!items.length) {
         dropEl.style.display = 'none';
-        createWrap.style.display = searchEl.value.trim() ? '' : 'none';
         return;
       }
-      createWrap.style.display = 'none';
       items.slice(0, 12).forEach(function(item) {
         var div = document.createElement('div');
         div.style.cssText = 'padding:9px 14px;cursor:pointer;color:#e5e7eb;font-size:.9rem;border-bottom:1px solid rgba(255,255,255,.05);';
@@ -369,7 +387,6 @@
           searchEl.value = item.label;
           hiddenEl.value = item.id;
           dropEl.style.display = 'none';
-          createWrap.style.display = 'none';
           if (cfg.onSelect) cfg.onSelect(item);
         });
         div.addEventListener('mouseenter', function(){ div.style.background='rgba(96,165,250,.15)'; });
@@ -382,7 +399,7 @@
     searchEl.addEventListener('input', function() {
       hiddenEl.value = '';
       var val = searchEl.value.trim().toLowerCase();
-      if (!val) { dropEl.style.display='none'; createWrap.style.display='none'; return; }
+      if (!val) { dropEl.style.display='none'; return; }
       render(cfg.data.filter(function(d){ return d.label.toLowerCase().includes(val); }));
     });
 
@@ -394,19 +411,13 @@
     searchEl.addEventListener('blur', function() {
       setTimeout(function(){ dropEl.style.display='none'; }, 200);
     });
-
-    if (createLink) {
-      createLink.addEventListener('click', function() {
-        if (crField) localStorage.setItem(CR_KEY, crField.value);
-      });
-    }
   }
 
-  makeTypeahead({ searchId:'client_search',   hiddenId:'client_id_val',   dropId:'client_dropdown',
-                  createWrapId:'client_create_wrap',   createLinkId:'client_create_link',
-                  data:CLIENT_DATA,   preselect:{{ new_client_id   | tojson }} });
-  makeTypeahead({ searchId:'customer_search', hiddenId:'customer_id_val', dropId:'customer_dropdown',
-                  createWrapId:'customer_create_wrap', createLinkId:'customer_create_link',
+  makeTypeahead({ searchId:'client_search',   hiddenId:'client_id_val',     dropId:'client_dropdown',
+                  data:CLIENT_DATA,   preselect:{{ new_client_id | tojson }} });
+  makeTypeahead({ searchId:'bill_to_search',  hiddenId:'bill_to_client_id',  dropId:'bill_to_dropdown',
+                  data:CLIENT_DATA,   preselect:null });
+  makeTypeahead({ searchId:'customer_search', hiddenId:'customer_id_val',    dropId:'customer_dropdown',
                   data:CUSTOMER_DATA, preselect:{{ new_customer_id | tojson }},
                   onSelect: function(item) {
                     var addrField = document.getElementById('customer_address');
@@ -419,6 +430,95 @@
                     }
                   }
                 });
+
+  /* ── Entity modal ────────────────────────────────────────────────────── */
+  var _modalTarget = null;
+  var _bsModal = null;
+
+  window.openEntityModal = function(target, url) {
+    _modalTarget = target;
+    var modalEl = document.getElementById('entityModal');
+    var body    = document.getElementById('entityModalBody');
+    body.innerHTML = '<div class="text-center py-3" style="color:var(--muted)">Loading\u2026</div>';
+    _bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    _bsModal.show();
+
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function(r){ return r.text(); })
+      .then(function(html){ body.innerHTML = html; wireModalForm(); })
+      .catch(function(){ body.innerHTML = '<p class="text-danger">Could not load form.</p>'; });
+  };
+
+  function wireModalForm() {
+    var form = document.querySelector('#entityModalBody form');
+    if (!form) return;
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var errEl = form.querySelector('#popup-error');
+      if (errEl) errEl.classList.add('d-none');
+
+      fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (!data.ok) {
+          if (errEl) { errEl.textContent = data.error || 'An error occurred.'; errEl.classList.remove('d-none'); }
+          return;
+        }
+        applyTypeahead(_modalTarget, data);
+        if (_bsModal) _bsModal.hide();
+      })
+      .catch(function(){ if (errEl) { errEl.textContent = 'Network error. Please try again.'; errEl.classList.remove('d-none'); } });
+    });
+  }
+
+  function applyTypeahead(target, data) {
+    var searchId, hiddenId, dataArr;
+    if (target === 'client') {
+      searchId = 'client_search'; hiddenId = 'client_id_val'; dataArr = CLIENT_DATA;
+    } else if (target === 'bill_to') {
+      searchId = 'bill_to_search'; hiddenId = 'bill_to_client_id'; dataArr = CLIENT_DATA;
+    } else if (target === 'customer') {
+      searchId = 'customer_search'; hiddenId = 'customer_id_val'; dataArr = CUSTOMER_DATA;
+    } else { return; }
+
+    var searchEl = document.getElementById(searchId);
+    var hiddenEl = document.getElementById(hiddenId);
+    if (!searchEl || !hiddenEl) return;
+
+    searchEl.value = data.label;
+    hiddenEl.value = data.id;
+
+    var existing = dataArr.find(function(d){ return d.id == data.id; });
+    if (!existing) dataArr.push({ id: data.id, label: data.label, address: data.address || '' });
+
+    if (target === 'customer' && data.address) {
+      var addrField = document.getElementById('customer_address');
+      if (addrField) {
+        if (window.axionSetAddress) { window.axionSetAddress(addrField, data.address); }
+        else { addrField.value = data.address; }
+      }
+    }
+  }
 })();
 </script>
+{% endblock %}
+
+{% block modals %}
+<div class="modal fade" id="entityModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);">
+        <h5 class="modal-title" style="color:var(--text)">New</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="entityModalBody">
+        <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

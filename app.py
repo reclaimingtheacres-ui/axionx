@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -324,6 +324,7 @@ def init_db():
 
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
     add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
+    add_column_if_missing(cur, "jobs", "bill_to_client_id", "INTEGER")
 
     _default_booking_types = [
         "New Visit", "Re-attend", "Urgent New Visit",
@@ -820,6 +821,7 @@ def job_create():
     client_reference = request.form.get("client_reference", "").strip()
     client_id = request.form.get("client_id") or None
     customer_id = request.form.get("customer_id") or None
+    bill_to_client_id = request.form.get("bill_to_client_id") or None
     assigned_user_id = request.form.get("assigned_user_id") or None
     job_type = request.form.get("job_type", "Field Call").strip()
     visit_type = request.form.get("visit_type", "New Visit").strip()
@@ -846,17 +848,17 @@ def job_create():
     cur.execute("""
         INSERT INTO jobs (
             internal_job_number, client_reference, display_ref,
-            client_id, customer_id, assigned_user_id,
+            client_id, customer_id, bill_to_client_id, assigned_user_id,
             job_type, visit_type, status, priority,
             job_address, description,
             lender_name, account_number, regulation_type,
             arrears_cents, costs_cents, mmp_cents, job_due_date,
             created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         internal_job_number, client_reference or None, display_ref,
-        client_id, customer_id, assigned_user_id,
+        client_id, customer_id, bill_to_client_id, assigned_user_id,
         job_type, visit_type, status, priority,
         job_address, description,
         lender_name or None, account_number or None, regulation_type or None,
@@ -919,11 +921,13 @@ def job_detail(job_id: int):
     SELECT j.*,
            c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
            (cu.first_name || ' ' || cu.last_name) AS customer_name, cu.company AS customer_company, cu.email AS customer_email, cu.dob AS customer_dob, cu.address AS customer_address,
-           u.full_name AS assigned_name
+           u.full_name AS assigned_name,
+           btc.name AS bill_to_client_name
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
     LEFT JOIN customers cu ON cu.id = j.customer_id
     LEFT JOIN users u ON u.id = j.assigned_user_id
+    LEFT JOIN clients btc ON btc.id = j.bill_to_client_id
     WHERE j.id = ?
     """, (job_id,))
     job = cur.fetchone()
@@ -1390,6 +1394,69 @@ def client_create():
         return redirect(f"{next_url}?new_client_id={new_id}")
     return redirect(url_for("clients_list"))
 
+
+
+@app.get("/clients/new-popup")
+@login_required
+@admin_required
+def client_new_popup():
+    return render_template("partials/client_popup.html")
+
+
+@app.post("/clients/new-popup")
+@login_required
+@admin_required
+def client_create_popup():
+    name = request.form.get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Client name is required."})
+    phone = request.form.get("phone", "").strip()
+    email = request.form.get("email", "").strip()
+    now = datetime.now().isoformat(timespec="seconds")
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO clients (name, phone, email, created_at) VALUES (?, ?, ?, ?)",
+        (name, phone or None, email or None, now)
+    )
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "id": new_id, "label": name})
+
+
+@app.get("/customers/new-popup")
+@login_required
+@admin_required
+def customer_new_popup():
+    return render_template("partials/customer_popup.html")
+
+
+@app.post("/customers/new-popup")
+@login_required
+@admin_required
+def customer_create_popup():
+    first_name = request.form.get("first_name", "").strip()
+    last_name = request.form.get("last_name", "").strip()
+    if not first_name or not last_name:
+        return jsonify({"ok": False, "error": "First and last name are required."})
+    company = request.form.get("company", "").strip()
+    phone = request.form.get("phone", "").strip()
+    address = request.form.get("address", "").strip()
+    now = datetime.now().isoformat(timespec="seconds")
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO customers (first_name, last_name, company, address, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (first_name, last_name, company or None, address or None, now, now))
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    label = f"{first_name} {last_name}"
+    if company:
+        label += f" ({company})"
+    return jsonify({"ok": True, "id": new_id, "label": label, "address": address})
 
 @app.get("/clients/<int:client_id>")
 @login_required
