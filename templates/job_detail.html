@@ -22,7 +22,7 @@
     {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
     {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
     {% else %}{% set sc = '#6b7280' %}{% endif %}
-    <select name="status" onchange="this.form.submit()"
+    <select name="status" data-current-status="{{ job.status }}" onchange="handleStatusChange(this)"
             style="background:{{ sc }}20; color:{{ sc }}; border:1.5px solid {{ sc }}50;
                    border-radius:999px; padding:4px 12px; font-size:.82rem; font-weight:600;
                    cursor:pointer; outline:none; appearance:none; -webkit-appearance:none;
@@ -788,4 +788,129 @@ function axCopyVin(btn) {
   });
 }
 </script>
+<!-- Schedule Prompt Modal -->
+<div class="modal fade" id="schedulePromptModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" style="color:var(--text)">Add a Schedule</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/jobs/{{ job.id }}/activate" id="activateForm">
+        <div class="modal-body">
+          <p class="small mb-3" style="color:var(--muted)">
+            Updating status to <strong id="newStatusLabel" style="color:var(--accent)"></strong>.
+            Add a booking now (optional — click Skip to update status only).
+          </p>
+          <input type="hidden" name="new_status" id="activateNewStatus">
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Date</label>
+              <input type="date" id="ap_date_picker" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Displayed date</label>
+              <input type="text" name="schedule_date" id="ap_date_text" class="form-control"
+                     placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Time</label>
+              <input type="time" id="ap_time_picker" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Displayed time</label>
+              <input type="text" name="schedule_time" id="ap_time_text" class="form-control"
+                     placeholder="hh:mm am" maxlength="8" autocomplete="off">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small" style="color:var(--muted)">Booking Type</label>
+            <select name="booking_type_id" class="form-select">
+              <option value="">&#8212; Select type &#8212;</option>
+              {% for bt in booking_types %}
+                <option value="{{ bt.id }}">{{ bt.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small" style="color:var(--muted)">Assign To</label>
+            <select name="assigned_to_user_id" class="form-select">
+              <option value="">Unassigned</option>
+              {% for u in users %}
+                <option value="{{ u.id }}" {% if u.id == job.assigned_user_id %}selected{% endif %}>{{ u.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-1">
+            <label class="form-label small" style="color:var(--muted)">Notes (optional)</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Booking notes&#8230;"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
+          <button type="submit" class="btn btn-primary">Add Schedule &amp; Update Status</button>
+          <button type="button" class="btn btn-outline-secondary" onclick="skipSchedule()">Skip &#8212; Update Status Only</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _scheduleModal = null;
+  function getScheduleModal() {
+    if (!_scheduleModal) _scheduleModal = new bootstrap.Modal(document.getElementById('schedulePromptModal'));
+    return _scheduleModal;
+  }
+
+  window.handleStatusChange = function(sel) {
+    var currentStatus = sel.getAttribute('data-current-status');
+    var newStatus = sel.value;
+    var triggerStatuses = ['Active', 'Active - Phone work only', 'Awaiting info from client', 'Invoiced'];
+    if (currentStatus === 'New' && triggerStatuses.indexOf(newStatus) !== -1) {
+      document.getElementById('activateNewStatus').value = newStatus;
+      document.getElementById('newStatusLabel').textContent = newStatus;
+      getScheduleModal().show();
+    } else {
+      sel.closest('form').submit();
+    }
+  };
+
+  window.skipSchedule = function() {
+    var ns = document.getElementById('activateNewStatus').value;
+    var f = document.createElement('form');
+    f.method = 'post';
+    f.action = '/jobs/{{ job.id }}/status';
+    var inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'status'; inp.value = ns;
+    f.appendChild(inp);
+    document.body.appendChild(f);
+    getScheduleModal().hide();
+    f.submit();
+  };
+
+  var apDatePicker = document.getElementById('ap_date_picker');
+  var apDateText   = document.getElementById('ap_date_text');
+  if (apDatePicker && apDateText) {
+    apDatePicker.addEventListener('change', function() {
+      var d = new Date(this.value + 'T00:00:00');
+      if (!isNaN(d)) apDateText.value = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+    });
+  }
+  var apTimePicker = document.getElementById('ap_time_picker');
+  var apTimeText   = document.getElementById('ap_time_text');
+  if (apTimePicker && apTimeText) {
+    apTimePicker.addEventListener('change', function() {
+      var parts = this.value.split(':');
+      if (parts.length < 2) return;
+      var h = parseInt(parts[0]), m = parts[1], ampm = h >= 12 ? 'pm' : 'am';
+      h = h % 12 || 12;
+      apTimeText.value = h + ':' + m + ' ' + ampm;
+    });
+  }
+})();
+</script>
+
 {% endblock %}

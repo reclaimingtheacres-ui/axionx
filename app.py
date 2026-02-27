@@ -1091,6 +1091,54 @@ def add_schedule(job_id: int):
 
 
 
+
+@app.post("/jobs/<int:job_id>/activate")
+@login_required
+@admin_required
+def job_activate(job_id):
+    new_status  = request.form.get("new_status", "").strip()
+    date_str    = request.form.get("schedule_date", "").strip()
+    time_str    = request.form.get("schedule_time", "").strip()
+    bt_id       = request.form.get("booking_type_id", "").strip()
+    notes       = request.form.get("notes", "").strip() or None
+    assigned_to = request.form.get("assigned_to_user_id", "").strip() or None
+    caller_id   = session.get("user_id")
+    now         = datetime.now().isoformat(timespec="seconds")
+
+    allowed = ["Active", "Active - Phone work only", "Awaiting info from client", "Invoiced"]
+    if new_status not in allowed:
+        flash("Invalid status.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    conn = db()
+    cur  = conn.cursor()
+
+    cur.execute("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?", (new_status, now, job_id))
+    cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (job_id, "Status Update", f"Status changed from 'New' to '{new_status}'.", now, now))
+
+    if date_str and time_str and bt_id:
+        try:
+            dt_str = parse_interaction_datetime(date_str, time_str)
+            cur.execute("SELECT name FROM booking_types WHERE id = ?", (int(bt_id),))
+            bt_row = cur.fetchone()
+            bt_status = bt_row["name"] if bt_row else new_status
+            assigned_int = int(assigned_to) if assigned_to else None
+            cur.execute("""INSERT INTO schedules
+                           (job_id, booking_type_id, scheduled_for, status, notes,
+                            assigned_to_user_id, created_by_user_id, created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (job_id, int(bt_id), dt_str, bt_status, notes,
+                         assigned_int, caller_id, now_ts()))
+        except Exception:
+            flash("Schedule date/time invalid — status updated but no schedule created.", "warning")
+
+    conn.commit()
+    conn.close()
+    flash("Job updated.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
 @app.get("/schedule")
 @login_required
 def schedule_index():
