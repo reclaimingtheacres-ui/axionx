@@ -2034,6 +2034,39 @@ def user_create():
     return redirect(url_for("users_list"))
 
 
+
+@app.get("/users/new-popup")
+@admin_required
+def user_new_popup():
+    return render_template("partials/user_popup.html")
+
+
+@app.post("/users/new-popup")
+@admin_required
+def user_create_popup():
+    full_name = request.form.get("full_name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "").strip()
+    role = request.form.get("role", "agent").strip()
+    if not full_name or not email or not password:
+        return jsonify({"ok": False, "error": "Name, email and password are all required."})
+    hashed = generate_password_hash(password)
+    conn = db()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO users (full_name, email, password, role, active, created_at)
+            VALUES (?, ?, ?, ?, 1, ?)
+        """, (full_name, email, hashed, role, now_ts()))
+        new_id = cur.lastrowid
+        conn.commit()
+        audit("user", new_id, "create", f"User created via popup: {full_name} ({role})", {"email": email, "role": role})
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({"ok": False, "error": "That email address is already in use."})
+    conn.close()
+    return jsonify({"ok": True, "id": new_id, "label": full_name})
+
 @app.get("/admin/users/new")
 @admin_required
 def admin_user_new():
