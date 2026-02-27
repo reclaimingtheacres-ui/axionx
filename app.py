@@ -979,14 +979,15 @@ def job_lender_update(job_id: int):
     arrears_cents   = money_to_cents(request.form.get("arrears", ""))
     costs_cents     = money_to_cents(request.form.get("costs", ""))
     mmp_cents       = money_to_cents(request.form.get("mmp", ""))
+    job_due_date    = request.form.get("job_due_date", "").strip() or None
     conn = db()
     cur  = conn.cursor()
     cur.execute("""
         UPDATE jobs SET lender_name=?, account_number=?, regulation_type=?,
-        arrears_cents=?, costs_cents=?, mmp_cents=?, updated_at=? WHERE id=?
+        arrears_cents=?, costs_cents=?, mmp_cents=?, job_due_date=?, updated_at=? WHERE id=?
     """, (lender_name or None, account_number or None, regulation_type or None,
           arrears_cents or None, costs_cents or None, mmp_cents or None,
-          now_ts(), job_id))
+          job_due_date, now_ts(), job_id))
     conn.commit()
     conn.close()
     flash("Lender details updated.", "success")

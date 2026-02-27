@@ -64,7 +64,7 @@
         <div class="fw-semibold">{{ job.regulation_type or '—' }}</div>
       </div>
     </div>
-    <div class="row g-2 mb-3">
+    <div class="row g-2 mb-2">
       <div class="col-6 col-lg-3">
         <span style="color:var(--muted);font-size:.8rem">ARREARS</span>
         <div class="fw-semibold">{{ cents_to_money(job.arrears_cents) }}</div>
@@ -78,8 +78,16 @@
         <div class="fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
       </div>
       <div class="col-6 col-lg-3">
-        <span style="color:var(--muted);font-size:.8rem">TOTAL DUE NOW</span>
-        <div class="fw-semibold" style="color:var(--accent)">{{ cents_to_money(job.total_due_now_cents) }}</div>
+        <span style="color:var(--muted);font-size:.8rem">MMP DUE DATE</span>
+        <div class="fw-semibold">{{ job.due_date_display or '—' }}</div>
+      </div>
+    </div>
+    <div class="mb-3">
+      <span style="color:var(--muted);font-size:.8rem">TOTAL DUE NOW</span>
+      <div class="fw-semibold fs-5" style="color:var(--accent)">{{ cents_to_money(job.total_due_now_cents) }}
+        {% if job.mmp_cents and not job.mmp_included_in_total %}
+          <span class="small fw-normal ms-1" style="color:var(--muted);font-size:.8rem">(MMP not yet due)</span>
+        {% endif %}
       </div>
     </div>
     <details>
@@ -116,6 +124,10 @@
           <div class="col-6 col-lg-3">
             <label class="form-label">MMP ($)</label>
             <input class="form-control" name="mmp" value="{{ cents_to_money(job.mmp_cents) if job.mmp_cents else '' }}" placeholder="0.00">
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label">MMP Due Date</label>
+            <input class="form-control" name="job_due_date" type="date" value="{{ job.job_due_date[:10] if job.job_due_date else '' }}">
           </div>
         </div>
         <button class="btn btn-primary btn-sm">Save Lender Details</button>
