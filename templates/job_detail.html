@@ -826,13 +826,24 @@ function axCopyVin(btn) {
             </div>
           </div>
           <div class="mb-2">
-            <label class="form-label small" style="color:var(--muted)">Booking Type</label>
-            <select name="booking_type_id" class="form-select">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label small mb-0" style="color:var(--muted)">Booking Type</label>
+              <button type="button" class="btn btn-link btn-sm p-0" style="color:var(--accent);font-size:.8rem"
+                      onclick="toggleNewBtRow()">+ New type</button>
+            </div>
+            <select name="booking_type_id" id="ap_booking_type" class="form-select">
               <option value="">&#8212; Select type &#8212;</option>
               {% for bt in booking_types %}
                 <option value="{{ bt.id }}">{{ bt.name }}</option>
               {% endfor %}
             </select>
+            <div id="newBtRow" class="input-group mt-1" style="display:none">
+              <input type="text" id="newBtName" class="form-control form-control-sm"
+                     placeholder="New booking type name…" maxlength="80">
+              <button type="button" class="btn btn-outline-primary btn-sm" onclick="saveNewBt()">Add</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleNewBtRow()">✕</button>
+            </div>
+            <div id="newBtError" class="text-danger small mt-1" style="display:none"></div>
           </div>
           <div class="mb-2">
             <label class="form-label small" style="color:var(--muted)">Assign To</label>
@@ -890,6 +901,36 @@ function axCopyVin(btn) {
     getScheduleModal().hide();
     f.submit();
   };
+
+  window.toggleNewBtRow = function() {
+    var row = document.getElementById('newBtRow');
+    var inp = document.getElementById('newBtName');
+    row.style.display = row.style.display === 'none' ? '' : 'none';
+    if (row.style.display !== 'none') inp.focus();
+    document.getElementById('newBtError').style.display = 'none';
+  };
+
+  window.saveNewBt = function() {
+    var name = (document.getElementById('newBtName').value || '').trim();
+    var errEl = document.getElementById('newBtError');
+    if (!name) { errEl.textContent = 'Enter a name.'; errEl.style.display = ''; return; }
+    errEl.style.display = 'none';
+    var fd = new FormData(); fd.append('name', name);
+    fetch('/booking-type/ajax', { method: 'POST', body: fd,
+                                   headers: {'X-Requested-With': 'XMLHttpRequest'} })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
+        var sel = document.getElementById('ap_booking_type');
+        var opt = new Option(data.name, data.id, true, true);
+        sel.add(opt);
+        sel.value = String(data.id);
+        document.getElementById('newBtName').value = '';
+        document.getElementById('newBtRow').style.display = 'none';
+      })
+      .catch(function(){ errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+  };
+
 
   var apDatePicker = document.getElementById('ap_date_picker');
   var apDateText   = document.getElementById('ap_date_text');

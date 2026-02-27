@@ -1260,6 +1260,27 @@ def add_booking_type():
     return redirect(referrer)
 
 
+
+
+@app.post("/booking-type/ajax")
+@login_required
+@admin_required
+def add_booking_type_ajax():
+    name = request.form.get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Name is required."})
+    conn = db()
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO booking_types (name, active) VALUES (?, 1)", (name,))
+        new_id = cur.lastrowid
+        conn.commit()
+    except Exception:
+        conn.close()
+        return jsonify({"ok": False, "error": "That booking type already exists."})
+    conn.close()
+    return jsonify({"ok": True, "id": new_id, "name": name})
+
 @app.post("/job-type")
 @login_required
 @admin_required
