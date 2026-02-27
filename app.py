@@ -648,7 +648,11 @@ def jobs_list():
            c.name AS client_name,
            (cu.first_name || ' ' || cu.last_name) AS customer_name,
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
-           u.full_name AS assigned_name
+           u.full_name AS assigned_name,
+           (SELECT s.scheduled_for FROM schedules s
+            WHERE s.job_id = j.id AND s.status = 'Booked'
+              AND s.scheduled_for >= datetime('now')
+            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
     LEFT JOIN customers cu ON cu.id = j.customer_id

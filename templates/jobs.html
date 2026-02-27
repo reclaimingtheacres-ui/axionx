@@ -30,14 +30,36 @@
       {% for j in jobs %}
         <a class="list-group-item list-group-item-action" href="/jobs/{{ j.id }}">
           <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <div class="fw-semibold">{{ j.display_ref }} — {{ j.customer_name or "No customer" }}</div>
-              <div class="small" style="color:var(--muted)">{{ j.client_name or "No client" }}{% if j.asset_reg %} | Reg: {{ j.asset_reg }}{% endif %}</div>
-              <div class="small" style="color:var(--muted)">{{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}{% if j.assigned_name %} | {{ j.assigned_name }}{% endif %}</div>
+            <div style="min-width:0;flex:1;">
+              <div class="fw-semibold">{{ j.display_ref }} &mdash; {{ j.customer_name or "No customer" }}</div>
+              <div class="small" style="color:var(--muted)">
+                {{ j.client_name or "No client" }}{% if j.asset_reg %} &nbsp;|&nbsp; Reg: {{ j.asset_reg }}{% endif %}
+              </div>
+              <div class="small" style="color:var(--muted)">
+                {{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}
+              </div>
+              <div class="d-flex flex-wrap gap-1 mt-1">
+                {% if j.assigned_name %}
+                  <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(96,165,250,.13);color:var(--accent);border:1px solid rgba(96,165,250,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.75"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+                    {{ j.assigned_name }}
+                  </span>
+                {% else %}
+                  <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(156,163,175,.1);color:var(--muted);border:1px solid rgba(156,163,175,.2);border-radius:999px;padding:1px 9px;font-size:.72rem;">
+                    Unassigned
+                  </span>
+                {% endif %}
+                {% if j.next_scheduled %}
+                  <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.8"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></svg>
+                    {{ j.next_scheduled[:16] | replace('T', ' ') }}
+                  </span>
+                {% endif %}
+              </div>
             </div>
-            <div class="text-end">
+            <div class="text-end ms-3 flex-shrink-0">
               <span class="badge bg-secondary">{{ j.status }}</span>
-              <div class="small mt-1" style="color:var(--muted)">{{ j.updated_at }}</div>
+              <div class="small mt-1" style="color:var(--muted)">{{ j.updated_at[:10] if j.updated_at else '' }}</div>
             </div>
           </div>
         </a>
