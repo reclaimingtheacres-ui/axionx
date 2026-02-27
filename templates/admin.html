@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="m-0">Admin Dashboard</h3>
+  <span class="text-muted small">{{ today }}</span>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="card p-3 border-warning">
+      <div class="h6 text-muted">Cues Today</div>
+      <div class="h3">{{ cues_today }}</div>
+      <a class="small" href="/cues?date={{ today }}">View →</a>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card p-3 border-danger">
+      <div class="h6 text-muted">Overdue Cues</div>
+      <div class="h3 text-danger">{{ cues_overdue }}</div>
+      <a class="small" href="/cues">View →</a>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card p-3 border-secondary">
+      <div class="h6 text-muted">Unassigned Cues</div>
+      <div class="h3">{{ cues_unassigned }}</div>
+      <a class="small" href="/assign">Assign →</a>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card p-3">
+      <div class="h6 text-muted">Total Jobs</div>
+      <div class="h3">{{ jobs_by_status | sum(attribute='c') }}</div>
+      <a class="small" href="/jobs">View →</a>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-5">
+    <div class="card p-3">
+      <div class="h6 mb-3">Jobs by Status</div>
+      {% for row in jobs_by_status %}
+        <div class="d-flex justify-content-between mb-1">
+          <span>{{ row.status }}</span>
+          <span class="badge bg-secondary">{{ row.c }}</span>
+        </div>
+      {% else %}
+        <div class="text-muted small">No jobs yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-7">
+    <div class="card p-3">
+      <div class="h6 mb-3">Recent Activity</div>
+      <div style="max-height:320px;overflow-y:auto">
+        {% for r in recent %}
+          <div class="d-flex gap-2 mb-2 small">
+            <span class="text-muted text-nowrap">{{ r.created_at[:16] }}</span>
+            <span class="fw-semibold text-nowrap">{{ r.actor_name or "System" }}</span>
+            <span class="text-muted">{{ r.message }}</span>
+          </div>
+        {% else %}
+          <div class="text-muted small">No activity yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-4 d-flex gap-2 flex-wrap">
+  <a class="btn btn-outline-primary" href="/cues?date={{ today }}">Today's Cues</a>
+  <a class="btn btn-outline-primary" href="/assign?date={{ today }}">Assignment Board</a>
+  <a class="btn btn-outline-secondary" href="/reports/monthly">Monthly Report</a>
+  <a class="btn btn-outline-secondary" href="/users">Manage Users</a>
+  <a class="btn btn-outline-secondary" href="/import/jobs">Import Jobs</a>
+</div>
+{% endblock %}

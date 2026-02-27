@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from functools import wraps
 import sqlite3
 import csv
+import json
 from datetime import datetime
 
 app = Flask(__name__)
@@ -113,6 +114,42 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS cue_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        visit_type TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        time_window_start TEXT,
+        time_window_end TEXT,
+        priority TEXT NOT NULL DEFAULT 'Normal',
+        status TEXT NOT NULL DEFAULT 'Pending',
+        assigned_user_id INTEGER,
+        instructions TEXT,
+        created_by_user_id INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        completed_at TEXT,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(assigned_user_id) REFERENCES users(id),
+        FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_user_id INTEGER,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER,
+        action TEXT NOT NULL,
+        message TEXT NOT NULL,
+        meta_json TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(actor_user_id) REFERENCES users(id)
+    )
+    """)
+
     cur.execute("SELECT COUNT(*) AS c FROM users")
     if cur.fetchone()["c"] == 0:
         now = datetime.now().isoformat(timespec="seconds")
@@ -128,6 +165,30 @@ def init_db():
 @app.before_request
 def _ensure_db():
     init_db()
+
+
+# -------- Helpers --------
+def now_ts():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def audit(entity_type, entity_id, action, message, meta=None):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, message, meta_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        session.get("user_id"),
+        entity_type,
+        entity_id,
+        action,
+        message,
+        json.dumps(meta) if meta else None,
+        now_ts()
+    ))
+    conn.commit()
+    conn.close()
 
 
 # -------- Auth helpers --------
@@ -702,6 +763,250 @@ def import_jobs():
 
     flash(f"Import complete: {imported} imported, {skipped} skipped.", "success")
     return redirect(url_for("import_jobs_form"))
+
+
+# -------- Admin dashboard --------
+@app.get("/admin")
+@admin_required
+def admin_dashboard():
+    today = datetime.now().date().isoformat()
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) c FROM cue_items WHERE due_date = ? AND status IN ('Pending','In Progress')", (today,))
+    cues_today = cur.fetchone()["c"]
+
+    cur.execute("SELECT COUNT(*) c FROM cue_items WHERE due_date < ? AND status IN ('Pending','In Progress')", (today,))
+    cues_overdue = cur.fetchone()["c"]
+
+    cur.execute("SELECT COUNT(*) c FROM cue_items WHERE assigned_user_id IS NULL AND status IN ('Pending','In Progress')")
+    cues_unassigned = cur.fetchone()["c"]
+
+    cur.execute("SELECT status, COUNT(*) c FROM jobs GROUP BY status ORDER BY c DESC")
+    jobs_by_status = cur.fetchall()
+
+    cur.execute("""
+        SELECT a.*, u.full_name actor_name
+        FROM audit_log a
+        LEFT JOIN users u ON u.id = a.actor_user_id
+        ORDER BY a.id DESC
+        LIMIT 20
+    """)
+    recent = cur.fetchall()
+
+    conn.close()
+    return render_template("admin.html",
+                           today=today,
+                           cues_today=cues_today,
+                           cues_overdue=cues_overdue,
+                           cues_unassigned=cues_unassigned,
+                           jobs_by_status=jobs_by_status,
+                           recent=recent)
+
+
+# -------- Cues --------
+@app.get("/cues")
+@admin_required
+def cues_list():
+    date = request.args.get("date", datetime.now().date().isoformat())
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT ci.*, j.internal_job_number, j.client_reference, j.status job_status,
+               j.job_address,
+               cu.full_name customer_name, a.reg asset_reg,
+               u.full_name assigned_name
+        FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN assets a ON a.id = j.asset_id
+        LEFT JOIN users u ON u.id = ci.assigned_user_id
+        WHERE ci.due_date = ?
+        ORDER BY ci.priority DESC, ci.id DESC
+    """, (date,))
+    cues = cur.fetchall()
+
+    cur.execute("SELECT id, full_name FROM users WHERE role = 'agent' AND active = 1 ORDER BY full_name")
+    agents = cur.fetchall()
+
+    conn.close()
+    return render_template("cues.html", cues=cues, agents=agents, date=date)
+
+
+@app.post("/cues/new")
+@admin_required
+def cue_create():
+    job_id = request.form.get("job_id", "").strip()
+    visit_type = request.form.get("visit_type", "New Visit")
+    due_date = request.form.get("due_date", "").strip()
+    assigned_user_id = request.form.get("assigned_user_id") or None
+    priority = request.form.get("priority", "Normal")
+    instructions = request.form.get("instructions", "").strip()
+
+    if not job_id or not due_date:
+        flash("Job ID and due date are required.", "danger")
+        return redirect(url_for("cues_list", date=due_date))
+
+    ts = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO cue_items (job_id, visit_type, due_date, priority, status, assigned_user_id, instructions, created_by_user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?)
+    """, (job_id, visit_type, due_date, priority, assigned_user_id, instructions or None, session.get("user_id"), ts, ts))
+    cue_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    audit("cue", cue_id, "create",
+          f"Cue created for job {job_id} due {due_date} ({visit_type}).",
+          {"job_id": job_id, "due_date": due_date, "visit_type": visit_type, "assigned_user_id": assigned_user_id})
+
+    flash("Cue added.", "success")
+    return redirect(url_for("cues_list", date=due_date))
+
+
+@app.post("/cue/<int:cue_id>/complete")
+@login_required
+def cue_complete(cue_id: int):
+    ts = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM cue_items WHERE id = ?", (cue_id,))
+    cue = cur.fetchone()
+    if not cue:
+        conn.close()
+        return ("Not found", 404)
+
+    cur.execute("UPDATE cue_items SET status = 'Completed', completed_at = ?, updated_at = ? WHERE id = ?",
+                (ts, ts, cue_id))
+    conn.commit()
+    conn.close()
+
+    audit("cue", cue_id, "status_change", f"Cue {cue_id} marked Completed.")
+
+    referrer = request.referrer or url_for("my_today")
+    return redirect(referrer)
+
+
+# -------- Assignment board --------
+@app.get("/assign")
+@admin_required
+def assign_board():
+    date = request.args.get("date", datetime.now().date().isoformat())
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, full_name FROM users WHERE role='agent' AND active=1 ORDER BY full_name")
+    agents = cur.fetchall()
+
+    cur.execute("""
+        SELECT ci.*, j.internal_job_number, j.client_reference,
+               cu.full_name customer_name, a.reg asset_reg
+        FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN assets a ON a.id = j.asset_id
+        WHERE ci.due_date = ? AND ci.status IN ('Pending','In Progress')
+        ORDER BY ci.priority DESC, ci.id DESC
+    """, (date,))
+    cues = cur.fetchall()
+
+    conn.close()
+    return render_template("assign.html", date=date, agents=agents, cues=cues)
+
+
+@app.post("/cue/<int:cue_id>/assign")
+@admin_required
+def cue_assign(cue_id: int):
+    assigned_user_id = request.form.get("assigned_user_id") or None
+    ts = now_ts()
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT assigned_user_id, job_id FROM cue_items WHERE id = ?", (cue_id,))
+    before = cur.fetchone()
+    if not before:
+        conn.close()
+        return ("Not found", 404)
+
+    cur.execute("UPDATE cue_items SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                (assigned_user_id, ts, cue_id))
+    conn.commit()
+    conn.close()
+
+    audit("cue", cue_id, "assign",
+          f"Cue {cue_id} assigned to user {assigned_user_id or 'Unassigned'}.",
+          {"from": before["assigned_user_id"], "to": assigned_user_id, "job_id": before["job_id"]})
+
+    return ("OK", 200)
+
+
+# -------- Monthly report --------
+@app.get("/reports/monthly")
+@admin_required
+def report_monthly():
+    prefix = request.args.get("prefix") or datetime.now().strftime("%y%m")
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COUNT(*) c FROM jobs
+        WHERE strftime('%y%m', created_at) = ?
+    """, (prefix,))
+    total_jobs = cur.fetchone()["c"]
+
+    cur.execute("""
+        SELECT status, COUNT(*) c FROM jobs
+        WHERE strftime('%y%m', created_at) = ?
+        GROUP BY status ORDER BY c DESC
+    """, (prefix,))
+    by_status = cur.fetchall()
+
+    cur.execute("""
+        SELECT u.full_name, COUNT(*) c
+        FROM cue_items ci
+        JOIN users u ON u.id = ci.assigned_user_id
+        JOIN jobs j ON j.id = ci.job_id
+        WHERE strftime('%y%m', j.created_at) = ? AND ci.status = 'Completed'
+        GROUP BY u.full_name
+        ORDER BY c DESC
+    """, (prefix,))
+    completed_by_agent = cur.fetchall()
+
+    conn.close()
+    return render_template("report_monthly.html",
+                           prefix=prefix,
+                           total_jobs=total_jobs,
+                           by_status=by_status,
+                           completed_by_agent=completed_by_agent)
+
+
+# -------- Agent: My Today --------
+@app.get("/my/today")
+@login_required
+def my_today():
+    today = datetime.now().date().isoformat()
+    user_id = session.get("user_id")
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
+               cu.full_name customer_name, a.reg asset_reg
+        FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN assets a ON a.id = j.asset_id
+        WHERE ci.due_date = ? AND ci.assigned_user_id = ?
+          AND ci.status IN ('Pending','In Progress')
+        ORDER BY ci.priority DESC, ci.id
+    """, (today, user_id))
+    cues = cur.fetchall()
+    conn.close()
+
+    return render_template("my_today.html", cues=cues, today=today)
 
 
 if __name__ == "__main__":

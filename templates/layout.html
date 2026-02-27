@@ -15,7 +15,14 @@
       <a class="nav-link" href="/clients">Clients</a>
       <a class="nav-link" href="/customers">Customers</a>
       <a class="nav-link" href="/assets">Assets</a>
+      {% if session.get("role") == "agent" %}
+        <a class="nav-link" href="/my/today">My Today</a>
+      {% endif %}
       {% if session.get("role") == "admin" %}
+        <a class="nav-link" href="/admin">Dashboard</a>
+        <a class="nav-link" href="/cues">Cues</a>
+        <a class="nav-link" href="/assign">Assign</a>
+        <a class="nav-link" href="/reports/monthly">Reports</a>
         <a class="nav-link" href="/users">Users</a>
         <a class="nav-link" href="/import/jobs">Import</a>
       {% endif %}

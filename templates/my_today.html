@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="m-0">My Jobs Today</h3>
+  <span class="text-muted small">{{ today }}</span>
+</div>
+
+{% if cues %}
+  <div class="list-group">
+    {% for c in cues %}
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="fw-semibold">
+              <a href="/jobs/{{ c.job_id }}">{{ c.internal_job_number }}{% if c.client_reference %} ({{ c.client_reference }}){% endif %}</a>
+              — {{ c.customer_name or "No customer" }}
+            </div>
+            <div class="small text-muted">
+              {{ c.visit_type }} | {{ c.priority }}
+              {% if c.asset_reg %} | Reg: {{ c.asset_reg }}{% endif %}
+            </div>
+            {% if c.instructions %}
+              <div class="small mt-1">{{ c.instructions }}</div>
+            {% endif %}
+            {% if c.job_address %}
+              <div class="small text-muted mt-1">
+                {{ c.job_address }}
+                <a class="ms-2" target="_blank"
+                   href="https://www.google.com/maps/search/?api=1&query={{ c.job_address|urlencode }}">
+                  Map ↗
+                </a>
+              </div>
+            {% endif %}
+          </div>
+          <div class="text-end d-flex flex-column gap-1 align-items-end">
+            <span class="badge
+              {% if c.status == 'Completed' %}bg-success
+              {% elif c.status == 'In Progress' %}bg-warning text-dark
+              {% else %}bg-dark{% endif %}">{{ c.status }}</span>
+            {% if c.status not in ('Completed', 'Cancelled') %}
+              <form method="post" action="/cue/{{ c.id }}/complete" class="mt-1">
+                <button class="btn btn-outline-success btn-sm">✓ Done</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="text-muted">No cues assigned to you for today.</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="m-0">Assignment Board</h3>
+  <form method="get" class="d-flex gap-2 align-items-center">
+    <input type="date" class="form-control form-control-sm" name="date" value="{{ date }}">
+    <button class="btn btn-outline-secondary btn-sm">Go</button>
+  </form>
+</div>
+
+<div class="row g-3" id="board">
+  <div class="col-12 col-lg-3">
+    <div class="card h-100">
+      <div class="card-header fw-semibold bg-secondary text-white">Unassigned</div>
+      <div class="card-body p-2 drop-zone" data-agent-id="" style="min-height:200px">
+        {% for c in cues if not c.assigned_user_id %}
+          {{ render_cue_card(c) }}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% for agent in agents %}
+    <div class="col-12 col-lg-3">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">{{ agent.full_name }}</div>
+        <div class="card-body p-2 drop-zone" data-agent-id="{{ agent.id }}" style="min-height:200px">
+          {% for c in cues if c.assigned_user_id == agent.id %}
+            {{ render_cue_card(c) }}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+{% macro render_cue_card(c) %}
+<div class="card mb-2 cue-card" draggable="true"
+     data-cue-id="{{ c.id }}"
+     style="cursor:grab">
+  <div class="card-body p-2">
+    <div class="fw-semibold small">
+      <a href="/jobs/{{ c.job_id }}" class="text-decoration-none text-dark">
+        {{ c.internal_job_number }}{% if c.client_reference %} ({{ c.client_reference }}){% endif %}
+      </a>
+    </div>
+    <div class="text-muted" style="font-size:0.75rem">{{ c.customer_name or "—" }}{% if c.asset_reg %} · {{ c.asset_reg }}{% endif %}</div>
+    <div class="mt-1">
+      <span class="badge bg-dark" style="font-size:0.65rem">{{ c.visit_type }}</span>
+      <span class="badge
+        {% if c.priority == 'Urgent' %}bg-danger
+        {% elif c.priority == 'High' %}bg-warning text-dark
+        {% else %}bg-secondary{% endif %}" style="font-size:0.65rem">{{ c.priority }}</span>
+    </div>
+    {% if c.instructions %}
+      <div class="text-muted mt-1" style="font-size:0.72rem">{{ c.instructions }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+<style>
+.drop-zone.drag-over { background: #e8f4ff; border: 2px dashed #0d6efd; border-radius: 6px; }
+.cue-card.dragging { opacity: 0.4; }
+</style>
+
+<script>
+const csrfHeaders = { "Content-Type": "application/x-www-form-urlencoded" };
+
+document.querySelectorAll(".cue-card").forEach(card => {
+  card.addEventListener("dragstart", e => {
+    e.dataTransfer.setData("cue-id", card.dataset.cueId);
+    card.classList.add("dragging");
+  });
+  card.addEventListener("dragend", () => card.classList.remove("dragging"));
+});
+
+document.querySelectorAll(".drop-zone").forEach(zone => {
+  zone.addEventListener("dragover", e => {
+    e.preventDefault();
+    zone.classList.add("drag-over");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+  zone.addEventListener("drop", async e => {
+    e.preventDefault();
+    zone.classList.remove("drag-over");
+    const cueId = e.dataTransfer.getData("cue-id");
+    const agentId = zone.dataset.agentId;
+
+    const card = document.querySelector(`.cue-card[data-cue-id="${cueId}"]`);
+    if (!card) return;
+
+    const res = await fetch(`/cue/${cueId}/assign`, {
+      method: "POST",
+      headers: csrfHeaders,
+      body: new URLSearchParams({ assigned_user_id: agentId })
+    });
+    if (res.ok) {
+      zone.prepend(card);
+    } else {
+      alert("Assignment failed. Please refresh.");
+    }
+  });
+});
+</script>
+{% endblock %}

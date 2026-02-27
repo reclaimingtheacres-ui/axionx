@@ -1,6 +1,6 @@
 # Axion Prototype
 
-A Flask-based field operations management app for tracking jobs, clients, customers, and assets, with staff login and role-based access.
+A Flask-based field operations management app for tracking jobs, clients, customers, assets, cues, and staff.
 
 ## Stack
 
@@ -10,59 +10,71 @@ A Flask-based field operations management app for tracking jobs, clients, custom
 
 ## Running
 
-The app runs via the "Start application" workflow: `python app.py` on port 5000.
+Workflow: `python app.py` on port 5000.
 
 ## Default Login
 
-A seed admin account is created automatically on first run if no users exist:
+A seed admin is created on first run if no users exist:
 - **Email**: `admin@axion.local`
 - **Password**: `admin`
-
-Change this immediately via the Users section after first login.
 
 ## Structure
 
 ```
-app.py                  # Flask app — all routes, DB logic, auth
+app.py
 templates/
-  login.html            # Login page (standalone, no navbar)
-  layout.html           # Base template with navbar, flash messages, user info
-  index.html            # Dashboard with counts
-  jobs.html             # Job list with search/filter + assigned agent
-  job_new.html          # New job form (includes assign-to dropdown)
-  job_detail.html       # Job detail, update status/visit/assignment, timeline
-  clients.html          # Client list
-  client_new.html       # New client form
-  customers.html        # Customer list
-  customer_new.html     # New customer form
-  assets.html           # Asset list
-  asset_new.html        # New asset form
-  users.html            # User list (admin only)
-  user_new.html         # New user form (admin only)
-  import_jobs.html      # CSV import for jobs (admin only)
-axion.db                # SQLite database (auto-created on first run)
-requirements.txt        # Python dependencies
+  login.html            Standalone login page
+  layout.html           Base template (navbar adapts by role)
+  index.html            Dashboard counts
+  jobs.html / job_new.html / job_detail.html
+  clients.html / client_new.html
+  customers.html / customer_new.html
+  assets.html / asset_new.html
+  users.html / user_new.html          Admin only
+  admin.html                          Admin dashboard
+  cues.html                           Cue management (admin)
+  assign.html                         Drag-drop assignment board (admin)
+  report_monthly.html                 Monthly report (admin)
+  my_today.html                       Agent daily cue view
+  import_jobs.html                    CSV import (admin)
 ```
 
 ## Database Schema
 
-- **users** — staff accounts (admin / agent roles)
-- **clients** — companies/creditors who assign jobs
-- **customers** — debtors/subjects of jobs
-- **assets** — vehicles (reg, VIN, make, model, year)
-- **jobs** — core entity; stores internal_job_number, client_reference, display_ref, and assigned_user_id
-- **interactions** — timestamped timeline entries per job
+- **users** — staff (admin / agent roles)
+- **clients** — companies/creditors
+- **customers** — debtors/subjects
+- **assets** — vehicles
+- **jobs** — core entity with internal_job_number, client_reference, display_ref, assigned_user_id
+- **interactions** — timestamped job timeline entries
+- **cue_items** — scheduled field visits/tasks per job (due date, visit type, priority, assignment, status)
+- **audit_log** — all significant actions logged with actor, entity, action, message
 
-## Auth & Role Logic
+## Role-based Navigation
 
-- All routes (except `/login`) require login via `@login_required`
-- Admin users see all jobs; agents only see jobs assigned to them
-- Users, Import routes are `@admin_required`
-- Job detail enforces agent can only view their assigned jobs
+| Feature | Admin | Agent |
+|---|---|---|
+| Jobs (all) | ✓ | own only |
+| Dashboard | ✓ | — |
+| Cues | ✓ | — |
+| Assign Board | ✓ | — |
+| Reports | ✓ | — |
+| Users | ✓ | — |
+| Import | ✓ | — |
+| My Today | — | ✓ |
 
-## CSV Import (Jobs)
+## Cues System
 
-Upload a CSV at `/import/jobs` (admin only). Expected columns:
-`InternalJobNumber, ClientReference, JobType, VisitType, Status, Priority, JobAddress, Description`
+Cues are scheduled work items attached to jobs — a date, visit type, priority, agent, and optional instructions. Agents see their cues on `/my/today`. Admins manage all cues at `/cues` and drag-and-drop assign them on `/assign`.
 
-Rows with duplicate `InternalJobNumber` are skipped.
+## Audit Log
+
+Every cue create, assign, status change, and user action is written to `audit_log`. The admin dashboard shows the last 20 entries.
+
+## Monthly Report (`/reports/monthly`)
+
+Filter by YYMM prefix (e.g. `2602`). Shows total jobs, jobs by status, and completed cues per agent for the month.
+
+## CSV Import (`/import/jobs`)
+
+Upload CSV with columns: `InternalJobNumber, ClientReference, JobType, VisitType, Status, Priority, JobAddress, Description`. Duplicate InternalJobNumbers are skipped.

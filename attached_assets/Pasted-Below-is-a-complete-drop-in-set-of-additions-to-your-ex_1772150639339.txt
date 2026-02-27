@@ -1,0 +1,306 @@
+Below is a complete “drop-in” set of additions to your existing Flask app. It assumes you already have users, jobs with assigned_user_id, and the job numbering logic we discussed. If you don’t yet, tell me and I’ll merge it into one consolidated app.py.
+
+A) Add new tables to init_db()
+
+Add these two CREATE TABLE blocks:
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS cue_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    visit_type TEXT NOT NULL,
+    due_date TEXT NOT NULL,                 -- YYYY-MM-DD
+    time_window_start TEXT,                 -- HH:MM (optional)
+    time_window_end TEXT,                   -- HH:MM (optional)
+    priority TEXT NOT NULL DEFAULT 'Normal',
+    status TEXT NOT NULL DEFAULT 'Pending', -- Pending/In Progress/Completed/Overdue/Cancelled
+    assigned_user_id INTEGER,               -- nullable (unassigned)
+    instructions TEXT,
+    created_by_user_id INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY(job_id) REFERENCES jobs(id),
+    FOREIGN KEY(assigned_user_id) REFERENCES users(id),
+    FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER,
+    entity_type TEXT NOT NULL,     -- job/client/customer/asset/cue/import/user
+    entity_id INTEGER,
+    action TEXT NOT NULL,          -- create/update/assign/status_change/import/delete
+    message TEXT NOT NULL,         -- human readable
+    meta_json TEXT,                -- optional json string
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(actor_user_id) REFERENCES users(id)
+)
+""")
+B) Add audit helper + role guards
+
+Add these imports near the top:
+
+import json
+from functools import wraps
+from flask import session
+
+Add these helpers:
+
+def now_ts():
+    return datetime.now().isoformat(timespec="seconds")
+
+def audit(entity_type, entity_id, action, message, meta=None):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, message, meta_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        session.get("user_id"),
+        entity_type,
+        entity_id,
+        action,
+        message,
+        json.dumps(meta) if meta else None,
+        now_ts()
+    ))
+    conn.commit()
+    conn.close()
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return wrapper
+
+def admin_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login"))
+        if session.get("role") != "admin":
+            return ("Forbidden", 403)
+        return f(*args, **kwargs)
+    return wrapper
+
+Then add @login_required on jobs/customers/clients/assets pages, and @admin_required on admin/report/import/assignment pages.
+
+C) Admin dashboard route
+
+Add:
+
+@app.get("/admin")
+@admin_required
+def admin_dashboard():
+    today = datetime.now().date().isoformat()
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) c FROM cue_items WHERE due_date = ? AND status IN ('Pending','In Progress')", (today,))
+    cues_today = cur.fetchone()["c"]
+
+    cur.execute("SELECT COUNT(*) c FROM cue_items WHERE due_date < ? AND status IN ('Pending','In Progress')", (today,))
+    cues_overdue = cur.fetchone()["c"]
+
+    cur.execute("SELECT COUNT(*) c FROM cue_items WHERE assigned_user_id IS NULL AND status IN ('Pending','In Progress')", ())
+    cues_unassigned = cur.fetchone()["c"]
+
+    cur.execute("SELECT status, COUNT(*) c FROM jobs GROUP BY status ORDER BY c DESC", ())
+    jobs_by_status = cur.fetchall()
+
+    cur.execute("""
+        SELECT a.*, u.full_name actor_name
+        FROM audit_log a
+        LEFT JOIN users u ON u.id = a.actor_user_id
+        ORDER BY a.id DESC
+        LIMIT 20
+    """)
+    recent = cur.fetchall()
+
+    conn.close()
+    return render_template("admin.html",
+                           today=today,
+                           cues_today=cues_today,
+                           cues_overdue=cues_overdue,
+                           cues_unassigned=cues_unassigned,
+                           jobs_by_status=jobs_by_status,
+                           recent=recent)
+D) Cue list and create cue
+
+Add cue list:
+
+@app.get("/cues")
+@admin_required
+def cues_list():
+    date = request.args.get("date", datetime.now().date().isoformat())
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT ci.*, j.internal_job_number, j.client_reference, j.status job_status,
+               cu.full_name customer_name, a.reg asset_reg,
+               u.full_name assigned_name
+        FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN assets a ON a.id = j.asset_id
+        LEFT JOIN users u ON u.id = ci.assigned_user_id
+        WHERE ci.due_date = ?
+        ORDER BY ci.priority DESC, ci.id DESC
+    """, (date,))
+    cues = cur.fetchall()
+
+    cur.execute("SELECT id, full_name FROM users WHERE role = 'agent' AND active = 1 ORDER BY full_name")
+    agents = cur.fetchall()
+
+    conn.close()
+    return render_template("cues.html", cues=cues, agents=agents, date=date)
+
+Add create cue:
+
+@app.post("/cues/new")
+@admin_required
+def cue_create():
+    job_id = request.form.get("job_id")
+    visit_type = request.form.get("visit_type", "New Visit")
+    due_date = request.form.get("due_date")
+    assigned_user_id = request.form.get("assigned_user_id") or None
+    priority = request.form.get("priority", "Normal")
+    instructions = request.form.get("instructions", "").strip()
+
+    if not job_id or not due_date:
+        return ("Bad request", 400)
+
+    ts = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO cue_items (job_id, visit_type, due_date, priority, status, assigned_user_id, instructions, created_by_user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?)
+    """, (job_id, visit_type, due_date, priority, assigned_user_id, instructions, session.get("user_id"), ts, ts))
+    cue_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    audit("cue", cue_id, "create", f"Cue created for job {job_id} due {due_date} ({visit_type}).",
+          {"job_id": job_id, "due_date": due_date, "visit_type": visit_type, "assigned_user_id": assigned_user_id})
+
+    return redirect(url_for("cues_list", date=due_date))
+E) Assignment board with drag/drop
+
+Route:
+
+@app.get("/assign")
+@admin_required
+def assign_board():
+    date = request.args.get("date", datetime.now().date().isoformat())
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, full_name FROM users WHERE role='agent' AND active=1 ORDER BY full_name")
+    agents = cur.fetchall()
+
+    cur.execute("""
+        SELECT ci.*, j.internal_job_number, j.client_reference,
+               cu.full_name customer_name, a.reg asset_reg
+        FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN assets a ON a.id = j.asset_id
+        WHERE ci.due_date = ? AND ci.status IN ('Pending','In Progress')
+        ORDER BY ci.priority DESC, ci.id DESC
+    """, (date,))
+    cues = cur.fetchall()
+
+    conn.close()
+    return render_template("assign.html", date=date, agents=agents, cues=cues)
+
+Assign endpoint (called by JS on drop):
+
+@app.post("/cue/<int:cue_id>/assign")
+@admin_required
+def cue_assign(cue_id: int):
+    assigned_user_id = request.form.get("assigned_user_id")
+    ts = now_ts()
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT assigned_user_id, job_id FROM cue_items WHERE id = ?", (cue_id,))
+    before = cur.fetchone()
+    if not before:
+        conn.close()
+        return ("Not found", 404)
+
+    cur.execute("UPDATE cue_items SET assigned_user_id = ?, updated_at = ? WHERE id = ?", (assigned_user_id or None, ts, cue_id))
+    conn.commit()
+    conn.close()
+
+    audit("cue", cue_id, "assign",
+          f"Cue {cue_id} assigned to user {assigned_user_id or 'Unassigned'}.",
+          {"from": before["assigned_user_id"], "to": assigned_user_id, "job_id": before["job_id"]})
+
+    return ("OK", 200)
+
+Your assign.html template then needs very small JS for drag/drop; I can supply the full template next if you want, but the backend above is the core.
+
+F) Reporting dashboard by prefix/month
+
+Route:
+
+@app.get("/reports/monthly")
+@admin_required
+def report_monthly():
+    prefix = request.args.get("prefix") or datetime.now().strftime("%y%m")
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) c FROM jobs WHERE job_prefix = ?", (prefix,))
+    total_jobs = cur.fetchone()["c"]
+
+    cur.execute("SELECT status, COUNT(*) c FROM jobs WHERE job_prefix = ? GROUP BY status ORDER BY c DESC", (prefix,))
+    by_status = cur.fetchall()
+
+    cur.execute("""
+        SELECT u.full_name, COUNT(*) c
+        FROM cue_items ci
+        JOIN users u ON u.id = ci.assigned_user_id
+        JOIN jobs j ON j.id = ci.job_id
+        WHERE j.job_prefix = ? AND ci.status = 'Completed'
+        GROUP BY u.full_name
+        ORDER BY c DESC
+    """, (prefix,))
+    completed_by_agent = cur.fetchall()
+
+    conn.close()
+
+    return render_template("report_monthly.html",
+                           prefix=prefix,
+                           total_jobs=total_jobs,
+                           by_status=by_status,
+                           completed_by_agent=completed_by_agent)
+G) Bulk import wizard with mapping (practical Replit version)
+
+This is the one area where I recommend we implement as a dedicated mini-module, because it needs templates. The quickest good version is: upload CSV → choose “import type” (clients/users/jobs/assets) → mapping form built from headers → preview → import.
+
+If you want “exact code”, I’ll provide it, but it’s about 150–250 lines plus 2–3 templates. To avoid dumping a wall of code in one message, tell me which import you want first (jobs or clients), and I’ll give you the full working wizard for that, then we duplicate it for the others.
+
+H) Agent restriction to allocated jobs
+
+You already asked for this earlier and it ties into cue allocation.
+
+When session.role == "agent", enforce:
+
+/jobs list returns only jobs assigned to them OR jobs with a cue assigned to them (depending on your preference)
+
+/jobs/<id> checks they’re allowed to view it
+
+/cues and /assign forbidden (admin only)
+
+Mobile “Today” screen for agents should show cues assigned to them due today
+
+That last one is a new route: /my/today.

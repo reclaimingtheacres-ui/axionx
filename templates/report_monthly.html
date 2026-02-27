@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="m-0">Monthly Report</h3>
+  <form method="get" class="d-flex gap-2 align-items-center">
+    <input class="form-control form-control-sm" name="prefix" value="{{ prefix }}" placeholder="YYMM e.g. 2602" style="width:120px">
+    <button class="btn btn-outline-secondary btn-sm">Go</button>
+  </form>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="card p-3">
+      <div class="h6 text-muted">Total Jobs</div>
+      <div class="h3">{{ total_jobs }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card p-3">
+      <div class="h6 text-muted">Completed Cues</div>
+      <div class="h3">{{ completed_by_agent | sum(attribute='c') }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-5">
+    <div class="card p-3">
+      <div class="h6 mb-3">Jobs by Status</div>
+      {% for row in by_status %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span>{{ row.status }}</span>
+          <div class="d-flex align-items-center gap-2">
+            <div class="bg-secondary rounded" style="height:8px;width:{{ (row.c / total_jobs * 120)|int if total_jobs else 0 }}px"></div>
+            <span class="badge bg-secondary">{{ row.c }}</span>
+          </div>
+        </div>
+      {% else %}
+        <div class="text-muted small">No jobs in this period.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-7">
+    <div class="card p-3">
+      <div class="h6 mb-3">Completed Cues by Agent</div>
+      {% for row in completed_by_agent %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span>{{ row.full_name }}</span>
+          <span class="badge bg-success">{{ row.c }}</span>
+        </div>
+      {% else %}
+        <div class="text-muted small">No completed cues in this period.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
