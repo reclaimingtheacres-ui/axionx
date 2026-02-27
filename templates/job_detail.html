@@ -57,6 +57,29 @@
   </div>
 </div>
 
+<!-- -------- Lender / Financials -------- -->
+{% if job.lender_name or job.account_number or job.regulation_type or job.arrears_cents or job.costs_cents or job.mmp_cents or job.job_due_date %}
+<div class="ax-card mb-3">
+  <div class="ax-card-h">Lender / Financials</div>
+  <div class="ax-card-b">
+    <div class="row g-2">
+      <div class="col-12 col-lg-4"><span style="color:var(--muted)">Lender:</span> {{ job.lender_name or '—' }}</div>
+      <div class="col-12 col-lg-4"><span style="color:var(--muted)">Account:</span> {{ job.account_number or '—' }}</div>
+      <div class="col-12 col-lg-4"><span style="color:var(--muted)">Regulation:</span> {{ job.regulation_type or '—' }}</div>
+    </div>
+    <div class="row g-2 mt-1">
+      <div class="col-12 col-md-3"><span style="color:var(--muted)">Arrears:</span> {{ cents_to_money(job.arrears_cents) }}</div>
+      <div class="col-12 col-md-3"><span style="color:var(--muted)">Costs:</span> {{ cents_to_money(job.costs_cents) }}</div>
+      <div class="col-12 col-md-3"><span style="color:var(--muted)">MMP:</span> {{ cents_to_money(job.mmp_cents) }}</div>
+      <div class="col-12 col-md-3"><span style="color:var(--muted)">Due:</span> {{ job.job_due_date or '—' }}</div>
+    </div>
+    <div class="mt-2 fw-semibold">
+      Total: {{ cents_to_money((job.arrears_cents or 0) + (job.costs_cents or 0) + (job.mmp_cents or 0)) }}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- -------- Job Items -------- -->
 <div class="ax-card mb-3">
   <div class="ax-card-h">Job Items</div>

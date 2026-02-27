@@ -91,7 +91,50 @@
         <textarea class="form-control" name="description" rows="4"></textarea>
       </div>
 
-      <div class="d-flex gap-2">
+      <div class="ax-card mt-3">
+        <div class="ax-card-h">Lender / Financials</div>
+        <div class="ax-card-b">
+          <div class="row g-2">
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Lender</label>
+              <input class="form-control" name="lender_name" placeholder="e.g. Nissan Finance">
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Account number</label>
+              <input class="form-control" name="account_number" placeholder="e.g. 1234567">
+            </div>
+            <div class="col-12 col-lg-4">
+              <label class="form-label">Regulation</label>
+              <select class="form-select" name="regulation_type">
+                <option value="">Select…</option>
+                <option>REGULATED</option>
+                <option>UNREGULATED</option>
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mt-1">
+            <div class="col-12 col-md-3">
+              <label class="form-label">Arrears</label>
+              <input class="form-control" name="arrears" placeholder="$0.00">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label">Costs</label>
+              <input class="form-control" name="costs" placeholder="$0.00">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label">MMP</label>
+              <input class="form-control" name="mmp" placeholder="$0.00">
+            </div>
+            <div class="col-12 col-md-3">
+              <label class="form-label">Due date</label>
+              <input class="form-control" type="date" name="job_due_date">
+            </div>
+          </div>
+          <div class="form-text mt-2" style="color:var(--muted)">Total calculates automatically on the job.</div>
+        </div>
+      </div>
+
+      <div class="mt-3 d-flex gap-2">
         <button class="btn btn-primary">Create Job</button>
         <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
       </div>

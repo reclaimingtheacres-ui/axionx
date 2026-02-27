@@ -1,0 +1,160 @@
+Database changes (jobs table)
+
+Add these columns to jobs:
+
+lender_name (text)
+
+account_number (text)
+
+regulation_type (text: “REGULATED” or “UNREGULATED”)
+
+arrears_cents (integer)
+
+costs_cents (integer)
+
+mmp_cents (integer)
+
+due_date (text, YYYY-MM-DD)
+
+I recommend storing money as cents (integers) so totals are always accurate.
+
+If you already have a live axion.db, run these once on startup (migration style) instead of recreating the DB:
+
+def add_column_if_missing(cur, table, col, coltype):
+    cur.execute(f"PRAGMA table_info({table})")
+    cols = [r["name"] for r in cur.fetchall()]
+    if col not in cols:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+
+def migrate_jobs_financials():
+    conn = db()
+    cur = conn.cursor()
+    add_column_if_missing(cur, "jobs", "lender_name", "TEXT")
+    add_column_if_missing(cur, "jobs", "account_number", "TEXT")
+    add_column_if_missing(cur, "jobs", "regulation_type", "TEXT")
+    add_column_if_missing(cur, "jobs", "arrears_cents", "INTEGER")
+    add_column_if_missing(cur, "jobs", "costs_cents", "INTEGER")
+    add_column_if_missing(cur, "jobs", "mmp_cents", "INTEGER")
+    add_column_if_missing(cur, "jobs", "due_date", "TEXT")
+    conn.commit()
+    conn.close()
+
+Call migrate_jobs_financials() once after init_db().
+
+Totals
+
+Compute the “Total” dynamically on the page as:
+
+Total = arrears + costs + MMP (all in cents), then format to dollars.
+
+Add these helpers in app.py:
+
+import re
+
+def money_to_cents(s: str) -> int:
+    s = (s or "").strip()
+    if not s:
+        return 0
+    s = s.replace("$", "").replace(",", "").strip()
+    if not re.match(r"^\d+(\.\d{1,2})?$", s):
+        return 0
+    if "." in s:
+        dollars, cents = s.split(".", 1)
+        cents = (cents + "00")[:2]
+    else:
+        dollars, cents = s, "00"
+    return int(dollars) * 100 + int(cents)
+
+def cents_to_money(cents: int) -> str:
+    cents = int(cents or 0)
+    return f"${cents/100:,.2f}"
+Job create/edit form fields
+
+In templates/job_create.html (and job_edit.html if you have it), add a “Lender / Financials” card and include these inputs:
+
+<div class="ax-card mt-3">
+  <div class="ax-card-h">Lender / financials</div>
+  <div class="ax-card-b">
+    <div class="row g-2">
+      <div class="col-12 col-lg-4">
+        <label class="form-label">Lender</label>
+        <input class="form-control" name="lender_name" placeholder="e.g. Nissan Finance">
+      </div>
+      <div class="col-12 col-lg-4">
+        <label class="form-label">Account number</label>
+        <input class="form-control" name="account_number" placeholder="e.g. 1234567">
+      </div>
+      <div class="col-12 col-lg-4">
+        <label class="form-label">Regulation</label>
+        <select class="form-select" name="regulation_type">
+          <option value="">Select…</option>
+          <option>REGULATED</option>
+          <option>UNREGULATED</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row g-2 mt-1">
+      <div class="col-12 col-md-3">
+        <label class="form-label">Arrears</label>
+        <input class="form-control" name="arrears" placeholder="$0.00">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">Costs</label>
+        <input class="form-control" name="costs" placeholder="$0.00">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">MMP</label>
+        <input class="form-control" name="mmp" placeholder="$0.00">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">Due date</label>
+        <input class="form-control" type="date" name="due_date">
+      </div>
+    </div>
+
+    <div class="text-muted small mt-2">Total will calculate automatically on the job.</div>
+  </div>
+</div>
+Save to the database (job create route)
+
+In your job create POST handler, read and store them like this:
+
+lender_name = (request.form.get("lender_name") or "").strip()
+account_number = (request.form.get("account_number") or "").strip()
+regulation_type = (request.form.get("regulation_type") or "").strip()
+
+arrears_cents = money_to_cents(request.form.get("arrears"))
+costs_cents = money_to_cents(request.form.get("costs"))
+mmp_cents = money_to_cents(request.form.get("mmp"))
+due_date = (request.form.get("due_date") or "").strip() or None
+
+Then include these in your INSERT INTO jobs (...) VALUES (...) statement.
+
+Display on the job (job detail)
+
+When rendering job_detail.html, show a summary block and calculated total:
+
+<div class="ax-card mt-3">
+  <div class="ax-card-h">Lender / financials</div>
+  <div class="ax-card-b">
+    <div class="row g-2">
+      <div class="col-12 col-lg-4"><span class="text-muted">Lender:</span> {{ job.lender_name or '-' }}</div>
+      <div class="col-12 col-lg-4"><span class="text-muted">Account:</span> {{ job.account_number or '-' }}</div>
+      <div class="col-12 col-lg-4"><span class="text-muted">Regulation:</span> {{ job.regulation_type or '-' }}</div>
+    </div>
+    <div class="row g-2 mt-1">
+      <div class="col-12 col-md-3"><span class="text-muted">Arrears:</span> {{ cents_to_money(job.arrears_cents) }}</div>
+      <div class="col-12 col-md-3"><span class="text-muted">Costs:</span> {{ cents_to_money(job.costs_cents) }}</div>
+      <div class="col-12 col-md-3"><span class="text-muted">MMP:</span> {{ cents_to_money(job.mmp_cents) }}</div>
+      <div class="col-12 col-md-3"><span class="text-muted">Due:</span> {{ job.due_date or '-' }}</div>
+    </div>
+    <div class="mt-2 fw-semibold">
+      Total: {{ cents_to_money((job.arrears_cents or 0) + (job.costs_cents or 0) + (job.mmp_cents or 0)) }}
+    </div>
+  </div>
+</div>
+
+To use cents_to_money() inside templates, register it:
+
+app.jinja_env.globals.update(cents_to_money=cents_to_money)

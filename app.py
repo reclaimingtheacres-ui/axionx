@@ -6,6 +6,7 @@ import sqlite3
 import csv
 import json
 import os
+import re
 import mimetypes
 from datetime import datetime
 
@@ -28,6 +29,13 @@ def db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def add_column_if_missing(cur, table, col, coltype):
+    cur.execute(f"PRAGMA table_info({table})")
+    cols = [r["name"] for r in cur.fetchall()]
+    if col not in cols:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
 
 
 def init_db():
@@ -257,6 +265,17 @@ def init_db():
             VALUES (1, ?, 0, 1, ?)
         """, (current_prefix, now_ts()))
 
+    for col, coltype in [
+        ("lender_name",      "TEXT"),
+        ("account_number",   "TEXT"),
+        ("regulation_type",  "TEXT"),
+        ("arrears_cents",    "INTEGER"),
+        ("costs_cents",      "INTEGER"),
+        ("mmp_cents",        "INTEGER"),
+        ("job_due_date",     "TEXT"),
+    ]:
+        add_column_if_missing(cur, "jobs", col, coltype)
+
     conn.commit()
     conn.close()
 
@@ -274,6 +293,28 @@ def _ensure_db():
 # -------- Helpers --------
 def now_ts():
     return datetime.now().isoformat(timespec="seconds")
+
+
+def money_to_cents(s: str) -> int:
+    s = (s or "").strip()
+    if not s:
+        return 0
+    s = s.replace("$", "").replace(",", "").strip()
+    if not re.match(r"^\d+(\.\d{1,2})?$", s):
+        return 0
+    if "." in s:
+        dollars, cents = s.split(".", 1)
+        cents = (cents + "00")[:2]
+    else:
+        dollars, cents = s, "00"
+    return int(dollars) * 100 + int(cents)
+
+
+def cents_to_money(cents) -> str:
+    return f"${int(cents or 0) / 100:,.2f}"
+
+
+app.jinja_env.globals.update(cents_to_money=cents_to_money)
 
 
 def users_count():
@@ -580,6 +621,13 @@ def job_create():
     priority = request.form.get("priority", "Normal").strip()
     job_address = request.form.get("job_address", "").strip()
     description = request.form.get("description", "").strip()
+    lender_name = request.form.get("lender_name", "").strip()
+    account_number = request.form.get("account_number", "").strip()
+    regulation_type = request.form.get("regulation_type", "").strip()
+    arrears_cents = money_to_cents(request.form.get("arrears"))
+    costs_cents = money_to_cents(request.form.get("costs"))
+    mmp_cents = money_to_cents(request.form.get("mmp"))
+    job_due_date = request.form.get("job_due_date", "").strip() or None
 
     display_ref = internal_job_number
     if client_reference:
@@ -594,14 +642,20 @@ def job_create():
             internal_job_number, client_reference, display_ref,
             client_id, customer_id, assigned_user_id,
             job_type, visit_type, status, priority,
-            job_address, description, created_at, updated_at
+            job_address, description,
+            lender_name, account_number, regulation_type,
+            arrears_cents, costs_cents, mmp_cents, job_due_date,
+            created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         internal_job_number, client_reference or None, display_ref,
         client_id, customer_id, assigned_user_id,
         job_type, visit_type, status, priority,
-        job_address, description, now, now
+        job_address, description,
+        lender_name or None, account_number or None, regulation_type or None,
+        arrears_cents or None, costs_cents or None, mmp_cents or None, job_due_date,
+        now, now
     ))
     job_id = cur.lastrowid
 
