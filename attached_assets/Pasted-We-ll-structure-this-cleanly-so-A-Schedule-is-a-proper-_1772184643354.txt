@@ -1,0 +1,163 @@
+We’ll structure this cleanly so:
+
+• A Schedule is a proper record
+• Booking Type is controlled but extendable
+• Admin can add new booking types without code changes
+• UI has two buttons:
+– Add Booking
+– Add Booking Type
+
+1️⃣ Booking Types (Core List)
+
+Default booking types:
+
+New Visit
+
+Re-attend
+
+Urgent New Visit
+
+Update Required
+
+Urgent Update Required
+
+These should live in a database table, not hardcoded in HTML.
+
+Example model:
+
+class BookingType(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    active = db.Column(db.Boolean, default=True)
+
+Seed the five defaults once.
+
+2️⃣ Schedule Model
+class Schedule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id"), nullable=False)
+    booking_type_id = db.Column(db.Integer, db.ForeignKey("booking_type.id"), nullable=False)
+    scheduled_for = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(50), default="Booked")  # Booked / Completed / Cancelled
+    notes = db.Column(db.Text)
+    created_by = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+3️⃣ Job View – Schedule Section
+
+Remove Timeline entirely.
+
+Add:
+
+Add Booking Form
+<form method="POST" action="{{ url_for('jobs.add_schedule', job_id=job.id) }}" class="row g-2">
+
+  <div class="col-md-3">
+    <input name="schedule_date" class="form-control" placeholder="dd/mm/yyyy" required>
+  </div>
+
+  <div class="col-md-3">
+    <input name="schedule_time" class="form-control" placeholder="hh:mm am" required>
+  </div>
+
+  <div class="col-md-3">
+    <select name="booking_type_id" class="form-control" required>
+      {% for bt in booking_types %}
+        <option value="{{ bt.id }}">{{ bt.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-3">
+    <button class="btn btn-primary w-100" type="submit">
+      Add Booking
+    </button>
+  </div>
+
+  <div class="col-12">
+    <textarea name="notes" class="form-control" placeholder="Optional notes"></textarea>
+  </div>
+
+</form>
+4️⃣ Add Booking Type Button
+
+Below the form:
+
+<button class="btn btn-outline-secondary btn-sm mt-2"
+        data-bs-toggle="collapse"
+        data-bs-target="#addBookingType">
+  Add Booking Type
+</button>
+
+<div class="collapse mt-2" id="addBookingType">
+  <form method="POST" action="{{ url_for('jobs.add_booking_type') }}">
+    <div class="input-group">
+      <input name="new_booking_type" class="form-control"
+             placeholder="Enter new booking type">
+      <button class="btn btn-outline-primary">Save</button>
+    </div>
+  </form>
+</div>
+5️⃣ Flask Routes
+Add Booking
+@bp.post("/jobs/<int:job_id>/schedule")
+def add_schedule(job_id):
+    job = Job.query.get_or_404(job_id)
+
+    date_str = request.form["schedule_date"]
+    time_str = request.form["schedule_time"]
+    booking_type_id = request.form["booking_type_id"]
+    notes = request.form.get("notes")
+
+    scheduled_for = datetime.strptime(
+        f"{date_str} {time_str}".upper().strip(),
+        "%d/%m/%Y %I:%M %p"
+    )
+
+    schedule = Schedule(
+        job_id=job.id,
+        booking_type_id=booking_type_id,
+        scheduled_for=scheduled_for,
+        notes=notes,
+        created_by=current_user.id
+    )
+
+    db.session.add(schedule)
+    db.session.commit()
+
+    return redirect(url_for("jobs.view", job_id=job.id))
+Add Booking Type
+@bp.post("/booking-type")
+def add_booking_type():
+    name = request.form["new_booking_type"].strip()
+
+    if name:
+        bt = BookingType(name=name)
+        db.session.add(bt)
+        db.session.commit()
+
+    return redirect(request.referrer)
+6️⃣ Display Scheduled Bookings
+<table class="table table-sm mt-3">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Time</th>
+      <th>Type</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in job.schedules %}
+      <tr>
+        <td>{{ s.scheduled_for.strftime("%d/%m/%Y") }}</td>
+        <td>{{ s.scheduled_for.strftime("%I:%M %p").lower() }}</td>
+        <td>{{ s.booking_type.name }}</td>
+        <td>{{ s.status }}</td>
+      </tr>
+    {% else %}
+      <tr>
+        <td colspan="4" class="text-muted">No bookings scheduled.</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

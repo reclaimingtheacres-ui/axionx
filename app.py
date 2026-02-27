@@ -269,6 +269,30 @@ def init_db():
     """)
 
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS booking_types (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        active INTEGER NOT NULL DEFAULT 1
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        booking_type_id INTEGER NOT NULL,
+        scheduled_for TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'Booked',
+        notes TEXT,
+        created_by_user_id INTEGER,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(booking_type_id) REFERENCES booking_types(id),
+        FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+    )
+    """)
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS system_settings (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         job_prefix TEXT NOT NULL,
@@ -298,6 +322,16 @@ def init_db():
         add_column_if_missing(cur, "jobs", col, coltype)
 
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
+
+    _default_booking_types = [
+        "New Visit", "Re-attend", "Urgent New Visit",
+        "Update Required", "Urgent Update Required",
+    ]
+    cur.execute("SELECT name FROM booking_types")
+    existing_bt = {r["name"] for r in cur.fetchall()}
+    for bt_name in _default_booking_types:
+        if bt_name not in existing_bt:
+            cur.execute("INSERT INTO booking_types (name) VALUES (?)", (bt_name,))
 
     for col, coltype in [
         ("lender_name",    "TEXT"),
@@ -923,6 +957,18 @@ def job_detail(job_id: int):
         files = cur.fetchall()
         field_notes.append({"note": note, "files": files})
 
+    cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
+    booking_types = cur.fetchall()
+
+    cur.execute("""
+        SELECT s.*, bt.name booking_type_name
+        FROM schedules s
+        JOIN booking_types bt ON bt.id = s.booking_type_id
+        WHERE s.job_id = ?
+        ORDER BY s.scheduled_for ASC
+    """, (job_id,))
+    schedules = cur.fetchall()
+
     cur.execute("""
         SELECT d.*, u.full_name AS uploaded_by
         FROM job_documents d
@@ -943,8 +989,78 @@ def job_detail(job_id: int):
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, users=users,
                            field_notes=field_notes, documents=documents,
-                           doc_types=doc_types)
+                           doc_types=doc_types, booking_types=booking_types,
+                           schedules=schedules)
 
+
+
+@app.post("/jobs/<int:job_id>/schedule")
+@login_required
+def add_schedule(job_id: int):
+    date_str = request.form.get("schedule_date", "").strip()
+    time_str  = request.form.get("schedule_time", "").strip()
+    bt_id     = request.form.get("booking_type_id", "").strip()
+    notes     = request.form.get("notes", "").strip() or None
+
+    if not date_str or not time_str or not bt_id:
+        flash("Date, time and booking type are required.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    try:
+        dt_str = parse_interaction_datetime(date_str, time_str)
+    except Exception:
+        flash("Invalid date or time format.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes, created_by_user_id, created_at)
+        VALUES (?, ?, ?, 'Booked', ?, ?, ?)
+    """, (job_id, int(bt_id), dt_str, notes, session.get("user_id"), now_ts()))
+    conn.commit()
+    conn.close()
+
+    flash("Booking added.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/booking-type")
+@login_required
+@admin_required
+def add_booking_type():
+    name = request.form.get("new_booking_type", "").strip()
+    if name:
+        conn = db()
+        cur = conn.cursor()
+        try:
+            cur.execute("INSERT INTO booking_types (name) VALUES (?)", (name,))
+            conn.commit()
+            flash(f"Booking type '{name}' added.", "success")
+        except Exception:
+            flash("That booking type already exists.", "warning")
+        finally:
+            conn.close()
+    referrer = request.referrer or url_for("jobs")
+    return redirect(referrer)
+
+
+@app.post("/jobs/<int:job_id>/schedule/<int:sched_id>/status")
+@login_required
+def update_schedule_status(job_id: int, sched_id: int):
+    new_status = request.form.get("status", "Booked").strip()
+    allowed = {"Booked", "Completed", "Cancelled"}
+    if new_status not in allowed:
+        flash("Invalid status.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("UPDATE schedules SET status = ? WHERE id = ? AND job_id = ?",
+                (new_status, sched_id, job_id))
+    conn.commit()
+    conn.close()
+    flash("Booking updated.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
 
 
 @app.post("/jobs/<int:job_id>/delete")
