@@ -1,0 +1,74 @@
+Add a Job Type to the Create Job flow, with a dropdown and the ability to add new types (admin-only is ideal).
+
+Job Types to start with
+
+Repo/Collect, Collect Only, Field Call, Process Serve.
+
+Data model
+
+Create a JobType table and link jobs to it.
+
+class JobType(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), unique=True, nullable=False)
+    active = db.Column(db.Boolean, default=True)
+
+class Job(db.Model):
+    # ...
+    job_type_id = db.Column(db.Integer, db.ForeignKey("job_type.id"), nullable=True)
+    job_type = db.relationship("JobType")
+
+Seed the defaults once.
+
+Create Job form (Jinja)
+
+Add the dropdown plus an “Add Job Type” control (collapsible) so you can extend without code changes.
+
+<div class="mb-3">
+  <label class="form-label">Job Type</label>
+  <select name="job_type_id" class="form-control" required>
+    {% for jt in job_types %}
+      <option value="{{ jt.id }}">{{ jt.name }}</option>
+    {% endfor %}
+  </select>
+
+  <button type="button" class="btn btn-sm btn-outline-secondary mt-2"
+          data-bs-toggle="collapse" data-bs-target="#addJobType">
+    Add Job Type
+  </button>
+
+  <div class="collapse mt-2" id="addJobType">
+    <div class="input-group">
+      <input name="new_job_type" class="form-control" placeholder="Enter new job type">
+      <button class="btn btn-outline-primary" type="submit" formaction="{{ url_for('jobs.add_job_type') }}" formmethod="POST">
+        Save
+      </button>
+    </div>
+  </div>
+</div>
+Routes
+
+When rendering Create Job, supply job_types:
+
+job_types = JobType.query.filter_by(active=True).order_by(JobType.name.asc()).all()
+return render_template("jobs/create.html", job_types=job_types)
+
+Save the selected job type when creating a job:
+
+job.job_type_id = request.form.get("job_type_id")
+
+Add new job type (admin recommended):
+
+@bp.post("/job-types")
+@login_required
+def add_job_type():
+    name = (request.form.get("new_job_type") or "").strip()
+    if name:
+        db.session.add(JobType(name=name))
+        db.session.commit()
+    return redirect(request.referrer)
+Where to display it
+
+Show Job Type prominently on the Job view header (next to Status/Priority).
+
+If you want Job Type to also control default workflow (for example Process Serve shows “Service Attempts” instead of “Assets”), say so and I’ll map the UI changes to each type.
