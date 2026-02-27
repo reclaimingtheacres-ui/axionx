@@ -332,12 +332,14 @@
       input.removeAttribute('spellcheck');
       input.removeAttribute('placeholder');
       input.removeAttribute('class');
+      input._pacElement = el;
 
       el.addEventListener('gmp-placeselect', function (e) {
         var place = e.place;
         if (!place) return;
         place.fetchFields({ fields: ['formattedAddress'] }).then(function () {
           input.value = place.formattedAddress || '';
+          input.dispatchEvent(new Event('change', { bubbles: true }));
         }).catch(function (err) {
           console.warn('[Axion] fetchFields error', err);
         });
@@ -404,6 +406,19 @@
         }
       });
     }
+
+    window.axionInitPlaces = safeInitPlaces;
+
+    window.axionSetAddress = function (input, value) {
+      if (!input) return;
+      input.value = value;
+      if (input._pacElement) {
+        var inner = input._pacElement.shadowRoot
+          ? input._pacElement.shadowRoot.querySelector('input')
+          : input._pacElement.querySelector('input');
+        if (inner) inner.value = value;
+      }
+    };
 
     function loadGooglePlaces() {
       if (!document.querySelector('[data-maps-autocomplete]')) return;
