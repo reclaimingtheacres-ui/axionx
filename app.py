@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import csv
 import json
@@ -150,13 +151,7 @@ def init_db():
     )
     """)
 
-    cur.execute("SELECT COUNT(*) AS c FROM users")
-    if cur.fetchone()["c"] == 0:
-        now = datetime.now().isoformat(timespec="seconds")
-        cur.execute("""
-            INSERT INTO users (full_name, email, password, role, active, created_at)
-            VALUES (?, ?, ?, ?, 1, ?)
-        """, ("Admin", "admin@axion.local", "admin", "admin", now))
+    pass  # first user created via /signup
 
     conn.commit()
     conn.close()
@@ -170,6 +165,15 @@ def _ensure_db():
 # -------- Helpers --------
 def now_ts():
     return datetime.now().isoformat(timespec="seconds")
+
+
+def users_count():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) c FROM users")
+    c = cur.fetchone()["c"]
+    conn.close()
+    return c
 
 
 def audit(entity_type, entity_id, action, message, meta=None):
@@ -218,7 +222,46 @@ def admin_required(f):
 def login():
     if session.get("user_id"):
         return redirect(url_for("index"))
-    return render_template("login.html")
+    show_signup = users_count() == 0
+    return render_template("login.html", show_signup=show_signup)
+
+
+@app.get("/signup")
+def signup():
+    if users_count() > 0:
+        return ("Signup disabled. Ask an admin to create your account.", 403)
+    return render_template("signup.html")
+
+
+@app.post("/signup")
+def signup_post():
+    if users_count() > 0:
+        return ("Signup disabled. Ask an admin to create your account.", 403)
+
+    full_name = request.form.get("full_name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+
+    if not full_name or not email or not password:
+        flash("All fields are required.", "danger")
+        return redirect(url_for("signup"))
+
+    hashed = generate_password_hash(password)
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO users (full_name, email, password, role, active, created_at)
+        VALUES (?, ?, ?, 'admin', 1, ?)
+    """, (full_name, email, hashed, now_ts()))
+    user_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    session["user_id"] = user_id
+    session["user_name"] = full_name
+    session["role"] = "admin"
+    flash(f"Welcome, {full_name}! Admin account created.", "success")
+    return redirect(url_for("admin_dashboard"))
 
 
 @app.post("/login")
@@ -232,7 +275,7 @@ def login_post():
     user = cur.fetchone()
     conn.close()
 
-    if not user or user["password"] != password:
+    if not user or not check_password_hash(user["password"], password):
         flash("Invalid email or password.", "danger")
         return redirect(url_for("login"))
 
@@ -673,7 +716,7 @@ def user_new():
 @admin_required
 def user_create():
     full_name = request.form.get("full_name", "").strip()
-    email = request.form.get("email", "").strip()
+    email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "").strip()
     role = request.form.get("role", "agent").strip()
 
@@ -681,15 +724,17 @@ def user_create():
         flash("Name, email and password are required.", "danger")
         return redirect(url_for("user_new"))
 
-    now = datetime.now().isoformat(timespec="seconds")
+    hashed = generate_password_hash(password)
     conn = db()
     cur = conn.cursor()
     try:
         cur.execute("""
             INSERT INTO users (full_name, email, password, role, active, created_at)
             VALUES (?, ?, ?, ?, 1, ?)
-        """, (full_name, email, password, role, now))
+        """, (full_name, email, hashed, role, now_ts()))
+        user_id = cur.lastrowid
         conn.commit()
+        audit("user", user_id, "create", f"User created: {full_name} ({role})", {"email": email, "role": role})
         flash("User created.", "success")
     except sqlite3.IntegrityError:
         flash("Email already in use.", "danger")
@@ -697,6 +742,18 @@ def user_create():
         conn.close()
 
     return redirect(url_for("users_list"))
+
+
+@app.get("/admin/users/new")
+@admin_required
+def admin_user_new():
+    return redirect(url_for("user_new"))
+
+
+@app.post("/admin/users/new")
+@admin_required
+def admin_user_create():
+    return redirect(url_for("user_create"))
 
 
 # -------- CSV Import --------
