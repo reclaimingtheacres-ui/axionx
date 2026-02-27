@@ -44,7 +44,9 @@
     </form>
   </div>
 </div>
+{% endblock %}
 
+{% block modals %}
 {% if session.get('role') == 'admin' %}
 <div class="modal fade" id="deleteModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
