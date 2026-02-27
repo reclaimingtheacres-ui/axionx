@@ -294,12 +294,17 @@
     <main class="ax-main">
       <div class="ax-topbar">
         <div class="title">{% block page_title %}Axion{% endblock %}</div>
-        <div style="color:var(--muted); font-size:.85rem;">
+        <div style="display:flex; align-items:center; gap:14px;">
           {% if session.get('user_id') %}
-            Signed in as <strong style="color:var(--text)">{{ session.get('user_name') }}</strong>
-          {% else %}
-            Not signed in
+            <a href="/jobs/new" class="btn btn-primary btn-sm">+ New Job</a>
           {% endif %}
+          <div style="color:var(--muted); font-size:.85rem;">
+            {% if session.get('user_id') %}
+              Signed in as <strong style="color:var(--text)">{{ session.get('user_name') }}</strong>
+            {% else %}
+              Not signed in
+            {% endif %}
+          </div>
         </div>
       </div>
 
