@@ -3,6 +3,17 @@
 {% block page_title %}Home{% endblock %}
 
 {% block content %}
+<form method="get" action="/jobs" class="mb-4">
+  <div class="input-group input-group-lg">
+    <input type="text"
+           name="q"
+           class="form-control ax-search"
+           placeholder="Search jobs, customer, rego, VIN..."
+           autocomplete="off">
+    <button class="btn btn-primary ax-search-btn" type="submit">Search</button>
+  </div>
+</form>
+
 <div class="row g-3 mb-4">
   <div class="col-12 col-md-6 col-xl">
     <a class="ax-tile ax-tile-all" href="/jobs">

@@ -1,0 +1,104 @@
+Add a search bar to Jobs page
+
+In templates/jobs.html (or wherever your job list is), add this near the top:
+
+<form method="get" action="/jobs" class="mb-3">
+  <div class="d-flex gap-2">
+    <input class="form-control" name="q" value="{{ q or '' }}"
+           placeholder="Search jobs: job no, client ref, customer, phone, email, rego, VIN..." autocomplete="off">
+    <button class="btn btn-outline-light" type="submit">Search</button>
+    {% if q %}
+      <a class="btn btn-outline-secondary" href="/jobs">Clear</a>
+    {% endif %}
+  </div>
+</form>
+2) Make sure assets are linked to jobs (rego/VIN live here)
+
+Because you said assets are not always vehicles and must be linked to the job, keep an assets table like this:
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS job_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER NOT NULL,
+  asset_type TEXT NOT NULL,            -- vehicle, house, equipment, catering, etc
+  make TEXT,
+  model TEXT,
+  rego TEXT,
+  vin TEXT,
+  serial TEXT,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(job_id) REFERENCES jobs(id)
+)
+""")
+
+If you already have something similar, keep it and just align field names.
+
+3) Update your /jobs route to support searching
+
+In app.py, in your jobs list route:
+
+@app.route("/jobs")
+@login_required
+def jobs_list():
+    q = (request.args.get("q") or "").strip()
+    conn = get_db()
+    cur = conn.cursor()
+
+    base_sql = """
+    SELECT
+      j.*,
+      c.first_name AS cust_first_name,
+      c.last_name  AS cust_last_name,
+      c.company    AS cust_company,
+      GROUP_CONCAT(DISTINCT a.rego) AS asset_regos,
+      GROUP_CONCAT(DISTINCT a.vin)  AS asset_vins
+    FROM jobs j
+    LEFT JOIN customers c ON c.id = j.customer_id
+    LEFT JOIN job_assets a ON a.job_id = j.id
+    """
+
+    if q:
+        like = f"%{q}%"
+        sql = base_sql + """
+        WHERE
+          CAST(j.id AS TEXT) LIKE ?
+          OR j.internal_job_no LIKE ?
+          OR j.client_reference LIKE ?
+          OR j.job_title LIKE ?
+          OR j.job_address LIKE ?
+          OR (c.first_name || ' ' || c.last_name) LIKE ?
+          OR c.company LIKE ?
+          OR c.address LIKE ?
+          OR c.email LIKE ?
+          OR c.phone1 LIKE ? OR c.phone2 LIKE ? OR c.phone3 LIKE ? OR c.phone4 LIKE ?
+          OR a.rego LIKE ?
+          OR a.vin LIKE ?
+          OR a.serial LIKE ?
+          OR a.description LIKE ?
+        GROUP BY j.id
+        ORDER BY j.created_at DESC
+        """
+        params = [like] * 17
+        cur.execute(sql, params)
+    else:
+        sql = base_sql + """
+        GROUP BY j.id
+        ORDER BY j.created_at DESC
+        """
+        cur.execute(sql)
+
+    jobs = cur.fetchall()
+    return render_template("jobs.html", jobs=jobs, q=q)
+
+Important note: this assumes your customers table has phone1..phone4 and email. If your column names differ, tell me what they are and I’ll adjust the query.
+
+4) Make search match phone numbers reliably
+
+Because people type phone numbers in different formats, store phones normalised (digits only) in the database as additional fields, for example phone1_norm, and search that too. Quick normaliser:
+
+import re
+def normalise_phone(p: str) -> str:
+    return re.sub(r"\D+", "", p or "")
+
+When saving customer phones, populate both phone1 and phone1_norm, and in the SQL search include phone1_norm LIKE ? using a digit-only version of q.
