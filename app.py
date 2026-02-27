@@ -597,7 +597,7 @@ def signup_post():
 
 @app.post("/login")
 def login_post():
-    email = request.form.get("email", "").strip()
+    email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "").strip()
 
     conn = db()
