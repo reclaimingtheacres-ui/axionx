@@ -1055,7 +1055,7 @@ def schedule_index():
     if caller_role == "admin":
         cur.execute("""
             SELECT s.*, bt.name booking_type_name,
-                   j.reference_number, j.client_ref, j.id job_id,
+                   j.internal_job_number, j.client_reference, j.display_ref, j.id job_id,
                    u.full_name assigned_to_name
             FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
@@ -1069,7 +1069,7 @@ def schedule_index():
     else:
         cur.execute("""
             SELECT s.*, bt.name booking_type_name,
-                   j.reference_number, j.client_ref, j.id job_id,
+                   j.internal_job_number, j.client_reference, j.display_ref, j.id job_id,
                    u.full_name assigned_to_name
             FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
