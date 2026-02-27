@@ -705,7 +705,7 @@ def job_new():
     cur = conn.cursor()
     cur.execute("SELECT id, name FROM clients ORDER BY name")
     clients = cur.fetchall()
-    cur.execute("SELECT id, first_name, last_name, company FROM customers ORDER BY last_name, first_name")
+    cur.execute("SELECT id, first_name, last_name, company, address FROM customers ORDER BY last_name, first_name")
     customers = cur.fetchall()
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()

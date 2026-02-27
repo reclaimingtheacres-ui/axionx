@@ -324,7 +324,7 @@
     {% for c in clients %}{"id":{{c.id}},"label":{{c.name|tojson}}}{% if not loop.last %},{% endif %}{% endfor %}
   ];
   var CUSTOMER_DATA = [
-    {% for c in customers %}{"id":{{c.id}},"label":{{(c.first_name~' '~c.last_name~((' ('~c.company~')') if c.company else ''))|tojson}}}{% if not loop.last %},{% endif %}{% endfor %}
+    {% for c in customers %}{"id":{{c.id}},"label":{{(c.first_name~' '~c.last_name~((' ('~c.company~')') if c.company else ''))|tojson}},"address":{{(c.address or '')|tojson}}}{% if not loop.last %},{% endif %}{% endfor %}
   ];
 
   function makeTypeahead(cfg) {
@@ -358,6 +358,7 @@
           hiddenEl.value = item.id;
           dropEl.style.display = 'none';
           createWrap.style.display = 'none';
+          if (cfg.onSelect) cfg.onSelect(item);
         });
         div.addEventListener('mouseenter', function(){ div.style.background='rgba(96,165,250,.15)'; });
         div.addEventListener('mouseleave', function(){ div.style.background=''; });
@@ -394,7 +395,18 @@
                   data:CLIENT_DATA,   preselect:{{ new_client_id   | tojson }} });
   makeTypeahead({ searchId:'customer_search', hiddenId:'customer_id_val', dropId:'customer_dropdown',
                   createWrapId:'customer_create_wrap', createLinkId:'customer_create_link',
-                  data:CUSTOMER_DATA, preselect:{{ new_customer_id | tojson }} });
+                  data:CUSTOMER_DATA, preselect:{{ new_customer_id | tojson }},
+                  onSelect: function(item) {
+                    var addrField = document.getElementById('customer_address');
+                    if (addrField && item.address) {
+                      if (window.axionSetAddress) {
+                        window.axionSetAddress(addrField, item.address);
+                      } else {
+                        addrField.value = item.address;
+                      }
+                    }
+                  }
+                });
 })();
 </script>
 {% endblock %}
