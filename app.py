@@ -342,6 +342,20 @@ def init_db():
     ]:
         add_column_if_missing(cur, "job_items", col, coltype)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS job_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            active INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    _default_job_types = ["Repo/Collect", "Collect Only", "Field Call", "Process Serve"]
+    cur.execute("SELECT name FROM job_types")
+    existing_jt = {r["name"] for r in cur.fetchall()}
+    for jt_name in _default_job_types:
+        if jt_name not in existing_jt:
+            cur.execute("INSERT INTO job_types (name) VALUES (?)", (jt_name,))
+
     conn.commit()
     conn.close()
 
@@ -781,7 +795,8 @@ def job_new():
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
 
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
-    job_types = ["Field Call", "Repo/Collect", "Repo Only", "Locate", "Phone Work"]
+    cur.execute("SELECT id, name FROM job_types WHERE active = 1 ORDER BY name")
+    job_types = cur.fetchall()
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     priorities = ["Low", "Normal", "High", "Urgent"]
 
@@ -1118,6 +1133,26 @@ def add_booking_type():
         finally:
             conn.close()
     referrer = request.referrer or url_for("jobs")
+    return redirect(referrer)
+
+
+@app.post("/job-type")
+@login_required
+@admin_required
+def add_job_type():
+    name = request.form.get("new_job_type", "").strip()
+    if name:
+        conn = db()
+        cur = conn.cursor()
+        try:
+            cur.execute("INSERT INTO job_types (name) VALUES (?)", (name,))
+            conn.commit()
+            flash(f"Job type '{name}' added.", "success")
+        except Exception:
+            flash("That job type already exists.", "warning")
+        finally:
+            conn.close()
+    referrer = request.referrer or url_for("job_new")
     return redirect(referrer)
 
 
