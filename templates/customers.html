@@ -1,22 +1,28 @@
 {% extends "layout.html" %}
-{% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="m-0">Customers</h3>
-  <a class="btn btn-primary" href="/customers/new">New Customer</a>
-</div>
+{% block title %}Axion | Customers{% endblock %}
+{% block page_title %}Customers{% endblock %}
 
-<div class="list-group">
-  {% for c in customers %}
-    <div class="list-group-item">
-      <div class="fw-semibold">{{ c.full_name }}</div>
-      {% if c.phone %}<div class="small"><a href="tel:{{ c.phone }}">{{ c.phone }}</a></div>{% endif %}
-      {% if c.email %}<div class="small"><a href="mailto:{{ c.email }}">{{ c.email }}</a></div>{% endif %}
-      {% if c.dob %}<div class="text-muted small">DOB: {{ c.dob }}</div>{% endif %}
-      {% if c.address %}<div class="text-muted small">{{ c.address }}</div>{% endif %}
-      {% if c.notes %}<div class="text-muted small mt-1">{{ c.notes }}</div>{% endif %}
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>Customers</div>
+    <a class="btn btn-primary btn-sm" href="/customers/new">New Customer</a>
+  </div>
+  <div class="ax-card-b">
+    <div class="list-group list-group-flush">
+      {% for c in customers %}
+        <div class="list-group-item">
+          <div class="fw-semibold">{{ c.full_name }}</div>
+          {% if c.phone %}<div class="small"><a href="tel:{{ c.phone }}" style="color:var(--accent)">{{ c.phone }}</a></div>{% endif %}
+          {% if c.email %}<div class="small"><a href="mailto:{{ c.email }}" style="color:var(--accent)">{{ c.email }}</a></div>{% endif %}
+          {% if c.dob %}<div class="small" style="color:var(--muted)">DOB: {{ c.dob }}</div>{% endif %}
+          {% if c.address %}<div class="small" style="color:var(--muted)">{{ c.address }}</div>{% endif %}
+          {% if c.notes %}<div class="small mt-1" style="color:var(--muted)">{{ c.notes }}</div>{% endif %}
+        </div>
+      {% else %}
+        <div style="color:var(--muted)" class="py-3 text-center">No customers yet.</div>
+      {% endfor %}
     </div>
-  {% else %}
-    <div class="text-muted">No customers yet.</div>
-  {% endfor %}
+  </div>
 </div>
 {% endblock %}

@@ -1,3 +1,15 @@
+1) Put your logo and favicon in the right place
+
+In Replit, create these folders and files:
+
+static/images/axion-logo.png (your full logo)
+
+static/images/axion-mark.png (optional square mark for small spaces, app icon style)
+
+static/favicon.ico (favicon)
+If you don’t have a favicon yet, you can temporarily reuse the logo file as a PNG favicon: static/favicon.png.
+
+2) Replace templates/layout.html with this
 <!doctype html>
 <html lang="en">
 <head>
@@ -5,7 +17,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Axion{% endblock %}</title>
 
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/axion-logo.png') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+  <!-- If you only have a png favicon, use:
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+  -->
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -30,7 +45,7 @@
     .ax-shell{
       min-height: 100vh;
       display: grid;
-      grid-template-columns: 260px 1fr;
+      grid-template-columns: 280px 1fr;
     }
     .ax-sidebar{
       background: linear-gradient(180deg, var(--panel), #0b1326);
@@ -39,7 +54,6 @@
       top: 0;
       height: 100vh;
       padding: 18px 14px;
-      overflow-y: auto;
     }
     .ax-brand{
       display:flex;
@@ -48,17 +62,11 @@
       padding: 10px 10px 16px 10px;
       border-bottom: 1px solid var(--line);
       margin-bottom: 14px;
-      text-decoration: none;
     }
     .ax-brand img{ height: 34px; }
     .ax-brand .name{
       font-weight: 700;
       letter-spacing: .3px;
-      color: var(--text);
-    }
-    .ax-brand .sub{
-      font-size: .75rem;
-      color: var(--muted);
     }
     .ax-nav a{
       display:flex;
@@ -69,7 +77,6 @@
       color: var(--text);
       text-decoration:none;
       border: 1px solid transparent;
-      font-size: .9rem;
     }
     .ax-nav a:hover{
       background: rgba(255,255,255,.04);
@@ -78,26 +85,16 @@
     .ax-nav a.active{
       background: rgba(96,165,250,.12);
       border-color: rgba(96,165,250,.20);
-      color: #93c5fd;
     }
     .ax-nav .hint{
       color: var(--muted);
-      font-size: .75rem;
-      margin: 14px 10px 6px;
+      font-size: .85rem;
+      margin: 14px 10px 8px;
       text-transform: uppercase;
       letter-spacing: .12em;
     }
-    .ax-user-chip{
-      margin-top: auto;
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid var(--line);
-      font-size: .85rem;
-      color: var(--muted);
-    }
     .ax-main{
       padding: 18px 18px 28px;
-      min-width: 0;
     }
     .ax-topbar{
       background: rgba(15, 23, 42, .55);
@@ -135,16 +132,14 @@
       border-radius: 12px !important;
     }
     .form-control::placeholder{ color: rgba(229,231,235,.45); }
-    .form-label{ color: var(--muted); font-size: .85rem; }
     .btn{
       border-radius: 12px;
       font-weight: 600;
     }
     .btn-primary{
-      background: linear-gradient(90deg, #60a5fa, #3b82f6);
+      background: linear-gradient(90deg, rgba(96,165,250,1), rgba(59,130,246,1));
       border: 0;
     }
-    .btn-primary:hover{ background: linear-gradient(90deg, #3b82f6, #2563eb); border: 0; }
     .btn-outline-secondary{
       border-color: rgba(255,255,255,.18);
       color: var(--text);
@@ -152,22 +147,18 @@
     .btn-outline-secondary:hover{
       background: rgba(255,255,255,.06);
       border-color: rgba(255,255,255,.22);
-      color: var(--text);
     }
-    .btn-outline-danger{ border-color: rgba(239,68,68,.4); color: #f87171; }
-    .btn-outline-danger:hover{ background: rgba(239,68,68,.12); color: #f87171; }
     .badge{
       border-radius: 999px;
-      padding: 4px 10px;
-      font-weight: 600;
-      font-size: .75rem;
+      padding: 8px 10px;
+      font-weight: 650;
     }
     .list-group-item{
       background: rgba(15, 23, 42, .65) !important;
       border: 1px solid var(--line) !important;
       color: var(--text) !important;
       border-radius: 14px !important;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
     .list-group-item-action:hover{
       background: rgba(255,255,255,.04) !important;
@@ -178,14 +169,10 @@
       background: rgba(15, 23, 42, .75);
       color: var(--text);
     }
-    .alert-success{ border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.08); }
-    .alert-danger{ border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.08); }
-    .alert-warning{ border-color: rgba(234,179,8,.35); background: rgba(234,179,8,.08); }
-    .table{ color: var(--text); }
-    .table thead th{ color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; border-color: var(--line); }
-    .table td{ border-color: var(--line); }
-    h3, h4, h5{ color: var(--text); }
+    .alert-success{ border-color: rgba(34,197,94,.25); }
+    .alert-danger{ border-color: rgba(239,68,68,.25); }
 
+    /* Responsive */
     @media (max-width: 992px){
       .ax-shell{ grid-template-columns: 1fr; }
       .ax-sidebar{ height: auto; position: relative; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -196,43 +183,32 @@
 <body>
   <div class="ax-shell">
     <aside class="ax-sidebar">
-      <a class="ax-brand" href="/">
+      <div class="ax-brand">
         <img src="{{ url_for('static', filename='images/axion-logo.png') }}" alt="Axion">
         <div>
           <div class="name">Axion</div>
-          <div class="sub">Field Operations</div>
+          <div class="text-muted small">Field Operations</div>
         </div>
-      </a>
+      </div>
 
       <div class="ax-nav">
         <div class="hint">Workspace</div>
+
         <a href="/" class="{% if request.path == '/' %}active{% endif %}">Home</a>
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
         <a href="/clients" class="{% if request.path.startswith('/clients') %}active{% endif %}">Clients</a>
         <a href="/customers" class="{% if request.path.startswith('/customers') %}active{% endif %}">Customers</a>
         <a href="/assets" class="{% if request.path.startswith('/assets') %}active{% endif %}">Assets</a>
 
-        {% if session.get('role') == 'agent' %}
-          <div class="hint">My Work</div>
-          <a href="/my/today" class="{% if request.path.startswith('/my') %}active{% endif %}">My Today</a>
-        {% endif %}
-
         {% if session.get('role') == 'admin' %}
           <div class="hint">Admin</div>
-          <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
-          <a href="/cues" class="{% if request.path.startswith('/cues') %}active{% endif %}">Cues</a>
+          <a href="/admin" class="{% if request.path.startswith('/admin') %}active{% endif %}">Dashboard</a>
           <a href="/assign" class="{% if request.path.startswith('/assign') %}active{% endif %}">Assignment Board</a>
           <a href="/reports/monthly" class="{% if request.path.startswith('/reports') %}active{% endif %}">Reports</a>
-          <a href="/users" class="{% if request.path.startswith('/users') %}active{% endif %}">Users</a>
-          <a href="/import/jobs" class="{% if request.path.startswith('/import') %}active{% endif %}">Import Jobs</a>
         {% endif %}
 
         <div class="hint">Account</div>
         {% if session.get('user_id') %}
-          <div class="ax-user-chip mb-2">
-            {{ session.get('user_name') }}
-            <span class="badge {% if session.get('role') == 'admin' %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ session.get('role') }}</span>
-          </div>
           <a href="/logout">Logout</a>
         {% else %}
           <a href="/login" class="{% if request.path.startswith('/login') or request.path.startswith('/signup') %}active{% endif %}">Login</a>
@@ -243,9 +219,9 @@
     <main class="ax-main">
       <div class="ax-topbar">
         <div class="title">{% block page_title %}Axion{% endblock %}</div>
-        <div style="color:var(--muted); font-size:.85rem;">
+        <div class="text-muted small">
           {% if session.get('user_id') %}
-            Signed in as <strong style="color:var(--text)">{{ session.get('user_name') }}</strong>
+            Signed in as {{ session.get('role')|upper }}
           {% else %}
             Not signed in
           {% endif %}
@@ -255,7 +231,7 @@
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, message in messages %}
-            <div class="alert alert-{{category}} mb-3">{{ message }}</div>
+            <div class="alert alert-{{category}}">{{ message }}</div>
           {% endfor %}
         {% endif %}
       {% endwith %}
@@ -265,3 +241,122 @@
   </div>
 </body>
 </html>
+3) Replace templates/login.html and templates/signup.html
+
+Right now your login/signup are raw HTML returned from routes. Switch them to templates so they look branded.
+
+Create templates/login.html:
+
+{% extends "layout.html" %}
+{% block title %}Axion | Login{% endblock %}
+{% block page_title %}Login{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-7 col-lg-5">
+    <div class="ax-card">
+      <div class="ax-card-b text-center">
+        <img src="{{ url_for('static', filename='images/axion-logo.png') }}" height="64" class="mb-3" alt="Axion">
+        <div class="text-muted mb-3">Sign in to continue</div>
+
+        <form method="post" action="/login">
+          <div class="mb-2">
+            <input class="form-control" name="email" placeholder="Email" required>
+          </div>
+          <div class="mb-3">
+            <input class="form-control" name="password" type="password" placeholder="Password" required>
+          </div>
+          <button class="btn btn-primary w-100">Login</button>
+        </form>
+
+        {% if allow_signup %}
+          <div class="mt-3 small">
+            <a href="/signup">Create admin account</a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+Create templates/signup.html:
+
+{% extends "layout.html" %}
+{% block title %}Axion | Setup{% endblock %}
+{% block page_title %}Create Admin Account{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-md-8 col-lg-6">
+    <div class="ax-card">
+      <div class="ax-card-b">
+        <div class="text-center mb-3">
+          <img src="{{ url_for('static', filename='images/axion-logo.png') }}" height="64" class="mb-2" alt="Axion">
+          <div class="text-muted">First-time setup</div>
+        </div>
+
+        <form method="post" action="/signup">
+          <div class="mb-2">
+            <input class="form-control" name="full_name" placeholder="Full name" required>
+          </div>
+          <div class="mb-2">
+            <input class="form-control" name="email" placeholder="Email" required>
+          </div>
+          <div class="mb-3">
+            <input class="form-control" name="password" type="password" placeholder="Password" required>
+          </div>
+          <button class="btn btn-primary w-100">Create Admin</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+4) Update your /login and /signup routes to render templates
+
+Replace your existing login() with:
+
+@app.get("/login")
+def login():
+    allow_signup = (users_count() == 0)
+    return render_template("login.html", allow_signup=allow_signup)
+
+Replace your existing signup() with:
+
+@app.get("/signup")
+def signup():
+    if users_count() > 0:
+        return ("Signup disabled. Ask admin to create your account.", 403)
+    return render_template("signup.html")
+
+Your POST routes can remain as-is (the hashed password versions you added earlier).
+
+5) Give the main pages a nicer “card” feel (quick edits)
+
+You don’t have to rewrite everything. Just wrap the content blocks.
+
+For example in templates/jobs.html, change the top to:
+
+{% extends "layout.html" %}
+{% block page_title %}Jobs{% endblock %}
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>Jobs</div>
+    <a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>
+  </div>
+  <div class="ax-card-b">
+    <!-- keep your existing filter form + list here -->
+
+Then close it at the end with:
+
+  </div>
+</div>
+{% endblock %}
+
+Do the same wrapping for Clients/Customers/Assets and it instantly looks “product”.
+
+6) Add a simple Axion “mark” fallback (optional)
+
+If you don’t have a square mark yet, keep using axion-logo.png. Later, you can put a clean icon into axion-mark.png and swap it for small placements.

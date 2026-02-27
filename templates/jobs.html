@@ -1,44 +1,50 @@
 {% extends "layout.html" %}
+{% block title %}Axion | Jobs{% endblock %}
+{% block page_title %}Jobs{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="m-0">Jobs</h3>
-  <a class="btn btn-primary" href="/jobs/new">New Job</a>
-</div>
-
-<form class="row g-2 mb-3" method="get">
-  <div class="col-12 col-lg-4">
-    <input class="form-control" name="q" placeholder="Search ref, customer, reg, notes..." value="{{ q }}">
+<div class="ax-card">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>Jobs</div>
+    <a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>
   </div>
-  <div class="col-12 col-lg-3">
-    <select class="form-select" name="status">
-      <option value="">All statuses</option>
-      {% for s in statuses %}
-        <option value="{{s}}" {% if s == status %}selected{% endif %}>{{ s }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-12 col-lg-2">
-    <button class="btn btn-outline-secondary w-100">Filter</button>
-  </div>
-</form>
-
-<div class="list-group">
-  {% for j in jobs %}
-    <a class="list-group-item list-group-item-action" href="/jobs/{{ j.id }}">
-      <div class="d-flex justify-content-between">
-        <div>
-          <div class="fw-semibold">{{ j.display_ref }} — {{ j.customer_name or "No customer" }}</div>
-          <div class="text-muted small">{{ j.client_name or "No client" }}{% if j.asset_reg %} | Reg: {{ j.asset_reg }}{% endif %}</div>
-          <div class="small">{{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}{% if j.assigned_name %} | {{ j.assigned_name }}{% endif %}</div>
-        </div>
-        <div class="text-end">
-          <span class="badge bg-dark">{{ j.status }}</span>
-          <div class="text-muted small mt-1">{{ j.updated_at }}</div>
-        </div>
+  <div class="ax-card-b">
+    <form class="row g-2 mb-3" method="get">
+      <div class="col-12 col-lg-5">
+        <input class="form-control" name="q" placeholder="Search ref, customer, reg, notes..." value="{{ q }}">
       </div>
-    </a>
-  {% else %}
-    <div class="text-muted">No jobs found.</div>
-  {% endfor %}
+      <div class="col-12 col-lg-3">
+        <select class="form-select" name="status">
+          <option value="">All statuses</option>
+          {% for s in statuses %}
+            <option value="{{s}}" {% if s == status %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-lg-2">
+        <button class="btn btn-outline-secondary w-100">Filter</button>
+      </div>
+    </form>
+
+    <div class="list-group list-group-flush">
+      {% for j in jobs %}
+        <a class="list-group-item list-group-item-action" href="/jobs/{{ j.id }}">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="fw-semibold">{{ j.display_ref }} — {{ j.customer_name or "No customer" }}</div>
+              <div class="small" style="color:var(--muted)">{{ j.client_name or "No client" }}{% if j.asset_reg %} | Reg: {{ j.asset_reg }}{% endif %}</div>
+              <div class="small" style="color:var(--muted)">{{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}{% if j.assigned_name %} | {{ j.assigned_name }}{% endif %}</div>
+            </div>
+            <div class="text-end">
+              <span class="badge bg-secondary">{{ j.status }}</span>
+              <div class="small mt-1" style="color:var(--muted)">{{ j.updated_at }}</div>
+            </div>
+          </div>
+        </a>
+      {% else %}
+        <div style="color:var(--muted)" class="py-3 text-center">No jobs found.</div>
+      {% endfor %}
+    </div>
+  </div>
 </div>
 {% endblock %}

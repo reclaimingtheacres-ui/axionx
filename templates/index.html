@@ -1,13 +1,44 @@
 {% extends "layout.html" %}
+{% block title %}Axion | Home{% endblock %}
+{% block page_title %}Home{% endblock %}
+
 {% block content %}
-<div class="row g-3">
-  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Jobs</div><div class="h3">{{ jobs_count }}</div></div></div>
-  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Clients</div><div class="h3">{{ clients_count }}</div></div></div>
-  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Customers</div><div class="h3">{{ customers_count }}</div></div></div>
-  <div class="col-6 col-lg-3"><div class="card p-3"><div class="h6">Assets</div><div class="h3">{{ assets_count }}</div></div></div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <a href="/jobs" class="text-decoration-none">
+      <div class="ax-card p-3 text-center">
+        <div class="small mb-1" style="color:var(--muted)">Jobs</div>
+        <div class="display-6 fw-bold" style="color:var(--accent)">{{ jobs_count }}</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a href="/clients" class="text-decoration-none">
+      <div class="ax-card p-3 text-center">
+        <div class="small mb-1" style="color:var(--muted)">Clients</div>
+        <div class="display-6 fw-bold" style="color:var(--text)">{{ clients_count }}</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a href="/customers" class="text-decoration-none">
+      <div class="ax-card p-3 text-center">
+        <div class="small mb-1" style="color:var(--muted)">Customers</div>
+        <div class="display-6 fw-bold" style="color:var(--text)">{{ customers_count }}</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a href="/assets" class="text-decoration-none">
+      <div class="ax-card p-3 text-center">
+        <div class="small mb-1" style="color:var(--muted)">Assets</div>
+        <div class="display-6 fw-bold" style="color:var(--text)">{{ assets_count }}</div>
+      </div>
+    </a>
+  </div>
 </div>
 
-<div class="mt-4 d-flex gap-2">
+<div class="d-flex gap-2 flex-wrap">
   <a class="btn btn-primary" href="/jobs/new">New Job</a>
   <a class="btn btn-outline-secondary" href="/clients/new">New Client</a>
   <a class="btn btn-outline-secondary" href="/customers/new">New Customer</a>

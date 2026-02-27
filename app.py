@@ -222,8 +222,8 @@ def admin_required(f):
 def login():
     if session.get("user_id"):
         return redirect(url_for("index"))
-    show_signup = users_count() == 0
-    return render_template("login.html", show_signup=show_signup)
+    allow_signup = users_count() == 0
+    return render_template("login.html", allow_signup=allow_signup)
 
 
 @app.get("/signup")

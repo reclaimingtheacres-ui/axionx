@@ -1,20 +1,26 @@
 {% extends "layout.html" %}
-{% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="m-0">Assets</h3>
-  <a class="btn btn-primary" href="/assets/new">New Asset</a>
-</div>
+{% block title %}Axion | Assets{% endblock %}
+{% block page_title %}Assets{% endblock %}
 
-<div class="list-group">
-  {% for a in assets %}
-    <div class="list-group-item">
-      <div class="fw-semibold">{{ a.reg or "No Reg" }}</div>
-      <div class="small text-muted">{{ (a.year or "") }} {{ (a.make or "") }} {{ (a.model or "") }}</div>
-      {% if a.vin %}<div class="small text-muted">VIN: {{ a.vin }}</div>{% endif %}
-      {% if a.notes %}<div class="small text-muted mt-1">{{ a.notes }}</div>{% endif %}
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>Assets</div>
+    <a class="btn btn-primary btn-sm" href="/assets/new">New Asset</a>
+  </div>
+  <div class="ax-card-b">
+    <div class="list-group list-group-flush">
+      {% for a in assets %}
+        <div class="list-group-item">
+          <div class="fw-semibold">{{ a.reg or "No Reg" }}</div>
+          <div class="small" style="color:var(--muted)">{{ (a.year or "") }} {{ (a.make or "") }} {{ (a.model or "") }}</div>
+          {% if a.vin %}<div class="small" style="color:var(--muted)">VIN: {{ a.vin }}</div>{% endif %}
+          {% if a.notes %}<div class="small mt-1" style="color:var(--muted)">{{ a.notes }}</div>{% endif %}
+        </div>
+      {% else %}
+        <div style="color:var(--muted)" class="py-3 text-center">No assets yet.</div>
+      {% endfor %}
     </div>
-  {% else %}
-    <div class="text-muted">No assets yet.</div>
-  {% endfor %}
+  </div>
 </div>
 {% endblock %}

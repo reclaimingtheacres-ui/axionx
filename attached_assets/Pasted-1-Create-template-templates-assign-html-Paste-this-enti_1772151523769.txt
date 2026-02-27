@@ -1,0 +1,203 @@
+1️⃣ Create template: templates/assign.html
+
+Paste this entire file.
+
+{% extends "layout.html" %}
+{% block title %}Axion | Assignment Board{% endblock %}
+{% block page_title %}Assignment Board{% endblock %}
+
+{% block content %}
+
+<div class="ax-card mb-3">
+  <div class="ax-card-b d-flex justify-content-between align-items-center">
+    <form method="get" class="d-flex gap-2 align-items-center">
+      <input type="date" name="date" value="{{ date }}" class="form-control" style="max-width:200px">
+      <button class="btn btn-outline-secondary">Load</button>
+    </form>
+    <div class="text-muted small">
+      Drag cards between agents to assign
+    </div>
+  </div>
+</div>
+
+<div class="assign-board">
+
+  <!-- Unassigned Column -->
+  <div class="assign-column" data-user="">
+    <div class="assign-header">
+      Unassigned
+    </div>
+    <div class="assign-body dropzone">
+      {% for cue in cues %}
+        {% if not cue.assigned_user_id %}
+          {% include "partials/cue_card.html" %}
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Agent Columns -->
+  {% for agent in agents %}
+    <div class="assign-column" data-user="{{ agent.id }}">
+      <div class="assign-header">
+        {{ agent.full_name }}
+      </div>
+      <div class="assign-body dropzone">
+        {% for cue in cues %}
+          {% if cue.assigned_user_id == agent.id %}
+            {% include "partials/cue_card.html" %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+
+</div>
+
+<style>
+.assign-board{
+  display:flex;
+  gap:16px;
+  overflow-x:auto;
+}
+.assign-column{
+  min-width:300px;
+  background:rgba(15,23,42,.6);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:18px;
+  display:flex;
+  flex-direction:column;
+}
+.assign-header{
+  padding:14px;
+  font-weight:700;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+.assign-body{
+  padding:12px;
+  min-height:400px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.cue-card{
+  padding:12px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  cursor:grab;
+}
+.cue-card.dragging{
+  opacity:.4;
+}
+.cue-card .ref{
+  font-weight:700;
+}
+.cue-card .meta{
+  font-size:.85rem;
+  color:#9ca3af;
+}
+</style>
+
+<script>
+let draggedCard = null;
+
+document.querySelectorAll(".cue-card").forEach(card => {
+  card.addEventListener("dragstart", e => {
+    draggedCard = card;
+    card.classList.add("dragging");
+  });
+
+  card.addEventListener("dragend", e => {
+    card.classList.remove("dragging");
+  });
+});
+
+document.querySelectorAll(".dropzone").forEach(zone => {
+
+  zone.addEventListener("dragover", e => {
+    e.preventDefault();
+  });
+
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    if (!draggedCard) return;
+
+    zone.appendChild(draggedCard);
+
+    const cueId = draggedCard.dataset.id;
+    const userId = zone.closest(".assign-column").dataset.user;
+
+    fetch(`/cue/${cueId}/assign`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: `assigned_user_id=${userId}`
+    }).then(res => {
+      if (!res.ok) alert("Assignment failed");
+    });
+  });
+
+});
+</script>
+
+{% endblock %}
+2️⃣ Create partial template: templates/partials/cue_card.html
+
+Create a new folder:
+
+templates/partials/
+
+Inside it create cue_card.html:
+
+<div class="cue-card" draggable="true" data-id="{{ cue.id }}">
+  <div class="ref">
+    {{ cue.internal_job_number }}
+    {% if cue.client_reference %}
+      ({{ cue.client_reference }})
+    {% endif %}
+  </div>
+
+  <div class="meta">
+    {{ cue.customer_name or "No customer" }}
+    {% if cue.asset_reg %}
+      | Reg: {{ cue.asset_reg }}
+    {% endif %}
+  </div>
+
+  <div class="meta">
+    Visit: {{ cue.visit_type }} | Priority: {{ cue.priority }}
+  </div>
+</div>
+3️⃣ Ensure your backend route exists
+
+You already added this earlier, but confirm it exists:
+
+@app.post("/cue/<int:cue_id>/assign")
+@admin_required
+def cue_assign(cue_id: int):
+    assigned_user_id = request.form.get("assigned_user_id")
+    ts = now_ts()
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT assigned_user_id FROM cue_items WHERE id = ?", (cue_id,))
+    before = cur.fetchone()
+
+    cur.execute("UPDATE cue_items SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                (assigned_user_id or None, ts, cue_id))
+
+    conn.commit()
+    conn.close()
+
+    audit("cue", cue_id, "assign",
+          f"Cue reassigned",
+          {"from": before["assigned_user_id"], "to": assigned_user_id})
+
+    return ("OK", 200)
+4️⃣ What You Now Have
+
+When you visit:
+
+/assign
