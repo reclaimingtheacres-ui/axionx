@@ -12,7 +12,7 @@ from datetime import date, datetime
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "axion-dev-secret")
-app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(days=30)
+app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(hours=8)
 
 DB_PATH = "axion.db"
 
@@ -647,7 +647,14 @@ def login_post():
 
 @app.get("/logout")
 def logout():
+    reason = request.args.get("reason", "")
+    user_id = session.get("user_id")
+    user_name = session.get("user_name", "Unknown")
+    if reason == "timeout" and user_id:
+        audit("user", user_id, "logout", f"Session auto-expired due to inactivity: {user_name}", {})
     session.clear()
+    if reason == "timeout":
+        flash("Your session expired due to inactivity. Please sign in again.", "warning")
     return redirect(url_for("login"))
 
 

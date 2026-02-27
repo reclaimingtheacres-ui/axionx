@@ -455,5 +455,80 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   {% block modals %}{% endblock %}
+{% if session.get('user_id') %}
+<div class="modal fade" id="idleWarningModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-body text-center py-4 px-3">
+        <div style="font-size:2rem;margin-bottom:.5rem">&#9200;</div>
+        <h6 style="color:var(--text);margin-bottom:.5rem">Still there?</h6>
+        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1.25rem">
+          You'll be signed out in <strong id="idleCountdown">2:00</strong> due to inactivity.
+        </p>
+        <button class="btn btn-primary w-100" onclick="resetIdleTimer()">Keep me signed in</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var WARN_MS  = 18 * 60 * 1000;
+  var LIMIT_MS = 20 * 60 * 1000;
+  var warnTimer, logoutTimer, countdownInterval;
+  var modal = null;
+
+  function getModal() {
+    if (!modal) {
+      var el = document.getElementById('idleWarningModal');
+      if (el && window.bootstrap) modal = new bootstrap.Modal(el);
+    }
+    return modal;
+  }
+
+  function startCountdown() {
+    var remaining = 2 * 60;
+    var el = document.getElementById('idleCountdown');
+    clearInterval(countdownInterval);
+    countdownInterval = setInterval(function() {
+      remaining--;
+      if (el) {
+        var m = Math.floor(remaining / 60);
+        var s = remaining % 60;
+        el.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+      }
+      if (remaining <= 0) clearInterval(countdownInterval);
+    }, 1000);
+  }
+
+  function showWarning() {
+    var m = getModal();
+    if (m) { m.show(); startCountdown(); }
+  }
+
+  function hideWarning() {
+    var m = getModal();
+    if (m) m.hide();
+    clearInterval(countdownInterval);
+  }
+
+  window.resetIdleTimer = function() {
+    hideWarning();
+    clearTimeout(warnTimer);
+    clearTimeout(logoutTimer);
+    warnTimer   = setTimeout(showWarning, WARN_MS);
+    logoutTimer = setTimeout(function() {
+      window.location.href = '/logout?reason=timeout';
+    }, LIMIT_MS);
+  };
+
+  ['click', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(function(evt) {
+    document.addEventListener(evt, window.resetIdleTimer, true);
+  });
+
+  resetIdleTimer();
+})();
+</script>
+{% endif %}
 </body>
 </html>
