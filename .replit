@@ -32,3 +32,9 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+SMTP_HOST = "smtp.office365.com"
+SMTP_PORT = "587"
