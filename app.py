@@ -791,13 +791,13 @@ def job_new():
         if row:
             prefill_customer_address = row["address"] or ""
 
+    cur.execute("SELECT id, name FROM job_types WHERE active = 1 ORDER BY name")
+    job_types = cur.fetchall()
     conn.close()
 
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
 
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
-    cur.execute("SELECT id, name FROM job_types WHERE active = 1 ORDER BY name")
-    job_types = cur.fetchall()
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     priorities = ["Low", "Normal", "High", "Urgent"]
 

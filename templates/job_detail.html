@@ -90,6 +90,7 @@
         {% endif %}
       </div>
     </div>
+    {% if session.get('role') == 'admin' %}
     <details>
       <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
       <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-2">
@@ -133,6 +134,7 @@
         <button class="btn btn-primary btn-sm">Save Lender Details</button>
       </form>
     </details>
+    {% endif %}
   </div>
 </div>
 
