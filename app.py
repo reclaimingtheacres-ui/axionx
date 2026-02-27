@@ -347,6 +347,34 @@ def format_ddmmyyyy(d):
     return d.strftime("%d/%m/%Y")
 
 
+def parse_interaction_datetime(date_str: str, time_str: str) -> str:
+    date_str = (date_str or "").strip()
+    time_str = (time_str or "").strip().upper()
+    if not date_str:
+        return datetime.now().isoformat(timespec="seconds")
+    try:
+        if time_str:
+            combined = f"{date_str} {time_str}"
+            dt = datetime.strptime(combined, "%d/%m/%Y %I:%M %p")
+        else:
+            dt = datetime.strptime(date_str, "%d/%m/%Y")
+        return dt.isoformat(timespec="seconds")
+    except Exception:
+        return datetime.now().isoformat(timespec="seconds")
+
+
+def format_interaction_dt(s: str) -> str:
+    if not s:
+        return ""
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            dt = datetime.strptime(s[:19], fmt)
+            return dt.strftime("%-d/%-m/%Y %-I:%M %p").lower()
+        except Exception:
+            continue
+    return s
+
+
 def calc_total_due_now(arrears, costs, mmp, due_date):
     arrears = float(arrears or 0)
     costs = float(costs or 0)
@@ -366,7 +394,11 @@ def calc_total_due_now(arrears, costs, mmp, due_date):
     return round(total, 2), include_mmp
 
 
-app.jinja_env.globals.update(cents_to_money=cents_to_money, format_ddmmyyyy=format_ddmmyyyy)
+app.jinja_env.globals.update(
+    cents_to_money=cents_to_money,
+    format_ddmmyyyy=format_ddmmyyyy,
+    format_interaction_dt=format_interaction_dt,
+)
 
 
 def users_count():
@@ -875,14 +907,14 @@ def job_update(job_id: int):
 def interaction_add(job_id: int):
     event_type = request.form.get("event_type", "Note").strip()
     narrative = request.form.get("narrative", "").strip()
-    occurred_at = request.form.get("occurred_at", "").strip()
+    interaction_date = request.form.get("interaction_date", "").strip()
+    interaction_time = request.form.get("interaction_time", "").strip()
 
     if not narrative:
         flash("Narrative text is required.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
 
-    if not occurred_at:
-        occurred_at = datetime.now().isoformat(timespec="seconds")
+    occurred_at = parse_interaction_datetime(interaction_date, interaction_time)
 
     now = datetime.now().isoformat(timespec="seconds")
 

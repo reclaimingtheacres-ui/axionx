@@ -221,8 +221,13 @@
             <option>Note</option>
           </select>
         </div>
-        <div class="col-12 col-lg-3">
-          <input class="form-control" name="occurred_at" placeholder="YYYY-MM-DDTHH:MM (blank = now)">
+        <div class="col-6 col-lg-2">
+          <input type="text" id="interaction_date" name="interaction_date"
+                 class="form-control" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
+        </div>
+        <div class="col-6 col-lg-2">
+          <input type="text" id="interaction_time" name="interaction_time"
+                 class="form-control" placeholder="hh:mm am" maxlength="8" autocomplete="off">
         </div>
         <div class="col-12 col-lg-6">
           <input class="form-control" name="narrative" placeholder="Narrative / story line..." required>
@@ -350,7 +355,7 @@
         <div class="list-group-item">
           <div class="d-flex justify-content-between align-items-center mb-1">
             <span class="badge bg-secondary">{{ i.event_type }}</span>
-            <span class="small" style="color:var(--muted)">{{ i.occurred_at }}</span>
+            <span class="small" style="color:var(--muted)">{{ format_interaction_dt(i.occurred_at) }}</span>
           </div>
           <div>{{ i.narrative }}</div>
         </div>
@@ -368,5 +373,35 @@ function showItemFields(type) {
     if (el) el.style.display = (t === type) ? '' : 'none';
   });
 }
+
+(function () {
+  var dateEl = document.getElementById('interaction_date');
+  var timeEl = document.getElementById('interaction_time');
+
+  if (dateEl) {
+    dateEl.addEventListener('input', function (e) {
+      var v = e.target.value.replace(/\D/g, '').slice(0, 8);
+      if (v.length >= 5)
+        e.target.value = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+      else if (v.length >= 3)
+        e.target.value = v.slice(0, 2) + '/' + v.slice(2);
+      else
+        e.target.value = v;
+    });
+  }
+
+  if (timeEl) {
+    timeEl.addEventListener('input', function (e) {
+      var raw = e.target.value.toLowerCase().replace(/[^0-9apm]/g, '');
+      var nums = raw.replace(/[apm]/g, '').slice(0, 4);
+      if (nums.length >= 3)
+        nums = nums.slice(0, 2) + ':' + nums.slice(2);
+      var suffix = '';
+      if (raw.includes('pm')) suffix = ' pm';
+      else if (raw.includes('am')) suffix = ' am';
+      e.target.value = nums + suffix;
+    });
+  }
+})();
 </script>
 {% endblock %}
