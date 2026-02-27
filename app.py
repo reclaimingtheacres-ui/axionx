@@ -613,7 +613,8 @@ def login_post():
     session["user_id"] = user["id"]
     session["user_name"] = user["full_name"]
     session["role"] = user["role"]
-    return redirect(url_for("index"))
+    next_url = request.args.get("next", "").strip()
+    return redirect(next_url if next_url and next_url.startswith("/") else url_for("jobs_list"))
 
 
 @app.get("/logout")
@@ -626,43 +627,10 @@ def logout():
 @app.get("/")
 @login_required
 def index():
-    conn = db()
-    cur = conn.cursor()
-    role = session.get("role")
-    user_id = session.get("user_id")
-
-    def jcount(where="", params=()):
-        cur.execute(f"SELECT COUNT(*) AS c FROM jobs{(' WHERE ' + where) if where else ''}", params)
-        return cur.fetchone()["c"]
-
-    if role == "admin":
-        jobs_all       = jcount()
-        jobs_new       = jcount("status = 'New'")
-        jobs_active    = jcount("status LIKE 'Active%'")
-        jobs_suspended = jcount("status = 'Suspended'")
-        jobs_invoiced  = jcount("status = 'Invoiced'")
-    else:
-        base = "assigned_user_id = ?"
-        jobs_all       = jcount(base, (user_id,))
-        jobs_new       = jcount(f"{base} AND status = 'New'", (user_id,))
-        jobs_active    = jcount(f"{base} AND status LIKE 'Active%'", (user_id,))
-        jobs_suspended = jcount(f"{base} AND status = 'Suspended'", (user_id,))
-        jobs_invoiced  = jcount(f"{base} AND status = 'Invoiced'", (user_id,))
-
-    cur.execute("SELECT COUNT(*) AS c FROM clients")
-    clients_count = cur.fetchone()["c"]
-    cur.execute("SELECT COUNT(*) AS c FROM customers")
-    customers_count = cur.fetchone()["c"]
-    conn.close()
-    return render_template("index.html",
-                           jobs_all=jobs_all, jobs_new=jobs_new,
-                           jobs_active=jobs_active, jobs_suspended=jobs_suspended,
-                           jobs_invoiced=jobs_invoiced,
-                           clients_count=clients_count,
-                           customers_count=customers_count)
+    return redirect(url_for("jobs_list"))
 
 
-# -------- Jobs --------
+
 @app.get("/jobs")
 @login_required
 def jobs_list():
