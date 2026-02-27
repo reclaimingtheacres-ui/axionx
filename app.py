@@ -83,6 +83,25 @@ def init_db():
         except Exception:
             pass
 
+    for col, definition in [
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE clients ADD COLUMN {col} {definition}")
+        except Exception:
+            pass
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS contact_phone_numbers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        label TEXT NOT NULL,
+        phone_number TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -732,6 +751,99 @@ def client_create():
     return redirect(url_for("clients_list"))
 
 
+@app.get("/clients/<int:client_id>")
+@login_required
+def client_detail(client_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+    client = cur.fetchone()
+    if not client:
+        conn.close()
+        return ("Not found", 404)
+    cur.execute("""
+        SELECT j.*, u.full_name agent_name
+        FROM jobs j
+        LEFT JOIN users u ON u.id = j.assigned_user_id
+        WHERE j.client_id = ?
+        ORDER BY j.created_at DESC
+    """, (client_id,))
+    jobs = cur.fetchall()
+    cur.execute("""
+        SELECT * FROM contact_phone_numbers
+        WHERE entity_type = 'client' AND entity_id = ?
+        ORDER BY id
+    """, (client_id,))
+    phones = cur.fetchall()
+    conn.close()
+    return render_template("client_detail.html", client=client, jobs=jobs, phones=phones)
+
+
+@app.get("/clients/<int:client_id>/edit")
+@login_required
+def client_edit(client_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
+    client = cur.fetchone()
+    if not client:
+        conn.close()
+        return ("Not found", 404)
+    cur.execute("""
+        SELECT * FROM contact_phone_numbers
+        WHERE entity_type = 'client' AND entity_id = ?
+        ORDER BY id
+    """, (client_id,))
+    phones = cur.fetchall()
+    conn.close()
+    return render_template("client_edit.html", client=client, phones=phones)
+
+
+@app.post("/clients/<int:client_id>/edit")
+@login_required
+def client_edit_post(client_id: int):
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip()
+    address = request.form.get("address", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    if not name:
+        flash("Client name is required.", "danger")
+        return redirect(url_for("client_edit", client_id=client_id))
+
+    ts = now_ts()
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE clients
+        SET name = ?, email = ?, address = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+    """, (name, email, address, notes, ts, client_id))
+
+    cur.execute("""
+        DELETE FROM contact_phone_numbers
+        WHERE entity_type = 'client' AND entity_id = ?
+    """, (client_id,))
+
+    for label, field in [("Mobile", "phone_mobile"), ("Home", "phone_home"),
+                         ("Work", "phone_work"), ("Other", "phone_other")]:
+        number = request.form.get(field, "").strip()
+        if number:
+            cur.execute("""
+                INSERT INTO contact_phone_numbers
+                    (entity_type, entity_id, label, phone_number, created_at)
+                VALUES ('client', ?, ?, ?, ?)
+            """, (client_id, label, number, ts))
+
+    conn.commit()
+    conn.close()
+
+    audit("client", client_id, "update", "Client details updated", {})
+    flash("Client updated.", "success")
+    return redirect(url_for("client_detail", client_id=client_id))
+
+
 # -------- Customers --------
 @app.get("/customers")
 @login_required
@@ -795,8 +907,14 @@ def customer_detail(customer_id: int):
         ORDER BY j.created_at DESC
     """, (customer_id,))
     jobs = cur.fetchall()
+    cur.execute("""
+        SELECT * FROM contact_phone_numbers
+        WHERE entity_type = 'customer' AND entity_id = ?
+        ORDER BY id
+    """, (customer_id,))
+    phones = cur.fetchall()
     conn.close()
-    return render_template("customer_detail.html", customer=customer, jobs=jobs)
+    return render_template("customer_detail.html", customer=customer, jobs=jobs, phones=phones)
 
 
 @app.get("/customers/<int:customer_id>/edit")
@@ -806,10 +924,17 @@ def customer_edit(customer_id: int):
     cur = conn.cursor()
     cur.execute("SELECT * FROM customers WHERE id = ?", (customer_id,))
     customer = cur.fetchone()
-    conn.close()
     if not customer:
+        conn.close()
         return ("Not found", 404)
-    return render_template("customer_edit.html", customer=customer)
+    cur.execute("""
+        SELECT * FROM contact_phone_numbers
+        WHERE entity_type = 'customer' AND entity_id = ?
+        ORDER BY id
+    """, (customer_id,))
+    phones = cur.fetchall()
+    conn.close()
+    return render_template("customer_edit.html", customer=customer, phones=phones)
 
 
 @app.post("/customers/<int:customer_id>/edit")
@@ -856,6 +981,21 @@ def customer_edit_post(customer_id: int):
         WHERE id = ?
     """, (full_name, phone, email, dob, address, notes,
           id_image_filename, id_image_path, ts, customer_id))
+
+    cur.execute("""
+        DELETE FROM contact_phone_numbers
+        WHERE entity_type = 'customer' AND entity_id = ?
+    """, (customer_id,))
+
+    for label, field in [("Mobile", "phone_mobile"), ("Home", "phone_home"),
+                         ("Work", "phone_work"), ("Other", "phone_other")]:
+        number = request.form.get(field, "").strip()
+        if number:
+            cur.execute("""
+                INSERT INTO contact_phone_numbers
+                    (entity_type, entity_id, label, phone_number, created_at)
+                VALUES ('customer', ?, ?, ?, ?)
+            """, (customer_id, label, number, ts))
 
     conn.commit()
     conn.close()

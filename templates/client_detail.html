@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+{% block title %}Axion | {{ client.name }}{% endblock %}
+{% block page_title %}Client{% endblock %}
+
+{% block content %}
+<div class="ax-card mb-3">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>{{ client.name }}</div>
+    <a class="btn btn-primary btn-sm" href="/clients/{{ client.id }}/edit">Edit</a>
+  </div>
+  <div class="ax-card-b">
+    <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <div class="mb-2">
+          <div class="small" style="color:var(--muted)">Phone Numbers</div>
+          {% if phones %}
+            {% for p in phones %}
+              <div>
+                <span class="small" style="color:var(--muted)">{{ p.label }}:</span>
+                <a href="tel:{{ p.phone_number }}" style="color:var(--accent)">{{ p.phone_number }}</a>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div>&mdash;</div>
+          {% endif %}
+        </div>
+        <div class="mb-2">
+          <div class="small" style="color:var(--muted)">Email</div>
+          <div>{% if client.email %}<a href="mailto:{{ client.email }}" style="color:var(--accent)">{{ client.email }}</a>{% else %}&mdash;{% endif %}</div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div class="mb-2">
+          <div class="small" style="color:var(--muted)">Address</div>
+          <div>{{ client.address or '&mdash;' }}</div>
+        </div>
+        <div class="mb-2">
+          <div class="small" style="color:var(--muted)">Notes</div>
+          <div style="white-space:pre-wrap">{{ client.notes or '&mdash;' }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="mt-2 small" style="color:var(--muted)">Created {{ client.created_at }}</div>
+  </div>
+</div>
+
+<div class="ax-card">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>Jobs</div>
+    <a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>
+  </div>
+  <div class="ax-card-b">
+    <div class="list-group list-group-flush">
+      {% for j in jobs %}
+        <a href="/jobs/{{ j.id }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">{{ j.display_ref }}</div>
+            <div class="small" style="color:var(--muted)">{{ j.job_type }}{% if j.agent_name %} &bull; {{ j.agent_name }}{% endif %}</div>
+          </div>
+          <span class="badge" style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3)">{{ j.status }}</span>
+        </a>
+      {% else %}
+        <div class="py-3 text-center" style="color:var(--muted)">No jobs for this client yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

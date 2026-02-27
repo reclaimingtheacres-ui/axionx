@@ -11,13 +11,11 @@
   <div class="ax-card-b">
     <div class="list-group list-group-flush">
       {% for c in clients %}
-        <div class="list-group-item">
+        <a href="/clients/{{ c.id }}" class="list-group-item list-group-item-action">
           <div class="fw-semibold">{{ c.name }}</div>
-          {% if c.phone %}<div class="small"><a href="tel:{{ c.phone }}" style="color:var(--accent)">{{ c.phone }}</a></div>{% endif %}
-          {% if c.email %}<div class="small"><a href="mailto:{{ c.email }}" style="color:var(--accent)">{{ c.email }}</a></div>{% endif %}
+          {% if c.email %}<div class="small" style="color:var(--muted)">{{ c.email }}</div>{% endif %}
           {% if c.address %}<div class="small" style="color:var(--muted)">{{ c.address }}</div>{% endif %}
-          {% if c.notes %}<div class="small mt-1" style="color:var(--muted)">{{ c.notes }}</div>{% endif %}
-        </div>
+        </a>
       {% else %}
         <div style="color:var(--muted)" class="py-3 text-center">No clients yet.</div>
       {% endfor %}

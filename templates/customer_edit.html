@@ -13,20 +13,36 @@
           <input class="form-control" name="full_name" value="{{ customer.full_name }}" required>
         </div>
         <div class="col-12 col-lg-3">
-          <label class="form-label">Phone</label>
-          <input class="form-control" name="phone" value="{{ customer.phone or '' }}">
-        </div>
-        <div class="col-12 col-lg-3">
           <label class="form-label">Date of Birth</label>
           <input class="form-control" name="dob" value="{{ customer.dob or '' }}" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label">Email</label>
+          <input class="form-control" name="email" value="{{ customer.email or '' }}">
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">Phone Numbers</label>
+        {% set pm = {} %}
+        {% for p in phones %}{% set _ = pm.update({p['label']: p['phone_number']}) %}{% endfor %}
+        <div class="row g-2">
+          <div class="col-6 col-lg-3">
+            <input class="form-control" name="phone_mobile" placeholder="Mobile" value="{{ pm.get('Mobile','') }}">
+          </div>
+          <div class="col-6 col-lg-3">
+            <input class="form-control" name="phone_home" placeholder="Home" value="{{ pm.get('Home','') }}">
+          </div>
+          <div class="col-6 col-lg-3">
+            <input class="form-control" name="phone_work" placeholder="Work" value="{{ pm.get('Work','') }}">
+          </div>
+          <div class="col-6 col-lg-3">
+            <input class="form-control" name="phone_other" placeholder="Other" value="{{ pm.get('Other','') }}">
+          </div>
         </div>
       </div>
 
       <div class="row g-2 mt-1">
-        <div class="col-12 col-lg-6">
-          <label class="form-label">Email</label>
-          <input class="form-control" name="email" value="{{ customer.email or '' }}">
-        </div>
         <div class="col-12 col-lg-6">
           <label class="form-label">Address</label>
           <input class="form-control" name="address" value="{{ customer.address or '' }}">

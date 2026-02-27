@@ -17,8 +17,16 @@
     <div class="row g-3">
       <div class="col-12 col-md-6">
         <div class="mb-2">
-          <div class="small" style="color:var(--muted)">Phone</div>
-          <div>{% if customer.phone %}<a href="tel:{{ customer.phone }}" style="color:var(--accent)">{{ customer.phone }}</a>{% else %}&mdash;{% endif %}</div>
+          <div class="small" style="color:var(--muted)">Phone Numbers</div>
+          {% if phones %}
+            {% for p in phones %}
+              <div><span class="small" style="color:var(--muted)">{{ p.label }}:</span>
+                <a href="tel:{{ p.phone_number }}" style="color:var(--accent)">{{ p.phone_number }}</a>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div>&mdash;</div>
+          {% endif %}
         </div>
         <div class="mb-2">
           <div class="small" style="color:var(--muted)">Email</div>
