@@ -134,6 +134,81 @@
         </div>
       </div>
 
+      <div class="ax-card mt-3">
+        <div class="ax-card-h">Assets (optional)</div>
+        <div class="ax-card-b" id="assetsWrap">
+
+          <div class="asset-row border rounded p-3 mb-2" style="border-color:var(--line)!important">
+            <div class="row g-2">
+              <div class="col-12 col-lg-3">
+                <label class="form-label">Asset type</label>
+                <select class="form-select" name="asset_type[]">
+                  <option>Vehicle</option>
+                  <option>Property</option>
+                  <option>Equipment</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div class="col-12 col-lg-9">
+                <label class="form-label">Description</label>
+                <input class="form-control" name="asset_description[]" placeholder="e.g. Ford Ranger / House / Catering trailer">
+              </div>
+            </div>
+            <div class="row g-2 mt-2">
+              <div class="col-12 col-md-3"><input class="form-control" name="asset_rego[]" placeholder="Rego"></div>
+              <div class="col-12 col-md-3"><input class="form-control" name="asset_vin[]" placeholder="VIN"></div>
+              <div class="col-12 col-md-2"><input class="form-control" name="asset_year[]" placeholder="Year"></div>
+              <div class="col-12 col-md-2"><input class="form-control" name="asset_make[]" placeholder="Make"></div>
+              <div class="col-12 col-md-2"><input class="form-control" name="asset_model[]" placeholder="Model"></div>
+            </div>
+            <div class="row g-2 mt-2">
+              <div class="col-12 col-md-8">
+                <input class="form-control" name="asset_address[]" placeholder="Asset address (property/site)" data-maps-autocomplete>
+              </div>
+              <div class="col-12 col-md-4">
+                <input class="form-control" name="asset_serial[]" placeholder="Serial (equipment)">
+              </div>
+            </div>
+            <div class="row g-2 mt-2">
+              <div class="col-12">
+                <input class="form-control" name="asset_notes[]" placeholder="Notes (optional)">
+              </div>
+            </div>
+            <div class="mt-2 d-flex justify-content-end">
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeAssetRow(this)">Remove</button>
+            </div>
+          </div>
+
+        </div>
+        <div class="ax-card-b pt-0">
+          <button type="button" class="btn btn-outline-primary" onclick="addAssetRow()">+ Add another asset</button>
+        </div>
+      </div>
+
+      <script>
+      function addAssetRow() {
+        const wrap = document.getElementById("assetsWrap");
+        const first = wrap.querySelector(".asset-row");
+        const clone = first.cloneNode(true);
+        clone.querySelectorAll("input").forEach(i => i.value = "");
+        clone.querySelectorAll("select").forEach(s => s.selectedIndex = 0);
+        clone.querySelectorAll("[data-places-attached]").forEach(i => delete i.dataset.placesAttached);
+        wrap.appendChild(clone);
+        if (typeof initPlaces === "function") initPlaces();
+      }
+
+      function removeAssetRow(btn) {
+        const wrap = document.getElementById("assetsWrap");
+        const rows = wrap.querySelectorAll(".asset-row");
+        if (rows.length <= 1) {
+          rows[0].querySelectorAll("input").forEach(i => i.value = "");
+          rows[0].querySelectorAll("select").forEach(s => s.selectedIndex = 0);
+          return;
+        }
+        btn.closest(".asset-row").remove();
+      }
+      </script>
+
       <div class="mt-3 d-flex gap-2">
         <button class="btn btn-primary">Create Job</button>
         <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>

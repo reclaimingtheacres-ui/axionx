@@ -177,6 +177,26 @@ def init_db():
     """)
 
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_assets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        asset_type TEXT NOT NULL DEFAULT 'Other',
+        description TEXT,
+        rego TEXT,
+        vin TEXT,
+        make TEXT,
+        model TEXT,
+        year TEXT,
+        address TEXT,
+        serial TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS interactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         job_id INTEGER NOT NULL,
@@ -663,6 +683,38 @@ def job_create():
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "System", f"Job created: {display_ref}. Status '{status}'. Visit type '{visit_type}'.", now, now))
+
+    asset_types   = request.form.getlist("asset_type[]")
+    descs         = request.form.getlist("asset_description[]")
+    regos         = request.form.getlist("asset_rego[]")
+    vins          = request.form.getlist("asset_vin[]")
+    years         = request.form.getlist("asset_year[]")
+    makes         = request.form.getlist("asset_make[]")
+    models        = request.form.getlist("asset_model[]")
+    addresses     = request.form.getlist("asset_address[]")
+    serials       = request.form.getlist("asset_serial[]")
+    asset_notes   = request.form.getlist("asset_notes[]")
+
+    for i in range(len(asset_types)):
+        a_type  = (asset_types[i]  or "").strip()
+        a_desc  = (descs[i]        or "").strip()
+        a_rego  = (regos[i]        or "").strip()
+        a_vin   = (vins[i]         or "").strip()
+        a_year  = (years[i]        or "").strip()
+        a_make  = (makes[i]        or "").strip()
+        a_model = (models[i]       or "").strip()
+        a_addr  = (addresses[i]    or "").strip()
+        a_ser   = (serials[i]      or "").strip()
+        a_note  = (asset_notes[i]  or "").strip()
+        if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year]):
+            continue
+        cur.execute("""
+            INSERT INTO job_assets
+            (job_id, asset_type, description, rego, vin, make, model, year, address, serial, notes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (job_id, a_type or "Other",
+              a_desc or None, a_rego or None, a_vin or None, a_make or None, a_model or None, a_year or None,
+              a_addr or None, a_ser or None, a_note or None, now, now))
 
     conn.commit()
     conn.close()
