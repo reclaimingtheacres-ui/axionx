@@ -855,7 +855,7 @@ def job_detail(job_id: int):
 
     cur.execute("""
         SELECT phone_number, label FROM contact_phone_numbers
-        WHERE customer_id = ? ORDER BY id LIMIT 1
+        WHERE entity_type = 'customer' AND entity_id = ? ORDER BY id LIMIT 1
     """, (job.get("customer_id"),))
     cphone_row = cur.fetchone()
     job["customer_phone"] = cphone_row["phone_number"] if cphone_row else None
