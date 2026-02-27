@@ -244,6 +244,18 @@ def init_db():
     """)
 
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        used INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    );
+    """
+    )
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS audit_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         actor_user_id INTEGER,
@@ -576,6 +588,127 @@ def admin_required(f):
 
 
 # -------- Login / Logout --------
+
+import smtplib as _smtplib
+import os as _os
+from email.mime.multipart import MIMEMultipart as _MIMEMultipart
+from email.mime.text import MIMEText as _MIMEText
+
+
+def send_reset_email(to_addr, reset_link):
+    host = _os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    port = int(_os.environ.get("SMTP_PORT", "587"))
+    user = _os.environ.get("SMTP_USER", "")
+    pswd = _os.environ.get("SMTP_PASS", "")
+    frm  = _os.environ.get("SMTP_FROM", user)
+    if not user or not pswd:
+        raise RuntimeError("SMTP credentials not configured.")
+    msg = _MIMEMultipart("alternative")
+    msg["Subject"] = "Axion — Password Reset"
+    msg["From"]    = frm
+    msg["To"]      = to_addr
+    txt = f"Click the link below to reset your Axion password:\n\n{reset_link}\n\nThis link expires in 1 hour."
+    htm = f"""<div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+  <h2 style="color:#0f172a">Reset your Axion password</h2>
+  <p>Click the button below to choose a new password. This link expires in <strong>1 hour</strong>.</p>
+  <p><a href="{reset_link}" style="display:inline-block;background:#3b82f6;color:#fff;
+     padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Reset Password</a></p>
+  <p style="color:#6b7280;font-size:13px">If you did not request this, you can safely ignore this email.</p>
+  <hr style="border:none;border-top:1px solid #e5e7eb">
+  <p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+</div>"""
+    msg.attach(_MIMEText(txt, "plain"))
+    msg.attach(_MIMEText(htm, "html"))
+    with _smtplib.SMTP(host, port, timeout=10) as s:
+        s.ehlo()
+        s.starttls()
+        s.login(user, pswd)
+        s.sendmail(frm, to_addr, msg.as_string())
+
+
+@app.get("/forgot-password")
+def forgot_password():
+    return render_template("forgot_password.html")
+
+
+@app.post("/forgot-password")
+def forgot_password_post():
+    import secrets as _tok
+    from datetime import timedelta as _td
+    email = request.form.get("email", "").strip().lower()
+    generic_msg = "If that email is registered you\u2019ll receive a reset link shortly."
+    if not email:
+        flash(generic_msg, "success")
+        return redirect(url_for("forgot_password"))
+    conn = db()
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE email = ? AND active = 1", (email,))
+    user = cur.fetchone()
+    if user:
+        token   = _tok.token_urlsafe(32)
+        expires = (datetime.now() + _td(hours=1)).isoformat(timespec="seconds")
+        created = datetime.now().isoformat(timespec="seconds")
+        cur.execute("""INSERT INTO password_reset_tokens (user_id, token, expires_at, used, created_at)
+                       VALUES (?, ?, ?, 0, ?)""", (user["id"], token, expires, created))
+        conn.commit()
+        link = request.host_url.rstrip("/") + url_for("reset_password", token=token)
+        try:
+            send_reset_email(email, link)
+        except Exception as e:
+            conn.close()
+            flash(f"Could not send email: {e}", "danger")
+            return redirect(url_for("forgot_password"))
+    conn.close()
+    flash(generic_msg, "success")
+    return redirect(url_for("forgot_password"))
+
+
+@app.get("/reset-password/<token>")
+def reset_password(token):
+    conn = db()
+    cur  = conn.cursor()
+    cur.execute("""SELECT * FROM password_reset_tokens
+                   WHERE token = ? AND used = 0 AND expires_at > ?""",
+                (token, datetime.now().isoformat(timespec="seconds")))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        flash("That reset link is invalid or has expired.", "danger")
+        return redirect(url_for("forgot_password"))
+    return render_template("reset_password.html", token=token)
+
+
+@app.post("/reset-password/<token>")
+def reset_password_post(token):
+    conn = db()
+    cur  = conn.cursor()
+    cur.execute("""SELECT * FROM password_reset_tokens
+                   WHERE token = ? AND used = 0 AND expires_at > ?""",
+                (token, datetime.now().isoformat(timespec="seconds")))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        flash("That reset link is invalid or has expired.", "danger")
+        return redirect(url_for("forgot_password"))
+    new_pw  = request.form.get("new_password", "")
+    confirm = request.form.get("confirm_password", "")
+    if len(new_pw) < 8:
+        conn.close()
+        flash("Password must be at least 8 characters.", "danger")
+        return redirect(url_for("reset_password", token=token))
+    if new_pw != confirm:
+        conn.close()
+        flash("Passwords do not match.", "danger")
+        return redirect(url_for("reset_password", token=token))
+    hashed = generate_password_hash(new_pw)
+    cur.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, row["user_id"]))
+    cur.execute("UPDATE password_reset_tokens SET used = 1 WHERE id = ?", (row["id"],))
+    conn.commit()
+    conn.close()
+    flash("Password updated. Please sign in.", "success")
+    return redirect(url_for("login"))
+
+
 @app.get("/login")
 def login():
     if session.get("user_id"):
