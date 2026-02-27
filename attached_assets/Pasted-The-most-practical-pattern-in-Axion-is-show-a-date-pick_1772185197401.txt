@@ -1,0 +1,123 @@
+The most practical pattern in Axion is: show a date picker and time picker (click-to-select), but also include a manual text field that stays in dd/mm/yyyy and hh:mm am/pm. When the user uses either one, Axion syncs the other automatically.
+
+Schedule form fields
+
+Use four inputs: date picker + date text, time picker + time text.
+
+<div class="row g-2">
+  <div class="col-md-3">
+    <input type="date" id="sched_date_picker" class="form-control">
+  </div>
+  <div class="col-md-3">
+    <input type="text" id="sched_date_text" name="schedule_date" class="form-control" placeholder="dd/mm/yyyy" maxlength="10" required>
+  </div>
+  <div class="col-md-3">
+    <input type="time" id="sched_time_picker" class="form-control">
+  </div>
+  <div class="col-md-3">
+    <input type="text" id="sched_time_text" name="schedule_time" class="form-control" placeholder="hh:mm am" maxlength="8" required>
+  </div>
+</div>
+
+The name= fields are the ones your Flask route reads (schedule_date, schedule_time). The pickers have no name; they just help input.
+
+Sync logic (vanilla JS)
+
+This keeps everything consistent:
+
+If user picks a date, it writes into the dd/mm/yyyy field.
+
+If user types dd/mm/yyyy, it writes into the picker (when valid).
+
+If user picks a time (24h), it writes into the am/pm field.
+
+If user types am/pm, it writes into the picker (when valid).
+
+<script>
+(function () {
+  const dp = document.getElementById("sched_date_picker");
+  const dt = document.getElementById("sched_date_text");
+  const tp = document.getElementById("sched_time_picker");
+  const tt = document.getElementById("sched_time_text");
+
+  if (!dp || !dt || !tp || !tt) return;
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+
+  // ----- Date: picker (YYYY-MM-DD) -> text (dd/mm/yyyy)
+  dp.addEventListener("change", () => {
+    if (!dp.value) return;
+    const [y,m,d] = dp.value.split("-");
+    dt.value = `${d}/${m}/${y}`;
+    dt.dispatchEvent(new Event("change", { bubbles:true }));
+  });
+
+  // ----- Date: text (dd/mm/yyyy) -> picker (YYYY-MM-DD) when valid
+  dt.addEventListener("blur", () => {
+    const v = (dt.value || "").trim();
+    const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return;
+    const dd = Number(m[1]), mm = Number(m[2]), yyyy = Number(m[3]);
+    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return;
+    dp.value = `${yyyy}-${pad2(mm)}-${pad2(dd)}`;
+  });
+
+  // Optional: auto-slash while typing dd/mm/yyyy
+  dt.addEventListener("input", (e) => {
+    let v = e.target.value.replace(/\D/g, "").slice(0,8);
+    if (v.length >= 5) e.target.value = v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);
+    else if (v.length >= 3) e.target.value = v.slice(0,2)+"/"+v.slice(2);
+    else e.target.value = v;
+  });
+
+  // ----- Time: picker (HH:MM 24h) -> text (hh:mm am/pm)
+  function toAmPm(hhmm){
+    const [H,M] = hhmm.split(":").map(Number);
+    let h = H % 12; if (h === 0) h = 12;
+    const suffix = H >= 12 ? "pm" : "am";
+    return `${h}:${pad2(M)} ${suffix}`;
+  }
+
+  tp.addEventListener("change", () => {
+    if (!tp.value) return;
+    tt.value = toAmPm(tp.value);
+    tt.dispatchEvent(new Event("change", { bubbles:true }));
+  });
+
+  // ----- Time: text (hh:mm am/pm) -> picker (HH:MM 24h) when valid
+  function to24h(str){
+    const v = str.trim().toLowerCase();
+    const m = v.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/);
+    if (!m) return null;
+    let h = Number(m[1]);
+    const min = Number(m[2]);
+    const ap = m[3];
+    if (h < 1 || h > 12 || min < 0 || min > 59) return null;
+    if (ap === "pm" && h !== 12) h += 12;
+    if (ap === "am" && h === 12) h = 0;
+    return `${pad2(h)}:${pad2(min)}`;
+  }
+
+  tt.addEventListener("blur", () => {
+    const v24 = to24h(tt.value || "");
+    if (!v24) return;
+    tp.value = v24;
+  });
+
+  // Optional: light formatting help while typing time
+  tt.addEventListener("input", (e) => {
+    // keep user flexible; don’t over-aggressively rewrite on every keystroke
+    e.target.value = e.target.value.replace(/\s+/g, " ");
+  });
+})();
+</script>
+Result
+
+Users can:
+
+click a calendar day or type dd/mm/yyyy
+
+pick a time or type 2:30 pm
+
+Your backend continues to receive exactly what you want:
+dd/mm/yyyy and hh:mm am/pm.

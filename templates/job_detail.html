@@ -467,13 +467,19 @@
   <div class="ax-card-b">
 
     <form method="post" action="/jobs/{{ job.id }}/schedule" class="row g-2 mb-3">
-      <div class="col-md-3">
-        <input id="sched_date" name="schedule_date" class="form-control"
-               placeholder="dd/mm/yyyy" autocomplete="off" required>
+      <div class="col-md-2">
+        <input type="date" id="sched_date_picker" class="form-control">
       </div>
-      <div class="col-md-3">
-        <input id="sched_time" name="schedule_time" class="form-control"
-               placeholder="hh:mm am/pm" autocomplete="off" required>
+      <div class="col-md-2">
+        <input type="text" id="sched_date_text" name="schedule_date" class="form-control"
+               placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" required>
+      </div>
+      <div class="col-md-2">
+        <input type="time" id="sched_time_picker" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <input type="text" id="sched_time_text" name="schedule_time" class="form-control"
+               placeholder="hh:mm am" maxlength="8" autocomplete="off" required>
       </div>
       <div class="col-md-3">
         <select name="booking_type_id" class="form-select" required>
@@ -561,25 +567,68 @@
 
 <script>
 (function () {
-  var d = document.getElementById('sched_date');
-  var t = document.getElementById('sched_time');
-  if (d) {
-    d.addEventListener('input', function (e) {
-      var v = e.target.value.replace(/\D/g, '').slice(0, 8);
-      if (v.length >= 5)      e.target.value = v.slice(0,2)+'/'+v.slice(2,4)+'/'+v.slice(4);
-      else if (v.length >= 3) e.target.value = v.slice(0,2)+'/'+v.slice(2);
-      else                    e.target.value = v;
-    });
+  const dp = document.getElementById("sched_date_picker");
+  const dt = document.getElementById("sched_date_text");
+  const tp = document.getElementById("sched_time_picker");
+  const tt = document.getElementById("sched_time_text");
+  if (!dp || !dt || !tp || !tt) return;
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+
+  dp.addEventListener("change", () => {
+    if (!dp.value) return;
+    const [y,m,d] = dp.value.split("-");
+    dt.value = d+"/"+m+"/"+y;
+  });
+
+  dt.addEventListener("blur", () => {
+    const v = (dt.value||"").trim();
+    const mx = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!mx) return;
+    const dd=Number(mx[1]),mm=Number(mx[2]),yyyy=Number(mx[3]);
+    if (mm<1||mm>12||dd<1||dd>31) return;
+    dp.value = yyyy+"-"+pad2(mm)+"-"+pad2(dd);
+  });
+
+  dt.addEventListener("input", (e) => {
+    let v = e.target.value.replace(/\D/g,"").slice(0,8);
+    if (v.length>=5) e.target.value=v.slice(0,2)+"/"+v.slice(2,4)+"/"+v.slice(4);
+    else if (v.length>=3) e.target.value=v.slice(0,2)+"/"+v.slice(2);
+    else e.target.value=v;
+  });
+
+  function toAmPm(hhmm){
+    const [H,M]=hhmm.split(":").map(Number);
+    let h=H%12; if(h===0)h=12;
+    return h+":"+pad2(M)+" "+(H>=12?"pm":"am");
   }
-  if (t) {
-    t.addEventListener('input', function (e) {
-      var raw  = e.target.value.toLowerCase().replace(/[^0-9apm]/g, '');
-      var nums = raw.replace(/[apm]/g, '').slice(0, 4);
-      if (nums.length >= 3) nums = nums.slice(0,2)+':'+nums.slice(2);
-      var suf = raw.includes('pm') ? ' pm' : (raw.includes('am') ? ' am' : '');
-      e.target.value = nums + suf;
-    });
+
+  tp.addEventListener("change", () => {
+    if (!tp.value) return;
+    tt.value = toAmPm(tp.value);
+  });
+
+  function to24h(str){
+    const v=str.trim().toLowerCase();
+    const mx=v.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/);
+    if(!mx) return null;
+    let h=Number(mx[1]);
+    const min=Number(mx[2]),ap=mx[3];
+    if(h<1||h>12||min<0||min>59) return null;
+    if(ap==="pm"&&h!==12) h+=12;
+    if(ap==="am"&&h===12) h=0;
+    return pad2(h)+":"+pad2(min);
   }
+
+  tt.addEventListener("blur", () => {
+    const v24=to24h(tt.value||"");
+    if(!v24) return;
+    tp.value=v24;
+  });
+
+  tt.addEventListener("input", (e) => {
+    e.target.value=e.target.value.replace(/\s+/g," ");
+  });
 })();
 </script>
 
