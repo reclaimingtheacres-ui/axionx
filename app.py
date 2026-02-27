@@ -659,9 +659,25 @@ def jobs_list():
             params.append(status)
 
     if q:
-        sql += " AND (j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR j.display_ref LIKE ? OR j.description LIKE ? OR cu.first_name LIKE ? OR cu.last_name LIKE ?)"
+        sql += """
+         AND (
+           j.internal_job_number LIKE ? OR
+           j.client_reference     LIKE ? OR
+           j.display_ref          LIKE ? OR
+           j.description          LIKE ? OR
+           j.job_address          LIKE ? OR
+           cu.first_name          LIKE ? OR
+           cu.last_name           LIKE ? OR
+           cu.company             LIKE ? OR
+           c.name                 LIKE ? OR
+           EXISTS (
+             SELECT 1 FROM job_items ji
+             WHERE ji.job_id = j.id
+               AND (ji.reg LIKE ? OR ji.vin LIKE ? OR ji.description LIKE ?)
+           )
+         )"""
         like = f"%{q}%"
-        params.extend([like, like, like, like, like, like])
+        params.extend([like] * 12)
 
     sql += " ORDER BY j.updated_at DESC"
 
