@@ -366,6 +366,22 @@ def parse_interaction_datetime(date_str: str, time_str: str) -> str:
         return datetime.now().isoformat(timespec="seconds")
 
 
+_AUTO_ADVANCE_TYPES = {
+    "attendance", "repo attempt", "card left", "neighbour interview", "note"
+}
+
+def maybe_auto_advance_status(cur, job_id: int, current_status: str,
+                               event_type: str, role: str) -> bool:
+    if role != "admin":
+        return False
+    if event_type.lower() not in _AUTO_ADVANCE_TYPES:
+        return False
+    if current_status != "New":
+        return False
+    cur.execute("UPDATE jobs SET status = 'Active' WHERE id = ?", (job_id,))
+    return True
+
+
 def format_interaction_dt(s: str) -> str:
     if not s:
         return ""
@@ -934,15 +950,27 @@ def interaction_add(job_id: int):
 
     conn = db()
     cur = conn.cursor()
+
+    cur.execute("SELECT status FROM jobs WHERE id = ?", (job_id,))
+    job_row = cur.fetchone()
+    current_status = job_row["status"] if job_row else ""
+
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at, photo_path)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (job_id, event_type, narrative, occurred_at, now, photo_path))
+
+    advanced = maybe_auto_advance_status(
+        cur, job_id, current_status, event_type, session.get("role", "")
+    )
     cur.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (now, job_id))
     conn.commit()
     conn.close()
 
-    flash("Interaction added.", "success")
+    if advanced:
+        flash("Interaction added. Job status automatically set to Active.", "success")
+    else:
+        flash("Interaction added.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
 
 
