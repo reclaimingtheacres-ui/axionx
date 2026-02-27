@@ -764,7 +764,7 @@ def jobs_list():
         like = f"%{q}%"
         params.extend([like] * 12)
 
-    sql += " ORDER BY CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC"
+    sql += " ORDER BY CASE WHEN j.status = 'Invoiced' THEN 1 ELSE 0 END, CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC"
 
     cur.execute(sql, params)
     rows = cur.fetchall()
@@ -1254,6 +1254,19 @@ def job_status_update(job_id: int):
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status Update", f"Status changed to '{status}'.", now, now))
+    if status in ("Completed", "Invoiced"):
+        cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
+                    (now, job_id))
+        cur.execute("""
+            UPDATE schedules SET status = 'Cancelled'
+            WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')
+        """, (job_id,))
+        cur.execute("""
+            INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (job_id, "System",
+                f"Agent unassigned and pending schedules cancelled — job marked '{status}'.",
+                now, now))
     conn.commit()
     conn.close()
     return redirect(url_for("job_detail", job_id=job_id))
@@ -1277,6 +1290,20 @@ def job_update(job_id: int):
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status/Visit Update", f"Status set to '{status}'. Visit type set to '{visit_type}'.", now, now))
+
+    if status in ("Completed", "Invoiced"):
+        cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
+                    (now, job_id))
+        cur.execute("""
+            UPDATE schedules SET status = 'Cancelled'
+            WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')
+        """, (job_id,))
+        cur.execute("""
+            INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (job_id, "System",
+                f"Agent unassigned and pending schedules cancelled — job marked '{status}'.",
+                now, now))
 
     conn.commit()
     conn.close()
