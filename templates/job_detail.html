@@ -529,12 +529,11 @@ function showItemFields(type) {
                style="font-size:1.1rem;font-weight:600;letter-spacing:.08em;color:var(--muted);">—</div>
         </div>
         <div id="vicRoadsNoVin" class="mb-4" style="display:none;color:var(--muted);font-size:.8rem;">No VIN recorded</div>
-        <a href="https://www.vicroads.vic.gov.au/registration/buy-sell-or-transfer-a-vehicle/check-vehicle-registration"
-           target="_blank" rel="noopener"
-           class="btn btn-lg px-5"
-           style="background:#16a34a;color:#fff;border:0;border-radius:12px;font-weight:700;">
+        <button type="button" class="btn btn-lg px-5"
+                style="background:#16a34a;color:#fff;border:0;border-radius:12px;font-weight:700;"
+                onclick="window.open('https://www.vicroads.vic.gov.au/registration/buy-sell-or-transfer-a-vehicle/check-vehicle-registration','_blank','noopener')">
           Open VicRoads &rarr;
-        </a>
+        </button>
       </div>
       <div class="modal-footer" style="border-top:1px solid var(--line);">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
