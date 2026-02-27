@@ -405,7 +405,12 @@
         <label class="form-label" style="color:var(--muted);font-size:.85rem">Attachments (PNG, JPG, PDF, DOC, DOCX)</label>
         <input class="form-control" type="file" name="attachments" multiple accept=".png,.jpg,.jpeg,.pdf,.doc,.docx">
       </div>
-      <button class="btn btn-primary">Save Note</button>
+      <div class="d-flex align-items-center gap-3 mt-1">
+        <button class="btn btn-primary">Save Note</button>
+        <span style="color:var(--muted);font-size:.82rem;">
+          Submitting as <strong style="color:var(--text)">{{ session.get('user_name', 'Unknown') }}</strong>
+        </span>
+      </div>
     </form>
   </div>
 </div>
