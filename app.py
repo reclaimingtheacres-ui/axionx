@@ -2192,6 +2192,49 @@ def admin_dashboard():
 
 
 # -------- Admin Settings --------
+
+@app.get("/admin/settings/popup")
+@admin_required
+def admin_settings_popup():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM system_settings WHERE id = 1")
+    settings = cur.fetchone()
+    conn.close()
+    return render_template("partials/settings_popup.html", settings=settings)
+
+
+@app.post("/admin/settings/popup")
+@admin_required
+def admin_settings_popup_update():
+    prefix   = request.form.get("job_prefix", "").strip()
+    sequence = request.form.get("job_sequence", "0").strip()
+    auto_enabled = 1 if request.form.get("auto_prefix_enabled") == "on" else 0
+
+    if not prefix:
+        return jsonify({"ok": False, "error": "Job prefix is required."})
+
+    try:
+        seq_int = int(sequence)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Sequence must be a number."})
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE system_settings
+        SET job_prefix = ?, job_sequence = ?, auto_prefix_enabled = ?, updated_at = ?
+        WHERE id = 1
+    """, (prefix, seq_int, auto_enabled, now_ts()))
+    conn.commit()
+    conn.close()
+
+    audit("system", 1, "update", "Job numbering settings updated via popup",
+          {"prefix": prefix, "sequence": sequence, "auto_enabled": auto_enabled})
+
+    next_number = f"{prefix}{str(seq_int + 1).zfill(3)}"
+    return jsonify({"ok": True, "next_number": next_number})
+
 @app.get("/admin/settings")
 @admin_required
 def admin_settings():

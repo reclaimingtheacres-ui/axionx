@@ -13,7 +13,7 @@
           <div class="form-control" style="background:rgba(96,165,250,.08)!important; border-color:rgba(96,165,250,.3)!important; color:var(--accent)!important; font-weight:700; letter-spacing:.05em">
             {{ next_number }}
           </div>
-          <div class="form-text" style="color:var(--muted)">Auto-generated on save &mdash; <a href="/admin/settings" style="color:var(--accent)">change sequence</a></div>
+          <div class="form-text" style="color:var(--muted)">Auto-generated on save &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit;vertical-align:baseline" onclick="openEntityModal('settings', '/admin/settings/popup')">change sequence</button></div>
         </div>
         <div class="col-12 col-lg-6">
           <label class="form-label">Client Reference</label>
@@ -473,6 +473,12 @@
       }
       sel.value = String(data.id);
       return;
+    } else if (target === 'settings') {
+      if (data.next_number) {
+        var numEl = document.querySelector('.ax-card-b .form-control[style]');
+        if (numEl) numEl.textContent = data.next_number;
+      }
+      return;
     } else { return; }
 
     var searchEl = document.getElementById(searchId);
@@ -519,6 +525,14 @@ function addEmailRow() {
   var clone = first.cloneNode(true);
   clone.querySelectorAll('input').forEach(function(i){ i.value = ''; });
   container.appendChild(clone);
+}
+function updateSeqPreview() {
+  var prefix = document.getElementById('seq_prefix');
+  var seqNum = document.getElementById('seq_number');
+  var el = document.getElementById('seq_preview');
+  if (!prefix || !seqNum || !el) return;
+  var num = parseInt(seqNum.value || '0', 10) + 1;
+  el.textContent = prefix.value + String(num).padStart(3, '0');
 }
 function removeEmailRow(btn) {
   var container = document.getElementById('emailRows');

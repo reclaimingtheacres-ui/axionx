@@ -1,0 +1,35 @@
+<h5 class="mb-1" style="color:var(--text)">Job Number Sequence</h5>
+<p class="small mb-3" style="color:var(--muted)">
+  Next job will be:
+  <strong id="seq_preview" style="color:var(--accent)">{{ settings.job_prefix }}{{ "%03d"|format(settings.job_sequence + 1) }}</strong>
+</p>
+<form action="/admin/settings/popup" method="post">
+  <div class="row g-3 mb-3">
+    <div class="col-6">
+      <label class="form-label" style="color:var(--muted);font-size:.85rem">Job Prefix</label>
+      <input class="form-control" name="job_prefix" id="seq_prefix"
+             value="{{ settings.job_prefix }}" placeholder="e.g. 2602" maxlength="8"
+             oninput="updateSeqPreview()">
+      <div class="form-text" style="color:var(--muted);font-size:.78rem">e.g. YYMM</div>
+    </div>
+    <div class="col-6">
+      <label class="form-label" style="color:var(--muted);font-size:.85rem">Current Sequence</label>
+      <input class="form-control" name="job_sequence" id="seq_number"
+             type="number" min="0" value="{{ settings.job_sequence }}"
+             oninput="updateSeqPreview()">
+      <div class="form-text" style="color:var(--muted);font-size:.78rem">Next job uses this + 1</div>
+    </div>
+  </div>
+  <div class="form-check mb-3">
+    <input class="form-check-input" type="checkbox" name="auto_prefix_enabled" id="seq_auto"
+           {{ 'checked' if settings.auto_prefix_enabled else '' }}>
+    <label class="form-check-label" for="seq_auto" style="color:var(--muted);font-size:.9rem">
+      Auto-update prefix each month
+    </label>
+  </div>
+  <div id="popup-error" class="text-danger small mb-2 d-none"></div>
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+  </div>
+</form>
