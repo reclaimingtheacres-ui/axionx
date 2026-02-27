@@ -180,9 +180,11 @@
                           data-rego="{{ item.reg or '' }}"
                           data-vin="{{ item.vin or '' }}">VicRoads</button>
                 {% endif %}
+                {% if session.get('role') == 'admin' %}
                 <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
                   <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove this item?')">Remove</button>
                 </form>
+                {% endif %}
               </div>
             </div>
           </div>
@@ -192,6 +194,7 @@
       <p class="small mb-3" style="color:var(--muted)">No items added yet.</p>
     {% endif %}
 
+    {% if session.get('role') == 'admin' %}
     <details>
       <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer; list-style:none">+ Add Item</summary>
       <form method="post" action="/jobs/{{ job.id }}/items/new" class="mt-2">
@@ -257,12 +260,14 @@
         <button class="btn btn-primary btn-sm">Add Item</button>
       </form>
     </details>
+    {% endif %}
   </div>
 </div>
 
 
 
 <!-- -------- Add Interaction -------- -->
+{% if session.get('role') == 'admin' %}
 <div class="ax-card mb-3">
   <div class="ax-card-h">Add Interaction</div>
   <div class="ax-card-b">
@@ -302,11 +307,13 @@
     </form>
   </div>
 </div>
+{% endif %}
 
 <!-- -------- Job Documents -------- -->
 <div class="ax-card mb-3">
   <div class="ax-card-h">Job Documents</div>
   <div class="ax-card-b">
+    {% if session.get('role') == 'admin' %}
     <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data" class="mb-3">
       <div class="row g-2">
         <div class="col-12 col-lg-3">
@@ -328,6 +335,7 @@
         <button class="btn btn-primary">Upload Document</button>
       </div>
     </form>
+    {% endif %}
 
     {% if documents %}
       <div class="list-group list-group-flush">
@@ -433,6 +441,7 @@
   <div class="ax-card-h">Schedule</div>
   <div class="ax-card-b">
 
+    {% if session.get('role') == 'admin' %}
     <form method="post" action="/jobs/{{ job.id }}/schedule" class="row g-2 mb-3">
       <div class="col-md-2">
         <input type="date" id="sched_date_picker" class="form-control">
@@ -476,6 +485,7 @@
       <input type="hidden" name="assigned_to_user_id" value="{{ job.assigned_user_id or '' }}">
       {% endif %}
     </form>
+    {% endif %}
 
     {% if session.get('role') == 'admin' %}
     <button class="btn btn-outline-secondary btn-sm mb-3"
@@ -515,12 +525,13 @@
               {% elif s.status == 'Cancelled' %}
                 <span class="badge bg-secondary">Cancelled</span>
               {% else %}
+                <span class="badge me-1"
+                      style="background:rgba(96,165,250,.18);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;">
+                  {{ s.status }}
+                </span>
+                {% if session.get('role') == 'admin' %}
                 <form method="post" action="/jobs/{{ job.id }}/schedule/{{ s.id }}/status"
                       style="margin:0;display:inline">
-                  <span class="badge me-1"
-                        style="background:rgba(96,165,250,.18);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;">
-                    {{ s.status }}
-                  </span>
                   <select name="status" class="form-select form-select-sm d-inline-block"
                           style="width:auto;font-size:.75rem;padding:1px 6px;"
                           onchange="this.form.submit()">
@@ -529,6 +540,7 @@
                     <option value="Cancelled">Cancelled</option>
                   </select>
                 </form>
+                {% endif %}
               {% endif %}
             </td>
           </tr>

@@ -766,6 +766,7 @@ def jobs_list():
 
 @app.get("/jobs/new")
 @login_required
+@admin_required
 def job_new():
     conn = db()
     cur = conn.cursor()
@@ -813,6 +814,7 @@ def job_new():
 
 @app.post("/jobs/new")
 @login_required
+@admin_required
 def job_create():
     internal_job_number = generate_internal_job_number()
     client_reference = request.form.get("client_reference", "").strip()
@@ -1023,6 +1025,7 @@ def job_detail(job_id: int):
 
 @app.post("/jobs/<int:job_id>/schedule")
 @login_required
+@admin_required
 def add_schedule(job_id: int):
     date_str   = request.form.get("schedule_date", "").strip()
     time_str   = request.form.get("schedule_time", "").strip()
@@ -1158,6 +1161,7 @@ def add_job_type():
 
 @app.post("/jobs/<int:job_id>/schedule/<int:sched_id>/status")
 @login_required
+@admin_required
 def update_schedule_status(job_id: int, sched_id: int):
     new_status = request.form.get("status", "").strip()
     allowed = {"Completed", "Cancelled"}
@@ -1211,6 +1215,7 @@ def delete_job(job_id: int):
 
 @app.post("/jobs/<int:job_id>/update")
 @login_required
+@admin_required
 def job_update(job_id: int):
     status = request.form.get("status", "").strip()
     visit_type = request.form.get("visit_type", "").strip()
@@ -1235,6 +1240,7 @@ def job_update(job_id: int):
 
 @app.post("/jobs/<int:job_id>/lender")
 @login_required
+@admin_required
 def job_lender_update(job_id: int):
     lender_name     = request.form.get("lender_name", "").strip()
     account_number  = request.form.get("account_number", "").strip()
@@ -1259,6 +1265,7 @@ def job_lender_update(job_id: int):
 
 @app.post("/jobs/<int:job_id>/interactions/new")
 @login_required
+@admin_required
 def interaction_add(job_id: int):
     event_type = request.form.get("event_type", "Note").strip()
     narrative = request.form.get("narrative", "").strip()
@@ -1324,6 +1331,7 @@ def clients_list():
 
 @app.get("/clients/new")
 @login_required
+@admin_required
 def client_new():
     next_url = request.args.get("next", "")
     return render_template("client_new.html", next_url=next_url)
@@ -1331,6 +1339,7 @@ def client_new():
 
 @app.post("/clients/new")
 @login_required
+@admin_required
 def client_create():
     name = request.form.get("name", "").strip()
     phone = request.form.get("phone", "").strip()
@@ -1388,6 +1397,7 @@ def client_detail(client_id: int):
 
 @app.get("/clients/<int:client_id>/edit")
 @login_required
+@admin_required
 def client_edit(client_id: int):
     conn = db()
     cur = conn.cursor()
@@ -1408,6 +1418,7 @@ def client_edit(client_id: int):
 
 @app.post("/clients/<int:client_id>/edit")
 @login_required
+@admin_required
 def client_edit_post(client_id: int):
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip()
@@ -1465,6 +1476,7 @@ def customers_list():
 
 @app.get("/customers/new")
 @login_required
+@admin_required
 def customer_new():
     next_url = request.args.get("next", "")
     return render_template("customer_new.html", next_url=next_url)
@@ -1472,6 +1484,7 @@ def customer_new():
 
 @app.post("/customers/new")
 @login_required
+@admin_required
 def customer_create():
     first_name = request.form.get("first_name", "").strip()
     last_name = request.form.get("last_name", "").strip()
@@ -1550,6 +1563,7 @@ def customer_detail(customer_id: int):
 
 @app.get("/customers/<int:customer_id>/edit")
 @login_required
+@admin_required
 def customer_edit(customer_id: int):
     conn = db()
     cur = conn.cursor()
@@ -1570,6 +1584,7 @@ def customer_edit(customer_id: int):
 
 @app.post("/customers/<int:customer_id>/edit")
 @login_required
+@admin_required
 def customer_edit_post(customer_id: int):
     first_name = request.form.get("first_name", "").strip()
     last_name = request.form.get("last_name", "").strip()
@@ -1642,6 +1657,7 @@ def customer_edit_post(customer_id: int):
 # -------- Job Items --------
 @app.post("/jobs/<int:job_id>/items/new")
 @login_required
+@admin_required
 def job_item_create(job_id: int):
     item_type        = request.form.get("item_type", "vehicle").strip()
     description      = request.form.get("description", "").strip()
@@ -1687,6 +1703,7 @@ def job_item_create(job_id: int):
 
 @app.post("/jobs/<int:job_id>/items/<int:item_id>/delete")
 @login_required
+@admin_required
 def job_item_delete(job_id: int, item_id: int):
     conn = db()
     cur = conn.cursor()
@@ -1782,6 +1799,7 @@ def serve_upload(filename):
 
 @app.post("/jobs/<int:job_id>/documents/upload")
 @login_required
+@admin_required
 def job_document_upload(job_id: int):
     doc_type = (request.form.get("doc_type") or "Other").strip()
     title = (request.form.get("title") or "").strip()

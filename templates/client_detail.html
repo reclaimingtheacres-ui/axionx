@@ -6,7 +6,7 @@
 <div class="ax-card mb-3">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>{{ client.name }}</div>
-    <a class="btn btn-primary btn-sm" href="/clients/{{ client.id }}/edit">Edit</a>
+    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/clients/{{ client.id }}/edit">Edit</a>{% endif %}
   </div>
   <div class="ax-card-b">
     <div class="row g-3">

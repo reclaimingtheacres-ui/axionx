@@ -6,7 +6,7 @@
 <div class="ax-card">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>Clients</div>
-    <a class="btn btn-primary btn-sm" href="/clients/new">New Client</a>
+    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/clients/new">New Client</a>{% endif %}
   </div>
   <div class="ax-card-b">
     <div class="list-group list-group-flush">
