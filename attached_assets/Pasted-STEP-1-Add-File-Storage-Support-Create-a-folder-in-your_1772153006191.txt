@@ -1,0 +1,217 @@
+STEP 1 — Add File Storage Support
+
+Create a folder in your Replit project:
+
+uploads/
+
+This is where all uploaded files will be stored.
+
+Now update your Flask app.
+
+At the top of app.py add:
+
+import os
+from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = "uploads"
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf", "doc", "docx"}
+
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+STEP 2 — Create Job Field Notes Table (with attachments)
+
+Add this to init_db():
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS job_field_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    created_by_user_id INTEGER,
+    note_text TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(job_id) REFERENCES jobs(id),
+    FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS job_note_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_field_note_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    filepath TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL,
+    FOREIGN KEY(job_field_note_id) REFERENCES job_field_notes(id)
+)
+""")
+
+Now we can:
+
+• Add a field note
+• Attach multiple files to that note
+• Store file path safely
+
+STEP 3 — Add Field Note Upload Route
+
+Add this route:
+
+@app.post("/jobs/<int:job_id>/notes/new")
+@login_required
+def add_job_note(job_id):
+    note_text = request.form.get("note_text", "").strip()
+    files = request.files.getlist("attachments")
+
+    if not note_text and not files:
+        flash("Note or attachment required.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    ts = now_ts()
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
+        VALUES (?, ?, ?, ?)
+    """, (job_id, session.get("user_id"), note_text, ts))
+
+    note_id = cur.lastrowid
+
+    # Handle file uploads
+    for file in files:
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            unique_name = f"{job_id}_{note_id}_{filename}"
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+            file.save(filepath)
+
+            cur.execute("""
+                INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                VALUES (?, ?, ?, ?)
+            """, (note_id, filename, filepath, ts))
+
+    conn.commit()
+    conn.close()
+
+    audit("job_note", note_id, "create", "Field note added", {"job_id": job_id})
+
+    flash("Field note saved.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+STEP 4 — Update Job Detail Template
+
+Inside job_detail.html add:
+
+<div class="ax-card mt-3">
+  <div class="ax-card-h">Add Field Note</div>
+  <div class="ax-card-b">
+    <form method="post" action="/jobs/{{ job.id }}/notes/new" enctype="multipart/form-data">
+      <textarea class="form-control mb-2" name="note_text" rows="4"
+                placeholder="Enter field note..."></textarea>
+
+      <input class="form-control mb-2" type="file" name="attachments" multiple>
+
+      <button class="btn btn-primary">Save Note</button>
+    </form>
+  </div>
+</div>
+
+And display notes:
+
+<div class="ax-card mt-3">
+  <div class="ax-card-h">Field Notes</div>
+  <div class="ax-card-b">
+    {% for note in field_notes %}
+      <div class="list-group-item mb-2">
+        <div class="text-muted small">{{ note.created_at }}</div>
+        <div>{{ note.note_text }}</div>
+
+        {% if note.files %}
+          <div class="mt-2">
+            {% for f in note.files %}
+              <a href="/uploads/{{ f.filename }}" target="_blank">
+                {{ f.filename }}
+              </a><br>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+You’ll need to fetch files in your job_detail() route — I can provide that next if you want.
+
+STEP 5 — Generate Previous File Notes PDF Automatically
+
+When creating a new job:
+
+If customer has previous file notes:
+
+Compile notes into a PDF
+
+Save PDF into uploads folder
+
+Automatically attach it as first job document
+
+We’ll use ReportLab (already used earlier).
+
+Add this function:
+
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.platypus import ListFlowable, ListItem
+
+def generate_previous_file_pdf(customer_id, job_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT note_title, note_body, created_at
+        FROM customer_file_notes
+        WHERE customer_id = ?
+        ORDER BY created_at DESC
+    """, (customer_id,))
+    notes = cur.fetchall()
+    conn.close()
+
+    if not notes:
+        return None
+
+    filepath = f"uploads/job_{job_id}_previous_file_notes.pdf"
+    doc = SimpleDocTemplate(filepath)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(Paragraph("Previous File Notes", styles["Heading1"]))
+    elements.append(Spacer(1, 12))
+
+    for n in notes:
+        elements.append(Paragraph(f"<b>{n['created_at']}</b>", styles["Normal"]))
+        if n["note_title"]:
+            elements.append(Paragraph(n["note_title"], styles["Heading3"]))
+        elements.append(Paragraph(n["note_body"], styles["Normal"]))
+        elements.append(Spacer(1, 12))
+
+    doc.build(elements)
+
+    return filepath
+
+Then in your job creation route:
+
+After creating job_id:
+
+pdf_path = generate_previous_file_pdf(customer_id, job_id)
+if pdf_path:
+    # attach to job as first document
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+        VALUES (?, ?, ?, ?)
+    """, (1, "Previous_File_Notes.pdf", pdf_path, now_ts()))
+    conn.commit()
+    conn.close()

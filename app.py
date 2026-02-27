@@ -1,15 +1,26 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import sqlite3
 import csv
 import json
+import os
 from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = "axion-dev-secret"
 
 DB_PATH = "axion.db"
+
+UPLOAD_FOLDER = "uploads"
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf", "doc", "docx"}
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def db():
@@ -160,6 +171,29 @@ def init_db():
         meta_json TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY(actor_user_id) REFERENCES users(id)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_field_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        created_by_user_id INTEGER,
+        note_text TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_note_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_field_note_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        uploaded_at TEXT NOT NULL,
+        FOREIGN KEY(job_field_note_id) REFERENCES job_field_notes(id)
     )
     """)
 
@@ -561,6 +595,21 @@ def job_detail(job_id: int):
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
 
+    cur.execute("""
+        SELECT fn.*, u.full_name author_name
+        FROM job_field_notes fn
+        LEFT JOIN users u ON u.id = fn.created_by_user_id
+        WHERE fn.job_id = ?
+        ORDER BY fn.created_at DESC
+    """, (job_id,))
+    raw_notes = cur.fetchall()
+
+    field_notes = []
+    for note in raw_notes:
+        cur.execute("SELECT * FROM job_note_files WHERE job_field_note_id = ?", (note["id"],))
+        files = cur.fetchall()
+        field_notes.append({"note": note, "files": files})
+
     conn.close()
 
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
@@ -569,7 +618,8 @@ def job_detail(job_id: int):
 
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
-                           statuses=statuses, visit_types=visit_types, users=users)
+                           statuses=statuses, visit_types=visit_types, users=users,
+                           field_notes=field_notes)
 
 
 @app.post("/jobs/<int:job_id>/update")
@@ -765,6 +815,53 @@ def job_item_delete(job_id: int, item_id: int):
     conn.close()
     flash("Item removed.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
+
+
+# -------- Field Notes --------
+@app.post("/jobs/<int:job_id>/notes/new")
+@login_required
+def add_job_note(job_id: int):
+    note_text = request.form.get("note_text", "").strip()
+    files = request.files.getlist("attachments")
+
+    if not note_text and not any(f.filename for f in files):
+        flash("A note or attachment is required.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    ts = now_ts()
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
+        VALUES (?, ?, ?, ?)
+    """, (job_id, session.get("user_id"), note_text, ts))
+
+    note_id = cur.lastrowid
+
+    for file in files:
+        if file and file.filename and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            unique_name = f"{job_id}_{note_id}_{filename}"
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+            file.save(filepath)
+            cur.execute("""
+                INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                VALUES (?, ?, ?, ?)
+            """, (note_id, unique_name, filepath, ts))
+
+    conn.commit()
+    conn.close()
+
+    audit("job_note", note_id, "create", "Field note added", {"job_id": job_id})
+    flash("Field note saved.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.get("/uploads/<path:filename>")
+@login_required
+def serve_upload(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
 # -------- Users (admin only) --------

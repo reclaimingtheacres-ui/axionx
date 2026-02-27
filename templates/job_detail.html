@@ -207,6 +207,56 @@
   </div>
 </div>
 
+<!-- -------- Field Notes -------- -->
+<div class="ax-card mb-3">
+  <div class="ax-card-h">Add Field Note</div>
+  <div class="ax-card-b">
+    <form method="post" action="/jobs/{{ job.id }}/notes/new" enctype="multipart/form-data">
+      <textarea class="form-control mb-2" name="note_text" rows="4"
+                placeholder="Enter field note..."></textarea>
+      <div class="mb-2">
+        <label class="form-label" style="color:var(--muted);font-size:.85rem">Attachments (PNG, JPG, PDF, DOC, DOCX)</label>
+        <input class="form-control" type="file" name="attachments" multiple accept=".png,.jpg,.jpeg,.pdf,.doc,.docx">
+      </div>
+      <button class="btn btn-primary">Save Note</button>
+    </form>
+  </div>
+</div>
+
+<div class="ax-card mb-3">
+  <div class="ax-card-h">Field Notes</div>
+  <div class="ax-card-b">
+    {% if field_notes %}
+      <div class="list-group list-group-flush">
+        {% for entry in field_notes %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="small fw-semibold">{{ entry.note.author_name or "Unknown" }}</span>
+              <span class="small" style="color:var(--muted)">{{ entry.note.created_at }}</span>
+            </div>
+            {% if entry.note.note_text %}
+              <div class="mb-2" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
+            {% endif %}
+            {% if entry.files %}
+              <div class="d-flex flex-wrap gap-2 mt-1">
+                {% for f in entry.files %}
+                  <a href="/uploads/{{ f.filename }}" target="_blank"
+                     class="badge text-decoration-none"
+                     style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.8rem;padding:.4em .7em">
+                    &#128206; {{ f.filename }}
+                  </a>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="py-2 text-center" style="color:var(--muted)">No field notes yet.</div>
+    {% endif %}
+  </div>
+</div>
+
 <!-- -------- Timeline -------- -->
 <div class="ax-card">
   <div class="ax-card-h">Timeline</div>
