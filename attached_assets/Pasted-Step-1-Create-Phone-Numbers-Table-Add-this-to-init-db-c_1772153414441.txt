@@ -1,0 +1,133 @@
+Step 1 — Create Phone Numbers Table
+
+Add this to init_db():
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS contact_phone_numbers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,      -- 'customer' or 'client'
+    entity_id INTEGER NOT NULL,
+    label TEXT NOT NULL,            -- Mobile, Home, Work, Other
+    phone_number TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)
+""")
+
+Now one table handles both Clients and Customers.
+
+✅ Step 2 — Remove Single Phone Columns (Optional)
+
+If your customers and clients tables currently have:
+
+phone TEXT
+
+You can leave them temporarily and migrate later.
+
+But going forward, don’t use them.
+
+✅ Step 3 — Update Customer Edit Form (4 Phone Fields)
+
+We’ll allow up to 4 phone inputs in UI, but they save into the phone table.
+
+Modify your /customers/<id>/edit GET route:
+
+Add before rendering:
+
+cur.execute("""
+    SELECT * FROM contact_phone_numbers
+    WHERE entity_type = 'customer' AND entity_id = ?
+""", (customer_id,))
+phones = cur.fetchall()
+
+Then pass phones=phones into render_template().
+
+Update customer_edit.html
+
+Replace the single phone field with:
+
+<div class="mt-3">
+  <label class="form-label">Phone Numbers</label>
+
+  {% set phone_map = {} %}
+  {% for p in phones %}
+    {% set _ = phone_map.update({p.label: p.phone_number}) %}
+  {% endfor %}
+
+  <div class="row g-2">
+    <div class="col-6">
+      <input class="form-control" name="phone_mobile"
+             placeholder="Mobile"
+             value="{{ phone_map.get('Mobile','') }}">
+    </div>
+    <div class="col-6">
+      <input class="form-control" name="phone_home"
+             placeholder="Home"
+             value="{{ phone_map.get('Home','') }}">
+    </div>
+    <div class="col-6">
+      <input class="form-control" name="phone_work"
+             placeholder="Work"
+             value="{{ phone_map.get('Work','') }}">
+    </div>
+    <div class="col-6">
+      <input class="form-control" name="phone_other"
+             placeholder="Other"
+             value="{{ phone_map.get('Other','') }}">
+    </div>
+  </div>
+</div>
+✅ Step 4 — Update POST Route to Save Phones
+
+Modify /customers/<id>/edit POST route.
+
+Add this after updating customer details:
+
+# Delete existing phones
+cur.execute("""
+    DELETE FROM contact_phone_numbers
+    WHERE entity_type = 'customer' AND entity_id = ?
+""", (customer_id,))
+
+# Collect new phone inputs
+phone_fields = {
+    "Mobile": request.form.get("phone_mobile"),
+    "Home": request.form.get("phone_home"),
+    "Work": request.form.get("phone_work"),
+    "Other": request.form.get("phone_other"),
+}
+
+for label, number in phone_fields.items():
+    if number and number.strip():
+        cur.execute("""
+            INSERT INTO contact_phone_numbers
+            (entity_type, entity_id, label, phone_number, created_at)
+            VALUES ('customer', ?, ?, ?, ?)
+        """, (customer_id, label, number.strip(), ts))
+
+That’s it.
+
+✅ Step 5 — Display Clickable Numbers in Customer Detail
+
+In customer_detail.html:
+
+Replace phone display section with:
+
+<div>
+  {% for p in phones %}
+    <div>
+      {{ p.label }}:
+      <a href="tel:{{ p.phone_number }}">{{ p.phone_number }}</a>
+    </div>
+  {% endfor %}
+</div>
+
+Now on mobile:
+
+Tap → Call
+Long press → SMS
+
+Repeat Same Pattern for Clients
+
+In client edit route:
+
+Change entity_type to 'client'.

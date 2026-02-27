@@ -66,9 +66,22 @@ def init_db():
         dob TEXT,
         address TEXT,
         notes TEXT,
-        created_at TEXT NOT NULL
+        id_image_filename TEXT,
+        id_image_path TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT ''
     )
     """)
+
+    for col, definition in [
+        ("id_image_filename", "TEXT"),
+        ("id_image_path", "TEXT"),
+        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE customers ADD COLUMN {col} {definition}")
+        except Exception:
+            pass
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS jobs (
@@ -755,13 +768,103 @@ def customer_create():
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO customers (full_name, phone, email, dob, address, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (full_name, phone, email, dob, address, notes, now))
+        INSERT INTO customers (full_name, phone, email, dob, address, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (full_name, phone, email, dob, address, notes, now, now))
     conn.commit()
     conn.close()
     flash("Customer created.", "success")
     return redirect(url_for("customers_list"))
+
+
+@app.get("/customers/<int:customer_id>")
+@login_required
+def customer_detail(customer_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM customers WHERE id = ?", (customer_id,))
+    customer = cur.fetchone()
+    if not customer:
+        conn.close()
+        return ("Not found", 404)
+    cur.execute("""
+        SELECT j.*, c.name client_name
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        WHERE j.customer_id = ?
+        ORDER BY j.created_at DESC
+    """, (customer_id,))
+    jobs = cur.fetchall()
+    conn.close()
+    return render_template("customer_detail.html", customer=customer, jobs=jobs)
+
+
+@app.get("/customers/<int:customer_id>/edit")
+@login_required
+def customer_edit(customer_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM customers WHERE id = ?", (customer_id,))
+    customer = cur.fetchone()
+    conn.close()
+    if not customer:
+        return ("Not found", 404)
+    return render_template("customer_edit.html", customer=customer)
+
+
+@app.post("/customers/<int:customer_id>/edit")
+@login_required
+def customer_edit_post(customer_id: int):
+    full_name = request.form.get("full_name", "").strip()
+    phone = request.form.get("phone", "").strip()
+    email = request.form.get("email", "").strip()
+    dob = request.form.get("dob", "").strip()
+    address = request.form.get("address", "").strip()
+    notes = request.form.get("notes", "").strip()
+    id_image = request.files.get("id_image")
+
+    if not full_name:
+        flash("Customer name is required.", "danger")
+        return redirect(url_for("customer_edit", customer_id=customer_id))
+
+    ts = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT id_image_filename, id_image_path FROM customers WHERE id = ?", (customer_id,))
+    existing = cur.fetchone()
+
+    id_image_filename = existing["id_image_filename"] if existing else None
+    id_image_path = existing["id_image_path"] if existing else None
+
+    if id_image and id_image.filename:
+        if not allowed_file(id_image.filename):
+            conn.close()
+            flash("Unsupported file type. Use PNG/JPG/PDF.", "danger")
+            return redirect(url_for("customer_edit", customer_id=customer_id))
+        filename = secure_filename(id_image.filename)
+        safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
+        unique_name = f"customer_{customer_id}_id_{safe_ts}_{filename}"
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+        id_image.save(filepath)
+        id_image_filename = filename
+        id_image_path = unique_name
+
+    cur.execute("""
+        UPDATE customers
+        SET full_name = ?, phone = ?, email = ?, dob = ?, address = ?, notes = ?,
+            id_image_filename = ?, id_image_path = ?, updated_at = ?
+        WHERE id = ?
+    """, (full_name, phone, email, dob, address, notes,
+          id_image_filename, id_image_path, ts, customer_id))
+
+    conn.commit()
+    conn.close()
+
+    audit("customer", customer_id, "update", "Customer details updated",
+          {"id_image_updated": bool(id_image and id_image.filename)})
+
+    flash("Customer updated.", "success")
+    return redirect(url_for("customer_detail", customer_id=customer_id))
 
 
 # -------- Job Items --------

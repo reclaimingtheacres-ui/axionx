@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Edit Customer{% endblock %}
+{% block page_title %}Edit Customer{% endblock %}
+
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h">Customer Details</div>
+  <div class="ax-card-b">
+    <form method="post" enctype="multipart/form-data">
+      <div class="row g-2">
+        <div class="col-12 col-lg-6">
+          <label class="form-label">Full Name</label>
+          <input class="form-control" name="full_name" value="{{ customer.full_name }}" required>
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label">Phone</label>
+          <input class="form-control" name="phone" value="{{ customer.phone or '' }}">
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label">Date of Birth</label>
+          <input class="form-control" name="dob" value="{{ customer.dob or '' }}" placeholder="YYYY-MM-DD">
+        </div>
+      </div>
+
+      <div class="row g-2 mt-1">
+        <div class="col-12 col-lg-6">
+          <label class="form-label">Email</label>
+          <input class="form-control" name="email" value="{{ customer.email or '' }}">
+        </div>
+        <div class="col-12 col-lg-6">
+          <label class="form-label">Address</label>
+          <input class="form-control" name="address" value="{{ customer.address or '' }}">
+        </div>
+      </div>
+
+      <div class="mt-2">
+        <label class="form-label">Internal Notes</label>
+        <textarea class="form-control" name="notes" rows="4">{{ customer.notes or '' }}</textarea>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">Customer ID Image (PNG, JPG, PDF)</label>
+        <input class="form-control" type="file" name="id_image" accept=".png,.jpg,.jpeg,.pdf">
+        {% if customer.id_image_path %}
+          <div class="small mt-2" style="color:var(--muted)">
+            Current ID on file &mdash;
+            <a href="/uploads/{{ customer.id_image_path }}" target="_blank" style="color:var(--accent)">View</a>
+            &nbsp;(uploading a new file will replace it)
+          </div>
+        {% else %}
+          <div class="small mt-1" style="color:var(--muted)">No ID on file yet.</div>
+        {% endif %}
+      </div>
+
+      <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-primary">Save Changes</button>
+        <a class="btn btn-outline-secondary" href="/customers/{{ customer.id }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,184 @@
+Below is exact code you can drop into the current Replit Flask prototype.
+
+First, add customer update tracking and ID image fields. In init_db() modify your customers table create to include these columns (if you already have the table created, delete axion.db once in Replit to recreate it, or we can do an ALTER migration afterwards).
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL,
+    phone TEXT,
+    email TEXT,
+    dob TEXT,
+    address TEXT,
+    notes TEXT,
+
+    id_image_filename TEXT,
+    id_image_path TEXT,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+""")
+
+Then update your customer_create() insert to include updated_at:
+
+now = datetime.now().isoformat(timespec="seconds")
+cur.execute("""
+    INSERT INTO customers (full_name, phone, email, dob, address, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+""", (full_name, phone, email, dob, address, notes, now, now))
+
+Next, you need a safe way to serve uploaded files. Add this route (and keep it protected behind login so random people can’t fetch ID images). This assumes you already have UPLOAD_FOLDER = "uploads" set up.
+
+from flask import send_from_directory
+
+@app.get("/uploads/<path:filename>")
+@login_required
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename, as_attachment=False)
+
+Now add the customer edit routes. Put these in app.py:
+
+@app.get("/customers/<int:customer_id>/edit")
+@login_required
+def customer_edit(customer_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM customers WHERE id = ?", (customer_id,))
+    customer = cur.fetchone()
+    conn.close()
+    if not customer:
+        return ("Not found", 404)
+    return render_template("customer_edit.html", customer=customer)
+
+
+@app.post("/customers/<int:customer_id>/edit")
+@login_required
+def customer_edit_post(customer_id: int):
+    full_name = request.form.get("full_name", "").strip()
+    phone = request.form.get("phone", "").strip()
+    email = request.form.get("email", "").strip()
+    dob = request.form.get("dob", "").strip()
+    address = request.form.get("address", "").strip()
+    notes = request.form.get("notes", "").strip()
+    id_image = request.files.get("id_image")
+
+    if not full_name:
+        flash("Customer name is required.", "danger")
+        return redirect(url_for("customer_edit", customer_id=customer_id))
+
+    ts = now_ts()
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT id_image_filename, id_image_path FROM customers WHERE id = ?", (customer_id,))
+    existing = cur.fetchone()
+
+    id_image_filename = existing["id_image_filename"] if existing else None
+    id_image_path = existing["id_image_path"] if existing else None
+
+    if id_image and id_image.filename:
+        if not allowed_file(id_image.filename):
+            conn.close()
+            flash("Unsupported file type. Use PNG/JPG/PDF.", "danger")
+            return redirect(url_for("customer_edit", customer_id=customer_id))
+
+        filename = secure_filename(id_image.filename)
+        unique_name = f"customer_{customer_id}_id_{ts.replace(':','').replace('-','')}_{filename}"
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
+        id_image.save(filepath)
+
+        id_image_filename = filename
+        id_image_path = unique_name  # store relative to uploads folder
+
+    cur.execute("""
+        UPDATE customers
+        SET full_name = ?, phone = ?, email = ?, dob = ?, address = ?, notes = ?,
+            id_image_filename = ?, id_image_path = ?,
+            updated_at = ?
+        WHERE id = ?
+    """, (full_name, phone, email, dob, address, notes,
+          id_image_filename, id_image_path,
+          ts, customer_id))
+
+    conn.commit()
+    conn.close()
+
+    try:
+        audit("customer", customer_id, "update", "Customer details updated",
+              {"id_image_updated": bool(id_image and id_image.filename)})
+    except Exception:
+        pass
+
+    flash("Customer updated.", "success")
+    return redirect(url_for("customer_detail", customer_id=customer_id))
+
+Now create the template templates/customer_edit.html:
+
+{% extends "layout.html" %}
+{% block title %}Axion | Edit Customer{% endblock %}
+{% block page_title %}Edit customer{% endblock %}
+
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h">Customer details</div>
+  <div class="ax-card-b">
+    <form method="post" enctype="multipart/form-data">
+      <div class="row g-2">
+        <div class="col-12 col-lg-6">
+          <label class="form-label">Full name</label>
+          <input class="form-control" name="full_name" value="{{ customer.full_name }}" required>
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label">Phone</label>
+          <input class="form-control" name="phone" value="{{ customer.phone or '' }}">
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label">DOB</label>
+          <input class="form-control" name="dob" value="{{ customer.dob or '' }}" placeholder="YYYY-MM-DD">
+        </div>
+      </div>
+
+      <div class="row g-2 mt-1">
+        <div class="col-12 col-lg-6">
+          <label class="form-label">Email</label>
+          <input class="form-control" name="email" value="{{ customer.email or '' }}">
+        </div>
+        <div class="col-12 col-lg-6">
+          <label class="form-label">Address</label>
+          <input class="form-control" name="address" value="{{ customer.address or '' }}">
+        </div>
+      </div>
+
+      <div class="mt-2">
+        <label class="form-label">Internal notes</label>
+        <textarea class="form-control" name="notes" rows="4">{{ customer.notes or '' }}</textarea>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label">Customer ID image (upload to add/replace)</label>
+        <input class="form-control" type="file" name="id_image" accept=".png,.jpg,.jpeg,.pdf">
+        {% if customer.id_image_path %}
+          <div class="text-muted small mt-2">
+            Current ID: <a target="_blank" href="/uploads/{{ customer.id_image_path }}">View</a>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-primary">Save</button>
+        <a class="btn btn-outline-secondary" href="/customers/{{ customer.id }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+Finally, update templates/customer_detail.html so you can see the ID image and access the edit function. Add this near the top of the page, under the header:
+
+<div class="mt-2 d-flex gap-2">
+  <a class="btn btn-primary btn-sm" href="/customers/{{ customer.id }}/edit">Edit customer</a>
+  {% if customer.id_image_path %}
+    <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ customer.id_image_path }}">View ID</a>
+  {% endif %}
+</div>
