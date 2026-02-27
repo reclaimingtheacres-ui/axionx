@@ -118,11 +118,7 @@
   justify-content:center;padding:48px;
   position:relative;overflow:hidden;
 }
-.login-right::before{
-  content:'';position:absolute;inset:0;
-  background:url('../images/axion-logo.png') center center / 420px auto no-repeat;
-  opacity:.06;pointer-events:none;
-}
+
 .login-promo{text-align:center;position:relative;z-index:1;max-width:380px;}
 .login-promo-logo{
   width:72px;height:72px;
@@ -152,6 +148,21 @@
   border:1px solid rgba(255,255,255,.14);
   border-radius:999px;padding:5px 14px;
   font-size:12px;color:rgba(255,255,255,.7);
+}
+
+.login-right-logo{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0 32px;
+}
+.login-right-logo img{
+  width:100%;
+  max-width:540px;
+  height:auto;
+  object-fit:contain;
+  filter:drop-shadow(0 0 48px rgba(47,125,214,.5));
 }
 
 @media(max-width:860px){
