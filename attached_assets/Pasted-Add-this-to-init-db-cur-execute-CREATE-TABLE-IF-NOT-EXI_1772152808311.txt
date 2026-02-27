@@ -1,0 +1,154 @@
+Add this to init_db():
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS system_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    job_prefix TEXT NOT NULL,
+    job_sequence INTEGER NOT NULL,
+    auto_prefix_enabled INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+)
+""")
+
+Then add this immediately after creating the table:
+
+cur.execute("SELECT COUNT(*) c FROM system_settings")
+if cur.fetchone()["c"] == 0:
+    current_prefix = datetime.now().strftime("%y%m")
+    cur.execute("""
+        INSERT INTO system_settings (id, job_prefix, job_sequence, auto_prefix_enabled, updated_at)
+        VALUES (1, ?, 0, 1, ?)
+    """, (current_prefix, now_ts()))
+Step 2 — Replace Job Number Generator
+
+Remove your existing generate logic.
+
+Add this instead:
+
+def generate_internal_job_number():
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM system_settings WHERE id = 1")
+    settings = cur.fetchone()
+
+    current_prefix = settings["job_prefix"]
+    auto_enabled = settings["auto_prefix_enabled"]
+
+    # If auto mode is on, check if month changed
+    if auto_enabled:
+        actual_prefix = datetime.now().strftime("%y%m")
+        if actual_prefix != current_prefix:
+            # Month rollover
+            current_prefix = actual_prefix
+            cur.execute("""
+                UPDATE system_settings
+                SET job_prefix = ?, job_sequence = 0, updated_at = ?
+                WHERE id = 1
+            """, (actual_prefix, now_ts()))
+            conn.commit()
+
+    # Increment sequence
+    new_sequence = settings["job_sequence"] + 1
+    padded = str(new_sequence).zfill(3)
+
+    cur.execute("""
+        UPDATE system_settings
+        SET job_sequence = ?, updated_at = ?
+        WHERE id = 1
+    """, (new_sequence, now_ts()))
+
+    conn.commit()
+    conn.close()
+
+    return f"{current_prefix}{padded}"
+
+Now job numbers are automatic.
+
+No manual intervention needed.
+
+Step 3 — Create Settings Page
+
+Add this route:
+
+@app.get("/admin/settings")
+@admin_required
+def admin_settings():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM system_settings WHERE id = 1")
+    settings = cur.fetchone()
+    conn.close()
+
+    return render_template("settings.html", settings=settings)
+
+Add POST route:
+
+@app.post("/admin/settings")
+@admin_required
+def admin_settings_update():
+    prefix = request.form.get("job_prefix")
+    sequence = request.form.get("job_sequence")
+    auto_enabled = 1 if request.form.get("auto_prefix_enabled") == "on" else 0
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE system_settings
+        SET job_prefix = ?, job_sequence = ?, auto_prefix_enabled = ?, updated_at = ?
+        WHERE id = 1
+    """, (prefix, int(sequence), auto_enabled, now_ts()))
+
+    conn.commit()
+    conn.close()
+
+    audit("system", 1, "update",
+          "Job numbering settings updated",
+          {"prefix": prefix, "sequence": sequence, "auto_enabled": auto_enabled})
+
+    return redirect(url_for("admin_settings"))
+Step 4 — Create settings.html
+
+Create templates/settings.html:
+
+{% extends "layout.html" %}
+{% block page_title %}System Settings{% endblock %}
+
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h">Internal Job Number Settings</div>
+  <div class="ax-card-b">
+
+    <form method="post">
+
+      <div class="mb-3">
+        <label class="form-label">Job Prefix (YYMM)</label>
+        <input class="form-control" name="job_prefix" value="{{ settings.job_prefix }}">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Current Sequence</label>
+        <input class="form-control" name="job_sequence" value="{{ settings.job_sequence }}">
+      </div>
+
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="auto_prefix_enabled"
+               {% if settings.auto_prefix_enabled %}checked{% endif %}>
+        <label class="form-check-label">
+          Auto-update prefix each month (recommended)
+        </label>
+      </div>
+
+      <button class="btn btn-primary">Save</button>
+
+    </form>
+
+  </div>
+</div>
+{% endblock %}
+Add Settings Link to Sidebar
+
+In layout sidebar under Admin section add:
+
+<a href="/admin/settings">System Settings</a>

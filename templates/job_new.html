@@ -10,7 +10,10 @@
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-6">
           <label class="form-label">Internal Job Number</label>
-          <input class="form-control" name="internal_job_number" placeholder="e.g., 2602042" required>
+          <div class="form-control" style="background:rgba(96,165,250,.08)!important; border-color:rgba(96,165,250,.3)!important; color:var(--accent)!important; font-weight:700; letter-spacing:.05em">
+            {{ next_number }}
+          </div>
+          <div class="form-text" style="color:var(--muted)">Auto-generated on save &mdash; <a href="/admin/settings" style="color:var(--accent)">change sequence</a></div>
         </div>
         <div class="col-12 col-lg-6">
           <label class="form-label">Client Reference</label>

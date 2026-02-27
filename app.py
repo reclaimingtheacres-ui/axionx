@@ -163,7 +163,23 @@ def init_db():
     )
     """)
 
-    pass  # first user created via /signup
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS system_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        job_prefix TEXT NOT NULL,
+        job_sequence INTEGER NOT NULL,
+        auto_prefix_enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("SELECT COUNT(*) c FROM system_settings")
+    if cur.fetchone()["c"] == 0:
+        current_prefix = datetime.now().strftime("%y%m")
+        cur.execute("""
+            INSERT INTO system_settings (id, job_prefix, job_sequence, auto_prefix_enabled, updated_at)
+            VALUES (1, ?, 0, 1, ?)
+        """, (current_prefix, now_ts()))
 
     conn.commit()
     conn.close()
@@ -186,6 +202,42 @@ def users_count():
     c = cur.fetchone()["c"]
     conn.close()
     return c
+
+
+def generate_internal_job_number():
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM system_settings WHERE id = 1")
+    settings = cur.fetchone()
+
+    current_prefix = settings["job_prefix"]
+    auto_enabled = settings["auto_prefix_enabled"]
+
+    if auto_enabled:
+        actual_prefix = datetime.now().strftime("%y%m")
+        if actual_prefix != current_prefix:
+            current_prefix = actual_prefix
+            cur.execute("""
+                UPDATE system_settings
+                SET job_prefix = ?, job_sequence = 0, updated_at = ?
+                WHERE id = 1
+            """, (actual_prefix, now_ts()))
+            conn.commit()
+
+    new_sequence = settings["job_sequence"] + 1
+    padded = str(new_sequence).zfill(3)
+
+    cur.execute("""
+        UPDATE system_settings
+        SET job_sequence = ?, updated_at = ?
+        WHERE id = 1
+    """, (new_sequence, now_ts()))
+
+    conn.commit()
+    conn.close()
+
+    return f"{current_prefix}{padded}"
 
 
 def audit(entity_type, entity_id, action, message, meta=None):
@@ -399,7 +451,11 @@ def job_new():
     customers = cur.fetchall()
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
+    cur.execute("SELECT * FROM system_settings WHERE id = 1")
+    settings = cur.fetchone()
     conn.close()
+
+    next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
 
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
     job_types = ["Field Call", "Repo/Collect", "Repo Only", "Locate", "Phone Work"]
@@ -408,13 +464,14 @@ def job_new():
 
     return render_template("job_new.html", clients=clients, customers=customers,
                            users=users, visit_types=visit_types, job_types=job_types,
-                           statuses=statuses, priorities=priorities)
+                           statuses=statuses, priorities=priorities,
+                           next_number=next_number)
 
 
 @app.post("/jobs/new")
 @login_required
 def job_create():
-    internal_job_number = request.form.get("internal_job_number", "").strip()
+    internal_job_number = generate_internal_job_number()
     client_reference = request.form.get("client_reference", "").strip()
     client_id = request.form.get("client_id") or None
     customer_id = request.form.get("customer_id") or None
@@ -425,10 +482,6 @@ def job_create():
     priority = request.form.get("priority", "Normal").strip()
     job_address = request.form.get("job_address", "").strip()
     description = request.form.get("description", "").strip()
-
-    if not internal_job_number:
-        flash("Internal job number is required.", "danger")
-        return redirect(url_for("job_new"))
 
     display_ref = internal_job_number
     if client_reference:
@@ -879,6 +932,43 @@ def admin_dashboard():
                            cues_unassigned=cues_unassigned,
                            jobs_by_status=jobs_by_status,
                            recent=recent)
+
+
+# -------- Admin Settings --------
+@app.get("/admin/settings")
+@admin_required
+def admin_settings():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM system_settings WHERE id = 1")
+    settings = cur.fetchone()
+    conn.close()
+    return render_template("settings.html", settings=settings)
+
+
+@app.post("/admin/settings")
+@admin_required
+def admin_settings_update():
+    prefix = request.form.get("job_prefix", "").strip()
+    sequence = request.form.get("job_sequence", "0").strip()
+    auto_enabled = 1 if request.form.get("auto_prefix_enabled") == "on" else 0
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE system_settings
+        SET job_prefix = ?, job_sequence = ?, auto_prefix_enabled = ?, updated_at = ?
+        WHERE id = 1
+    """, (prefix, int(sequence), auto_enabled, now_ts()))
+    conn.commit()
+    conn.close()
+
+    audit("system", 1, "update",
+          "Job numbering settings updated",
+          {"prefix": prefix, "sequence": sequence, "auto_enabled": auto_enabled})
+
+    flash("Settings saved.", "success")
+    return redirect(url_for("admin_settings"))
 
 
 # -------- Cues --------

@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+{% block title %}Axion | System Settings{% endblock %}
+{% block page_title %}System Settings{% endblock %}
+
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h">Internal Job Number Settings</div>
+  <div class="ax-card-b">
+
+    <p class="small mb-4" style="color:var(--muted)">
+      Job numbers are generated as <strong style="color:var(--text)">{{ settings.job_prefix }}001</strong>,
+      <strong style="color:var(--text)">{{ settings.job_prefix }}002</strong> etc.
+      The next job created will be <strong style="color:var(--accent)">{{ settings.job_prefix }}{{ "%03d"|format(settings.job_sequence + 1) }}</strong>.
+    </p>
+
+    <form method="post">
+      <div class="row g-3 mb-3">
+        <div class="col-12 col-lg-4">
+          <label class="form-label">Job Prefix (YYMM)</label>
+          <input class="form-control" name="job_prefix" value="{{ settings.job_prefix }}" placeholder="e.g. 2602">
+          <div class="form-text" style="color:var(--muted)">4-character month prefix</div>
+        </div>
+        <div class="col-12 col-lg-4">
+          <label class="form-label">Current Sequence</label>
+          <input class="form-control" name="job_sequence" type="number" min="0" value="{{ settings.job_sequence }}">
+          <div class="form-text" style="color:var(--muted)">Next job will use this + 1</div>
+        </div>
+      </div>
+
+      <div class="form-check mb-4">
+        <input class="form-check-input" type="checkbox" name="auto_prefix_enabled" id="autoCheck"
+               {% if settings.auto_prefix_enabled %}checked{% endif %}>
+        <label class="form-check-label" for="autoCheck">
+          Auto-update prefix each month (recommended)
+        </label>
+      </div>
+
+      <button class="btn btn-primary">Save Settings</button>
+    </form>
+
+  </div>
+</div>
+{% endblock %}
