@@ -165,7 +165,8 @@
                   <button type="button" class="btn btn-sm"
                           style="background:#16a34a;color:#fff;border:0;white-space:nowrap"
                           data-bs-toggle="modal" data-bs-target="#vicRoadsModal"
-                          data-rego="{{ item.reg or '' }}">VicRoads</button>
+                          data-rego="{{ item.reg or '' }}"
+                          data-vin="{{ item.vin or '' }}">VicRoads</button>
                 {% endif %}
                 <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
                   <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove this item?')">Remove</button>
@@ -508,10 +509,15 @@ function showItemFields(type) {
       </div>
       <div class="modal-body text-center py-4">
         <div class="mb-1" style="color:var(--muted);font-size:.85rem;">Registration Plate</div>
-        <div id="vicRoadsRego" class="mb-4"
+        <div id="vicRoadsRego" class="mb-2"
              style="font-size:2rem;font-weight:800;letter-spacing:.12em;color:var(--text);">—</div>
-        <a id="vicRoadsLink"
-           href="https://www.vicroads.vic.gov.au/registration/buy-sell-or-transfer-a-vehicle/check-vehicle-registration/vehicle-registration-enquiry"
+        <div id="vicRoadsVinWrap" class="mb-4" style="display:none">
+          <div class="mb-1" style="color:var(--muted);font-size:.75rem;">VIN</div>
+          <div id="vicRoadsVin"
+               style="font-size:1.1rem;font-weight:600;letter-spacing:.08em;color:var(--muted);">—</div>
+        </div>
+        <div id="vicRoadsNoVin" class="mb-4" style="display:none;color:var(--muted);font-size:.8rem;">No VIN recorded</div>
+        <a href="https://www.vicroads.vic.gov.au/registration/buy-sell-or-transfer-a-vehicle/check-vehicle-registration"
            target="_blank" rel="noopener"
            class="btn btn-lg px-5"
            style="background:#16a34a;color:#fff;border:0;border-radius:12px;font-weight:700;">
@@ -529,8 +535,18 @@ function showItemFields(type) {
   var modal = document.getElementById('vicRoadsModal');
   if (!modal) return;
   modal.addEventListener('show.bs.modal', function (e) {
-    var rego = e.relatedTarget ? e.relatedTarget.getAttribute('data-rego') : '';
+    var btn  = e.relatedTarget;
+    var rego = btn ? btn.getAttribute('data-rego') : '';
+    var vin  = btn ? btn.getAttribute('data-vin')  : '';
     document.getElementById('vicRoadsRego').textContent = rego || '—';
+    if (vin) {
+      document.getElementById('vicRoadsVin').textContent = vin;
+      document.getElementById('vicRoadsVinWrap').style.display = '';
+      document.getElementById('vicRoadsNoVin').style.display  = 'none';
+    } else {
+      document.getElementById('vicRoadsVinWrap').style.display = 'none';
+      document.getElementById('vicRoadsNoVin').style.display  = '';
+    }
   });
 })();
 </script>
