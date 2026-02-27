@@ -688,7 +688,7 @@ def jobs_list():
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
            u.full_name AS assigned_name,
            (SELECT s.scheduled_for FROM schedules s
-            WHERE s.job_id = j.id AND s.status = 'Booked'
+            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
               AND s.scheduled_for >= datetime('now')
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled
     FROM jobs j
@@ -1035,11 +1035,14 @@ def add_schedule(job_id: int):
 
     conn = db()
     cur = conn.cursor()
+    cur.execute("SELECT name FROM booking_types WHERE id = ?", (int(bt_id),))
+    bt_row = cur.fetchone()
+    bt_status = bt_row["name"] if bt_row else "Active"
     cur.execute("""
         INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes,
                                assigned_to_user_id, created_by_user_id, created_at)
-        VALUES (?, ?, ?, 'Booked', ?, ?, ?, ?)
-    """, (job_id, int(bt_id), dt_str, notes, assigned_to, caller_id, now_ts()))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, int(bt_id), dt_str, bt_status, notes, assigned_to, caller_id, now_ts()))
     conn.commit()
     conn.close()
 
@@ -1071,7 +1074,7 @@ def schedule_index():
             JOIN booking_types bt ON bt.id = s.booking_type_id
             JOIN jobs j ON j.id = s.job_id
             LEFT JOIN users u ON u.id = s.assigned_to_user_id
-            WHERE s.status = 'Booked'
+            WHERE s.status NOT IN ('Completed', 'Cancelled')
               AND s.scheduled_for >= ?
               AND s.scheduled_for <= ?
             ORDER BY s.scheduled_for ASC
@@ -1085,7 +1088,7 @@ def schedule_index():
             JOIN booking_types bt ON bt.id = s.booking_type_id
             JOIN jobs j ON j.id = s.job_id
             LEFT JOIN users u ON u.id = s.assigned_to_user_id
-            WHERE s.status = 'Booked'
+            WHERE s.status NOT IN ('Completed', 'Cancelled')
               AND s.assigned_to_user_id = ?
               AND s.scheduled_for >= ?
               AND s.scheduled_for <= ?
@@ -1121,8 +1124,8 @@ def add_booking_type():
 @app.post("/jobs/<int:job_id>/schedule/<int:sched_id>/status")
 @login_required
 def update_schedule_status(job_id: int, sched_id: int):
-    new_status = request.form.get("status", "Booked").strip()
-    allowed = {"Booked", "Completed", "Cancelled"}
+    new_status = request.form.get("status", "").strip()
+    allowed = {"Completed", "Cancelled"}
     if new_status not in allowed:
         flash("Invalid status.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))

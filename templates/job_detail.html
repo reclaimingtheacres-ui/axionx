@@ -535,6 +535,7 @@
         </thead>
         <tbody>
           {% for s in schedules %}
+          {% set is_terminal = s.status in ('Completed', 'Cancelled') %}
           <tr>
             <td>{{ s.scheduled_for[:10].split('-')|reverse|join('/') }}</td>
             <td>{{ s.scheduled_for[11:16] }}</td>
@@ -542,16 +543,26 @@
             <td style="color:var(--muted);font-size:.85rem">{{ s.assigned_to_name or '—' }}</td>
             <td style="color:var(--muted);font-size:.85rem">{{ s.notes or '—' }}</td>
             <td>
-              <form method="post" action="/jobs/{{ job.id }}/schedule/{{ s.id }}/status"
-                    style="margin:0;display:inline">
-                <select name="status" class="form-select form-select-sm"
-                        style="min-width:110px"
-                        onchange="this.form.submit()">
-                  {% for st in ['Booked','Completed','Cancelled'] %}
-                    <option {% if s.status == st %}selected{% endif %}>{{ st }}</option>
-                  {% endfor %}
-                </select>
-              </form>
+              {% if s.status == 'Completed' %}
+                <span class="badge" style="background:#166534;color:#d1fae5;">Completed</span>
+              {% elif s.status == 'Cancelled' %}
+                <span class="badge bg-secondary">Cancelled</span>
+              {% else %}
+                <form method="post" action="/jobs/{{ job.id }}/schedule/{{ s.id }}/status"
+                      style="margin:0;display:inline">
+                  <span class="badge me-1"
+                        style="background:rgba(96,165,250,.18);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;">
+                    {{ s.status }}
+                  </span>
+                  <select name="status" class="form-select form-select-sm d-inline-block"
+                          style="width:auto;font-size:.75rem;padding:1px 6px;"
+                          onchange="this.form.submit()">
+                    <option value="" disabled selected>Mark as…</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </form>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
