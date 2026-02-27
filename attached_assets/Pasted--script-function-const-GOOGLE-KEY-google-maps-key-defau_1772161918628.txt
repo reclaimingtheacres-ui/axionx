@@ -1,0 +1,72 @@
+<script>
+(function () {
+  const GOOGLE_KEY = "{{ google_maps_key|default('', true) }}"; // or hardcode for now
+  const INPUT_ID = "address"; // change if your field id differs
+
+  function safeInitPlaces() {
+    const input = document.getElementById(INPUT_ID);
+    if (!input) return;
+
+    input.setAttribute("autocomplete", "off");
+
+    if (!window.google || !google.maps || !google.maps.places || !google.maps.places.Autocomplete) {
+      console.warn("[Axion] Places library unavailable. Address remains plain text.");
+      return;
+    }
+
+    try {
+      const ac = new google.maps.places.Autocomplete(input, { types: ["geocode"] });
+      ac.addListener("place_changed", () => {
+        const place = ac.getPlace && ac.getPlace();
+        if (place && place.formatted_address) input.value = place.formatted_address;
+      });
+      console.info("[Axion] Places autocomplete enabled.");
+    } catch (err) {
+      console.warn("[Axion] Places init failed. Reverting to plain text.", err);
+
+      // Clear any broken handlers by replacing the node
+      const clone = input.cloneNode(true);
+      input.parentNode.replaceChild(clone, input);
+      clone.setAttribute("autocomplete", "off");
+    }
+  }
+
+  function loadGooglePlacesScript() {
+    const input = document.getElementById(INPUT_ID);
+    if (!input) return; // no address field on this page
+
+    // If there’s no key, skip entirely
+    if (!GOOGLE_KEY) {
+      console.warn("[Axion] No Google Maps key configured. Address remains plain text.");
+      return;
+    }
+
+    // Prevent duplicate loads
+    if (document.querySelector('script[data-axion-google="1"]')) return;
+
+    const s = document.createElement("script");
+    s.dataset.axionGoogle = "1";
+    s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(GOOGLE_KEY) + "&libraries=places";
+    s.async = true;
+    s.defer = true;
+
+    s.onload = () => {
+      // Now that the library is loaded, initialise safely
+      safeInitPlaces();
+    };
+
+    s.onerror = () => {
+      console.warn("[Axion] Google script failed to load. Address remains plain text.");
+    };
+
+    document.head.appendChild(s);
+  }
+
+  // Trigger load after DOM is ready (not window load)
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadGooglePlacesScript);
+  } else {
+    loadGooglePlacesScript();
+  }
+})();
+</script>

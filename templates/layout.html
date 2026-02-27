@@ -288,57 +288,75 @@
   </div>
 
   <script>
-  function initPlaces() {
-    if (!window.google || !google.maps || !google.maps.places || !google.maps.places.Autocomplete) {
-      console.warn('[Axion] Google Places not available — address fields are plain text.');
-      return;
+  (function () {
+    var GOOGLE_KEY = {{ GOOGLE_MAPS_API_KEY | tojson if GOOGLE_MAPS_API_KEY else 'null' }};
+
+    function safeInitPlaces() {
+      if (!window.google || !google.maps || !google.maps.places || !google.maps.places.Autocomplete) {
+        console.warn('[Axion] Places library unavailable. Address fields remain plain text.');
+        return;
+      }
+
+      document.querySelectorAll('[data-maps-autocomplete]').forEach(function (input) {
+        if (input.dataset.placesAttached === '1') return;
+        input.dataset.placesAttached = '1';
+
+        try {
+          var ac = new google.maps.places.Autocomplete(input, {
+            types: ['address'],
+            componentRestrictions: { country: 'au' }
+          });
+
+          ac.addListener('place_changed', function () {
+            var place = ac.getPlace && ac.getPlace();
+            if (!place || !place.geometry) return;
+            if (place.formatted_address) input.value = place.formatted_address;
+            var form = input.closest('form');
+            if (!form) return;
+            var lat = form.querySelector('input[name="latitude"]');
+            var lng = form.querySelector('input[name="longitude"]');
+            if (lat) lat.value = place.geometry.location.lat();
+            if (lng) lng.value = place.geometry.location.lng();
+          });
+
+          console.info('[Axion] Places enabled on', input.name || input.id || 'input');
+        } catch (err) {
+          console.warn('[Axion] Places init failed — reverting to plain text.', err);
+          delete input.dataset.placesAttached;
+          var clone = input.cloneNode(true);
+          input.parentNode.replaceChild(clone, input);
+          clone.setAttribute('autocomplete', 'off');
+        }
+      });
     }
 
-    document.querySelectorAll('[data-maps-autocomplete]').forEach(function(input) {
-      if (input.dataset.placesAttached === '1') return;
-      input.dataset.placesAttached = '1';
-
-      try {
-        var ac = new google.maps.places.Autocomplete(input, {
-          types: ['address'],
-          componentRestrictions: { country: 'au' }
-        });
-
-        ac.addListener('place_changed', function() {
-          var place = ac.getPlace && ac.getPlace();
-          if (!place || !place.geometry) return;
-
-          if (place.formatted_address) {
-            input.value = place.formatted_address;
-          }
-
-          var form = input.closest('form');
-          if (!form) return;
-          var lat = form.querySelector('input[name="latitude"]');
-          var lng = form.querySelector('input[name="longitude"]');
-          if (lat) lat.value = place.geometry.location.lat();
-          if (lng) lng.value = place.geometry.location.lng();
-        });
-
-        console.info('[Axion] Google Places initialised on', input.name || input.id || 'input');
-      } catch (err) {
-        console.warn('[Axion] Places init failed — restoring plain text input.', err);
-        delete input.dataset.placesAttached;
-        var clone = input.cloneNode(true);
-        input.parentNode.replaceChild(clone, input);
-        clone.setAttribute('autocomplete', 'off');
+    function loadGooglePlaces() {
+      if (!document.querySelector('[data-maps-autocomplete]')) return;
+      if (!GOOGLE_KEY) {
+        console.warn('[Axion] No Google Maps key — address fields are plain text.');
+        return;
       }
-    });
-  }
+      if (document.querySelector('script[data-axion-google="1"]')) return;
+
+      var s = document.createElement('script');
+      s.dataset.axionGoogle = '1';
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_KEY) + '&libraries=places';
+      s.async = true;
+      s.defer = true;
+      s.onload = safeInitPlaces;
+      s.onerror = function () {
+        console.warn('[Axion] Google Maps script failed to load. Address fields are plain text.');
+      };
+      document.head.appendChild(s);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadGooglePlaces);
+    } else {
+      loadGooglePlaces();
+    }
+  })();
   </script>
-  {% if GOOGLE_MAPS_API_KEY %}
-  <script
-    src="https://maps.googleapis.com/maps/api/js?key={{ GOOGLE_MAPS_API_KEY }}&libraries=places"
-    async
-    defer
-  ></script>
-  <script>window.addEventListener('load', initPlaces);</script>
-  {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
