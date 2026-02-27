@@ -946,6 +946,42 @@ def job_detail(job_id: int):
                            doc_types=doc_types)
 
 
+
+@app.post("/jobs/<int:job_id>/delete")
+@login_required
+@admin_required
+def delete_job(job_id: int):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM job_field_notes WHERE job_id = ?", (job_id,))
+    note_ids = [r["id"] for r in cur.fetchall()]
+    for nid in note_ids:
+        cur.execute("SELECT filepath FROM job_note_files WHERE job_field_note_id = ?", (nid,))
+        for f in cur.fetchall():
+            try: os.remove(f["filepath"])
+            except OSError: pass
+        cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (nid,))
+    cur.execute("DELETE FROM job_field_notes WHERE job_id = ?", (job_id,))
+
+    cur.execute("SELECT filepath FROM job_documents WHERE job_id = ?", (job_id,))
+    for f in cur.fetchall():
+        try: os.remove(f["filepath"])
+        except OSError: pass
+    cur.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
+
+    for tbl in ("job_items", "job_assets", "interactions", "cue_items"):
+        cur.execute(f"DELETE FROM {tbl} WHERE job_id = ?", (job_id,))
+
+    cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+
+    audit("job", job_id, "delete", "Job deleted", {})
+    flash("Job deleted.", "success")
+    return redirect(url_for("jobs"))
+
+
 @app.post("/jobs/<int:job_id>/update")
 @login_required
 def job_update(job_id: int):

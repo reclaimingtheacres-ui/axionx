@@ -528,6 +528,22 @@ function showItemFields(type) {
 })();
 </script>
 
+{% if session.get('role') == 'admin' %}
+<div class="ax-card mb-3" style="border-color:rgba(239,68,68,.35)">
+  <div class="ax-card-h" style="color:#ef4444">Danger Zone</div>
+  <div class="ax-card-b d-flex align-items-center justify-content-between">
+    <span style="color:var(--muted);font-size:.9rem;">Permanently delete this job and all its data — items, notes, documents, and interactions.</span>
+    <form method="post" action="/jobs/{{ job.id }}/delete" style="margin:0;flex-shrink:0;margin-left:1.5rem"
+          onsubmit="return confirm('Permanently delete job {{ job.display_ref }}? This cannot be undone.')">
+      <button type="submit" class="btn btn-sm"
+              style="background:#ef4444;color:#fff;border:0;border-radius:8px;font-weight:600;white-space:nowrap">
+        &#128465; Delete Job
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 {% block modals %}
 <!-- VicRoads Modal -->
