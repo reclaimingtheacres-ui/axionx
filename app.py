@@ -853,6 +853,14 @@ def job_detail(job_id: int):
     """, (job_id,))
     interactions = cur.fetchall()
 
+    cur.execute("""
+        SELECT phone_number, label FROM contact_phone_numbers
+        WHERE customer_id = ? ORDER BY id LIMIT 1
+    """, (job.get("customer_id"),))
+    cphone_row = cur.fetchone()
+    job["customer_phone"] = cphone_row["phone_number"] if cphone_row else None
+    job["customer_phone_label"] = cphone_row["label"] if cphone_row else None
+
     cur.execute("SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,))
     job_items = cur.fetchall()
 
