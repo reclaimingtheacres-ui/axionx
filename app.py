@@ -122,6 +122,17 @@ def init_db():
     """)
 
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS contact_emails (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        label TEXT,
+        email TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -1441,16 +1452,39 @@ def customer_create_popup():
     if not first_name or not last_name:
         return jsonify({"ok": False, "error": "First and last name are required."})
     company = request.form.get("company", "").strip()
-    phone = request.form.get("phone", "").strip()
     address = request.form.get("address", "").strip()
+
+    phone_labels  = request.form.getlist("phone_label[]")
+    phone_numbers = request.form.getlist("phone_number[]")
+    email_labels  = request.form.getlist("email_label[]")
+    email_addrs   = request.form.getlist("email_address[]")
+
+    phones = [(lbl.strip(), num.strip()) for lbl, num in zip(phone_labels, phone_numbers) if num.strip()]
+    emails = [(lbl.strip(), addr.strip()) for lbl, addr in zip(email_labels, email_addrs) if addr.strip()]
+
+    first_email = emails[0][1] if emails else None
+
     now = datetime.now().isoformat(timespec="seconds")
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO customers (first_name, last_name, company, address, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (first_name, last_name, company or None, address or None, now, now))
+        INSERT INTO customers (first_name, last_name, company, email, address, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (first_name, last_name, company or None, first_email, address or None, now, now))
     new_id = cur.lastrowid
+
+    for lbl, num in phones:
+        cur.execute("""
+            INSERT INTO contact_phone_numbers (entity_type, entity_id, label, phone_number, created_at)
+            VALUES ('customer', ?, ?, ?, ?)
+        """, (new_id, lbl or "Mobile", num, now))
+
+    for lbl, addr in emails:
+        cur.execute("""
+            INSERT INTO contact_emails (entity_type, entity_id, label, email, created_at)
+            VALUES ('customer', ?, ?, ?, ?)
+        """, (new_id, lbl or "Email", addr, now))
+
     conn.commit()
     conn.close()
     label = f"{first_name} {last_name}"
@@ -1648,8 +1682,16 @@ def customer_detail(customer_id: int):
         ORDER BY id
     """, (customer_id,))
     phones = cur.fetchall()
+
+    cur.execute("""
+        SELECT * FROM contact_emails
+        WHERE entity_type = 'customer' AND entity_id = ?
+        ORDER BY id
+    """, (customer_id,))
+    emails = cur.fetchall()
+
     conn.close()
-    return render_template("customer_detail.html", customer=customer, jobs=jobs, phones=phones)
+    return render_template("customer_detail.html", customer=customer, jobs=jobs, phones=phones, emails=emails)
 
 
 @app.get("/customers/<int:customer_id>/edit")

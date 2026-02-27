@@ -30,7 +30,18 @@
         </div>
         <div class="mb-2">
           <div class="small" style="color:var(--muted)">Email</div>
-          <div>{% if customer.email %}<a href="mailto:{{ customer.email }}" style="color:var(--accent)">{{ customer.email }}</a>{% else %}&mdash;{% endif %}</div>
+          {% if emails %}
+            {% for e in emails %}
+              <div>
+                {% if e.label %}<span class="small" style="color:var(--muted)">{{ e.label }}:</span> {% endif %}
+                <a href="mailto:{{ e.email }}" style="color:var(--accent)">{{ e.email }}</a>
+              </div>
+            {% endfor %}
+          {% elif customer.email %}
+            <div><a href="mailto:{{ customer.email }}" style="color:var(--accent)">{{ customer.email }}</a></div>
+          {% else %}
+            <div>&mdash;</div>
+          {% endif %}
         </div>
         <div class="mb-2">
           <div class="small" style="color:var(--muted)">Address</div>

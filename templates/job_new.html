@@ -505,6 +505,41 @@
   }
 })();
 </script>
+
+<script>
+function addPhoneRow() {
+  var container = document.getElementById('phoneRows');
+  var first = container.querySelector('.phone-row');
+  var clone = first.cloneNode(true);
+  clone.querySelectorAll('input').forEach(function(i){ i.value = ''; });
+  container.appendChild(clone);
+}
+function removePhoneRow(btn) {
+  var container = document.getElementById('phoneRows');
+  var rows = container.querySelectorAll('.phone-row');
+  if (rows.length <= 1) {
+    rows[0].querySelectorAll('input').forEach(function(i){ i.value = ''; });
+  } else {
+    btn.closest('.phone-row').remove();
+  }
+}
+function addEmailRow() {
+  var container = document.getElementById('emailRows');
+  var first = container.querySelector('.email-row');
+  var clone = first.cloneNode(true);
+  clone.querySelectorAll('input').forEach(function(i){ i.value = ''; });
+  container.appendChild(clone);
+}
+function removeEmailRow(btn) {
+  var container = document.getElementById('emailRows');
+  var rows = container.querySelectorAll('.email-row');
+  if (rows.length <= 1) {
+    rows[0].querySelectorAll('input').forEach(function(i){ i.value = ''; });
+  } else {
+    btn.closest('.email-row').remove();
+  }
+}
+</script>
 {% endblock %}
 
 {% block modals %}
