@@ -1213,6 +1213,30 @@ def delete_job(job_id: int):
     return redirect(url_for("jobs"))
 
 
+@app.post("/jobs/<int:job_id>/status")
+@login_required
+@admin_required
+def job_status_update(job_id: int):
+    status = request.form.get("status", "").strip()
+    allowed = ["New", "Active", "Active - Phone work only", "Suspended",
+               "Awaiting info from client", "Completed", "Invoiced"]
+    if status not in allowed:
+        flash("Invalid status.", "danger")
+        return redirect(url_for("jobs_list"))
+    now = datetime.now().isoformat(timespec="seconds")
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?",
+                (status, now, job_id))
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (job_id, "Status Update", f"Status changed to '{status}'.", now, now))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("jobs_list"))
+
+
 @app.post("/jobs/<int:job_id>/update")
 @login_required
 @admin_required
