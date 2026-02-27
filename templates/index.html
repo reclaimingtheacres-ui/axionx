@@ -89,14 +89,34 @@
             <th style="font-weight:500;border-color:var(--line)">Job Ref</th>
             <th style="font-weight:500;border-color:var(--line)">Customer</th>
             <th style="font-weight:500;border-color:var(--line)">Agent</th>
+            <th style="font-weight:500;border-color:var(--line)">Next Schedule</th>
           </tr>
         </thead>
         <tbody>
           {% for j in jobs %}
           <tr style="cursor:pointer;border-color:var(--line)" onclick="window.location='/jobs/{{ j.id }}'">
             <td style="border-color:var(--line);color:var(--accent);font-weight:600">{{ j.display_ref }}</td>
-            <td style="border-color:var(--line);color:var(--text)">{{ j.customer_name }}</td>
+            <td style="border-color:var(--line);color:#fff;font-weight:500">{{ j.customer_name }}</td>
             <td style="border-color:var(--line);color:var(--muted)">{{ j.assigned_name or '&#8212;' }}</td>
+            <td style="border-color:var(--line)">
+              {% if j.next_scheduled %}
+                {% set ns = j.next_scheduled %}
+                {% set ns_date = ns[:10] %}
+                {% set ns_time = ns[11:16] %}
+                {% set ns_dd = ns[8:10] %}
+                {% set ns_mm = ns[5:7] %}
+                {% set ns_yy = ns[2:4] %}
+                {% if ns_date == today_iso %}
+                  <span style="color:#ffd166;font-weight:600">Today {{ ns_time }}</span>
+                {% elif ns_date == tomorrow_iso %}
+                  <span style="color:#60a5fa">Tomorrow {{ ns_time }}</span>
+                {% else %}
+                  <span style="color:var(--muted)">{{ ns_dd }}/{{ ns_mm }}/{{ ns_yy }} {{ ns_time }}</span>
+                {% endif %}
+              {% else %}
+                <span style="color:var(--line)">&#8212;</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

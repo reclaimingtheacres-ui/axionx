@@ -666,6 +666,61 @@ def index():
     return redirect(url_for("login"))
 
 
+
+def auto_queue_schedule_alerts(cur, admin_user_id):
+    """Auto-create queue items for jobs with overdue/today/tomorrow schedules."""
+    import datetime as _dt
+    today = _dt.date.today().isoformat()
+    tomorrow = (_dt.date.today() + _dt.timedelta(days=1)).isoformat()
+    now_str = _dt.datetime.now().isoformat(timespec="seconds")
+
+    cur.execute("""
+        SELECT j.id, j.display_ref, s.scheduled_for,
+               date(s.scheduled_for,'localtime') AS sched_date
+        FROM jobs j
+        JOIN (
+            SELECT job_id, MIN(scheduled_for) AS scheduled_for
+            FROM schedules
+            WHERE date(scheduled_for,'localtime') <= ?
+            GROUP BY job_id
+        ) s ON s.job_id = j.id
+        WHERE j.status NOT IN ('Completed', 'Invoiced', 'New')
+    """, (tomorrow,))
+    candidates = cur.fetchall()
+
+    visit_map = {
+        "past":     ("Urgent: Schedule Overdue",  "Urgent"),
+        "today":    ("Schedule Due Today",         "High"),
+        "tomorrow": ("Schedule Due Tomorrow",      "Normal"),
+    }
+
+    for row in candidates:
+        sched_date = row["sched_date"]
+        if sched_date < today:
+            bucket = "past"
+        elif sched_date == today:
+            bucket = "today"
+        else:
+            bucket = "tomorrow"
+
+        visit_type, priority = visit_map[bucket]
+
+        cur.execute("""
+            SELECT id FROM cue_items
+            WHERE job_id = ? AND visit_type = ?
+              AND status IN ('Pending','In Progress')
+        """, (row["id"], visit_type))
+        if cur.fetchone():
+            continue
+
+        cur.execute("""
+            INSERT INTO cue_items
+              (job_id, visit_type, due_date, priority, status,
+               created_by_user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?)
+        """, (row["id"], visit_type, today, priority,
+              admin_user_id, now_str, now_str))
+
 @app.get("/dashboard")
 @login_required
 def dashboard():
@@ -690,31 +745,36 @@ def dashboard():
     ]
 
     def jrows(status):
-        if role == "agent":
-            sql = """
+        agent_subq = """
+            COALESCE(u.full_name,
+                (SELECT u2.full_name FROM schedules sx
+                 JOIN users u2 ON u2.id = sx.assigned_to_user_id
+                 WHERE sx.job_id = j.id
+                 ORDER BY sx.created_at DESC LIMIT 1)
+            ) AS assigned_name"""
+        sched_subq = """
+            (SELECT sx2.scheduled_for FROM schedules sx2
+             WHERE sx2.job_id = j.id
+               AND date(sx2.scheduled_for) >= date('now','localtime')
+             ORDER BY sx2.scheduled_for ASC LIMIT 1) AS next_scheduled"""
+        base_sel = f"""
                 SELECT j.id, j.display_ref, j.status,
-                       COALESCE(cu.first_name || ' ' || cu.last_name,
+                       COALESCE(CASE WHEN cu.last_name IS NOT NULL THEN cu.last_name || COALESCE(' ' || cu.first_name, '') ELSE NULL END,
                                 cu.company, 'No customer') AS customer_name,
-                       u.full_name AS assigned_name
+                       {agent_subq},
+                       {sched_subq}
                 FROM jobs j
                 LEFT JOIN customers cu ON cu.id = j.customer_id
-                LEFT JOIN users u ON u.id = j.assigned_user_id
+                LEFT JOIN users u ON u.id = j.assigned_user_id"""
+        if role == "agent":
+            sql = base_sel + """
                 WHERE j.status = ? AND j.assigned_user_id = ?
-                ORDER BY j.updated_at DESC
-            """
+                ORDER BY j.updated_at DESC"""
             cur.execute(sql, (status, user_id))
         else:
-            sql = """
-                SELECT j.id, j.display_ref, j.status,
-                       COALESCE(cu.first_name || ' ' || cu.last_name,
-                                cu.company, 'No customer') AS customer_name,
-                       u.full_name AS assigned_name
-                FROM jobs j
-                LEFT JOIN customers cu ON cu.id = j.customer_id
-                LEFT JOIN users u ON u.id = j.assigned_user_id
+            sql = base_sel + """
                 WHERE j.status = ?
-                ORDER BY j.updated_at DESC
-            """
+                ORDER BY j.updated_at DESC"""
             cur.execute(sql, (status,))
         return cur.fetchall()
 
@@ -741,7 +801,15 @@ def dashboard():
 
     rows_by_status = {status: jrows(status) for status, _ in STATUS_LIST}
 
+    # Auto-flag overdue / today / tomorrow schedules into the job queue
+    _admin_id = user_id if role == "admin" else None
+    if _admin_id:
+        auto_queue_schedule_alerts(cur, _admin_id)
+        conn.commit()
+
     conn.close()
+    from datetime import timedelta as _td
+    _today = datetime.now().date()
     return render_template("index.html",
         jobs_all=jobs_all,
         jobs_new=jobs_new,       jobs_active=jobs_active,
@@ -749,7 +817,9 @@ def dashboard():
         jobs_awaiting=jobs_awaiting, jobs_completed=jobs_completed,
         jobs_invoiced=jobs_invoiced,
         rows_by_status=rows_by_status,
-        status_list=STATUS_LIST)
+        status_list=STATUS_LIST,
+        today_iso=_today.isoformat(),
+        tomorrow_iso=(_today + _td(days=1)).isoformat())
 
 
 
