@@ -1,0 +1,238 @@
+In practice, your form becomes a single “Contract” screen. The top portion captures lender + contract + financials, and below that you render one or more asset cards. Each asset card writes into contract.assets[index], and the Add Asset button simply appends a new blank asset object to the array. When you save, you submit one payload containing everything.
+
+Here’s a straightforward React pattern you can drop into Replit (works with plain React; adapt field names as needed):
+
+import React, { useState } from "react";
+
+const emptyAsset = () => ({
+  assetType: "",
+  make: "",
+  model: "",
+  year: "",
+  reg: "",
+  vin: "",
+  locationAddress: "",
+  notes: "",
+});
+
+const emptyContract = () => ({
+  lenderName: "",
+  clientName: "",
+  contractNumber: "",
+  accountNumber: "",
+  status: "Open",
+  arrears: "",
+  enforcementCosts: "",
+  nextInstalment: "",
+  totalOutstanding: "",
+  dueDate: "",
+  notes: "",
+  assets: [emptyAsset()],
+});
+
+function toNumberOrBlank(v) {
+  if (v === "") return "";
+  const n = Number(String(v).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : "";
+}
+
+function computeTotals(c) {
+  const arrears = Number(c.arrears || 0);
+  const enforcementCosts = Number(c.enforcementCosts || 0);
+  const nextInstalment = Number(c.nextInstalment || 0);
+  const totalOutstanding = arrears + enforcementCosts + nextInstalment;
+  return Number.isFinite(totalOutstanding) ? totalOutstanding : "";
+}
+
+export default function ContractForm() {
+  const [contract, setContract] = useState(emptyContract());
+
+  const updateContractField = (field, value) => {
+    setContract((prev) => {
+      const next = { ...prev, [field]: value };
+      next.totalOutstanding = computeTotals(next);
+      return next;
+    });
+  };
+
+  const updateMoneyField = (field, value) => {
+    const n = toNumberOrBlank(value);
+    setContract((prev) => {
+      const next = { ...prev, [field]: n };
+      next.totalOutstanding = computeTotals(next);
+      return next;
+    });
+  };
+
+  const updateAssetField = (index, field, value) => {
+    setContract((prev) => {
+      const assets = prev.assets.map((a, i) => (i === index ? { ...a, [field]: value } : a));
+      return { ...prev, assets };
+    });
+  };
+
+  const addAsset = () => {
+    setContract((prev) => ({ ...prev, assets: [...prev.assets, emptyAsset()] }));
+  };
+
+  const removeAsset = (index) => {
+    setContract((prev) => {
+      const assets = prev.assets.filter((_, i) => i !== index);
+      return { ...prev, assets: assets.length ? assets : [emptyAsset()] };
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const payload = contract; // single object containing lender/financials + assets[]
+    console.log("Submitting contract payload:", payload);
+
+    // Example:
+    // await fetch("/api/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} style={{ maxWidth: 900, margin: "0 auto" }}>
+      <h2>Contract</h2>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <label>
+          Lender
+          <input value={contract.lenderName} onChange={(e) => updateContractField("lenderName", e.target.value)} />
+        </label>
+
+        <label>
+          Client
+          <input value={contract.clientName} onChange={(e) => updateContractField("clientName", e.target.value)} />
+        </label>
+
+        <label>
+          Contract Number
+          <input value={contract.contractNumber} onChange={(e) => updateContractField("contractNumber", e.target.value)} />
+        </label>
+
+        <label>
+          Account Number
+          <input value={contract.accountNumber} onChange={(e) => updateContractField("accountNumber", e.target.value)} />
+        </label>
+      </div>
+
+      <h3 style={{ marginTop: 18 }}>Financials</h3>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <label>
+          Arrears
+          <input
+            inputMode="decimal"
+            value={contract.arrears}
+            onChange={(e) => updateMoneyField("arrears", e.target.value)}
+          />
+        </label>
+
+        <label>
+          Enforcement Costs
+          <input
+            inputMode="decimal"
+            value={contract.enforcementCosts}
+            onChange={(e) => updateMoneyField("enforcementCosts", e.target.value)}
+          />
+        </label>
+
+        <label>
+          Next Instalment
+          <input
+            inputMode="decimal"
+            value={contract.nextInstalment}
+            onChange={(e) => updateMoneyField("nextInstalment", e.target.value)}
+          />
+        </label>
+
+        <label>
+          Total Outstanding (auto)
+          <input value={contract.totalOutstanding} readOnly />
+        </label>
+
+        <label>
+          Due Date
+          <input type="date" value={contract.dueDate} onChange={(e) => updateContractField("dueDate", e.target.value)} />
+        </label>
+
+        <label>
+          Status
+          <select value={contract.status} onChange={(e) => updateContractField("status", e.target.value)}>
+            <option>Open</option>
+            <option>On Hold</option>
+            <option>Completed</option>
+          </select>
+        </label>
+      </div>
+
+      <h3 style={{ marginTop: 18 }}>Assets</h3>
+
+      {contract.assets.map((asset, index) => (
+        <div key={index} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong>Asset {index + 1}</strong>
+            <button type="button" onClick={() => removeAsset(index)}>
+              Remove
+            </button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+            <label>
+              Asset Type
+              <input value={asset.assetType} onChange={(e) => updateAssetField(index, "assetType", e.target.value)} />
+            </label>
+
+            <label>
+              Year
+              <input value={asset.year} onChange={(e) => updateAssetField(index, "year", e.target.value)} />
+            </label>
+
+            <label>
+              Make
+              <input value={asset.make} onChange={(e) => updateAssetField(index, "make", e.target.value)} />
+            </label>
+
+            <label>
+              Model
+              <input value={asset.model} onChange={(e) => updateAssetField(index, "model", e.target.value)} />
+            </label>
+
+            <label>
+              Reg
+              <input value={asset.reg} onChange={(e) => updateAssetField(index, "reg", e.target.value)} />
+            </label>
+
+            <label>
+              VIN
+              <input value={asset.vin} onChange={(e) => updateAssetField(index, "vin", e.target.value)} />
+            </label>
+
+            <label style={{ gridColumn: "1 / -1" }}>
+              Location Address
+              <input
+                value={asset.locationAddress}
+                onChange={(e) => updateAssetField(index, "locationAddress", e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+
+            <label style={{ gridColumn: "1 / -1" }}>
+              Notes
+              <input value={asset.notes} onChange={(e) => updateAssetField(index, "notes", e.target.value)} />
+            </label>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button type="button" onClick={addAsset}>
+          Add Asset
+        </button>
+        <button type="submit">Save Contract</button>
+      </div>
+    </form>
+  );
+}
+
+If you’re also persisting this to a database, the matching structure is “contracts” as the table/collection, with a JSON column (or embedded document) for assets, or a separate assets table keyed by contract_id while still treating the contract as the single “case” object at the API layer. Either approach still presents as one combined record in the UI and payload.
