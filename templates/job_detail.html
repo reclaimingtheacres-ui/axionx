@@ -490,6 +490,18 @@
         <textarea name="notes" class="form-control" rows="2"
                   placeholder="Optional notes about this booking"></textarea>
       </div>
+      {% if session.get('role') == 'admin' %}
+      <div class="col-md-4">
+        <select name="assigned_to_user_id" class="form-select">
+          <option value="">Unassigned</option>
+          {% for u in users %}
+            <option value="{{ u.id }}">{{ u.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% else %}
+      <input type="hidden" name="assigned_to_user_id" value="{{ session.get('user_id') }}">
+      {% endif %}
     </form>
 
     {% if session.get('role') == 'admin' %}
@@ -512,7 +524,7 @@
       <table class="table table-sm mb-0">
         <thead>
           <tr>
-            <th>Date</th><th>Time</th><th>Type</th><th>Notes</th><th>Status</th>
+            <th>Date</th><th>Time</th><th>Type</th><th>Assigned</th><th>Notes</th><th>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -521,6 +533,7 @@
             <td>{{ s.scheduled_for[:10].split('-')|reverse|join('/') }}</td>
             <td>{{ s.scheduled_for[11:16] }}</td>
             <td>{{ s.booking_type_name }}</td>
+            <td style="color:var(--muted);font-size:.85rem">{{ s.assigned_to_name or '—' }}</td>
             <td style="color:var(--muted);font-size:.85rem">{{ s.notes or '—' }}</td>
             <td>
               <form method="post" action="/jobs/{{ job.id }}/schedule/{{ s.id }}/status"

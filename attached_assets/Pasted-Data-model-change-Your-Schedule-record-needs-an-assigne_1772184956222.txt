@@ -1,0 +1,109 @@
+Data model change
+
+Your Schedule record needs an “assigned_to” user id so Axion knows which bookings belong to which user.
+
+# models.py
+class Schedule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey("job.id"), nullable=False)
+    booking_type_id = db.Column(db.Integer, db.ForeignKey("booking_type.id"), nullable=False)
+    scheduled_for = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(50), default="Booked")  # Booked/Completed/Cancelled
+    notes = db.Column(db.Text)
+
+    assigned_to_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)  # <- add this
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+In your “Add Booking” form on the job page, include an assignee dropdown. For non-admin users, set it automatically to the current user and hide the dropdown. For admin, show the dropdown so they can assign.
+
+Sidebar link
+
+In templates/layout.html (or wherever your left nav is), add:
+
+<a class="nav-link {% if request.endpoint == 'schedule.index' %}active{% endif %}"
+   href="{{ url_for('schedule.index') }}">
+  Schedule
+</a>
+Schedule page route with admin vs user filtering
+
+Create a schedule blueprint route like this:
+
+# schedule/routes.py
+from datetime import datetime, timedelta
+from flask import Blueprint, render_template
+from flask_login import login_required, current_user
+
+schedule_bp = Blueprint("schedule", __name__)
+
+def is_admin(user):
+    return getattr(user, "is_admin", False) or ("admin" in (getattr(user, "roles", []) or []))
+
+@schedule_bp.get("/schedule")
+@login_required
+def index():
+    now = datetime.now()
+    horizon = now + timedelta(days=30)  # show next 30 days; adjust later
+
+    q = Schedule.query.filter(
+        Schedule.status == "Booked",
+        Schedule.scheduled_for >= now,
+        Schedule.scheduled_for <= horizon,
+    )
+
+    if not is_admin(current_user):
+        q = q.filter(Schedule.assigned_to_user_id == current_user.id)
+
+    bookings = q.order_by(Schedule.scheduled_for.asc()).all()
+    return render_template("schedule/index.html", bookings=bookings, admin=is_admin(current_user))
+
+Register the blueprint in your app factory:
+
+app.register_blueprint(schedule_bp)
+Schedule page template
+
+Create templates/schedule/index.html that shows the user’s upcoming booked jobs, with job link, booking type, date/time (dd/mm/yyyy and am/pm), and status.
+
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <div class="card-header">Schedule</div>
+  <div class="card-body">
+    {% if bookings %}
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Type</th>
+            <th>Job</th>
+            {% if admin %}<th>Assigned</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+            <tr>
+              <td>{{ b.scheduled_for.strftime("%d/%m/%Y") }}</td>
+              <td>{{ b.scheduled_for.strftime("%I:%M %p").lower() }}</td>
+              <td>{{ b.booking_type.name }}</td>
+              <td><a href="{{ url_for('jobs.view', job_id=b.job_id) }}">Open job</a></td>
+              {% if admin %}
+                <td>{{ b.assigned_to.full_name if b.assigned_to else "" }}</td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="text-muted">No bookings scheduled.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+You’ll need relationships if you want b.booking_type.name and b.assigned_to.full_name:
+
+class Schedule(db.Model):
+    # ...
+    booking_type = db.relationship("BookingType")
+    assigned_to = db.relationship("User", foreign_keys=[assigned_to_user_id])

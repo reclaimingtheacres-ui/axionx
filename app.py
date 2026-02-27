@@ -322,6 +322,7 @@ def init_db():
         add_column_if_missing(cur, "jobs", col, coltype)
 
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
+    add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
 
     _default_booking_types = [
         "New Visit", "Re-attend", "Urgent New Visit",
@@ -961,9 +962,10 @@ def job_detail(job_id: int):
     booking_types = cur.fetchall()
 
     cur.execute("""
-        SELECT s.*, bt.name booking_type_name
+        SELECT s.*, bt.name booking_type_name, u.full_name assigned_to_name
         FROM schedules s
         JOIN booking_types bt ON bt.id = s.booking_type_id
+        LEFT JOIN users u ON u.id = s.assigned_to_user_id
         WHERE s.job_id = ?
         ORDER BY s.scheduled_for ASC
     """, (job_id,))
@@ -997,10 +999,19 @@ def job_detail(job_id: int):
 @app.post("/jobs/<int:job_id>/schedule")
 @login_required
 def add_schedule(job_id: int):
-    date_str = request.form.get("schedule_date", "").strip()
-    time_str  = request.form.get("schedule_time", "").strip()
-    bt_id     = request.form.get("booking_type_id", "").strip()
-    notes     = request.form.get("notes", "").strip() or None
+    date_str   = request.form.get("schedule_date", "").strip()
+    time_str   = request.form.get("schedule_time", "").strip()
+    bt_id      = request.form.get("booking_type_id", "").strip()
+    notes      = request.form.get("notes", "").strip() or None
+    caller_id  = session.get("user_id")
+    caller_role = session.get("role", "")
+
+    if caller_role == "admin":
+        assigned_to = request.form.get("assigned_to_user_id", "").strip() or None
+        if assigned_to:
+            assigned_to = int(assigned_to)
+    else:
+        assigned_to = caller_id
 
     if not date_str or not time_str or not bt_id:
         flash("Date, time and booking type are required.", "danger")
@@ -1015,14 +1026,66 @@ def add_schedule(job_id: int):
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes, created_by_user_id, created_at)
-        VALUES (?, ?, ?, 'Booked', ?, ?, ?)
-    """, (job_id, int(bt_id), dt_str, notes, session.get("user_id"), now_ts()))
+        INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes,
+                               assigned_to_user_id, created_by_user_id, created_at)
+        VALUES (?, ?, ?, 'Booked', ?, ?, ?, ?)
+    """, (job_id, int(bt_id), dt_str, notes, assigned_to, caller_id, now_ts()))
     conn.commit()
     conn.close()
 
     flash("Booking added.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
+
+
+
+@app.get("/schedule")
+@login_required
+def schedule_index():
+    from datetime import timedelta
+    now    = datetime.now()
+    horizon = now + timedelta(days=30)
+    now_str = now.isoformat(timespec="seconds")
+    hor_str = horizon.isoformat(timespec="seconds")
+
+    conn = db()
+    cur  = conn.cursor()
+    caller_id   = session.get("user_id")
+    caller_role = session.get("role", "")
+
+    if caller_role == "admin":
+        cur.execute("""
+            SELECT s.*, bt.name booking_type_name,
+                   j.reference_number, j.client_ref, j.id job_id,
+                   u.full_name assigned_to_name
+            FROM schedules s
+            JOIN booking_types bt ON bt.id = s.booking_type_id
+            JOIN jobs j ON j.id = s.job_id
+            LEFT JOIN users u ON u.id = s.assigned_to_user_id
+            WHERE s.status = 'Booked'
+              AND s.scheduled_for >= ?
+              AND s.scheduled_for <= ?
+            ORDER BY s.scheduled_for ASC
+        """, (now_str, hor_str))
+    else:
+        cur.execute("""
+            SELECT s.*, bt.name booking_type_name,
+                   j.reference_number, j.client_ref, j.id job_id,
+                   u.full_name assigned_to_name
+            FROM schedules s
+            JOIN booking_types bt ON bt.id = s.booking_type_id
+            JOIN jobs j ON j.id = s.job_id
+            LEFT JOIN users u ON u.id = s.assigned_to_user_id
+            WHERE s.status = 'Booked'
+              AND s.assigned_to_user_id = ?
+              AND s.scheduled_for >= ?
+              AND s.scheduled_for <= ?
+            ORDER BY s.scheduled_for ASC
+        """, (caller_id, now_str, hor_str))
+
+    bookings = cur.fetchall()
+    conn.close()
+    return render_template("schedule/index.html", bookings=bookings,
+                           is_admin=(caller_role == "admin"))
 
 
 @app.post("/booking-type")

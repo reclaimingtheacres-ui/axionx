@@ -272,6 +272,7 @@
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
         <a href="/clients" class="{% if request.path.startswith('/clients') %}active{% endif %}">Clients</a>
         <a href="/customers" class="{% if request.path.startswith('/customers') %}active{% endif %}">Customers</a>
+        <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
 
         {% if session.get('role') == 'agent' %}
           <div class="hint">My Work</div>

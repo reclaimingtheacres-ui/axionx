@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Schedule{% endblock %}
+{% block page_title %}Schedule{% endblock %}
+
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h d-flex justify-content-between align-items-center">
+    <div>Upcoming Bookings <span style="color:var(--muted);font-size:.85rem;font-weight:400">— next 30 days</span></div>
+  </div>
+  <div class="ax-card-b">
+    {% if bookings %}
+    <div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Type</th>
+            <th>Job</th>
+            {% if is_admin %}<th>Assigned</th>{% endif %}
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          <tr>
+            <td>{{ b.scheduled_for[:10].split('-')|reverse|join('/') }}</td>
+            <td>
+              {% set hr = b.scheduled_for[11:13]|int %}
+              {% set mn = b.scheduled_for[14:16] %}
+              {% if hr == 0 %}12:{{ mn }} am
+              {% elif hr < 12 %}{{ '%02d'|format(hr) }}:{{ mn }} am
+              {% elif hr == 12 %}12:{{ mn }} pm
+              {% else %}{{ '%02d'|format(hr - 12) }}:{{ mn }} pm
+              {% endif %}
+            </td>
+            <td>{{ b.booking_type_name }}</td>
+            <td>
+              <a href="/jobs/{{ b.job_id }}"
+                 style="color:var(--accent);text-decoration:none;font-weight:600">
+                {{ b.reference_number or b.client_ref or ('Job #' ~ b.job_id) }}
+              </a>
+            </td>
+            {% if is_admin %}
+            <td style="color:var(--muted)">{{ b.assigned_to_name or '—' }}</td>
+            {% endif %}
+            <td style="color:var(--muted);font-size:.85rem">{{ b.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="py-4 text-center" style="color:var(--muted)">
+      No bookings scheduled in the next 30 days.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
