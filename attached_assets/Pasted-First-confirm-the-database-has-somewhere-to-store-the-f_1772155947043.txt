@@ -1,0 +1,96 @@
+First, confirm the database has somewhere to store the file reference. In init_db() the customers table should include:
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS customers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  company TEXT,
+  dob TEXT,
+  address TEXT,
+  notes TEXT,
+  id_image_filename TEXT,
+  id_image_path TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+""")
+
+Next, create an uploads folder and make Flask serve it. In app.py near the top:
+
+import os
+from werkzeug.utils import secure_filename
+
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp"}
+
+def allowed_image(filename: str) -> bool:
+    if "." not in filename:
+        return False
+    ext = filename.rsplit(".", 1)[1].lower()
+    return ext in ALLOWED_IMAGE_EXTS
+
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # 10MB
+
+Add a route to serve uploaded files:
+
+from flask import send_from_directory
+
+@app.route("/uploads/<path:filename>")
+@login_required
+def uploads(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
+
+Now add the file input to the customer form template. In templates/customer_create.html (and same for edit), make sure the form tag includes enctype:
+
+<form method="post" enctype="multipart/form-data">
+
+Then add the field:
+
+<div class="mt-3">
+  <label class="form-label">Customer ID photo (optional)</label>
+  <input class="form-control" type="file" name="id_photo" accept="image/*">
+  <div class="form-text">PNG/JPG/WebP up to 10MB.</div>
+</div>
+
+Now handle the upload in the create route. In customer_create() after you validate first/last name:
+
+file = request.files.get("id_photo")
+id_image_filename = None
+id_image_path = None
+
+if file and file.filename:
+    if not allowed_image(file.filename):
+        flash("ID photo must be PNG, JPG, or WebP.", "danger")
+        return redirect(url_for("customer_create"))
+
+    safe_name = secure_filename(file.filename)
+    ts = now_ts().replace(":", "").replace(" ", "_")
+    stored_name = f"cust_{ts}_{safe_name}"
+    save_path = os.path.join(UPLOAD_DIR, stored_name)
+    file.save(save_path)
+
+    id_image_filename = safe_name
+    id_image_path = stored_name
+
+Then include those values in the insert:
+
+cur.execute("""
+  INSERT INTO customers
+  (first_name, last_name, company, dob, address, notes, id_image_filename, id_image_path, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+""", (first_name, last_name, company or None, dob or None, address or None, notes or None,
+      id_image_filename, id_image_path, ts, ts))
+
+Finally, display it on the customer detail page (customer_detail.html):
+
+{% if customer.id_image_path %}
+  <div class="mt-3">
+    <div class="small" style="opacity:.8;">ID photo</div>
+    <a href="/uploads/{{ customer.id_image_path }}" target="_blank">
+      <img src="/uploads/{{ customer.id_image_path }}" style="max-width:260px;border-radius:12px;border:1px solid rgba(255,255,255,.08);">
+    </a>
+  </div>
+{% endif %}

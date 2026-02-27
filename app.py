@@ -15,7 +15,7 @@ app.secret_key = "axion-dev-secret"
 DB_PATH = "axion.db"
 
 UPLOAD_FOLDER = "uploads"
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "pdf", "doc", "docx", "xls", "xlsx", "csv"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -920,13 +920,31 @@ def customer_create():
         flash("First and last name are required.", "danger")
         return redirect(url_for("customer_new"))
 
+    id_photo = request.files.get("id_photo")
+    id_image_filename = None
+    id_image_path = None
+
+    if id_photo and id_photo.filename:
+        if not allowed_file(id_photo.filename):
+            flash("ID photo must be PNG, JPG, JPEG, or WebP.", "danger")
+            return redirect(url_for("customer_new"))
+        ts = now_ts()
+        safe_name = secure_filename(id_photo.filename)
+        safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
+        stored_name = f"cust_{safe_ts}_{safe_name}"
+        id_photo.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
+        id_image_filename = safe_name
+        id_image_path = stored_name
+
     ts = now_ts()
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO customers (first_name, last_name, company, email, dob, address, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (first_name, last_name, company or None, email or None, dob or None, address or None, notes or None, ts, ts))
+        INSERT INTO customers (first_name, last_name, company, email, dob, address, notes,
+                               id_image_filename, id_image_path, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (first_name, last_name, company or None, email or None, dob or None, address or None,
+          notes or None, id_image_filename, id_image_path, ts, ts))
     conn.commit()
     conn.close()
     flash("Customer created.", "success")
