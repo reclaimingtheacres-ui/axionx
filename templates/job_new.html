@@ -52,23 +52,6 @@
         </div>
       </div>
 
-      <div class="row g-3 mb-3">
-        <div class="col-12 col-lg-6">
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label mb-0">Bill to Other Client</label>
-            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
-                    onclick="openEntityModal('bill_to','/clients/new-popup')"
-                    title="Create new billing client">+&nbsp;New</button>
-          </div>
-          <div class="position-relative">
-            <input type="text" class="form-control" id="bill_to_search"
-                   placeholder="Leave blank if same as Client..." autocomplete="off" spellcheck="false">
-            <input type="hidden" name="bill_to_client_id" id="bill_to_client_id">
-            <div id="bill_to_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:rgba(11,18,32,.98); border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
-          </div>
-          <div class="form-text" style="color:var(--muted)">Leave blank if billing client is the same as Client.</div>
-        </div>
-      </div>
 
       <div class="mb-3">
         <label class="form-label">Customer Address</label>
@@ -416,8 +399,6 @@
 
   makeTypeahead({ searchId:'client_search',   hiddenId:'client_id_val',     dropId:'client_dropdown',
                   data:CLIENT_DATA,   preselect:{{ new_client_id | tojson }} });
-  makeTypeahead({ searchId:'bill_to_search',  hiddenId:'bill_to_client_id',  dropId:'bill_to_dropdown',
-                  data:CLIENT_DATA,   preselect:null });
   makeTypeahead({ searchId:'customer_search', hiddenId:'customer_id_val',    dropId:'customer_dropdown',
                   data:CUSTOMER_DATA, preselect:{{ new_customer_id | tojson }},
                   onSelect: function(item) {
@@ -480,8 +461,6 @@
     var searchId, hiddenId, dataArr;
     if (target === 'client') {
       searchId = 'client_search'; hiddenId = 'client_id_val'; dataArr = CLIENT_DATA;
-    } else if (target === 'bill_to') {
-      searchId = 'bill_to_search'; hiddenId = 'bill_to_client_id'; dataArr = CLIENT_DATA;
     } else if (target === 'customer') {
       searchId = 'customer_search'; hiddenId = 'customer_id_val'; dataArr = CUSTOMER_DATA;
     } else if (target === 'agent') {
