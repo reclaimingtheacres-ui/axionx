@@ -204,6 +204,7 @@ def init_db():
         narrative TEXT NOT NULL,
         occurred_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        photo_path TEXT,
         FOREIGN KEY(job_id) REFERENCES jobs(id)
     )
     """)
@@ -295,6 +296,8 @@ def init_db():
         ("job_due_date",     "TEXT"),
     ]:
         add_column_if_missing(cur, "jobs", col, coltype)
+
+    add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
 
     conn.commit()
     conn.close()
@@ -916,14 +919,25 @@ def interaction_add(job_id: int):
 
     occurred_at = parse_interaction_datetime(interaction_date, interaction_time)
 
+    photo_path = None
+    photo = request.files.get("attendance_photo")
+    if photo and photo.filename:
+        ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else ""
+        if ext in {"png", "jpg", "jpeg", "webp", "heic"}:
+            upload_dir = os.path.join(app.config["UPLOAD_FOLDER"], "interactions", str(job_id))
+            os.makedirs(upload_dir, exist_ok=True)
+            stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{secure_filename(photo.filename)}"
+            photo.save(os.path.join(upload_dir, stored_name))
+            photo_path = f"interactions/{job_id}/{stored_name}"
+
     now = datetime.now().isoformat(timespec="seconds")
 
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
-        VALUES (?, ?, ?, ?, ?)
-    """, (job_id, event_type, narrative, occurred_at, now))
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at, photo_path)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (job_id, event_type, narrative, occurred_at, now, photo_path))
     cur.execute("UPDATE jobs SET updated_at = ? WHERE id = ?", (now, job_id))
     conn.commit()
     conn.close()

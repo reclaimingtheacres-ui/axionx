@@ -207,7 +207,7 @@
 <div class="ax-card mb-3">
   <div class="ax-card-h">Add Interaction</div>
   <div class="ax-card-b">
-    <form method="post" action="/jobs/{{ job.id }}/interactions/new">
+    <form method="post" action="/jobs/{{ job.id }}/interactions/new" enctype="multipart/form-data">
       <div class="row g-2 mb-2">
         <div class="col-12 col-lg-3">
           <select class="form-select" name="event_type">
@@ -229,8 +229,14 @@
           <input type="text" id="interaction_time" name="interaction_time"
                  class="form-control" placeholder="hh:mm am" maxlength="8" autocomplete="off">
         </div>
-        <div class="col-12 col-lg-6">
+        <div class="col-12 col-lg-5">
           <input class="form-control" name="narrative" placeholder="Narrative / story line..." required>
+        </div>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-12 col-lg-5">
+          <input type="file" class="form-control" name="attendance_photo"
+                 accept="image/png,image/jpeg,image/webp,.heic">
         </div>
       </div>
       <button class="btn btn-outline-secondary btn-sm">Add</button>
@@ -358,6 +364,14 @@
             <span class="small" style="color:var(--muted)">{{ format_interaction_dt(i.occurred_at) }}</span>
           </div>
           <div>{{ i.narrative }}</div>
+          {% if i.photo_path %}
+            <div class="mt-2">
+              <a href="/uploads/{{ i.photo_path }}" target="_blank">
+                <img src="/uploads/{{ i.photo_path }}" alt="Attendance photo"
+                     style="max-width:220px; max-height:160px; border-radius:10px; border:1px solid var(--line); object-fit:cover;">
+              </a>
+            </div>
+          {% endif %}
         </div>
       {% else %}
         <div style="color:var(--muted)" class="py-2 text-center">No interactions yet.</div>
