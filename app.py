@@ -1156,7 +1156,7 @@ def job_activate(job_id):
     caller_id   = session.get("user_id")
     now         = datetime.now().isoformat(timespec="seconds")
 
-    allowed = ["Active", "Active - Phone work only", "Awaiting info from client", "Invoiced"]
+    allowed = ["Active", "Active - Phone work only", "Suspended", "Awaiting info from client"]
     if new_status not in allowed:
         flash("Invalid status.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
@@ -1167,7 +1167,7 @@ def job_activate(job_id):
     cur.execute("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?", (new_status, now, job_id))
     cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
-                (job_id, "Status Update", f"Status changed from 'New' to '{new_status}'.", now, now))
+                (job_id, "Status Update", f"Status changed to '{new_status}'.", now, now))
 
     if date_str and time_str and bt_id:
         try:

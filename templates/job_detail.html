@@ -868,8 +868,8 @@ function axCopyVin(btn) {
   window.handleStatusChange = function(sel) {
     var currentStatus = sel.getAttribute('data-current-status');
     var newStatus = sel.value;
-    var triggerStatuses = ['Active', 'Active - Phone work only', 'Awaiting info from client', 'Invoiced'];
-    if (currentStatus === 'New' && triggerStatuses.indexOf(newStatus) !== -1) {
+    var triggerStatuses = ['Active', 'Active - Phone work only', 'Suspended', 'Awaiting info from client'];
+    if (triggerStatuses.indexOf(newStatus) !== -1) {
       document.getElementById('activateNewStatus').value = newStatus;
       document.getElementById('newStatusLabel').textContent = newStatus;
       getScheduleModal().show();
