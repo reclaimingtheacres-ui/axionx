@@ -1,11 +1,11 @@
 {% extends "layout.html" %}
-{% block title %}Axion | {{ customer.full_name }}{% endblock %}
+{% block title %}Axion | {{ customer.first_name }} {{ customer.last_name }}{% endblock %}
 {% block page_title %}Customer{% endblock %}
 
 {% block content %}
 <div class="ax-card mb-3">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
-    <div>{{ customer.full_name }}</div>
+    <div>{{ customer.first_name }} {{ customer.last_name }}{% if customer.company %} <span class="small" style="color:var(--muted)">({{ customer.company }})</span>{% endif %}</div>
     <div class="d-flex gap-2">
       <a class="btn btn-primary btn-sm" href="/customers/{{ customer.id }}/edit">Edit</a>
       {% if customer.id_image_path %}

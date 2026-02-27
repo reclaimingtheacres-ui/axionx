@@ -14,8 +14,7 @@
         <a href="/customers/{{ c.id }}" class="list-group-item list-group-item-action">
           <div class="d-flex justify-content-between align-items-start">
             <div>
-              <div class="fw-semibold">{{ c.full_name }}</div>
-              {% if c.phone %}<div class="small"><span style="color:var(--accent)">{{ c.phone }}</span></div>{% endif %}
+              <div class="fw-semibold">{{ c.first_name }} {{ c.last_name }}{% if c.company %} <span class="small" style="color:var(--muted)">({{ c.company }})</span>{% endif %}</div>
               {% if c.email %}<div class="small" style="color:var(--muted)">{{ c.email }}</div>{% endif %}
               {% if c.dob %}<div class="small" style="color:var(--muted)">DOB: {{ c.dob }}</div>{% endif %}
               {% if c.address %}<div class="small" style="color:var(--muted)">{{ c.address }}</div>{% endif %}

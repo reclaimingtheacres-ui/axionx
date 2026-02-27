@@ -1,35 +1,55 @@
 {% extends "layout.html" %}
-{% block content %}
-<h3>New Customer</h3>
+{% block title %}Axion | New Customer{% endblock %}
+{% block page_title %}New Customer{% endblock %}
 
-<form method="post" class="mt-3">
-  <div class="mb-3">
-    <label class="form-label">Full Name</label>
-    <input class="form-control" name="full_name" required>
+{% block content %}
+<div class="ax-card">
+  <div class="ax-card-h">Customer Details</div>
+  <div class="ax-card-b">
+    <form method="post">
+      <div class="row g-2">
+        <div class="col-12 col-md-4">
+          <label class="form-label">First name *</label>
+          <input class="form-control" name="first_name" required>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Last name *</label>
+          <input class="form-control" name="last_name" required>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Company</label>
+          <input class="form-control" name="company">
+        </div>
+      </div>
+
+      <div class="row g-2 mt-1">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Email</label>
+          <input class="form-control" name="email" type="email">
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Date of Birth</label>
+          <input class="form-control" name="dob" type="date">
+        </div>
+      </div>
+
+      <div class="row g-2 mt-1">
+        <div class="col-12 col-md-8">
+          <label class="form-label">Address</label>
+          <input class="form-control" name="address" data-maps-autocomplete>
+        </div>
+      </div>
+
+      <div class="mt-2">
+        <label class="form-label">Notes</label>
+        <textarea class="form-control" name="notes" rows="3"></textarea>
+      </div>
+
+      <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-primary">Create Customer</button>
+        <a class="btn btn-outline-secondary" href="/customers">Cancel</a>
+      </div>
+    </form>
   </div>
-  <div class="mb-3">
-    <label class="form-label">Phone</label>
-    <input class="form-control" name="phone" type="tel">
-  </div>
-  <div class="mb-3">
-    <label class="form-label">Email</label>
-    <input class="form-control" name="email" type="email">
-  </div>
-  <div class="mb-3">
-    <label class="form-label">Date of Birth</label>
-    <input class="form-control" name="dob" type="date">
-  </div>
-  <div class="mb-3">
-    <label class="form-label">Address</label>
-    <input class="form-control" name="address" data-maps-autocomplete>
-  </div>
-  <div class="mb-3">
-    <label class="form-label">Notes</label>
-    <textarea class="form-control" name="notes" rows="3"></textarea>
-  </div>
-  <div class="d-flex gap-2">
-    <button class="btn btn-primary">Create Customer</button>
-    <a class="btn btn-outline-secondary" href="/customers">Cancel</a>
-  </div>
-</form>
+</div>
 {% endblock %}

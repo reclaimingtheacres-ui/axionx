@@ -8,17 +8,28 @@
   <div class="ax-card-b">
     <form method="post" enctype="multipart/form-data">
       <div class="row g-2">
-        <div class="col-12 col-lg-6">
-          <label class="form-label">Full Name</label>
-          <input class="form-control" name="full_name" value="{{ customer.full_name }}" required>
+        <div class="col-12 col-md-4">
+          <label class="form-label">First name *</label>
+          <input class="form-control" name="first_name" value="{{ customer.first_name }}" required>
         </div>
-        <div class="col-12 col-lg-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Last name *</label>
+          <input class="form-control" name="last_name" value="{{ customer.last_name }}" required>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label">Company</label>
+          <input class="form-control" name="company" value="{{ customer.company or '' }}">
+        </div>
+      </div>
+
+      <div class="row g-2 mt-1">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Email</label>
+          <input class="form-control" name="email" value="{{ customer.email or '' }}" type="email">
+        </div>
+        <div class="col-12 col-md-4">
           <label class="form-label">Date of Birth</label>
           <input class="form-control" name="dob" value="{{ customer.dob or '' }}" placeholder="YYYY-MM-DD">
-        </div>
-        <div class="col-12 col-lg-3">
-          <label class="form-label">Email</label>
-          <input class="form-control" name="email" value="{{ customer.email or '' }}">
         </div>
       </div>
 

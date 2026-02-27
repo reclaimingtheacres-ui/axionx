@@ -1,0 +1,109 @@
+Good. Let’s tighten this properly.
+
+Customer should support:
+
+• First name (required)
+• Last name (required)
+• Company (optional)
+• Auto-generate full_name internally
+• Still support repeat customer search
+
+We’ll restructure the customer model cleanly.
+
+STEP 1 — Update Database Structure
+
+Modify customers table in init_db():
+
+Replace the current create statement with:
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    company TEXT,
+
+    dob TEXT,
+    address TEXT,
+    notes TEXT,
+
+    id_image_filename TEXT,
+    id_image_path TEXT,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+""")
+
+We no longer store full_name directly.
+We generate it when needed.
+
+If database already exists, delete axion.db once to recreate cleanly (since still early stage).
+
+STEP 2 — Update Customer Create Route
+
+In customer_create():
+
+Replace form handling with:
+
+first_name = request.form.get("first_name", "").strip()
+last_name = request.form.get("last_name", "").strip()
+company = request.form.get("company", "").strip()
+
+if not first_name or not last_name:
+    flash("First and last name required.", "danger")
+    return redirect(url_for("customer_create"))
+
+ts = now_ts()
+
+cur.execute("""
+    INSERT INTO customers
+    (first_name, last_name, company, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+""", (first_name, last_name, company or None, ts, ts))
+STEP 3 — Update Create Customer Template
+
+In customer_create.html, replace the name field with:
+
+<div class="row g-2">
+  <div class="col-12 col-md-4">
+    <label class="form-label">First name *</label>
+    <input class="form-control" name="first_name" required>
+  </div>
+
+  <div class="col-12 col-md-4">
+    <label class="form-label">Last name *</label>
+    <input class="form-control" name="last_name" required>
+  </div>
+
+  <div class="col-12 col-md-4">
+    <label class="form-label">Company</label>
+    <input class="form-control" name="company">
+  </div>
+</div>
+STEP 4 — Display Name Correctly Everywhere
+
+Wherever you show customer name:
+
+Replace:
+
+{{ customer.full_name }}
+
+With:
+
+{{ customer.first_name }} {{ customer.last_name }}
+{% if customer.company %}
+  ({{ customer.company }})
+{% endif %}
+STEP 5 — Update Search Logic
+
+If you have customer search:
+
+Change query to:
+
+cur.execute("""
+SELECT * FROM customers
+WHERE first_name LIKE ?
+   OR last_name LIKE ?
+   OR company LIKE ?
+""", (f"%{q}%", f"%{q}%", f"%{q}%"))

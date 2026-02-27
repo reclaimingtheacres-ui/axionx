@@ -61,8 +61,9 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        full_name TEXT NOT NULL,
-        phone TEXT,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        company TEXT,
         email TEXT,
         dob TEXT,
         address TEXT,
@@ -73,16 +74,6 @@ def init_db():
         updated_at TEXT NOT NULL DEFAULT ''
     )
     """)
-
-    for col, definition in [
-        ("id_image_filename", "TEXT"),
-        ("id_image_path", "TEXT"),
-        ("updated_at", "TEXT NOT NULL DEFAULT ''"),
-    ]:
-        try:
-            cur.execute(f"ALTER TABLE customers ADD COLUMN {col} {definition}")
-        except Exception:
-            pass
 
     for col, definition in [
         ("updated_at", "TEXT NOT NULL DEFAULT ''"),
@@ -501,7 +492,7 @@ def jobs_list():
     sql = """
     SELECT j.*,
            c.name AS client_name,
-           cu.full_name AS customer_name,
+           (cu.first_name || ' ' || cu.last_name) AS customer_name,
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
            u.full_name AS assigned_name
     FROM jobs j
@@ -524,9 +515,9 @@ def jobs_list():
             params.append(status)
 
     if q:
-        sql += " AND (j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR j.display_ref LIKE ? OR j.description LIKE ? OR cu.full_name LIKE ?)"
+        sql += " AND (j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR j.display_ref LIKE ? OR j.description LIKE ? OR cu.first_name LIKE ? OR cu.last_name LIKE ?)"
         like = f"%{q}%"
-        params.extend([like, like, like, like, like])
+        params.extend([like, like, like, like, like, like])
 
     sql += " ORDER BY j.updated_at DESC"
 
@@ -554,7 +545,7 @@ def job_new():
     cur = conn.cursor()
     cur.execute("SELECT id, name FROM clients ORDER BY name")
     clients = cur.fetchall()
-    cur.execute("SELECT id, full_name FROM customers ORDER BY full_name")
+    cur.execute("SELECT id, first_name, last_name, company FROM customers ORDER BY last_name, first_name")
     customers = cur.fetchall()
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
@@ -635,7 +626,7 @@ def job_detail(job_id: int):
     cur.execute("""
     SELECT j.*,
            c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
-           cu.full_name AS customer_name, cu.phone AS customer_phone, cu.email AS customer_email, cu.dob AS customer_dob, cu.address AS customer_address,
+           (cu.first_name || ' ' || cu.last_name) AS customer_name, cu.company AS customer_company, cu.email AS customer_email, cu.dob AS customer_dob, cu.address AS customer_address,
            u.full_name AS assigned_name
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
@@ -902,7 +893,7 @@ def client_edit_post(client_id: int):
 def customers_list():
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM customers ORDER BY full_name")
+    cur.execute("SELECT * FROM customers ORDER BY last_name, first_name")
     rows = cur.fetchall()
     conn.close()
     return render_template("customers.html", customers=rows)
@@ -917,24 +908,25 @@ def customer_new():
 @app.post("/customers/new")
 @login_required
 def customer_create():
-    full_name = request.form.get("full_name", "").strip()
-    phone = request.form.get("phone", "").strip()
+    first_name = request.form.get("first_name", "").strip()
+    last_name = request.form.get("last_name", "").strip()
+    company = request.form.get("company", "").strip()
     email = request.form.get("email", "").strip()
     dob = request.form.get("dob", "").strip()
     address = request.form.get("address", "").strip()
     notes = request.form.get("notes", "").strip()
 
-    if not full_name:
-        flash("Customer name is required.", "danger")
+    if not first_name or not last_name:
+        flash("First and last name are required.", "danger")
         return redirect(url_for("customer_new"))
 
-    now = datetime.now().isoformat(timespec="seconds")
+    ts = now_ts()
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO customers (full_name, phone, email, dob, address, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (full_name, phone, email, dob, address, notes, now, now))
+        INSERT INTO customers (first_name, last_name, company, email, dob, address, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (first_name, last_name, company or None, email or None, dob or None, address or None, notes or None, ts, ts))
     conn.commit()
     conn.close()
     flash("Customer created.", "success")
@@ -992,16 +984,17 @@ def customer_edit(customer_id: int):
 @app.post("/customers/<int:customer_id>/edit")
 @login_required
 def customer_edit_post(customer_id: int):
-    full_name = request.form.get("full_name", "").strip()
-    phone = request.form.get("phone", "").strip()
+    first_name = request.form.get("first_name", "").strip()
+    last_name = request.form.get("last_name", "").strip()
+    company = request.form.get("company", "").strip()
     email = request.form.get("email", "").strip()
     dob = request.form.get("dob", "").strip()
     address = request.form.get("address", "").strip()
     notes = request.form.get("notes", "").strip()
     id_image = request.files.get("id_image")
 
-    if not full_name:
-        flash("Customer name is required.", "danger")
+    if not first_name or not last_name:
+        flash("First and last name are required.", "danger")
         return redirect(url_for("customer_edit", customer_id=customer_id))
 
     ts = now_ts()
@@ -1028,10 +1021,10 @@ def customer_edit_post(customer_id: int):
 
     cur.execute("""
         UPDATE customers
-        SET full_name = ?, phone = ?, email = ?, dob = ?, address = ?, notes = ?,
+        SET first_name = ?, last_name = ?, company = ?, email = ?, dob = ?, address = ?, notes = ?,
             id_image_filename = ?, id_image_path = ?, updated_at = ?
         WHERE id = ?
-    """, (full_name, phone, email, dob, address, notes,
+    """, (first_name, last_name, company or None, email or None, dob or None, address or None, notes or None,
           id_image_filename, id_image_path, ts, customer_id))
 
     cur.execute("""
@@ -1418,7 +1411,7 @@ def cues_list():
     cur.execute("""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.status job_status,
                j.job_address,
-               cu.full_name customer_name,
+               (cu.first_name || ' ' || cu.last_name) customer_name,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg,
                u.full_name assigned_name
         FROM cue_items ci
@@ -1506,7 +1499,7 @@ def assign_board():
 
     cur.execute("""
         SELECT ci.*, j.internal_job_number, j.client_reference,
-               cu.full_name customer_name,
+               (cu.first_name || ' ' || cu.last_name) customer_name,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
@@ -1598,7 +1591,7 @@ def my_today():
     cur = conn.cursor()
     cur.execute("""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
-               cu.full_name customer_name,
+               (cu.first_name || ' ' || cu.last_name) customer_name,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id

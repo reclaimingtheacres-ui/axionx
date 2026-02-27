@@ -37,7 +37,7 @@
           <select class="form-select" name="customer_id">
             <option value="">Select customer</option>
             {% for c in customers %}
-              <option value="{{c.id}}">{{ c.full_name }}</option>
+              <option value="{{c.id}}">{{ c.first_name }} {{ c.last_name }}{% if c.company %} ({{ c.company }}){% endif %}</option>
             {% endfor %}
           </select>
           <div class="form-text"><a href="/customers/new" style="color:var(--accent)">Create customer</a></div>

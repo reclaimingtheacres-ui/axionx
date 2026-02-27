@@ -21,7 +21,7 @@
     <div class="ax-card p-3">
       <div class="small fw-bold mb-2" style="color:var(--muted)">CUSTOMER</div>
       <div class="fw-semibold">{{ job.customer_name or "—" }}</div>
-      {% if job.customer_phone %}<div class="small"><a href="tel:{{ job.customer_phone }}" style="color:var(--accent)">{{ job.customer_phone }}</a></div>{% endif %}
+      {% if job.customer_company %}<div class="small" style="color:var(--muted)">{{ job.customer_company }}</div>{% endif %}
       {% if job.customer_email %}<div class="small"><a href="mailto:{{ job.customer_email }}" style="color:var(--accent)">{{ job.customer_email }}</a></div>{% endif %}
       {% if job.customer_dob %}<div class="small" style="color:var(--muted)">DOB: {{ job.customer_dob }}</div>{% endif %}
       {% if job.customer_address %}<div class="small" style="color:var(--muted)">{{ job.customer_address }}</div>{% endif %}
