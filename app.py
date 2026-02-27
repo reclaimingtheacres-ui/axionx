@@ -792,12 +792,12 @@ def job_create():
         if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year]):
             continue
         cur.execute("""
-            INSERT INTO job_assets
-            (job_id, asset_type, description, rego, vin, make, model, year, address, serial, notes, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (job_id, a_type or "Other",
+            INSERT INTO job_items
+            (job_id, item_type, description, reg, vin, make, model, year, property_address, serial_number, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (job_id, (a_type or "other").lower(),
               a_desc or None, a_rego or None, a_vin or None, a_make or None, a_model or None, a_year or None,
-              a_addr or None, a_ser or None, a_note or None, now, now))
+              a_addr or None, a_ser or None, a_note or None, now))
 
     conn.commit()
     conn.close()
