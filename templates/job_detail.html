@@ -501,12 +501,12 @@
         <select name="assigned_to_user_id" class="form-select">
           <option value="">Unassigned</option>
           {% for u in users %}
-            <option value="{{ u.id }}">{{ u.full_name }}</option>
+            <option value="{{ u.id }}" {% if u.id == job.assigned_user_id %}selected{% endif %}>{{ u.full_name }}</option>
           {% endfor %}
         </select>
       </div>
       {% else %}
-      <input type="hidden" name="assigned_to_user_id" value="{{ session.get('user_id') }}">
+      <input type="hidden" name="assigned_to_user_id" value="{{ job.assigned_user_id or '' }}">
       {% endif %}
     </form>
 
