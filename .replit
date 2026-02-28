@@ -38,3 +38,6 @@ externalPort = 80
 [userenv.shared]
 SMTP_HOST = "smtp.office365.com"
 SMTP_PORT = "587"
+
+[deployment]
+deploymentTarget = "cloudrun"
