@@ -131,7 +131,13 @@
           <div class="row g-2">
             <div class="col-12 col-lg-4">
               <label class="form-label">Lender</label>
-              <input class="form-control" name="lender_name" placeholder="e.g. Nissan Finance">
+              <input class="form-control" name="lender_name" id="lender_name"
+                     list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off">
+              <datalist id="lender_list">
+                {% for ln in known_lenders %}
+                  <option value="{{ ln }}">
+                {% endfor %}
+              </datalist>
             </div>
             <div class="col-12 col-lg-4">
               <label class="form-label">Account number</label>

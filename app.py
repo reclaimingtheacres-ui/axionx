@@ -1065,6 +1065,8 @@ def job_new():
 
     cur.execute("SELECT id, name FROM job_types WHERE active = 1 ORDER BY name")
     job_types = cur.fetchall()
+    cur.execute("SELECT DISTINCT lender_name FROM jobs WHERE lender_name IS NOT NULL ORDER BY lender_name")
+    known_lenders = [r["lender_name"] for r in cur.fetchall()]
     conn.close()
 
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
@@ -1081,7 +1083,8 @@ def job_new():
                            new_customer_id=new_customer_id,
                            new_user_id=new_user_id,
                            prefill_customer_address=prefill_customer_address,
-                           prefill_client_reference=prefill_client_reference)
+                           prefill_client_reference=prefill_client_reference,
+                           known_lenders=known_lenders)
 
 
 @app.post("/jobs/new")
