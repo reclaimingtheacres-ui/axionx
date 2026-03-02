@@ -345,28 +345,24 @@
   function initGoogleMaps() {
     if (!google?.maps?.places?.PlaceAutocompleteElement) return;
 
-    function attach(input) {
-      if (input.dataset.gmpAttached === "1") return;
-
-      const pac = new google.maps.places.PlaceAutocompleteElement({
-        inputElement: input,
-        componentRestrictions: { country: ["au"] }
-      });
-
-      pac.addEventListener("gmp-placeselect", async (event) => {
-        const place = event.place;
-        if (!place) return;
-        await place.fetchFields({ fields: ["formattedAddress"] });
-        input.value = place.formattedAddress || "";
-        input.dataset.gmpSelected = "1";
-      });
-
-      input.addEventListener("input", () => (input.dataset.gmpSelected = "0"));
-      input.dataset.gmpAttached = "1";
-    }
-
     function attachAll() {
-      document.querySelectorAll("input.ax-address").forEach(attach);
+      document.querySelectorAll("input.ax-address").forEach((input) => {
+        if (input.dataset.gmpAttached === "1") return;
+
+        const pac = new google.maps.places.PlaceAutocompleteElement({
+          inputElement: input,
+          componentRestrictions: { country: ["au"] }
+        });
+
+        pac.addEventListener("gmp-placeselect", async (event) => {
+          const place = event.place;
+          if (!place) return;
+          await place.fetchFields({ fields: ["formattedAddress"] });
+          input.value = place.formattedAddress || "";
+        });
+
+        input.dataset.gmpAttached = "1";
+      });
     }
 
     attachAll();
