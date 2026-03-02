@@ -385,6 +385,15 @@
   {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  document.addEventListener("shown.bs.modal", function(e) {
+    e.target.removeAttribute("aria-hidden");
+  });
+  document.addEventListener("hide.bs.modal", function(e) {
+    const active = document.activeElement;
+    if (active && e.target.contains(active)) active.blur();
+  });
+  </script>
   {% block modals %}{% endblock %}
 {% if session.get('user_id') %}
 <div class="modal fade" id="idleWarningModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-hidden="true">

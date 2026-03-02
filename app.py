@@ -2042,6 +2042,8 @@ def customer_create_popup():
         return jsonify({"ok": False, "error": "First and last name are required."})
     company = request.form.get("company", "").strip()
     address = request.form.get("address", "").strip()
+    if not address:
+        return jsonify({"ok": False, "error": "Address is required."})
 
     phone_labels  = request.form.getlist("phone_label[]")
     phone_numbers = request.form.getlist("phone_number[]")
