@@ -33,7 +33,7 @@
             <input type="text" class="form-control" id="client_search"
                    placeholder="Type to search client..." autocomplete="off" spellcheck="false">
             <input type="hidden" name="client_id" id="client_id_val">
-            <div id="client_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:rgba(11,18,32,.98); border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
+            <div id="client_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:#ffffff; border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
           </div>
         </div>
         <div class="col-12 col-lg-6">
@@ -47,7 +47,7 @@
             <input type="text" class="form-control" id="customer_search"
                    placeholder="Type to search customer..." autocomplete="off" spellcheck="false">
             <input type="hidden" name="customer_id" id="customer_id_val">
-            <div id="customer_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:rgba(11,18,32,.98); border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
+            <div id="customer_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:#ffffff; border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
           </div>
         </div>
       </div>
@@ -380,7 +380,7 @@
       }
       items.slice(0, 12).forEach(function(item) {
         var div = document.createElement('div');
-        div.style.cssText = 'padding:9px 14px;cursor:pointer;color:#e5e7eb;font-size:.9rem;border-bottom:1px solid rgba(255,255,255,.05);';
+        div.style.cssText = 'padding:9px 14px;cursor:pointer;color:#111827;font-size:.9rem;border-bottom:1px solid rgba(0,0,0,.08);';
         div.textContent = item.label;
         div.addEventListener('mousedown', function(e) {
           e.preventDefault();
@@ -568,7 +568,7 @@ function removeEmailRow(btn) {
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
       <div class="modal-header" style="border-bottom:1px solid var(--line);">
         <h5 class="modal-title" style="color:var(--text)">New</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" id="entityModalBody">
         <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
