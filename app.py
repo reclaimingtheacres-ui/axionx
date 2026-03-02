@@ -388,6 +388,25 @@ def init_db():
         if jt_name not in existing_jt:
             cur.execute("INSERT INTO job_types (name) VALUES (?)", (jt_name,))
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS job_customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            customer_id INTEGER NOT NULL,
+            role TEXT NOT NULL DEFAULT 'Primary',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            UNIQUE(job_id, customer_id)
+        )
+    """)
+
+    cur.execute("""
+        INSERT OR IGNORE INTO job_customers (job_id, customer_id, role, sort_order, created_at)
+        SELECT id, customer_id, 'Primary', 0, created_at
+        FROM jobs
+        WHERE customer_id IS NOT NULL
+    """)
+
     conn.commit()
     conn.close()
 
@@ -1150,6 +1169,12 @@ def job_create():
     ))
     job_id = cur.lastrowid
 
+    if customer_id:
+        cur.execute("""
+            INSERT OR IGNORE INTO job_customers (job_id, customer_id, role, sort_order, created_at)
+            VALUES (?, ?, 'Primary', 0, ?)
+        """, (job_id, customer_id, now))
+
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -1294,20 +1319,88 @@ def job_detail(job_id: int):
     """, (job_id,))
     documents = cur.fetchall()
 
+    cur.execute("""
+        SELECT jc.id AS jc_id, jc.role, jc.sort_order,
+               cu.id AS customer_id, cu.first_name, cu.last_name, cu.company,
+               cu.email, cu.address
+        FROM job_customers jc
+        JOIN customers cu ON cu.id = jc.customer_id
+        WHERE jc.job_id = ?
+        ORDER BY jc.sort_order, jc.id
+    """, (job_id,))
+    job_linked_customers = cur.fetchall()
+
+    linked_ids = [r["customer_id"] for r in job_linked_customers]
+    if linked_ids:
+        placeholders = ",".join("?" * len(linked_ids))
+        cur.execute(f"SELECT id, first_name, last_name, company FROM customers WHERE id NOT IN ({placeholders}) ORDER BY last_name, first_name", linked_ids)
+    else:
+        cur.execute("SELECT id, first_name, last_name, company FROM customers ORDER BY last_name, first_name")
+    all_customers = cur.fetchall()
+
     conn.close()
 
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
     item_types = ["vehicle", "property", "equipment", "other"]
     doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
+    customer_roles = ["Primary", "Director", "Guarantor", "Borrower", "Spouse", "Other"]
 
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, users=users,
                            field_notes=field_notes, documents=documents,
                            doc_types=doc_types, booking_types=booking_types,
-                           schedules=schedules)
+                           schedules=schedules,
+                           job_linked_customers=job_linked_customers,
+                           all_customers=all_customers,
+                           customer_roles=customer_roles)
 
+
+@app.post("/jobs/<int:job_id>/customers/add")
+@login_required
+@admin_required
+def job_customer_add(job_id: int):
+    customer_id = request.form.get("customer_id") or None
+    role = request.form.get("role", "Primary").strip()
+    if not customer_id:
+        flash("Please select a customer.", "warning")
+        return redirect(url_for("job_detail", job_id=job_id))
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(sort_order) FROM job_customers WHERE job_id = ?", (job_id,))
+    row = cur.fetchone()
+    next_order = (row[0] or 0) + 1
+    try:
+        cur.execute("""
+            INSERT INTO job_customers (job_id, customer_id, role, sort_order, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (job_id, int(customer_id), role, next_order, now_ts()))
+        conn.commit()
+        flash("Customer added to job.", "success")
+    except Exception:
+        flash("That customer is already linked to this job.", "warning")
+    conn.close()
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/customers/<int:jc_id>/remove")
+@login_required
+@admin_required
+def job_customer_remove(job_id: int, jc_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM job_customers WHERE job_id = ?", (job_id,))
+    count = cur.fetchone()[0]
+    if count <= 1:
+        conn.close()
+        flash("Cannot remove the only customer on this job.", "warning")
+        return redirect(url_for("job_detail", job_id=job_id))
+    cur.execute("DELETE FROM job_customers WHERE id = ? AND job_id = ?", (jc_id, job_id))
+    conn.commit()
+    conn.close()
+    flash("Customer removed from job.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
 
 
 @app.post("/jobs/<int:job_id>/schedule")

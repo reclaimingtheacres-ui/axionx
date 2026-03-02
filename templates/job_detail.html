@@ -51,7 +51,7 @@
   <div class="col-12 col-lg-6">
     <div class="ax-card p-3">
       <div class="d-flex justify-content-between align-items-start mb-2">
-        <div class="small fw-bold" style="color:var(--muted)">CUSTOMER</div>
+        <div class="small fw-bold" style="color:var(--muted)">CUSTOMER(S)</div>
         {% if job.job_address %}
           <a class="btn btn-outline-secondary btn-sm"
              target="_blank"
@@ -60,11 +60,49 @@
           </a>
         {% endif %}
       </div>
-      {% if job.customer_company %}<div class="fw-semibold">{{ job.customer_company }}</div>{% endif %}
-      <div class="{% if job.customer_company %}small{% else %}fw-semibold{% endif %}">{{ job.customer_name or "—" }}</div>
-      {% if job.customer_address %}<div class="small" style="color:var(--muted)">{{ job.customer_address }}</div>{% endif %}
-      {% if job.customer_email %}<div class="small"><a href="mailto:{{ job.customer_email }}" style="color:var(--accent)">{{ job.customer_email }}</a></div>{% endif %}
-      {% if job.customer_phone %}<div class="small"><a href="tel:{{ job.customer_phone }}" style="color:var(--accent)">{{ job.customer_phone }}{% if job.customer_phone_label %} <span style="color:var(--muted)">({{ job.customer_phone_label }})</span>{% endif %}</a></div>{% endif %}
+
+      {% if job_linked_customers %}
+        {% for lc in job_linked_customers %}
+          <div class="{% if not loop.first %}mt-3 pt-3{% endif %}" {% if not loop.first %}style="border-top:1px solid var(--line)"{% endif %}>
+            <div class="d-flex align-items-start justify-content-between gap-2">
+              <div>
+                <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.7rem;font-weight:600;letter-spacing:.04em">{{ lc.role }}</span>
+                {% if lc.company %}<div class="fw-semibold">{{ lc.company }}</div>{% endif %}
+                <div class="{% if lc.company %}small{% else %}fw-semibold{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
+                {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
+                {% if lc.email %}<div class="small"><a href="mailto:{{ lc.email }}" style="color:var(--accent)">{{ lc.email }}</a></div>{% endif %}
+              </div>
+              {% if session.get('role') == 'admin' and job_linked_customers|length > 1 %}
+                <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove" style="flex-shrink:0">
+                  <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.7rem;padding:2px 8px">Remove</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted)">No customers linked.</div>
+      {% endif %}
+
+      {% if session.get('role') == 'admin' and all_customers %}
+        <div class="mt-3 pt-3" style="border-top:1px solid var(--line)">
+          <div class="small fw-semibold mb-2" style="color:var(--muted)">Add Customer</div>
+          <form method="post" action="/jobs/{{ job.id }}/customers/add" class="d-flex gap-2 flex-wrap align-items-end">
+            <select name="customer_id" class="form-select form-select-sm" style="min-width:160px" required>
+              <option value="">— Select customer —</option>
+              {% for c in all_customers %}
+                <option value="{{ c.id }}">{{ c.last_name }}, {{ c.first_name }}{% if c.company %} ({{ c.company }}){% endif %}</option>
+              {% endfor %}
+            </select>
+            <select name="role" class="form-select form-select-sm" style="width:130px">
+              {% for r in customer_roles %}
+                <option value="{{ r }}">{{ r }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary btn-sm">Add</button>
+          </form>
+        </div>
+      {% endif %}
     </div>
   </div>
   <div class="col-12 col-lg-6">
