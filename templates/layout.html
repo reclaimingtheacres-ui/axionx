@@ -343,35 +343,33 @@
 
   <script>
   function initGoogleMaps() {
-    if (!window.google || !google.maps || !google.maps.places || !google.maps.places.PlaceAutocompleteElement) return;
-    var inputs = document.querySelectorAll('[data-maps-autocomplete]:not([data-gmp-bound])');
-    inputs.forEach(function(input) {
-      input.dataset.gmpBound = '1';
-      var pac = new google.maps.places.PlaceAutocompleteElement({
-        componentRestrictions: { country: ["au"] }
-      });
-      pac.style.width = '100%';
-      input.parentNode.insertBefore(pac, input);
-      input.type = 'hidden';
-      input._pacWidget = pac;
-      pac.addEventListener('gmp-placeselect', async function(event) {
-        var place = event.place;
-        if (!place) return;
-        await place.fetchFields({ fields: ['formattedAddress', 'addressComponents', 'location'] });
-        input.value = place.formattedAddress || '';
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-      var form = input.closest('form');
-      if (form && !form._axionSubmitBound) {
-        form._axionSubmitBound = true;
-        form.addEventListener('submit', function() {
-          if (!input.value) {
-            var inner = pac.shadowRoot ? pac.shadowRoot.querySelector('input') : pac.querySelector('input');
-            if (inner) input.value = inner.value;
-          }
+    if (!google?.maps?.places?.PlaceAutocompleteElement) return;
+
+    function attachAutocomplete() {
+      document.querySelectorAll('[data-maps-autocomplete]').forEach(function(input) {
+        if (input.dataset.autocompleteAttached) return;
+
+        const pac = new google.maps.places.PlaceAutocompleteElement({
+          inputElement: input,
+          componentRestrictions: { country: ["au"] }
         });
-      }
-    });
+
+        pac.addEventListener("gmp-placeselect", async (event) => {
+          const place = event.place;
+          if (!place) return;
+          await place.fetchFields({ fields: ["formattedAddress"] });
+          input.value = place.formattedAddress || "";
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        input.dataset.autocompleteAttached = "true";
+      });
+    }
+
+    attachAutocomplete();
+
+    const observer = new MutationObserver(() => { attachAutocomplete(); });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
   window.axionInitPlaces = initGoogleMaps;
   window.axionSetAddress = function(input, value) { if (input) input.value = value; };
