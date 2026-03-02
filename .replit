@@ -40,4 +40,5 @@ SMTP_HOST = "smtp.office365.com"
 SMTP_PORT = "587"
 
 [deployment]
-deploymentTarget = "cloudrun"
+deploymentTarget = "autoscale"
+run = ["gunicorn", "--bind=0.0.0.0:5000", "app:app"]
