@@ -50,7 +50,7 @@
 <!-- ======== TWO-COLUMN LAYOUT ======== -->
 <div class="row g-3 mb-3">
 
-  <!-- ======== LEFT COLUMN ======== -->
+  <!-- ======== LEFT COLUMN: Customer / Client / Lender / Security ======== -->
   <div class="col-12 col-lg-5 d-flex flex-column gap-3">
 
     <!-- Customer(s) -->
@@ -100,11 +100,6 @@
         <div class="small mt-2" style="color:var(--muted)">Bill to: <strong style="color:var(--text)">{{ job.bill_to_client_name }}</strong></div>
       {% endif %}
     </div>
-
-  </div><!-- /LEFT COLUMN -->
-
-  <!-- ======== RIGHT COLUMN ======== -->
-  <div class="col-12 col-lg-7 d-flex flex-column gap-3">
 
     <!-- Lender Details -->
     <div class="ax-card">
@@ -343,65 +338,10 @@
       </div>
     </div>
 
-    <!-- Documents (was Job Documents) -->
-    <div class="ax-card">
-      <div class="ax-card-h">Documents</div>
-      <div class="ax-card-b">
-        {% if session.get('role') == 'admin' %}
-        <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data" class="mb-3">
-          <div class="row g-2">
-            <div class="col-12 col-lg-3">
-              <select class="form-select" name="doc_type">
-                {% for t in doc_types %}<option>{{ t }}</option>{% endfor %}
-              </select>
-            </div>
-            <div class="col-12 col-lg-4">
-              <input class="form-control" name="title" placeholder="Title (optional)">
-            </div>
-            <div class="col-12 col-lg-5">
-              <input class="form-control" type="file" name="file" required accept=".png,.jpg,.jpeg,.pdf,.doc,.docx,.xls,.xlsx,.csv">
-            </div>
-          </div>
-          <div class="mt-2">
-            <input class="form-control" name="notes" placeholder="Notes (optional)">
-          </div>
-          <div class="mt-2">
-            <button class="btn btn-primary">Upload Document</button>
-          </div>
-        </form>
-        {% endif %}
+  </div><!-- /LEFT COLUMN -->
 
-        {% if documents %}
-          <div class="list-group list-group-flush">
-            {% for d in documents %}
-              <div class="list-group-item">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                  <div style="min-width:0">
-                    <div class="fw-semibold">
-                      <span class="badge me-1" style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3)">{{ d.doc_type }}</span>
-                      {{ d.title or d.original_filename }}
-                    </div>
-                    <div class="small" style="color:var(--muted)">
-                      {{ d.original_filename }}
-                      {% if d.file_size %}&nbsp;&bull;&nbsp;{{ (d.file_size / 1024)|round(1) }} KB{% endif %}
-                      {% if d.uploaded_by %}&nbsp;&bull;&nbsp;{{ d.uploaded_by }}{% endif %}
-                      &nbsp;&bull;&nbsp;{{ d.uploaded_at }}
-                    </div>
-                    {% if d.notes %}<div class="small mt-1" style="color:var(--muted);font-style:italic">{{ d.notes }}</div>{% endif %}
-                  </div>
-                  <div class="d-flex gap-2 flex-shrink-0">
-                    <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ d.stored_filename }}">Open</a>
-                    <a class="btn btn-outline-secondary btn-sm" href="/uploads/{{ d.stored_filename }}" download="{{ d.original_filename }}">&#8659;</a>
-                  </div>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="text-center py-2" style="color:var(--muted)">No documents uploaded yet.</div>
-        {% endif %}
-      </div>
-    </div>
+  <!-- ======== RIGHT COLUMN: Notes / Add Note / Documents / Schedule ======== -->
+  <div class="col-12 col-lg-7 d-flex flex-column gap-3">
 
     <!-- Notes (was Field Notes display) -->
     <div class="ax-card">
@@ -468,6 +408,66 @@
             </span>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Documents -->
+    <div class="ax-card">
+      <div class="ax-card-h">Documents</div>
+      <div class="ax-card-b">
+        {% if session.get('role') == 'admin' %}
+        <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data" class="mb-3">
+          <div class="row g-2">
+            <div class="col-12 col-lg-3">
+              <select class="form-select" name="doc_type">
+                {% for t in doc_types %}<option>{{ t }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-12 col-lg-4">
+              <input class="form-control" name="title" placeholder="Title (optional)">
+            </div>
+            <div class="col-12 col-lg-5">
+              <input class="form-control" type="file" name="file" required accept=".png,.jpg,.jpeg,.pdf,.doc,.docx,.xls,.xlsx,.csv">
+            </div>
+          </div>
+          <div class="mt-2">
+            <input class="form-control" name="notes" placeholder="Notes (optional)">
+          </div>
+          <div class="mt-2">
+            <button class="btn btn-primary">Upload Document</button>
+          </div>
+        </form>
+        {% endif %}
+
+        {% if documents %}
+          <div class="list-group list-group-flush">
+            {% for d in documents %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <div style="min-width:0">
+                    <div class="fw-semibold">
+                      <span class="badge me-1" style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3)">{{ d.doc_type }}</span>
+                      {{ d.title or d.original_filename }}
+                    </div>
+                    <div class="small" style="color:var(--muted)">
+                      {{ d.original_filename }}
+                      {% if d.file_size %}&nbsp;&bull;&nbsp;{{ (d.file_size / 1024)|round(1) }} KB{% endif %}
+                      {% if d.uploaded_by %}&nbsp;&bull;&nbsp;{{ d.uploaded_by }}{% endif %}
+                      &nbsp;&bull;&nbsp;{{ d.uploaded_at }}
+                    </div>
+                    {% if d.notes %}<div class="small mt-1" style="color:var(--muted);font-style:italic">{{ d.notes }}</div>{% endif %}
+                  </div>
+                  <div class="d-flex gap-2 flex-shrink-0">
+                    <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ d.stored_filename }}">Open</a>
+                    <a class="btn btn-outline-secondary btn-sm" href="/uploads/{{ d.stored_filename }}" download="{{ d.original_filename }}">&#8659;</a>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-center py-2" style="color:var(--muted)">No documents uploaded yet.</div>
+        {% endif %}
       </div>
     </div>
 
