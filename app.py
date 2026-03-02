@@ -22,6 +22,10 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory("static", "favicon.ico", mimetype="image/png")
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
