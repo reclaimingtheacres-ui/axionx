@@ -145,7 +145,7 @@
                 {% if lc.company %}<div class="fw-semibold">{{ lc.company }}</div>{% endif %}
                 <div class="{% if lc.company %}small{% else %}fw-semibold{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
                 {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
-                {% if lc.email %}<div class="small"><a href="mailto:{{ lc.email }}" style="color:var(--accent)">{{ lc.email }}</a></div>{% endif %}
+                {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
               </div>
               {% if session.get('role') == 'admin' and job_linked_customers|length > 1 %}
                 <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove" style="flex-shrink:0">
@@ -165,7 +165,7 @@
       <div class="small fw-bold mb-2" style="color:#2563eb">CLIENT</div>
       <div class="fw-semibold">{{ job.client_name or "—" }}</div>
       {% if job.client_phone %}<div class="small"><a href="tel:{{ job.client_phone }}" style="color:var(--accent)">{{ job.client_phone }}</a></div>{% endif %}
-      {% if job.client_email %}<div class="small"><a href="mailto:{{ job.client_email }}" style="color:var(--accent)">{{ job.client_email }}</a></div>{% endif %}
+      {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
       {% if job.bill_to_client_name and job.bill_to_client_name != job.client_name %}
         <div class="small mt-2" style="color:var(--muted)">Bill to: <strong style="color:var(--text)">{{ job.bill_to_client_name }}</strong></div>
       {% endif %}
@@ -449,10 +449,11 @@
                           🗑 Delete
                         </button>
                       </form>
-                      <a href="mailto:?subject=Note: {{ job.display_ref }}&body={{ entry.note.note_text | urlencode }}"
-                         style="display:block;padding:8px 12px;font-size:.8rem;color:var(--text);text-decoration:none;font-weight:500">
+                      <button type="button" data-axep
+                              onclick="axEmailPicker(this,'','Note: {{ job.display_ref }}','{{ entry.note.note_text | replace("'", "\\'") | replace('\n', '\\n') }}')"
+                              style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500">
                         ✉ Email
-                      </a>
+                      </button>
                     </div>
                   </div>
                   {% endif %}

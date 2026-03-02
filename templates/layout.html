@@ -531,5 +531,77 @@
 })();
 </script>
 {% endif %}
+
+<!-- Email App Picker -->
+<div id="ax-email-picker"
+     style="display:none;position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);
+            border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);min-width:180px;overflow:hidden;padding:4px 0">
+  <a id="axep-gmail" href="#" target="_blank" rel="noopener"
+     style="display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:.87rem;color:var(--text);
+            text-decoration:none;font-weight:500;transition:background .12s"
+     onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 24.5 4 12v28h40V12z" opacity=".3"/><path fill="#EA4335" d="M44 8H4L24 24.5z"/><path fill="#34A853" d="M44 8v32H4V8"/><path fill="#4285F4" d="M4 8l20 16.5L44 8"/><path fill="#FBBC05" d="M4 40V12l20 12.5"/><path fill="#EA4335" d="M44 40V12L24 24.5"/></svg>
+    Gmail
+  </a>
+  <a id="axep-outlook" href="#" target="_blank" rel="noopener"
+     style="display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:.87rem;color:var(--text);
+            text-decoration:none;font-weight:500;transition:background .12s"
+     onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="4" fill="#0078D4"/><path fill="#fff" d="M8 14h32v20H8z" opacity=".15"/><path fill="#fff" d="M8 14l16 11 16-11v2L24 27 8 16z"/></svg>
+    Outlook
+  </a>
+  <a id="axep-mail" href="#"
+     style="display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:.87rem;color:var(--text);
+            text-decoration:none;font-weight:500;transition:background .12s"
+     onmouseover="this.style.background='var(--panel2)'" onmouseout="this.style.background=''">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M2 7l10 7 10-7" stroke="currentColor" stroke-width="1.6"/></svg>
+    Mail (default)
+  </a>
+</div>
+<script>
+(function(){
+  var picker = document.getElementById('ax-email-picker');
+  var _close = function(){picker.style.display='none';};
+
+  window.axEmailPicker = function(el, email, subject, body) {
+    var to  = encodeURIComponent(email || '');
+    var su  = encodeURIComponent(subject || '');
+    var bo  = encodeURIComponent(body || '');
+    var boPlain = encodeURIComponent((body || '').replace(/<[^>]*>/g,''));
+
+    document.getElementById('axep-gmail').href =
+      'https://mail.google.com/mail/?view=cm&fs=1' +
+      (email ? '&to=' + to : '') +
+      (subject ? '&su=' + su : '') +
+      (body ? '&body=' + bo : '');
+
+    document.getElementById('axep-outlook').href =
+      'https://outlook.office.com/mail/deeplink/compose?' +
+      (email ? 'to=' + to + '&' : '') +
+      (subject ? 'subject=' + su + '&' : '') +
+      (body ? 'body=' + boPlain : '');
+
+    document.getElementById('axep-mail').href =
+      'mailto:' + (email || '') +
+      (subject || body ? '?' : '') +
+      (subject ? 'subject=' + su : '') +
+      (subject && body ? '&' : '') +
+      (body ? 'body=' + bo : '');
+
+    var rect = el.getBoundingClientRect();
+    picker.style.top  = (rect.bottom + window.scrollY + 6) + 'px';
+    picker.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 200) + 'px';
+    picker.style.display = 'block';
+  };
+
+  document.addEventListener('click', function(e){
+    if (!picker.contains(e.target) && !e.target.closest('[data-axep]')) _close();
+  });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') _close(); });
+  picker.querySelectorAll('a').forEach(function(a){
+    a.addEventListener('click', function(){ setTimeout(_close, 150); });
+  });
+})();
+</script>
 </body>
 </html>

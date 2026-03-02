@@ -26,7 +26,7 @@
         </div>
         <div class="mb-2">
           <div class="small" style="color:var(--muted)">Email</div>
-          <div>{% if client.email %}<a href="mailto:{{ client.email }}" style="color:var(--accent)">{{ client.email }}</a>{% else %}&mdash;{% endif %}</div>
+          <div>{% if client.email %}<button type="button" data-axep onclick="axEmailPicker(this,'{{ client.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ client.email }}</button>{% else %}&mdash;{% endif %}</div>
         </div>
       </div>
       <div class="col-12 col-md-6">

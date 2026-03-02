@@ -38,11 +38,11 @@
             {% for e in emails %}
               <div>
                 {% if e.label %}<span class="small" style="color:var(--muted)">{{ e.label }}:</span> {% endif %}
-                <a href="mailto:{{ e.email }}" style="color:var(--accent)">{{ e.email }}</a>
+                <button type="button" data-axep onclick="axEmailPicker(this,'{{ e.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ e.email }}</button>
               </div>
             {% endfor %}
           {% elif customer.email %}
-            <div><a href="mailto:{{ customer.email }}" style="color:var(--accent)">{{ customer.email }}</a></div>
+            <div><button type="button" data-axep onclick="axEmailPicker(this,'{{ customer.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ customer.email }}</button></div>
           {% else %}
             <div>&mdash;</div>
           {% endif %}
