@@ -47,11 +47,72 @@
   {% endif %}
 </div>
 
-<!-- ======== TWO-COLUMN LAYOUT ======== -->
-<div class="row g-3 mb-3">
+<!-- ======== TAB NAV ======== -->
+<ul class="nav mb-3" id="jobTabs" role="tablist"
+    style="border-bottom:2px solid var(--line);gap:4px;">
+  <li class="nav-item" role="presentation">
+    <button class="ax-tab active" id="tab-job-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-job" type="button" role="tab">Job</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="ax-tab" id="tab-notes-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-notes" type="button" role="tab">
+      Notes &amp; Docs
+      {% set nd_count = (field_notes|length) + (documents|length) %}
+      {% if nd_count %}<span class="ax-tab-badge">{{ nd_count }}</span>{% endif %}
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="ax-tab" id="tab-schedule-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-schedule" type="button" role="tab">
+      Schedule
+      {% if schedules %}<span class="ax-tab-badge">{{ schedules|length }}</span>{% endif %}
+    </button>
+  </li>
+  {% if session.get('role') == 'admin' %}
+  <li class="nav-item" role="presentation">
+    <button class="ax-tab" id="tab-settings-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-settings" type="button" role="tab">Settings</button>
+  </li>
+  {% endif %}
+</ul>
 
-  <!-- ======== LEFT COLUMN: Customer / Client / Lender / Security ======== -->
-  <div class="col-12 col-lg-5 d-flex flex-column gap-3">
+<style>
+.ax-tab {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 6px 16px 8px;
+  font-size: .88rem;
+  font-weight: 500;
+  color: var(--muted);
+  border-radius: 0;
+  cursor: pointer;
+  margin-bottom: -2px;
+  transition: color .15s, border-color .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ax-tab:hover { color: var(--text); }
+.ax-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.ax-tab-badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 6px;
+  line-height: 1.4;
+}
+</style>
+
+<!-- ======== TAB CONTENT ======== -->
+<div class="tab-content">
+
+<!-- ======== TAB: JOB ======== -->
+<div class="tab-pane fade show active" id="tab-job" role="tabpanel">
+<div class="d-flex flex-column gap-3">
 
     <!-- Customer(s) -->
     <div class="ax-card p-3">
@@ -338,10 +399,12 @@
       </div>
     </div>
 
-  </div><!-- /LEFT COLUMN -->
+</div><!-- /tab-job inner -->
+</div><!-- /tab-job pane -->
 
-  <!-- ======== RIGHT COLUMN: Notes / Add Note / Documents / Schedule ======== -->
-  <div class="col-12 col-lg-7 d-flex flex-column gap-3">
+<!-- ======== TAB: NOTES & DOCS ======== -->
+<div class="tab-pane fade" id="tab-notes" role="tabpanel">
+<div class="d-flex flex-column gap-3">
 
     <!-- Notes -->
     <div class="ax-card">
@@ -458,14 +521,14 @@
       </div>
     </div>
 
-  </div><!-- /RIGHT COLUMN -->
+</div><!-- /tab-notes inner -->
+</div><!-- /tab-notes pane -->
 
-</div><!-- /row -->
-
-<!-- ======== SCHEDULE — FULL WIDTH ======== -->
+<!-- ======== TAB: SCHEDULE ======== -->
+<div class="tab-pane fade" id="tab-schedule" role="tabpanel">
 <div class="ax-card mb-3">
-      <div class="ax-card-h">Schedule</div>
-      <div class="ax-card-b">
+  <div class="ax-card-h">Schedule</div>
+  <div class="ax-card-b">
 
         {% if session.get('role') == 'admin' %}
         <form method="post" action="/jobs/{{ job.id }}/schedule" class="row g-2 mb-3">
@@ -578,8 +641,53 @@
         <div class="py-2 text-center" style="color:var(--muted)">No bookings scheduled yet.</div>
         {% endif %}
 
-      </div>
-    </div>
+  </div>
+</div><!-- /schedule ax-card -->
+</div><!-- /tab-schedule pane -->
+
+{% if session.get('role') == 'admin' %}
+<!-- ======== TAB: SETTINGS ======== -->
+<div class="tab-pane fade" id="tab-settings" role="tabpanel">
+<div class="ax-card mb-3" style="border-color:rgba(239,68,68,.35)">
+  <div class="ax-card-h" style="color:#ef4444">Danger Zone</div>
+  <div class="ax-card-b d-flex align-items-center justify-content-between">
+    <span style="color:var(--muted);font-size:.9rem;">Permanently delete this job and all its data — items, notes, documents, and interactions.</span>
+    <form method="post" action="/jobs/{{ job.id }}/delete" style="margin:0;flex-shrink:0;margin-left:1.5rem"
+          onsubmit="return confirm('Permanently delete job {{ job.display_ref }}? This cannot be undone.')">
+      <button type="submit" class="btn btn-sm"
+              style="background:#ef4444;color:#fff;border:0;border-radius:8px;font-weight:600;white-space:nowrap">
+        &#128465; Delete Job
+      </button>
+    </form>
+  </div>
+</div>
+</div><!-- /tab-settings pane -->
+{% endif %}
+
+</div><!-- /tab-content -->
+
+<script>
+(function () {
+  var tabMap = {
+    'tab-job': document.getElementById('tab-job-btn'),
+    'tab-notes': document.getElementById('tab-notes-btn'),
+    'tab-schedule': document.getElementById('tab-schedule-btn'),
+    'tab-settings': document.getElementById('tab-settings-btn')
+  };
+  function activateHash() {
+    var hash = (location.hash || '').replace('#', '');
+    var btn = tabMap[hash];
+    if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+  }
+  activateHash();
+  Object.values(tabMap).forEach(function(btn) {
+    if (!btn) return;
+    btn.addEventListener('shown.bs.tab', function() {
+      history.replaceState(null, '', '#' + btn.getAttribute('data-bs-target').replace('#', ''));
+    });
+  });
+})();
+</script>
 
 <script>
 (function () {
@@ -656,22 +764,6 @@ function showItemFields(type) {
   });
 }
 </script>
-
-{% if session.get('role') == 'admin' %}
-<div class="ax-card mb-3" style="border-color:rgba(239,68,68,.35)">
-  <div class="ax-card-h" style="color:#ef4444">Danger Zone</div>
-  <div class="ax-card-b d-flex align-items-center justify-content-between">
-    <span style="color:var(--muted);font-size:.9rem;">Permanently delete this job and all its data — items, notes, documents, and interactions.</span>
-    <form method="post" action="/jobs/{{ job.id }}/delete" style="margin:0;flex-shrink:0;margin-left:1.5rem"
-          onsubmit="return confirm('Permanently delete job {{ job.display_ref }}? This cannot be undone.')">
-      <button type="submit" class="btn btn-sm"
-              style="background:#ef4444;color:#fff;border:0;border-radius:8px;font-weight:600;white-space:nowrap">
-        &#128465; Delete Job
-      </button>
-    </form>
-  </div>
-</div>
-{% endif %}
 
 {% endblock %}
 {% block modals %}
