@@ -412,19 +412,39 @@
         <button type="button" class="btn btn-primary btn-sm"
                 onclick="axOpenAddNote()">+ Add Note</button>
       </div>
-      <div class="ax-card-b" style="min-height:320px">
+      <div class="ax-card-b" style="min-height:320px;max-height:calc(100vh - 280px);overflow-y:auto">
         {% if field_notes %}
           <div>
             {% for entry in field_notes %}
               <div style="padding:12px 0;{% if not loop.first %}border-top:1px solid var(--line);{% endif %}display:grid;grid-template-columns:24px 88px 1fr auto;gap:10px;align-items:start;">
 
                 <!-- Checkbox col -->
-                <div style="padding-top:2px">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:2px">
                   {% if session.get('role') == 'admin' or session.get('user_id') == entry.note.created_by_user_id %}
                   <input type="checkbox"
                          id="note-chk-{{ entry.note.id }}"
                          onchange="axNoteCheck({{ entry.note.id }}, this.checked)"
                          style="cursor:pointer;accent-color:var(--accent);width:15px;height:15px;">
+                  <div id="note-actions-{{ entry.note.id }}" style="display:none;position:relative">
+                    <button type="button"
+                            onclick="axNoteMenu({{ entry.note.id }}, this)"
+                            style="background:var(--accent);color:#fff;border:0;border-radius:6px;font-size:.68rem;padding:2px 6px;font-weight:600;cursor:pointer;white-space:nowrap">
+                      Selected ▾
+                    </button>
+                    <div id="note-menu-{{ entry.note.id }}"
+                         style="display:none;position:absolute;left:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:999;min-width:100px;overflow:hidden">
+                      <form method="post" action="/jobs/{{ job.id }}/notes/{{ entry.note.id }}/delete" style="margin:0">
+                        <button type="submit"
+                                style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:#ef4444;cursor:pointer;font-weight:500">
+                          🗑 Delete
+                        </button>
+                      </form>
+                      <a href="mailto:?subject=Note: {{ job.display_ref }}&body={{ entry.note.note_text | urlencode }}"
+                         style="display:block;padding:8px 12px;font-size:.8rem;color:var(--text);text-decoration:none;font-weight:500">
+                        ✉ Email
+                      </a>
+                    </div>
+                  </div>
                   {% endif %}
                 </div>
 
@@ -450,20 +470,6 @@
                       {% endfor %}
                     </div>
                   {% endif %}
-                  <!-- Action buttons (shown when checkbox ticked) -->
-                  <div id="note-actions-{{ entry.note.id }}" style="display:none;margin-top:8px;gap:8px;flex-wrap:wrap">
-                    <form method="post" action="/jobs/{{ job.id }}/notes/{{ entry.note.id }}/delete" style="margin:0">
-                      <button type="submit" class="btn btn-sm"
-                              style="background:#ef4444;color:#fff;border:0;border-radius:6px;font-size:.78rem;padding:3px 12px;font-weight:600">
-                        Delete
-                      </button>
-                    </form>
-                    <a href="mailto:?subject=Note from {{ job.display_ref }}&body={{ entry.note.note_text | urlencode }}"
-                       class="btn btn-sm"
-                       style="background:var(--accent);color:#fff;border:0;border-radius:6px;font-size:.78rem;padding:3px 12px;font-weight:600">
-                      Email
-                    </a>
-                  </div>
                 </div>
 
                 <!-- Author col -->
@@ -728,8 +734,25 @@ function showItemFields(type) {
 <script>
 function axNoteCheck(noteId, checked) {
   var el = document.getElementById('note-actions-' + noteId);
-  if (el) el.style.display = checked ? 'flex' : 'none';
+  if (!el) return;
+  el.style.display = checked ? 'block' : 'none';
+  if (!checked) {
+    var menu = document.getElementById('note-menu-' + noteId);
+    if (menu) menu.style.display = 'none';
+  }
 }
+function axNoteMenu(noteId, btn) {
+  var menu = document.getElementById('note-menu-' + noteId);
+  if (!menu) return;
+  var isOpen = menu.style.display === 'block';
+  document.querySelectorAll('[id^="note-menu-"]').forEach(function(m){ m.style.display = 'none'; });
+  menu.style.display = isOpen ? 'none' : 'block';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('[id^="note-actions-"]')) {
+    document.querySelectorAll('[id^="note-menu-"]').forEach(function(m){ m.style.display = 'none'; });
+  }
+});
 </script>
 
 {% endblock %}
