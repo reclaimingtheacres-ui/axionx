@@ -105,49 +105,49 @@
     <div class="ax-card">
       <div class="ax-card-h">Lender Details</div>
       <div class="ax-card-b">
-        <div class="row g-2 mb-2">
+        <div class="row g-1 mb-1">
           <div class="col-12 col-lg-4">
-            <span style="color:var(--muted);font-size:.8rem">LENDER</span>
-            <div class="fw-semibold">{{ job.lender_name or '—' }}</div>
-          </div>
-          <div class="col-12 col-lg-4">
-            <span style="color:var(--muted);font-size:.8rem">ACCOUNT NUMBER</span>
-            <div class="fw-semibold">{{ job.account_number or '—' }}</div>
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">LENDER</span>
+            <div class="small fw-semibold">{{ job.lender_name or '—' }}</div>
           </div>
           <div class="col-12 col-lg-4">
-            <span style="color:var(--muted);font-size:.8rem">CONTRACT TYPE</span>
-            <div class="fw-semibold">{{ job.regulation_type or '—' }}</div>
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">ACCOUNT NUMBER</span>
+            <div class="small fw-semibold">{{ job.account_number or '—' }}</div>
+          </div>
+          <div class="col-12 col-lg-4">
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">CONTRACT TYPE</span>
+            <div class="small fw-semibold">{{ job.regulation_type or '—' }}</div>
           </div>
         </div>
-        <div class="row g-2 mb-2">
+        <div class="row g-1 mb-1">
           <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.8rem">ARREARS</span>
-            <div class="fw-semibold">{{ cents_to_money(job.arrears_cents) }}</div>
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">ARREARS</span>
+            <div class="small fw-semibold">{{ cents_to_money(job.arrears_cents) }}</div>
           </div>
           <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.8rem">COSTS</span>
-            <div class="fw-semibold">{{ cents_to_money(job.costs_cents) }}</div>
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">COSTS</span>
+            <div class="small fw-semibold">{{ cents_to_money(job.costs_cents) }}</div>
           </div>
           <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.8rem">NEXT PAYMENT DUE</span>
-            <div class="fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">NEXT PMT DUE</span>
+            <div class="small fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
           </div>
           <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.8rem">NEXT PAYMENT DUE DATE</span>
-            <div class="fw-semibold">{{ job.due_date_display or '—' }}</div>
-          </div>
-        </div>
-        <div class="row g-2 mb-2">
-          <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.8rem">NEXT PAYMENT FREQUENCY</span>
-            <div class="fw-semibold">{{ job.payment_frequency or '—' }}</div>
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">PMT DUE DATE</span>
+            <div class="small fw-semibold">{{ job.due_date_display or '—' }}</div>
           </div>
         </div>
-        <div class="mb-3">
-          <span style="color:var(--muted);font-size:.8rem">TOTAL DUE NOW</span>
-          <div class="fw-semibold fs-5" style="color:var(--accent)">{{ cents_to_money(job.total_due_now_cents) }}
+        <div class="row g-1 mb-1">
+          <div class="col-6 col-lg-3">
+            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">PMT FREQUENCY</span>
+            <div class="small fw-semibold">{{ job.payment_frequency or '—' }}</div>
+          </div>
+        </div>
+        <div class="mb-2">
+          <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">TOTAL DUE NOW</span>
+          <div class="fw-semibold fs-6" style="color:var(--accent)">{{ cents_to_money(job.total_due_now_cents) }}
             {% if job.mmp_cents and not job.mmp_included_in_total %}
-              <span class="small fw-normal ms-1" style="color:var(--muted);font-size:.8rem">(Next payment not yet due)</span>
+              <span class="fw-normal ms-1" style="color:var(--muted);font-size:.72rem">(Next pmt not yet due)</span>
             {% endif %}
           </div>
         </div>
@@ -246,7 +246,7 @@
                       </div>
                     {% endif %}
                   </div>
-                  <div class="d-flex gap-2 ms-2 align-items-start">
+                  <div class="d-flex flex-column gap-1 ms-2 align-items-end flex-shrink-0">
                     {% if item.item_type == 'vehicle' %}
                       <button type="button" class="btn btn-sm"
                               style="background:#16a34a;color:#fff;border:0;white-space:nowrap"
@@ -343,10 +343,14 @@
   <!-- ======== RIGHT COLUMN: Notes / Add Note / Documents / Schedule ======== -->
   <div class="col-12 col-lg-7 d-flex flex-column gap-3">
 
-    <!-- Notes (was Field Notes display) -->
+    <!-- Notes -->
     <div class="ax-card">
-      <div class="ax-card-h">Notes</div>
-      <div class="ax-card-b" style="min-height:180px">
+      <div class="ax-card-h d-flex justify-content-between align-items-center">
+        <span>Notes</span>
+        <button type="button" class="btn btn-primary btn-sm"
+                onclick="axOpenAddNote()">+ Add Note</button>
+      </div>
+      <div class="ax-card-b" style="min-height:320px">
         {% if field_notes %}
           <div class="list-group list-group-flush">
             {% for entry in field_notes %}
@@ -368,14 +372,14 @@
                   </div>
                 </div>
                 {% if entry.note.note_text %}
-                  <div class="mb-2" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
+                  <div class="mb-2 small" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
                 {% endif %}
                 {% if entry.files %}
                   <div class="d-flex flex-wrap gap-2 mt-1">
                     {% for f in entry.files %}
                       <a href="/uploads/{{ f.filename }}" target="_blank"
                          class="badge text-decoration-none"
-                         style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.8rem;padding:.4em .7em">
+                         style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;padding:.35em .6em">
                         &#128206; {{ f.filename }}
                       </a>
                     {% endfor %}
@@ -390,51 +394,34 @@
       </div>
     </div>
 
-    <!-- Add Note (was Add Field Note) -->
-    <div class="ax-card">
-      <div class="ax-card-h">Add Note</div>
-      <div class="ax-card-b">
-        <form method="post" action="/jobs/{{ job.id }}/notes/new" enctype="multipart/form-data">
-          <textarea class="form-control mb-2" name="note_text" rows="4"
-                    placeholder="Enter note..."></textarea>
-          <div class="mb-2">
-            <label class="form-label" style="color:var(--muted);font-size:.85rem">Attachments (PNG, JPG, PDF, DOC, DOCX)</label>
-            <input class="form-control" type="file" name="attachments" multiple accept=".png,.jpg,.jpeg,.pdf,.doc,.docx">
-          </div>
-          <div class="d-flex align-items-center gap-3 mt-1">
-            <button class="btn btn-primary">Save Note</button>
-            <span style="color:var(--muted);font-size:.82rem;">
-              Submitting as <strong style="color:var(--text)">{{ session.get('user_name', 'Unknown') }}</strong>
-            </span>
-          </div>
-        </form>
-      </div>
-    </div>
-
     <!-- Documents -->
     <div class="ax-card">
       <div class="ax-card-h">Documents</div>
       <div class="ax-card-b">
         {% if session.get('role') == 'admin' %}
         <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data" class="mb-3">
-          <div class="row g-2">
+          <div class="row g-2 align-items-end">
             <div class="col-12 col-lg-3">
-              <select class="form-select" name="doc_type">
+              <label class="form-label small mb-1" style="color:var(--muted)">Type</label>
+              <select class="form-select form-select-sm" name="doc_type">
                 {% for t in doc_types %}<option>{{ t }}</option>{% endfor %}
               </select>
             </div>
             <div class="col-12 col-lg-4">
-              <input class="form-control" name="title" placeholder="Title (optional)">
+              <label class="form-label small mb-1" style="color:var(--muted)">Title (optional)</label>
+              <input class="form-control form-control-sm" name="title" placeholder="Title">
             </div>
             <div class="col-12 col-lg-5">
-              <input class="form-control" type="file" name="file" required accept=".png,.jpg,.jpeg,.pdf,.doc,.docx,.xls,.xlsx,.csv">
+              <label class="form-label small mb-1" style="color:var(--muted)">Files (select multiple)</label>
+              <input class="form-control form-control-sm" type="file" name="file" multiple required
+                     accept=".png,.jpg,.jpeg,.heic,.pdf,.doc,.docx,.xls,.xlsx,.csv">
             </div>
           </div>
           <div class="mt-2">
-            <input class="form-control" name="notes" placeholder="Notes (optional)">
+            <input class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
           </div>
           <div class="mt-2">
-            <button class="btn btn-primary">Upload Document</button>
+            <button class="btn btn-primary btn-sm">Upload</button>
           </div>
         </form>
         {% endif %}
@@ -471,8 +458,12 @@
       </div>
     </div>
 
-    <!-- Schedule -->
-    <div class="ax-card">
+  </div><!-- /RIGHT COLUMN -->
+
+</div><!-- /row -->
+
+<!-- ======== SCHEDULE — FULL WIDTH ======== -->
+<div class="ax-card mb-3">
       <div class="ax-card-h">Schedule</div>
       <div class="ax-card-b">
 
@@ -590,12 +581,6 @@
       </div>
     </div>
 
-  </div><!-- /RIGHT COLUMN -->
-
-</div><!-- /row -->
-
-<!-- ======== FULL-WIDTH BELOW ======== -->
-
 <script>
 (function () {
   const dp = document.getElementById("sched_date_picker");
@@ -690,6 +675,56 @@ function showItemFields(type) {
 
 {% endblock %}
 {% block modals %}
+<!-- Add Note Modal -->
+<div class="modal fade" id="addNoteModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title" style="color:var(--text)">Add Note</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/jobs/{{ job.id }}/notes/new" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-2">
+            <span id="addNoteDateTime" style="color:var(--muted);font-size:.78rem"></span>
+            <span style="color:var(--muted);font-size:.78rem"> &bull; submitting as <strong style="color:var(--text)">{{ session.get('user_name', 'Unknown') }}</strong></span>
+          </div>
+          <div class="mb-2">
+            <textarea class="form-control form-control-sm" name="note_text" rows="5"
+                      placeholder="Enter note..." style="font-size:.85rem"></textarea>
+          </div>
+          <div>
+            <label class="form-label small mb-1" style="color:var(--muted)">Attachments (PNG, JPG, PDF, DOC, DOCX)</label>
+            <input class="form-control form-control-sm" type="file" name="attachments" multiple
+                   accept=".png,.jpg,.jpeg,.heic,.pdf,.doc,.docx" style="font-size:.8rem">
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid var(--line)">
+          <button type="submit" class="btn btn-primary btn-sm">Save Note</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var _addNoteModal = null;
+  window.axOpenAddNote = function () {
+    if (!_addNoteModal) _addNoteModal = new bootstrap.Modal(document.getElementById('addNoteModal'));
+    var now = new Date();
+    var pad = function(n){ return String(n).padStart(2,'0'); };
+    var h = now.getHours(), m = now.getMinutes();
+    var ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    var d = now.getDate(), mo = now.getMonth()+1, y = now.getFullYear();
+    document.getElementById('addNoteDateTime').textContent =
+      pad(d)+'/'+pad(mo)+'/'+y+' '+h+':'+pad(m)+' '+ampm;
+    _addNoteModal.show();
+  };
+})();
+</script>
+
 <!-- VicRoads Modal -->
 <div class="modal fade" id="vicRoadsModal" tabindex="-1" aria-labelledby="vicRoadsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">

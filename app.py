@@ -2570,42 +2570,49 @@ def job_document_upload(job_id: int):
     doc_type = (request.form.get("doc_type") or "Other").strip()
     title = (request.form.get("title") or "").strip()
     notes = (request.form.get("notes") or "").strip()
-    file = request.files.get("file")
+    files = request.files.getlist("file")
 
-    if not file or not file.filename:
-        flash("Select a file to upload.", "danger")
+    valid_files = [f for f in files if f and f.filename]
+    if not valid_files:
+        flash("Select at least one file to upload.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
-
-    if not allowed_file(file.filename):
-        flash("Unsupported file type.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
-
-    original_filename = secure_filename(file.filename)
-    ts_safe = now_ts().replace(":", "").replace("-", "").replace(" ", "")
-    stored_filename = f"job_{job_id}_{ts_safe}_{original_filename}"
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
-    file.save(filepath)
-
-    mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
-    file_size = os.path.getsize(filepath)
 
     conn = db()
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO job_documents
-            (job_id, doc_type, title, original_filename, stored_filename,
-             mime_type, file_size, uploaded_by_user_id, uploaded_at, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (job_id, doc_type, title or None, original_filename, stored_filename,
-          mime_type, file_size, session.get("user_id"), now_ts(), notes or None))
-    doc_id = cur.lastrowid
+    uploaded = 0
+    skipped = []
+    for file in valid_files:
+        if not allowed_file(file.filename):
+            skipped.append(file.filename)
+            continue
+        original_filename = secure_filename(file.filename)
+        ts_safe = now_ts().replace(":", "").replace("-", "").replace(" ", "")
+        stored_filename = f"job_{job_id}_{ts_safe}_{original_filename}"
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
+        file.save(filepath)
+        mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
+        file_size = os.path.getsize(filepath)
+        cur.execute("""
+            INSERT INTO job_documents
+                (job_id, doc_type, title, original_filename, stored_filename,
+                 mime_type, file_size, uploaded_by_user_id, uploaded_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (job_id, doc_type, title or None, original_filename, stored_filename,
+              mime_type, file_size, session.get("user_id"), now_ts(), notes or None))
+        doc_id = cur.lastrowid
+        audit("job_document", doc_id, "create", "Job document uploaded",
+              {"job_id": job_id, "doc_type": doc_type, "filename": original_filename})
+        uploaded += 1
     conn.commit()
     conn.close()
 
-    audit("job_document", doc_id, "create", "Job document uploaded",
-          {"job_id": job_id, "doc_type": doc_type, "filename": original_filename})
-
-    flash("Document uploaded.", "success")
+    if uploaded:
+        msg = f"{uploaded} document{'s' if uploaded != 1 else ''} uploaded."
+        if skipped:
+            msg += f" {len(skipped)} skipped (unsupported type)."
+        flash(msg, "success")
+    else:
+        flash("No supported files were uploaded.", "danger")
     return redirect(url_for("job_detail", job_id=job_id))
 
 
