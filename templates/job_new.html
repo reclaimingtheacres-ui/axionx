@@ -17,7 +17,7 @@
         </div>
         <div class="col-12 col-lg-6">
           <label class="form-label">Client Reference</label>
-          <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., 238139 (optional)" value="{{ prefill_client_reference }}">
+          <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., 238139 (optional)" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,'')">
         </div>
       </div>
 
