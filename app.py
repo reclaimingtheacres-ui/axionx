@@ -356,6 +356,7 @@ def init_db():
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
     add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
     add_column_if_missing(cur, "jobs", "bill_to_client_id", "INTEGER")
+    add_column_if_missing(cur, "customers", "role", "TEXT")
 
     _default_booking_types = [
         "New Visit", "Re-attend", "Urgent New Visit",
@@ -2194,50 +2195,76 @@ def customer_new():
 @login_required
 @admin_required
 def customer_create():
-    first_name = request.form.get("first_name", "").strip()
-    last_name = request.form.get("last_name", "").strip()
-    company = request.form.get("company", "").strip()
-    email = request.form.get("email", "").strip()
-    dob = request.form.get("dob", "").strip()
-    address = request.form.get("address", "").strip()
-    notes = request.form.get("notes", "").strip()
+    shared_company = request.form.get("shared_company", "").strip()
+    first_names = request.form.getlist("first_name[]")
+    last_names  = request.form.getlist("last_name[]")
+    roles       = request.form.getlist("role[]")
+    emails      = request.form.getlist("email[]")
+    dobs        = request.form.getlist("dob[]")
+    addresses   = request.form.getlist("address[]")
+    notes_list  = request.form.getlist("notes[]")
+    id_photos   = request.files.getlist("id_photo[]")
 
-    if not first_name or not last_name:
-        flash("First and last name are required.", "danger")
+    if not first_names or not first_names[0].strip():
+        flash("At least one person with a first and last name is required.", "danger")
         return redirect(url_for("customer_new"))
-
-    id_photo = request.files.get("id_photo")
-    id_image_filename = None
-    id_image_path = None
-
-    if id_photo and id_photo.filename:
-        if not allowed_file(id_photo.filename):
-            flash("ID photo must be PNG, JPG, JPEG, or WebP.", "danger")
-            return redirect(url_for("customer_new"))
-        ts = now_ts()
-        safe_name = secure_filename(id_photo.filename)
-        safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
-        stored_name = f"cust_{safe_ts}_{safe_name}"
-        id_photo.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
-        id_image_filename = safe_name
-        id_image_path = stored_name
 
     ts = now_ts()
     conn = db()
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO customers (first_name, last_name, company, email, dob, address, notes,
-                               id_image_filename, id_image_path, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (first_name, last_name, company or None, email or None, dob or None, address or None,
-          notes or None, id_image_filename, id_image_path, ts, ts))
-    new_id = cur.lastrowid
+    first_new_id = None
+    created_count = 0
+
+    for i in range(len(first_names)):
+        fn = first_names[i].strip() if i < len(first_names) else ""
+        ln = last_names[i].strip()  if i < len(last_names)  else ""
+        if not fn or not ln:
+            continue
+
+        role    = roles[i].strip()    if i < len(roles)    else ""
+        email   = emails[i].strip()   if i < len(emails)   else ""
+        dob     = dobs[i].strip()     if i < len(dobs)     else ""
+        address = addresses[i].strip() if i < len(addresses) else ""
+        notes   = notes_list[i].strip() if i < len(notes_list) else ""
+
+        id_image_filename = None
+        id_image_path = None
+        if i < len(id_photos):
+            photo = id_photos[i]
+            if photo and photo.filename:
+                if not allowed_file(photo.filename):
+                    flash(f"ID photo for {fn} {ln} must be PNG, JPG, JPEG, or WebP — skipped.", "warning")
+                else:
+                    safe_name = secure_filename(photo.filename)
+                    safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
+                    stored_name = f"cust_{safe_ts}_{i}_{safe_name}"
+                    photo.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
+                    id_image_filename = safe_name
+                    id_image_path = stored_name
+
+        cur.execute("""
+            INSERT INTO customers (first_name, last_name, company, role, email, dob, address, notes,
+                                   id_image_filename, id_image_path, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (fn, ln, shared_company or None, role or None, email or None,
+              dob or None, address or None, notes or None,
+              id_image_filename, id_image_path, ts, ts))
+        new_id = cur.lastrowid
+        if first_new_id is None:
+            first_new_id = new_id
+        created_count += 1
+
     conn.commit()
     conn.close()
-    flash("Customer created.", "success")
+
+    if created_count == 0:
+        flash("No valid customers to create.", "warning")
+        return redirect(url_for("customer_new"))
+
+    flash(f"{created_count} customer(s) created.", "success")
     next_url = request.form.get("next_url", "")
     if next_url:
-        return redirect(f"{next_url}?new_customer_id={new_id}")
+        return redirect(f"{next_url}?new_customer_id={first_new_id}")
     return redirect(url_for("customers_list"))
 
 
@@ -2305,6 +2332,7 @@ def customer_edit_post(customer_id: int):
     first_name = request.form.get("first_name", "").strip()
     last_name = request.form.get("last_name", "").strip()
     company = request.form.get("company", "").strip()
+    role = request.form.get("role", "").strip()
     email = request.form.get("email", "").strip()
     dob = request.form.get("dob", "").strip()
     address = request.form.get("address", "").strip()
@@ -2339,10 +2367,10 @@ def customer_edit_post(customer_id: int):
 
     cur.execute("""
         UPDATE customers
-        SET first_name = ?, last_name = ?, company = ?, email = ?, dob = ?, address = ?, notes = ?,
+        SET first_name = ?, last_name = ?, company = ?, role = ?, email = ?, dob = ?, address = ?, notes = ?,
             id_image_filename = ?, id_image_path = ?, updated_at = ?
         WHERE id = ?
-    """, (first_name, last_name, company or None, email or None, dob or None, address or None, notes or None,
+    """, (first_name, last_name, company or None, role or None, email or None, dob or None, address or None, notes or None,
           id_image_filename, id_image_path, ts, customer_id))
 
     cur.execute("""
