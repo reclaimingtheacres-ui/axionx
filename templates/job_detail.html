@@ -358,7 +358,7 @@
                 <div class="d-flex justify-content-between align-items-center mb-1">
                   <span class="small fw-semibold">{{ entry.note.author_name or "Unknown" }}</span>
                   <div class="d-flex align-items-center gap-3">
-                    <span class="small" style="color:var(--muted)">{{ entry.note.created_at }}</span>
+                    <span class="small" style="color:var(--muted)">{{ entry.note.created_at[8:10] }}/{{ entry.note.created_at[5:7] }}/{{ entry.note.created_at[:4] }} {{ entry.note.created_at[11:16] }}</span>
                     {% if session.get('role') == 'admin' or session.get('user_id') == entry.note.created_by_user_id %}
                     <form method="post"
                           action="/jobs/{{ job.id }}/notes/{{ entry.note.id }}/delete"
@@ -440,7 +440,7 @@
                       {{ d.original_filename }}
                       {% if d.file_size %}&nbsp;&bull;&nbsp;{{ (d.file_size / 1024)|round(1) }} KB{% endif %}
                       {% if d.uploaded_by %}&nbsp;&bull;&nbsp;{{ d.uploaded_by }}{% endif %}
-                      &nbsp;&bull;&nbsp;{{ d.uploaded_at }}
+                      &nbsp;&bull;&nbsp;{{ d.uploaded_at[8:10] }}/{{ d.uploaded_at[5:7] }}/{{ d.uploaded_at[:4] }} {{ d.uploaded_at[11:16] }}
                     </div>
                     {% if d.notes %}<div class="small mt-1" style="color:var(--muted);font-style:italic">{{ d.notes }}</div>{% endif %}
                   </div>
