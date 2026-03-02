@@ -424,7 +424,8 @@ def _ensure_db():
 
 # -------- Helpers --------
 def now_ts():
-    return datetime.now().isoformat(timespec="seconds")
+    melb = pytz.timezone("Australia/Melbourne")
+    return datetime.now(melb).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def money_to_cents(s: str) -> int:
