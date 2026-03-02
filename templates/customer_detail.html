@@ -12,7 +12,7 @@
         <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ customer.id_image_path }}">View ID</a>
       {% endif %}
       {% if session.get('role') == 'admin' %}
-        <button class="btn btn-outline-danger btn-sm" onclick="confirmDeleteCustomer()">Delete</button>
+        <button class="btn btn-outline-danger btn-sm" onclick="deleteCustomer()">Delete</button>
       {% endif %}
     </div>
   </div>
@@ -105,29 +105,11 @@
 
 {% block modals %}
 <form id="deleteCustomerForm" method="post" action="/customers/{{ customer.id }}/delete" style="display:none"></form>
-<div class="modal fade" id="deleteCustomerModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="background:var(--panel2)">
-      <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title" style="color:var(--text)">Delete Customer</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" style="color:var(--text)">
-        Are you sure you want to delete <strong>{{ customer.first_name }} {{ customer.last_name }}</strong>? This cannot be undone.
-      </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line)">
-        <button type="button" class="btn btn-danger" onclick="submitDeleteCustomer()">Yes, Delete</button>
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-      </div>
-    </div>
-  </div>
-</div>
 <script>
-  function confirmDeleteCustomer() {
-    new bootstrap.Modal(document.getElementById('deleteCustomerModal')).show();
-  }
-  function submitDeleteCustomer() {
-    document.getElementById('deleteCustomerForm').submit();
+  function deleteCustomer() {
+    if (window.confirm('Delete {{ customer.first_name }} {{ customer.last_name }}? This cannot be undone.')) {
+      document.getElementById('deleteCustomerForm').submit();
+    }
   }
 </script>
 {% endblock %}
