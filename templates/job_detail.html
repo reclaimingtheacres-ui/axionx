@@ -20,7 +20,7 @@
       Internal: {{ job.internal_job_number }}{% if job.client_reference %} | Client Ref: {{ job.client_reference }}{% endif %}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} | {{ cx }}{% endif %}
     </div>
     <div class="small mt-1" style="color:var(--muted)">
-      {{ job.job_type }} | {{ job.visit_type }} | Priority: {{ job.priority }} | Assigned: {{ job.assigned_name or "Unassigned" }}{% if next_schedule %} | Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% if next_schedule.assigned_to_name %} — {{ next_schedule.assigned_to_name }}{% endif %}{% endif %}
+      {{ job.job_type }} | {{ job.visit_type }} | Priority: {{ job.priority }}{% if job.assigned_name %} | Assigned: {{ job.assigned_name }}{% endif %}{% if next_schedule %} | Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% if next_schedule.assigned_to_name %} — {{ next_schedule.assigned_to_name }}{% endif %}{% endif %}
     </div>
   </div>
   {% if session.get('role') == 'admin' %}
