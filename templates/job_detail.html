@@ -416,50 +416,61 @@
         {% if field_notes %}
           <div>
             {% for entry in field_notes %}
-              <div style="padding:12px 0;{% if not loop.first %}border-top:1px solid var(--line);{% endif %}">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                  <span class="small fw-semibold">{{ entry.note.author_name or "Unknown" }}</span>
-                  <div class="d-flex align-items-center gap-3">
-                    <span class="small" style="color:var(--muted)">{{ entry.note.created_at[8:10] }}/{{ entry.note.created_at[5:7] }}/{{ entry.note.created_at[:4] }} {{ entry.note.created_at[11:16] }}</span>
-                    {% if session.get('role') == 'admin' or session.get('user_id') == entry.note.created_by_user_id %}
-                    <span class="d-flex align-items-center gap-2">
-                      <label class="d-flex align-items-center gap-1"
-                             style="cursor:pointer;color:var(--muted);font-size:.78rem;user-select:none"
-                             title="Tick to delete">
-                        <input type="checkbox"
-                               id="del-chk-{{ entry.note.id }}"
-                               onchange="axToggleNoteDelete({{ entry.note.id }}, this.checked)"
-                               style="accent-color:#ef4444;cursor:pointer">
-                        Delete?
-                      </label>
-                      <form method="post"
-                            action="/jobs/{{ job.id }}/notes/{{ entry.note.id }}/delete"
-                            style="margin:0"
-                            id="del-form-{{ entry.note.id }}">
-                        <button type="submit" class="btn btn-sm"
-                                style="display:none;background:#ef4444;color:#fff;border:0;
-                                       border-radius:6px;font-size:.78rem;padding:2px 10px;font-weight:600">
-                          Delete
-                        </button>
-                      </form>
-                    </span>
-                    {% endif %}
+              <div style="padding:12px 0;{% if not loop.first %}border-top:1px solid var(--line);{% endif %}display:grid;grid-template-columns:24px 88px 1fr auto;gap:10px;align-items:start;">
+
+                <!-- Checkbox col -->
+                <div style="padding-top:2px">
+                  {% if session.get('role') == 'admin' or session.get('user_id') == entry.note.created_by_user_id %}
+                  <input type="checkbox"
+                         id="note-chk-{{ entry.note.id }}"
+                         onchange="axNoteCheck({{ entry.note.id }}, this.checked)"
+                         style="cursor:pointer;accent-color:var(--accent);width:15px;height:15px;">
+                  {% endif %}
+                </div>
+
+                <!-- Date/time col -->
+                <div style="color:var(--muted);font-size:.78rem;line-height:1.4">
+                  {{ entry.note.created_at[8:10] }}/{{ entry.note.created_at[5:7] }}/{{ entry.note.created_at[:4] }}<br>
+                  {{ entry.note.created_at[11:16] }}
+                </div>
+
+                <!-- Content col -->
+                <div>
+                  {% if entry.note.note_text %}
+                    <div class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
+                  {% endif %}
+                  {% if entry.files %}
+                    <div class="d-flex flex-wrap gap-2 mt-1">
+                      {% for f in entry.files %}
+                        <a href="/uploads/{{ f.filename }}" target="_blank"
+                           class="badge text-decoration-none"
+                           style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;padding:.35em .6em">
+                          &#128206; {{ f.filename }}
+                        </a>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                  <!-- Action buttons (shown when checkbox ticked) -->
+                  <div id="note-actions-{{ entry.note.id }}" style="display:none;margin-top:8px;gap:8px;flex-wrap:wrap">
+                    <form method="post" action="/jobs/{{ job.id }}/notes/{{ entry.note.id }}/delete" style="margin:0">
+                      <button type="submit" class="btn btn-sm"
+                              style="background:#ef4444;color:#fff;border:0;border-radius:6px;font-size:.78rem;padding:3px 12px;font-weight:600">
+                        Delete
+                      </button>
+                    </form>
+                    <a href="mailto:?subject=Note from {{ job.display_ref }}&body={{ entry.note.note_text | urlencode }}"
+                       class="btn btn-sm"
+                       style="background:var(--accent);color:#fff;border:0;border-radius:6px;font-size:.78rem;padding:3px 12px;font-weight:600">
+                      Email
+                    </a>
                   </div>
                 </div>
-                {% if entry.note.note_text %}
-                  <div class="mb-2 small" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
-                {% endif %}
-                {% if entry.files %}
-                  <div class="d-flex flex-wrap gap-2 mt-1">
-                    {% for f in entry.files %}
-                      <a href="/uploads/{{ f.filename }}" target="_blank"
-                         class="badge text-decoration-none"
-                         style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;padding:.35em .6em">
-                        &#128206; {{ f.filename }}
-                      </a>
-                    {% endfor %}
-                  </div>
-                {% endif %}
+
+                <!-- Author col -->
+                <div style="font-size:.82rem;font-weight:600;color:var(--text);text-align:right;white-space:nowrap">
+                  {{ entry.note.author_name or "Unknown" }}
+                </div>
+
               </div>
             {% endfor %}
           </div>
@@ -715,9 +726,9 @@ function showItemFields(type) {
 </script>
 
 <script>
-function axToggleNoteDelete(noteId, checked) {
-  var btn = document.querySelector('#del-form-' + noteId + ' button');
-  if (btn) btn.style.display = checked ? '' : 'none';
+function axNoteCheck(noteId, checked) {
+  var el = document.getElementById('note-actions-' + noteId);
+  if (el) el.style.display = checked ? 'flex' : 'none';
 }
 </script>
 
