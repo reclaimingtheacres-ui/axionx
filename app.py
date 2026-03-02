@@ -2589,7 +2589,7 @@ def delete_job_note(job_id: int, note_id: int):
 
     audit("job_note", note_id, "delete", "Field note deleted", {"job_id": job_id})
     flash("Field note deleted.", "success")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
 
 @app.get("/uploads/<path:filename>")
@@ -2621,7 +2621,7 @@ def job_document_upload(job_id: int):
     valid_files = [f for f in files if f and f.filename]
     if not valid_files:
         flash("Select at least one file to upload.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
     conn = db()
     cur = conn.cursor()
@@ -2657,7 +2657,7 @@ def job_document_upload(job_id: int):
         flash(msg, "success")
     else:
         flash("No supported files were uploaded.", "danger")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
 
 # -------- Users (admin only) --------
