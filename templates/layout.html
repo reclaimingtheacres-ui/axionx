@@ -386,13 +386,18 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-  document.addEventListener("shown.bs.modal", function(e) {
-    e.target.removeAttribute("aria-hidden");
+  const ariaObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type === "attributes" && m.attributeName === "aria-hidden") {
+        const el = m.target;
+        if (el.getAttribute("aria-hidden") === "true") {
+          const active = document.activeElement;
+          if (active && el.contains(active)) active.blur();
+        }
+      }
+    }
   });
-  document.addEventListener("hide.bs.modal", function(e) {
-    const active = document.activeElement;
-    if (active && e.target.contains(active)) active.blur();
-  });
+  ariaObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["aria-hidden"] });
   </script>
   {% block modals %}{% endblock %}
 {% if session.get('user_id') %}
