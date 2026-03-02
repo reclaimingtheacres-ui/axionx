@@ -53,7 +53,7 @@
                 {% if j.next_scheduled %}
                   <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.8"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></svg>
-                    {{ j.next_scheduled[:16] | replace('T', ' ') }}
+                    {{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[:4] }} {{ j.next_scheduled[11:16] }}
                   </span>
                 {% endif %}
               </div>
@@ -73,7 +73,7 @@
               {% else %}
                 <span class="badge bg-secondary">{{ j.status }}</span>
               {% endif %}
-              <div class="small mt-1" style="color:var(--muted)">{{ j.updated_at[:10] if j.updated_at else '' }}</div>
+              <div class="small mt-1" style="color:var(--muted)">{% if j.updated_at %}{{ j.updated_at[8:10] }}/{{ j.updated_at[5:7] }}/{{ j.updated_at[:4] }}{% endif %}</div>
             </div>
 
           </div>
