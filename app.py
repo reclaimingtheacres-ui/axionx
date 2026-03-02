@@ -9,6 +9,9 @@ import os
 import re
 import mimetypes
 from datetime import date, datetime
+import pytz
+
+_melbourne = pytz.timezone("Australia/Melbourne")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "axion-dev-secret")
@@ -491,7 +494,7 @@ def calc_total_due_now(arrears, costs, mmp, due_date):
             due_date = None
     if isinstance(due_date, datetime):
         due_date = due_date.date()
-    today = date.today()
+    today = datetime.now(_melbourne).date()
     total = arrears + costs
     include_mmp = bool(due_date and due_date < today)
     if include_mmp:
@@ -807,9 +810,10 @@ def index():
 def auto_queue_schedule_alerts(cur, admin_user_id):
     """Auto-create queue items for jobs with overdue/today/tomorrow schedules."""
     import datetime as _dt
-    today = _dt.date.today().isoformat()
-    tomorrow = (_dt.date.today() + _dt.timedelta(days=1)).isoformat()
-    now_str = _dt.datetime.now().isoformat(timespec="seconds")
+    _mel_now = datetime.now(_melbourne)
+    today = _mel_now.date().isoformat()
+    tomorrow = (_mel_now.date() + _dt.timedelta(days=1)).isoformat()
+    now_str = _mel_now.isoformat(timespec="seconds")
 
     cur.execute("""
         SELECT j.id, j.display_ref, s.scheduled_for,
