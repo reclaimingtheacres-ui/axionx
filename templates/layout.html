@@ -324,8 +324,16 @@
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, message in messages %}
-            <div class="alert alert-{{category}} mb-3">{{ message }}</div>
+            <div class="alert alert-{{category}} mb-3 ax-flash" style="transition:opacity .5s ease">{{ message }}</div>
           {% endfor %}
+          <script>
+            setTimeout(function(){
+              document.querySelectorAll('.ax-flash').forEach(function(el){
+                el.style.opacity='0';
+                setTimeout(function(){ el.style.display='none'; }, 500);
+              });
+            }, 5000);
+          </script>
         {% endif %}
       {% endwith %}
 
