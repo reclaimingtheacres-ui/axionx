@@ -345,112 +345,48 @@
   (function () {
     var GOOGLE_KEY = {{ GOOGLE_MAPS_API_KEY | tojson if GOOGLE_MAPS_API_KEY else 'null' }};
 
-    async function safeInitPlaces() {
-      var inputs = document.querySelectorAll('[data-maps-autocomplete]:not([data-gmp-bound="1"])');
-      if (!inputs.length) return;
-
-      if (!window.google || !google.maps || !google.maps.importLibrary) {
-        console.warn('[Axion] Maps JS not loaded — address fields are plain text.');
-        return;
-      }
-
-      var places;
-      try {
-        places = await google.maps.importLibrary('places');
-      } catch (err) {
-        console.warn('[Axion] importLibrary failed — address fields are plain text.', err);
-        return;
-      }
-
+    function initAddressFields() {
+      if (!window.google || !google.maps || !google.maps.places) return;
+      var inputs = document.querySelectorAll('[data-maps-autocomplete]:not([data-gmp-bound])');
       inputs.forEach(function (input) {
         input.dataset.gmpBound = '1';
-
         try {
-          var placeholder = input.getAttribute('placeholder') || '';
-
-          var widget = new places.PlaceAutocompleteElement({});
-          widget.style.display = 'block';
-          widget.style.width = '100%';
-          try { widget.placeholder = placeholder; } catch (e) {}
-
-          input.parentNode.insertBefore(widget, input);
-          input.type = 'hidden';
-          input.removeAttribute('autocomplete');
-          input.removeAttribute('spellcheck');
-          input.removeAttribute('placeholder');
-          input.removeAttribute('class');
-          input._pacElement = widget;
-
-          widget.addEventListener('gmp-placeselect', async function (e) {
-            var place = e.place;
-            if (!place) return;
-            try {
-              await place.fetchFields({ fields: ['formattedAddress'] });
-              input.value = place.formattedAddress || '';
+          var ac = new google.maps.places.Autocomplete(input, {
+            types: ['address'],
+            componentRestrictions: { country: 'au' }
+          });
+          ac.addListener('place_changed', function () {
+            var place = ac.getPlace();
+            if (place && place.formatted_address) {
+              input.value = place.formatted_address;
               input.dispatchEvent(new Event('change', { bubbles: true }));
-            } catch (err) {
-              console.warn('[Axion] fetchFields error', err);
             }
           });
-
-          var form = input.closest('form');
-          if (form && !form._axionSubmitBound) {
-            form._axionSubmitBound = true;
-            form.addEventListener('submit', function () {
-              form.querySelectorAll('gmp-place-autocomplete').forEach(function (pac) {
-                var hidden = pac.nextElementSibling;
-                if (hidden && hidden.type === 'hidden' && !hidden.value) {
-                  var inner = pac.shadowRoot
-                    ? pac.shadowRoot.querySelector('input')
-                    : pac.querySelector('input');
-                  if (inner) hidden.value = inner.value;
-                }
-              });
-            });
-          }
-
-          console.info('[Axion] PlaceAutocompleteElement on', input.name);
         } catch (err) {
-          console.warn('[Axion] Places init failed on', input.name, '— plain text.', err);
+          console.warn('[Axion] Autocomplete init failed on', input.name, err);
           delete input.dataset.gmpBound;
-          input.type = 'text';
-          input.setAttribute('autocomplete', 'off');
         }
       });
-
-      console.info('[Axion] PlaceAutocompleteElement ready.');
     }
 
-    window.axionInitPlaces = safeInitPlaces;
+    window.__axionMapsReady = initAddressFields;
+    window.axionInitPlaces  = initAddressFields;
 
     window.axionSetAddress = function (input, value) {
-      if (!input) return;
-      input.value = value;
-      if (input._pacElement) {
-        var inner = input._pacElement.shadowRoot
-          ? input._pacElement.shadowRoot.querySelector('input')
-          : input._pacElement.querySelector('input');
-        if (inner) inner.value = value;
-      }
+      if (input) input.value = value;
     };
 
     function loadGooglePlaces() {
       if (!document.querySelector('[data-maps-autocomplete]')) return;
-      if (!GOOGLE_KEY) {
-        console.warn('[Axion] No Google Maps key — address fields are plain text.');
+      if (!GOOGLE_KEY) return;
+      if (document.querySelector('script[data-axion-google="1"]')) {
+        if (window.google && google.maps && google.maps.places) initAddressFields();
         return;
       }
-      if (document.querySelector('script[data-axion-google="1"]')) return;
-
       var s = document.createElement('script');
       s.dataset.axionGoogle = '1';
-      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_KEY) + '&libraries=places&loading=async';
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_KEY) + '&libraries=places&callback=__axionMapsReady';
       s.async = true;
-      s.defer = true;
-      s.onload = safeInitPlaces;
-      s.onerror = function () {
-        console.warn('[Axion] Google Maps script failed to load. Address fields are plain text.');
-      };
       document.head.appendChild(s);
     }
 
