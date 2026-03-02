@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}Axion | {{ job.display_ref }}{% endblock %}
-{% block page_title %}{{ job.display_ref }}{% endblock %}
+{% block page_title %}{{ job.display_ref }}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} — {{ cx }}{% endif %}{% endblock %}
 
 {% block content %}
 <style>
