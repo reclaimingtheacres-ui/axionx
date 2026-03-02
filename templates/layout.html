@@ -342,61 +342,47 @@
   </div>
 
   <script>
-  (function () {
-    var GOOGLE_KEY = {{ google_maps_api_key | tojson if google_maps_api_key else 'null' }};
-
-    function initAddressFields() {
-      if (!window.google || !google.maps || !google.maps.places) return;
-      var inputs = document.querySelectorAll('[data-maps-autocomplete]:not([data-gmp-bound])');
-      inputs.forEach(function (input) {
-        input.dataset.gmpBound = '1';
-        try {
-          var ac = new google.maps.places.Autocomplete(input, {
-            types: ['address'],
-            componentRestrictions: { country: 'au' }
-          });
-          ac.addListener('place_changed', function () {
-            var place = ac.getPlace();
-            if (place && place.formatted_address) {
-              input.value = place.formatted_address;
-              input.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          });
-        } catch (err) {
-          console.warn('[Axion] Autocomplete init failed on', input.name, err);
-          delete input.dataset.gmpBound;
-        }
+  async function axionInitAddressFields() {
+    var inputs = document.querySelectorAll('[data-maps-autocomplete]:not([data-gmp-bound])');
+    if (!inputs.length) return;
+    await google.maps.importLibrary("places");
+    inputs.forEach(function(input) {
+      input.dataset.gmpBound = '1';
+      var placeholder = input.getAttribute('placeholder') || '';
+      var widget = new google.maps.places.PlaceAutocompleteElement({
+        componentRestrictions: { country: ["au"] }
       });
-    }
-
-    window.__axionMapsReady = initAddressFields;
-    window.axionInitPlaces  = initAddressFields;
-
-    window.axionSetAddress = function (input, value) {
-      if (input) input.value = value;
-    };
-
-    function loadGooglePlaces() {
-      if (!document.querySelector('[data-maps-autocomplete]')) return;
-      if (!GOOGLE_KEY) return;
-      if (document.querySelector('script[data-axion-google="1"]')) {
-        if (window.google && google.maps && google.maps.places) initAddressFields();
-        return;
+      widget.style.width = '100%';
+      try { widget.placeholder = placeholder; } catch(e) {}
+      input.parentNode.insertBefore(widget, input);
+      input.type = 'hidden';
+      input._pacWidget = widget;
+      widget.addEventListener('gmp-placeselect', async function(e) {
+        var place = e.place;
+        await place.fetchFields({ fields: ['formattedAddress'] });
+        input.value = place.formattedAddress || '';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      var form = input.closest('form');
+      if (form && !form._axionSubmitBound) {
+        form._axionSubmitBound = true;
+        form.addEventListener('submit', function() {
+          if (!input.value) {
+            var inner = widget.shadowRoot ? widget.shadowRoot.querySelector('input') : widget.querySelector('input');
+            if (inner) input.value = inner.value;
+          }
+        });
       }
-      var s = document.createElement('script');
-      s.dataset.axionGoogle = '1';
-      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(GOOGLE_KEY) + '&libraries=places&callback=__axionMapsReady';
-      s.async = true;
-      document.head.appendChild(s);
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', loadGooglePlaces);
-    } else {
-      loadGooglePlaces();
-    }
-  })();
+    });
+  }
+  window.axionInitPlaces = axionInitAddressFields;
+  window.axionSetAddress = function(input, value) { if (input) input.value = value; };
+  document.addEventListener('DOMContentLoaded', axionInitAddressFields);
   </script>
+
+  {% if google_maps_api_key %}
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&v=weekly&libraries=places&loading=async" defer></script>
+  {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   {% block modals %}{% endblock %}
