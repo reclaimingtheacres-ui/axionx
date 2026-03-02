@@ -2240,6 +2240,28 @@ def customer_edit_post(customer_id: int):
     return redirect(url_for("customer_detail", customer_id=customer_id))
 
 
+# -------- Customer Delete --------
+@app.post("/customers/<int:customer_id>/delete")
+@login_required
+@admin_required
+def customer_delete(customer_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM jobs WHERE customer_id = ?", (customer_id,))
+    job_count = cur.fetchone()[0]
+    if job_count:
+        conn.close()
+        flash(f"Cannot delete — this customer has {job_count} linked job(s).", "danger")
+        return redirect(url_for("customer_detail", customer_id=customer_id))
+    cur.execute("DELETE FROM contact_phone_numbers WHERE entity_type = 'customer' AND entity_id = ?", (customer_id,))
+    cur.execute("DELETE FROM contact_emails WHERE entity_type = 'customer' AND entity_id = ?", (customer_id,))
+    cur.execute("DELETE FROM customers WHERE id = ?", (customer_id,))
+    conn.commit()
+    conn.close()
+    flash("Customer deleted.", "success")
+    return redirect(url_for("customers_list"))
+
+
 # -------- Job Items --------
 @app.post("/jobs/<int:job_id>/items/new")
 @login_required

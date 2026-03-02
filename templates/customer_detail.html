@@ -11,6 +11,9 @@
       {% if customer.id_image_path %}
         <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ customer.id_image_path }}">View ID</a>
       {% endif %}
+      {% if session.get('role') == 'admin' %}
+        <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteCustomerModal">Delete</button>
+      {% endif %}
     </div>
   </div>
   <div class="ax-card-b">
@@ -95,6 +98,26 @@
       {% else %}
         <div class="py-3 text-center" style="color:var(--muted)">No jobs linked to this customer.</div>
       {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="deleteCustomerModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2)">
+      <div class="modal-header border-0">
+        <h5 class="modal-title">Delete Customer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to delete <strong>{{ customer.first_name }} {{ customer.last_name }}</strong>? This cannot be undone.
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <form method="post" action="/customers/{{ customer.id }}/delete">
+          <button type="submit" class="btn btn-danger btn-sm">Delete Customer</button>
+        </form>
+      </div>
     </div>
   </div>
 </div>
