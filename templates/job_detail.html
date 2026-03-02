@@ -504,13 +504,59 @@
                     <div class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
                   {% endif %}
                   {% if entry.files %}
-                    <div class="d-flex flex-wrap gap-2 mt-1">
+                    <div class="d-flex flex-wrap gap-2 mt-1" style="align-items:flex-end">
                       {% for f in entry.files %}
+                        {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
+                        {% set is_img = fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp'] %}
+                        {% set is_pdf = fext == 'pdf' %}
+                        {% set is_word = fext in ['doc','docx'] %}
+                        {% set is_excel = fext in ['xls','xlsx','csv'] %}
+                        {% if is_img %}
                         <button type="button"
                                 onclick="axPreviewFile('/uploads/{{ f.filename }}', '{{ f.filename }}')"
-                                class="badge border-0"
-                                style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3)!important;font-size:.75rem;padding:.35em .6em;cursor:pointer">
-                          &#128206; {{ f.filename }}
+                                title="{{ f.filename }}"
+                                style="background:none;border:2px solid var(--line);border-radius:8px;padding:0;cursor:pointer;overflow:hidden;width:64px;height:64px;flex-shrink:0;display:flex;align-items:center;justify-content:center">
+                          <img src="/uploads/{{ f.filename }}" alt="{{ f.filename }}"
+                               style="width:64px;height:64px;object-fit:cover;display:block"
+                               onerror="this.parentNode.innerHTML='<span style=\'font-size:1.6rem\'>🖼</span>'">
+                        </button>
+                        {% elif is_pdf %}
+                        <button type="button"
+                                onclick="axPreviewFile('/uploads/{{ f.filename }}', '{{ f.filename }}')"
+                                title="{{ f.filename }}"
+                                class="border-0"
+                                style="background:rgba(239,68,68,.1);color:#dc2626;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:.72rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;max-width:130px">
+                          <svg width="14" height="16" viewBox="0 0 14 16" fill="none"><rect width="14" height="16" rx="2" fill="#dc2626"/><text x="7" y="12" text-anchor="middle" fill="#fff" font-size="7" font-family="system-ui" font-weight="700">PDF</text></svg>
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.filename | replace('_',' ') }}</span>
+                        </button>
+                        {% elif is_word %}
+                        <button type="button"
+                                onclick="axPreviewFile('/uploads/{{ f.filename }}', '{{ f.filename }}')"
+                                title="{{ f.filename }}"
+                                class="border-0"
+                                style="background:rgba(37,99,235,.1);color:#2563eb;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:.72rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;max-width:130px">
+                          <svg width="14" height="16" viewBox="0 0 14 16" fill="none"><rect width="14" height="16" rx="2" fill="#2563eb"/><text x="7" y="12" text-anchor="middle" fill="#fff" font-size="7" font-family="system-ui" font-weight="700">DOC</text></svg>
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.filename | replace('_',' ') }}</span>
+                        </button>
+                        {% elif is_excel %}
+                        <button type="button"
+                                onclick="axPreviewFile('/uploads/{{ f.filename }}', '{{ f.filename }}')"
+                                title="{{ f.filename }}"
+                                class="border-0"
+                                style="background:rgba(22,163,74,.1);color:#16a34a;border-radius:6px;padding:5px 8px;cursor:pointer;font-size:.72rem;font-weight:700;display:inline-flex;align-items:center;gap:5px;max-width:130px">
+                          <svg width="14" height="16" viewBox="0 0 14 16" fill="none"><rect width="14" height="16" rx="2" fill="#16a34a"/><text x="7" y="12" text-anchor="middle" fill="#fff" font-size="6" font-family="system-ui" font-weight="700">XLS</text></svg>
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.filename | replace('_',' ') }}</span>
+                        </button>
+                        {% else %}
+                        <button type="button"
+                                onclick="axPreviewFile('/uploads/{{ f.filename }}', '{{ f.filename }}')"
+                                title="{{ f.filename }}"
+                                class="border-0"
+                                style="background:rgba(96,165,250,.15);color:var(--accent);border-radius:6px;padding:5px 8px;cursor:pointer;font-size:.72rem;font-weight:600;display:inline-flex;align-items:center;gap:5px;max-width:130px">
+                          <svg width="12" height="14" viewBox="0 0 12 14" fill="none"><rect width="12" height="14" rx="2" stroke="currentColor" stroke-width="1.2"/><line x1="3" y1="4.5" x2="9" y2="4.5" stroke="currentColor" stroke-width="1"/><line x1="3" y1="7" x2="9" y2="7" stroke="currentColor" stroke-width="1"/><line x1="3" y1="9.5" x2="7" y2="9.5" stroke="currentColor" stroke-width="1"/></svg>
+                          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.filename | replace('_',' ') }}</span>
+                        </button>
+                        {% endif %}
                         </button>
                       {% endfor %}
                     </div>
