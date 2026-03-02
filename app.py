@@ -1267,7 +1267,7 @@ def job_detail(job_id: int):
     SELECT j.*,
            c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
            (cu.first_name || ' ' || cu.last_name) AS customer_name, cu.company AS customer_company, cu.email AS customer_email, cu.dob AS customer_dob, cu.address AS customer_address,
-           u.full_name AS assigned_name,
+           u.full_name AS assigned_name, u.email AS assigned_email,
            btc.name AS bill_to_client_name
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id

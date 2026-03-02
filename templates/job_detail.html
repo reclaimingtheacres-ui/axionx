@@ -449,11 +449,39 @@
                           🗑 Delete
                         </button>
                       </form>
-                      <button type="button" data-axep
-                              onclick="axEmailPicker(this,'','Note: {{ job.display_ref }}','{{ entry.note.note_text | replace("'", "\\'") | replace('\n', '\\n') }}')"
-                              style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500">
-                        ✉ Email
-                      </button>
+                      <div data-note-body="{{ entry.note.note_text | e }}"
+                           data-note-ref="{{ job.display_ref }}"
+                           data-client-email="{{ job.client_email or '' }}"
+                           data-agent-email="{{ job.assigned_email or '' }}">
+                        {% if job.client_email %}
+                        <button type="button" data-axep
+                                onclick="axNoteEmailTo(this,'client')"
+                                style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px 4px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500">
+                          ✉ Email Client
+                        </button>
+                        {% endif %}
+                        {% if job.assigned_email %}
+                        <button type="button" data-axep
+                                onclick="axNoteEmailTo(this,'agent')"
+                                style="display:block;width:100%;text-align:left;background:none;border:0;padding:4px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500">
+                          ✉ Email Agent
+                        </button>
+                        {% endif %}
+                        {% if job.client_email and job.assigned_email %}
+                        <button type="button" data-axep
+                                onclick="axNoteEmailTo(this,'both')"
+                                style="display:block;width:100%;text-align:left;background:none;border:0;padding:4px 12px 8px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500">
+                          ✉ Email Both
+                        </button>
+                        {% endif %}
+                        {% if not job.client_email and not job.assigned_email %}
+                        <button type="button" data-axep
+                                onclick="axNoteEmailTo(this,'custom')"
+                                style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500">
+                          ✉ Email
+                        </button>
+                        {% endif %}
+                      </div>
                     </div>
                   </div>
                   {% endif %}
@@ -759,6 +787,18 @@ function axNoteMenu(noteId, btn) {
   var isOpen = menu.style.display === 'block';
   document.querySelectorAll('[id^="note-menu-"]').forEach(function(m){ m.style.display = 'none'; });
   menu.style.display = isOpen ? 'none' : 'block';
+}
+function axNoteEmailTo(btn, recipient) {
+  var c = btn.closest('[data-note-body]');
+  var body    = c ? c.dataset.noteBody : '';
+  var ref     = c ? c.dataset.noteRef  : '';
+  var client  = c ? c.dataset.clientEmail : '';
+  var agent   = c ? c.dataset.agentEmail  : '';
+  var to = recipient === 'client' ? client
+         : recipient === 'agent'  ? agent
+         : recipient === 'both'   ? [client, agent].filter(Boolean).join(',')
+         : '';
+  axEmailPicker(btn, to, 'Note: ' + ref, body);
 }
 document.addEventListener('click', function(e) {
   if (!e.target.closest('[id^="note-actions-"]')) {
