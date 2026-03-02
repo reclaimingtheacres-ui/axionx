@@ -414,9 +414,9 @@
       </div>
       <div class="ax-card-b" style="min-height:320px">
         {% if field_notes %}
-          <div class="list-group list-group-flush">
+          <div>
             {% for entry in field_notes %}
-              <div class="list-group-item">
+              <div style="padding:12px 0;{% if not loop.first %}border-top:1px solid var(--line);{% endif %}">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                   <span class="small fw-semibold">{{ entry.note.author_name or "Unknown" }}</span>
                   <div class="d-flex align-items-center gap-3">
