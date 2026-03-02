@@ -2490,7 +2490,7 @@ def add_job_note(job_id: int):
 
     if not note_text and not any(f.filename for f in files):
         flash("A note or attachment is required.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
     ts = now_ts()
     conn = db()
@@ -2519,7 +2519,7 @@ def add_job_note(job_id: int):
 
     audit("job_note", note_id, "create", "Field note added", {"job_id": job_id})
     flash("Field note saved.", "success")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
 
 @app.post("/jobs/<int:job_id>/notes/<int:note_id>/delete")
@@ -2532,14 +2532,14 @@ def delete_job_note(job_id: int, note_id: int):
     if not note:
         conn.close()
         flash("Note not found.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
     if caller_role != "admin" and note["created_by_user_id"] != caller_id:
         conn.close()
         flash("You can only delete your own notes.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
     cur.execute("SELECT filepath FROM job_note_files WHERE job_field_note_id = ?", (note_id,))
     files = cur.fetchall()

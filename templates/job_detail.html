@@ -3,6 +3,16 @@
 {% block page_title %}{{ job.display_ref }}{% endblock %}
 
 {% block content %}
+<style>
+.ax-main {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+}
+</style>
+<div style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0">
 
 <div class="d-flex justify-content-between align-items-start mb-3">
   <div>
@@ -107,7 +117,7 @@
 </style>
 
 <!-- ======== TAB CONTENT ======== -->
-<div class="tab-content">
+<div class="tab-content" style="flex:1;overflow-y:auto;min-height:0">
 
 <!-- ======== TAB: JOB ======== -->
 <div class="tab-pane fade show active" id="tab-job" role="tabpanel">
@@ -412,7 +422,7 @@
         <button type="button" class="btn btn-primary btn-sm"
                 onclick="axOpenAddNote()">+ Add Note</button>
       </div>
-      <div class="ax-card-b" style="min-height:320px;max-height:calc(100vh - 280px);overflow-y:auto">
+      <div class="ax-card-b" style="min-height:320px">
         {% if field_notes %}
           <div>
             {% for entry in field_notes %}
@@ -462,11 +472,12 @@
                   {% if entry.files %}
                     <div class="d-flex flex-wrap gap-2 mt-1">
                       {% for f in entry.files %}
-                        <a href="/uploads/{{ f.filename }}" target="_blank"
-                           class="badge text-decoration-none"
-                           style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;padding:.35em .6em">
+                        <button type="button"
+                                onclick="axPreviewFile('/uploads/{{ f.filename }}', '{{ f.filename }}')"
+                                class="badge border-0"
+                                style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3)!important;font-size:.75rem;padding:.35em .6em;cursor:pointer">
                           &#128206; {{ f.filename }}
-                        </a>
+                        </button>
                       {% endfor %}
                     </div>
                   {% endif %}
@@ -633,7 +644,7 @@
 </div><!-- /tab-content -->
 
 <script>
-(function () {
+window.addEventListener('load', function () {
   var tabMap = {
     'tab-job': document.getElementById('tab-job-btn'),
     'tab-notes': document.getElementById('tab-notes-btn'),
@@ -652,7 +663,7 @@
       history.replaceState(null, '', '#' + btn.getAttribute('data-bs-target').replace('#', ''));
     });
   });
-})();
+});
 </script>
 
 <script>
@@ -755,8 +766,67 @@ document.addEventListener('click', function(e) {
 });
 </script>
 
+</div><!-- /page flex wrapper -->
 {% endblock %}
 {% block modals %}
+<!-- File Preview Modal -->
+<div class="modal fade" id="filePreviewModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="background:var(--panel);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title text-truncate" id="previewModalTitle" style="color:var(--text);max-width:80%"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0" id="previewModalBody" style="min-height:200px;max-height:70vh;overflow:auto;display:flex;align-items:center;justify-content:center">
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <a id="previewDownloadBtn" href="#" download
+           class="btn btn-primary btn-sm">&#8659; Save / Download</a>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var _previewModal = null;
+  var IMAGE_EXT = ['jpg','jpeg','png','gif','webp','heic','heif','bmp'];
+  var PDF_EXT   = ['pdf'];
+
+  window.axPreviewFile = function (url, filename) {
+    if (!_previewModal) _previewModal = new bootstrap.Modal(document.getElementById('filePreviewModal'));
+    var ext = (filename.split('.').pop() || '').toLowerCase();
+    var body = document.getElementById('previewModalBody');
+    var title = document.getElementById('previewModalTitle');
+    var dl = document.getElementById('previewDownloadBtn');
+
+    title.textContent = filename;
+    dl.href = url;
+    dl.download = filename;
+
+    body.innerHTML = '';
+    if (IMAGE_EXT.includes(ext)) {
+      var img = document.createElement('img');
+      img.src = url;
+      img.style.cssText = 'max-width:100%;max-height:68vh;object-fit:contain;display:block;margin:auto;padding:12px';
+      body.appendChild(img);
+    } else if (PDF_EXT.includes(ext)) {
+      var iframe = document.createElement('iframe');
+      iframe.src = url;
+      iframe.style.cssText = 'width:100%;height:68vh;border:0';
+      body.appendChild(iframe);
+    } else {
+      body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
+        '<div style="font-size:3rem;margin-bottom:12px">&#128196;</div>' +
+        '<div style="font-size:.95rem">' + filename + '</div>' +
+        '<div style="font-size:.82rem;margin-top:8px">Preview not available — use the download button below.</div>' +
+        '</div>';
+    }
+    _previewModal.show();
+  };
+})();
+</script>
+
 <!-- Add Note Modal -->
 <div class="modal fade" id="addNoteModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
