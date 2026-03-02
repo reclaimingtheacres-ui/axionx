@@ -342,52 +342,46 @@
   </div>
 
   <script>
-  function initGoogleMaps() {
-    if (!google?.maps?.places?.PlaceAutocompleteElement) return;
-
-    function attachAll() {
-      document.querySelectorAll("input.ax-address").forEach((input) => {
-        if (input.dataset.gmpAttached === "1") return;
-
-        const pac = new google.maps.places.PlaceAutocompleteElement({
-          inputElement: input,
-          componentRestrictions: { country: ["au"] }
-        });
-
-        pac.addEventListener("gmp-placeselect", async (event) => {
-          const place = event.place;
-          if (!place) return;
-
-          await place.fetchFields({
-            fields: ["formattedAddress", "addressComponents", "location"]
-          });
-
-          input.value = place.formattedAddress || "";
-
-          const form = input.closest("form") || document;
-          const lat = form.querySelector(`input[name="${input.name}_lat"]`);
-          const lng = form.querySelector(`input[name="${input.name}_lng"]`);
-          if (place.location && lat && lng) {
-            lat.value = place.location.lat();
-            lng.value = place.location.lng();
+  async function axionInitAddressFields() {
+    const inputs = document.querySelectorAll('input.ax-address:not([data-gmp-bound])');
+    if (!inputs.length) return;
+    await google.maps.importLibrary("places");
+    inputs.forEach(input => {
+      input.dataset.gmpBound = '1';
+      const placeholder = input.getAttribute('placeholder') || '';
+      const widget = new google.maps.places.PlaceAutocompleteElement({
+        componentRestrictions: { country: ["au"] }
+      });
+      widget.style.width = '100%';
+      try { widget.placeholder = placeholder; } catch(e) {}
+      input.parentNode.insertBefore(widget, input);
+      input.type = 'hidden';
+      input._pacWidget = widget;
+      widget.addEventListener('gmp-placeselect', async (e) => {
+        const place = e.place;
+        await place.fetchFields({ fields: ['formattedAddress'] });
+        input.value = place.formattedAddress || '';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const form = input.closest('form');
+      if (form && !form._axionSubmitBound) {
+        form._axionSubmitBound = true;
+        form.addEventListener('submit', () => {
+          if (!input.value) {
+            const inner = widget.shadowRoot?.querySelector('input') || widget.querySelector('input');
+            if (inner) input.value = inner.value;
           }
         });
-
-        input.dataset.gmpAttached = "1";
-      });
-    }
-
-    attachAll();
-
-    const observer = new MutationObserver(() => attachAll());
-    observer.observe(document.body, { childList: true, subtree: true });
+      }
+    });
   }
-  window.axionInitPlaces = initGoogleMaps;
-  window.axionSetAddress = function(input, value) { if (input) input.value = value; };
+  window.axionInitPlaces = axionInitAddressFields;
+  window.axionSetAddress = (input, value) => { if (input) input.value = value; };
+  document.addEventListener('DOMContentLoaded', axionInitAddressFields);
   </script>
 
   {% if google_maps_api_key %}
-  <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&v=weekly&libraries=places&loading=async&callback=initGoogleMaps" defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&v=weekly&libraries=places&loading=async" defer></script>
   {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
