@@ -793,6 +793,18 @@ document.addEventListener('click', function(e) {
   var IMAGE_EXT = ['jpg','jpeg','png','gif','webp','heic','heif','bmp'];
   var PDF_EXT   = ['pdf'];
 
+  var _blobUrls = [];
+
+  function _revokePrev() {
+    _blobUrls.forEach(function(u){ URL.revokeObjectURL(u); });
+    _blobUrls = [];
+  }
+
+  function _showLoading(body) {
+    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
+      '<div style="font-size:.85rem">Loading…</div></div>';
+  }
+
   window.axPreviewFile = function (url, filename) {
     if (!_previewModal) _previewModal = new bootstrap.Modal(document.getElementById('filePreviewModal'));
     var ext = (filename.split('.').pop() || '').toLowerCase();
@@ -803,27 +815,40 @@ document.addEventListener('click', function(e) {
     title.textContent = filename;
     dl.href = url;
     dl.download = filename;
+    _revokePrev();
 
-    body.innerHTML = '';
-    if (IMAGE_EXT.includes(ext)) {
-      var img = document.createElement('img');
-      img.src = url;
-      img.style.cssText = 'max-width:100%;max-height:68vh;object-fit:contain;display:block;margin:auto;padding:12px';
-      body.appendChild(img);
-    } else if (PDF_EXT.includes(ext)) {
+    if (IMAGE_EXT.includes(ext) || PDF_EXT.includes(ext)) {
+      _showLoading(body);
       body.style.display = 'block';
-      var obj = document.createElement('object');
-      obj.data = url;
-      obj.type = 'application/pdf';
-      obj.style.cssText = 'width:100%;height:68vh;border:0;display:block';
-      obj.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
-        '<div style="font-size:3rem;margin-bottom:12px">&#128196;</div>' +
-        '<div style="font-size:.95rem;margin-bottom:12px">' + filename + '</div>' +
-        '<div style="font-size:.82rem;margin-bottom:16px">Your browser cannot preview this PDF inline.</div>' +
-        '<a href="' + url + '" target="_blank" class="btn btn-primary btn-sm">Open PDF in new tab</a>' +
-        '</div>';
-      body.appendChild(obj);
+      fetch(url, {credentials: 'include'})
+        .then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.blob();
+        })
+        .then(function(blob) {
+          var blobUrl = URL.createObjectURL(blob);
+          _blobUrls.push(blobUrl);
+          body.innerHTML = '';
+          if (IMAGE_EXT.includes(ext)) {
+            var img = document.createElement('img');
+            img.src = blobUrl;
+            img.style.cssText = 'max-width:100%;max-height:68vh;object-fit:contain;display:block;margin:auto;padding:12px';
+            body.appendChild(img);
+          } else {
+            var ifrm = document.createElement('iframe');
+            ifrm.src = blobUrl;
+            ifrm.style.cssText = 'width:100%;height:68vh;border:0;display:block';
+            body.appendChild(ifrm);
+          }
+          dl.href = blobUrl;
+        })
+        .catch(function() {
+          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
+            '<div style="font-size:3rem;margin-bottom:12px">&#9888;</div>' +
+            '<div style="font-size:.9rem">Could not load file. Use the download button below.</div></div>';
+        });
     } else {
+      body.style.display = 'flex';
       body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
         '<div style="font-size:3rem;margin-bottom:12px">&#128196;</div>' +
         '<div style="font-size:.95rem">' + filename + '</div>' +
