@@ -58,8 +58,7 @@
     <button class="ax-tab" id="tab-notes-btn" data-bs-toggle="tab"
             data-bs-target="#tab-notes" type="button" role="tab">
       Notes &amp; Docs
-      {% set nd_count = (field_notes|length) + (documents|length) %}
-      {% if nd_count %}<span class="ax-tab-badge">{{ nd_count }}</span>{% endif %}
+      {% if field_notes %}<span class="ax-tab-badge">{{ field_notes|length }}</span>{% endif %}
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -470,69 +469,6 @@
       </div>
     </div>
 
-    <!-- Documents -->
-    <div class="ax-card">
-      <div class="ax-card-h">Documents</div>
-      <div class="ax-card-b">
-        {% if session.get('role') == 'admin' %}
-        <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data" class="mb-3">
-          <div class="row g-2 align-items-end">
-            <div class="col-12 col-lg-3">
-              <label class="form-label small mb-1" style="color:var(--muted)">Type</label>
-              <select class="form-select form-select-sm" name="doc_type">
-                {% for t in doc_types %}<option>{{ t }}</option>{% endfor %}
-              </select>
-            </div>
-            <div class="col-12 col-lg-4">
-              <label class="form-label small mb-1" style="color:var(--muted)">Title (optional)</label>
-              <input class="form-control form-control-sm" name="title" placeholder="Title">
-            </div>
-            <div class="col-12 col-lg-5">
-              <label class="form-label small mb-1" style="color:var(--muted)">Files (select multiple)</label>
-              <input class="form-control form-control-sm" type="file" name="file" multiple required
-                     accept=".png,.jpg,.jpeg,.heic,.pdf,.doc,.docx,.xls,.xlsx,.csv">
-            </div>
-          </div>
-          <div class="mt-2">
-            <input class="form-control form-control-sm" name="notes" placeholder="Notes (optional)">
-          </div>
-          <div class="mt-2">
-            <button class="btn btn-primary btn-sm">Upload</button>
-          </div>
-        </form>
-        {% endif %}
-
-        {% if documents %}
-          <div class="list-group list-group-flush">
-            {% for d in documents %}
-              <div class="list-group-item">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                  <div style="min-width:0">
-                    <div class="fw-semibold">
-                      <span class="badge me-1" style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3)">{{ d.doc_type }}</span>
-                      {{ d.title or d.original_filename }}
-                    </div>
-                    <div class="small" style="color:var(--muted)">
-                      {{ d.original_filename }}
-                      {% if d.file_size %}&nbsp;&bull;&nbsp;{{ (d.file_size / 1024)|round(1) }} KB{% endif %}
-                      {% if d.uploaded_by %}&nbsp;&bull;&nbsp;{{ d.uploaded_by }}{% endif %}
-                      &nbsp;&bull;&nbsp;{{ d.uploaded_at[8:10] }}/{{ d.uploaded_at[5:7] }}/{{ d.uploaded_at[:4] }} {{ d.uploaded_at[11:16] }}
-                    </div>
-                    {% if d.notes %}<div class="small mt-1" style="color:var(--muted);font-style:italic">{{ d.notes }}</div>{% endif %}
-                  </div>
-                  <div class="d-flex gap-2 flex-shrink-0">
-                    <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ d.stored_filename }}">Open</a>
-                    <a class="btn btn-outline-secondary btn-sm" href="/uploads/{{ d.stored_filename }}" download="{{ d.original_filename }}">&#8659;</a>
-                  </div>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="text-center py-2" style="color:var(--muted)">No documents uploaded yet.</div>
-        {% endif %}
-      </div>
-    </div>
 
 </div><!-- /tab-notes inner -->
 </div><!-- /tab-notes pane -->
