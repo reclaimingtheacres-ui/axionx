@@ -343,7 +343,7 @@
 
   <script>
   (function () {
-    var GOOGLE_KEY = {{ GOOGLE_MAPS_API_KEY | tojson if GOOGLE_MAPS_API_KEY else 'null' }};
+    var GOOGLE_KEY = {{ google_maps_api_key | tojson if google_maps_api_key else 'null' }};
 
     function initAddressFields() {
       if (!window.google || !google.maps || !google.maps.places) return;

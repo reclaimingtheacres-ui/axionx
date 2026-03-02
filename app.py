@@ -450,7 +450,10 @@ def init_db():
 
 @app.context_processor
 def inject_globals():
-    return {"GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", "")}
+    return {
+        "GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
+        "google_maps_api_key": os.getenv("GOOGLE_MAPS_API_KEY", "")
+    }
 
 
 @app.before_request
