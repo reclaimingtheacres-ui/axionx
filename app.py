@@ -1347,6 +1347,7 @@ def job_detail(job_id: int):
         ORDER BY s.scheduled_for ASC
     """, (job_id,))
     schedules = cur.fetchall()
+    next_schedule = next((s for s in schedules if s["status"] not in ("Cancelled", "Completed")), None)
 
     cur.execute("""
         SELECT d.*, u.full_name AS uploaded_by
@@ -1389,7 +1390,7 @@ def job_detail(job_id: int):
                            statuses=statuses, visit_types=visit_types, users=users,
                            field_notes=field_notes, documents=documents,
                            doc_types=doc_types, booking_types=booking_types,
-                           schedules=schedules,
+                           schedules=schedules, next_schedule=next_schedule,
                            job_linked_customers=job_linked_customers,
                            all_customers=all_customers,
                            customer_roles=customer_roles)
