@@ -60,16 +60,16 @@
           </a>
         {% endif %}
       </div>
-      <div class="fw-semibold">{{ job.customer_name or "—" }}</div>
-      {% if job.customer_company %}<div class="small" style="color:var(--muted)">{{ job.customer_company }}</div>{% endif %}
-      {% if job.customer_email %}<div class="small"><a href="mailto:{{ job.customer_email }}" style="color:var(--accent)">{{ job.customer_email }}</a></div>{% endif %}
+      {% if job.customer_company %}<div class="fw-semibold">{{ job.customer_company }}</div>{% endif %}
+      <div class="{% if job.customer_company %}small{% else %}fw-semibold{% endif %}">{{ job.customer_name or "—" }}</div>
       {% if job.customer_address %}<div class="small" style="color:var(--muted)">{{ job.customer_address }}</div>{% endif %}
+      {% if job.customer_email %}<div class="small"><a href="mailto:{{ job.customer_email }}" style="color:var(--accent)">{{ job.customer_email }}</a></div>{% endif %}
       {% if job.customer_phone %}<div class="small"><a href="tel:{{ job.customer_phone }}" style="color:var(--accent)">{{ job.customer_phone }}{% if job.customer_phone_label %} <span style="color:var(--muted)">({{ job.customer_phone_label }})</span>{% endif %}</a></div>{% endif %}
     </div>
   </div>
   <div class="col-12 col-lg-6">
-    <div class="ax-card p-3">
-      <div class="small fw-bold mb-2" style="color:var(--muted)">CLIENT</div>
+    <div class="ax-card p-3" style="background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.30);">
+      <div class="small fw-bold mb-2" style="color:#2563eb">CLIENT</div>
       <div class="fw-semibold">{{ job.client_name or "—" }}</div>
       {% if job.client_phone %}<div class="small"><a href="tel:{{ job.client_phone }}" style="color:var(--accent)">{{ job.client_phone }}</a></div>{% endif %}
       {% if job.client_email %}<div class="small"><a href="mailto:{{ job.client_email }}" style="color:var(--accent)">{{ job.client_email }}</a></div>{% endif %}
@@ -94,7 +94,7 @@
         <div class="fw-semibold">{{ job.account_number or '—' }}</div>
       </div>
       <div class="col-12 col-lg-4">
-        <span style="color:var(--muted);font-size:.8rem">REGULATION TYPE</span>
+        <span style="color:var(--muted);font-size:.8rem">CONTRACT TYPE</span>
         <div class="fw-semibold">{{ job.regulation_type or '—' }}</div>
       </div>
     </div>
@@ -108,19 +108,25 @@
         <div class="fw-semibold">{{ cents_to_money(job.costs_cents) }}</div>
       </div>
       <div class="col-6 col-lg-3">
-        <span style="color:var(--muted);font-size:.8rem">MMP</span>
+        <span style="color:var(--muted);font-size:.8rem">NEXT PAYMENT DUE</span>
         <div class="fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
       </div>
       <div class="col-6 col-lg-3">
-        <span style="color:var(--muted);font-size:.8rem">MMP DUE DATE</span>
+        <span style="color:var(--muted);font-size:.8rem">NEXT PAYMENT DUE DATE</span>
         <div class="fw-semibold">{{ job.due_date_display or '—' }}</div>
+      </div>
+    </div>
+    <div class="row g-2 mb-2">
+      <div class="col-6 col-lg-3">
+        <span style="color:var(--muted);font-size:.8rem">NEXT PAYMENT FREQUENCY</span>
+        <div class="fw-semibold">{{ job.payment_frequency or '—' }}</div>
       </div>
     </div>
     <div class="mb-3">
       <span style="color:var(--muted);font-size:.8rem">TOTAL DUE NOW</span>
       <div class="fw-semibold fs-5" style="color:var(--accent)">{{ cents_to_money(job.total_due_now_cents) }}
         {% if job.mmp_cents and not job.mmp_included_in_total %}
-          <span class="small fw-normal ms-1" style="color:var(--muted);font-size:.8rem">(MMP not yet due)</span>
+          <span class="small fw-normal ms-1" style="color:var(--muted);font-size:.8rem">(Next payment not yet due)</span>
         {% endif %}
       </div>
     </div>
@@ -138,7 +144,7 @@
             <input class="form-control" name="account_number" value="{{ job.account_number or '' }}">
           </div>
           <div class="col-12 col-lg-4">
-            <label class="form-label">Regulation Type</label>
+            <label class="form-label">Contract Type</label>
             <select class="form-select" name="regulation_type">
               <option value="">— Select —</option>
               {% for rt in ['Regulated','Unregulated','N/A'] %}
@@ -147,7 +153,7 @@
             </select>
           </div>
         </div>
-        <div class="row g-2 mb-3">
+        <div class="row g-2 mb-2">
           <div class="col-6 col-lg-3">
             <label class="form-label">Arrears ($)</label>
             <input class="form-control" name="arrears" value="{{ cents_to_money(job.arrears_cents) if job.arrears_cents else '' }}" placeholder="0.00">
@@ -157,12 +163,23 @@
             <input class="form-control" name="costs" value="{{ cents_to_money(job.costs_cents) if job.costs_cents else '' }}" placeholder="0.00">
           </div>
           <div class="col-6 col-lg-3">
-            <label class="form-label">MMP ($)</label>
+            <label class="form-label">Next Payment Due ($)</label>
             <input class="form-control" name="mmp" value="{{ cents_to_money(job.mmp_cents) if job.mmp_cents else '' }}" placeholder="0.00">
           </div>
           <div class="col-6 col-lg-3">
-            <label class="form-label">MMP Due Date</label>
+            <label class="form-label">Next Payment Due Date</label>
             <input class="form-control" name="job_due_date" type="date" value="{{ job.job_due_date[:10] if job.job_due_date else '' }}">
+          </div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6 col-lg-3">
+            <label class="form-label">Next Payment Frequency</label>
+            <select class="form-select" name="payment_frequency">
+              <option value="">— Select —</option>
+              {% for freq in ['Monthly','Fortnightly','Weekly'] %}
+                <option value="{{ freq }}" {% if job.payment_frequency == freq %}selected{% endif %}>{{ freq }}</option>
+              {% endfor %}
+            </select>
           </div>
         </div>
         <button class="btn btn-primary btn-sm">Save Lender Details</button>

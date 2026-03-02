@@ -339,13 +339,14 @@ def init_db():
         """, (current_prefix, now_ts()))
 
     for col, coltype in [
-        ("lender_name",      "TEXT"),
-        ("account_number",   "TEXT"),
-        ("regulation_type",  "TEXT"),
-        ("arrears_cents",    "INTEGER"),
-        ("costs_cents",      "INTEGER"),
-        ("mmp_cents",        "INTEGER"),
-        ("job_due_date",     "TEXT"),
+        ("lender_name",       "TEXT"),
+        ("account_number",    "TEXT"),
+        ("regulation_type",   "TEXT"),
+        ("arrears_cents",     "INTEGER"),
+        ("costs_cents",       "INTEGER"),
+        ("mmp_cents",         "INTEGER"),
+        ("job_due_date",      "TEXT"),
+        ("payment_frequency", "TEXT"),
     ]:
         add_column_if_missing(cur, "jobs", col, coltype)
 
@@ -1684,19 +1685,21 @@ def job_update(job_id: int):
 def job_lender_update(job_id: int):
     lender_name     = request.form.get("lender_name", "").strip()
     account_number  = request.form.get("account_number", "").strip()
-    regulation_type = request.form.get("regulation_type", "").strip()
-    arrears_cents   = money_to_cents(request.form.get("arrears", ""))
-    costs_cents     = money_to_cents(request.form.get("costs", ""))
-    mmp_cents       = money_to_cents(request.form.get("mmp", ""))
-    job_due_date    = request.form.get("job_due_date", "").strip() or None
+    regulation_type    = request.form.get("regulation_type", "").strip()
+    arrears_cents      = money_to_cents(request.form.get("arrears", ""))
+    costs_cents        = money_to_cents(request.form.get("costs", ""))
+    mmp_cents          = money_to_cents(request.form.get("mmp", ""))
+    job_due_date       = request.form.get("job_due_date", "").strip() or None
+    payment_frequency  = request.form.get("payment_frequency", "").strip() or None
     conn = db()
     cur  = conn.cursor()
     cur.execute("""
         UPDATE jobs SET lender_name=?, account_number=?, regulation_type=?,
-        arrears_cents=?, costs_cents=?, mmp_cents=?, job_due_date=?, updated_at=? WHERE id=?
+        arrears_cents=?, costs_cents=?, mmp_cents=?, job_due_date=?,
+        payment_frequency=?, updated_at=? WHERE id=?
     """, (lender_name or None, account_number or None, regulation_type or None,
           arrears_cents or None, costs_cents or None, mmp_cents or None,
-          job_due_date, now_ts(), job_id))
+          job_due_date, payment_frequency, now_ts(), job_id))
     conn.commit()
     conn.close()
     flash("Lender details updated.", "success")
