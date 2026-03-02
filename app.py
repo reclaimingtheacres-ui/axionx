@@ -2052,6 +2052,43 @@ def customers_list():
     return render_template("customers.html", customers=rows)
 
 
+@app.post("/customers/delete")
+@login_required
+@admin_required
+def customers_bulk_delete():
+    customer_ids = request.form.getlist("customer_ids")
+    if not customer_ids:
+        flash("No customers selected.", "warning")
+        return redirect(url_for("customers_list"))
+    conn = db()
+    cur = conn.cursor()
+    deleted, skipped = 0, []
+    for cid in customer_ids:
+        try:
+            cid = int(cid)
+        except ValueError:
+            continue
+        cur.execute("SELECT COUNT(*) FROM jobs WHERE customer_id = ?", (cid,))
+        if cur.fetchone()[0]:
+            cur.execute("SELECT first_name, last_name FROM customers WHERE id = ?", (cid,))
+            row = cur.fetchone()
+            skipped.append(f"{row['first_name']} {row['last_name']}" if row else str(cid))
+            continue
+        cur.execute("DELETE FROM contact_phone_numbers WHERE entity_type='customer' AND entity_id=?", (cid,))
+        cur.execute("DELETE FROM contact_emails WHERE entity_type='customer' AND entity_id=?", (cid,))
+        cur.execute("DELETE FROM customers WHERE id=?", (cid,))
+        deleted += 1
+    conn.commit()
+    conn.close()
+    parts = []
+    if deleted:
+        parts.append(f"{deleted} customer(s) deleted.")
+    if skipped:
+        parts.append(f"{len(skipped)} skipped (has linked jobs): {', '.join(skipped)}.")
+    flash(" ".join(parts) or "Nothing deleted.", "success" if deleted else "warning")
+    return redirect(url_for("customers_list"))
+
+
 @app.get("/customers/new")
 @login_required
 @admin_required

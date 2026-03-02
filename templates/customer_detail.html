@@ -11,9 +11,6 @@
       {% if customer.id_image_path %}
         <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ customer.id_image_path }}">View ID</a>
       {% endif %}
-      {% if session.get('role') == 'admin' %}
-        <button class="btn btn-outline-danger btn-sm" onclick="document.getElementById('deleteCustOverlay').style.display='flex'">Delete</button>
-      {% endif %}
     </div>
   </div>
   <div class="ax-card-b">
@@ -103,16 +100,3 @@
 </div>
 {% endblock %}
 
-{% block modals %}
-<form id="deleteCustomerForm" method="post" action="/customers/{{ customer.id }}/delete" style="display:none"></form>
-<div id="deleteCustOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:10000; align-items:center; justify-content:center;">
-  <div style="background:#ffffff; border-radius:16px; padding:28px 24px; max-width:420px; width:calc(100% - 32px); box-shadow:0 8px 32px rgba(0,0,0,.18); border:1px solid var(--line);">
-    <h5 style="margin:0 0 12px; color:var(--text)">Delete Customer</h5>
-    <p style="color:var(--text); margin:0 0 20px;">Are you sure you want to delete <strong>{{ customer.first_name }} {{ customer.last_name }}</strong>? This cannot be undone.</p>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('deleteCustOverlay').style.display='none'">Cancel</button>
-      <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('deleteCustomerForm').submit()">Yes, Delete</button>
-    </div>
-  </div>
-</div>
-{% endblock %}

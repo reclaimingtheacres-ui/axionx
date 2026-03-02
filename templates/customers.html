@@ -6,25 +6,74 @@
 <div class="ax-card">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>Customers</div>
-    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/customers/new">New Customer</a>{% endif %}
-  </div>
-  <div class="ax-card-b">
-    <div class="list-group list-group-flush">
-      {% for c in customers %}
-        <a href="/customers/{{ c.id }}" class="list-group-item list-group-item-action">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <div class="fw-semibold">{{ c.last_name }}, {{ c.first_name }}{% if c.company %} <span class="small" style="color:var(--muted)">({{ c.company }})</span>{% endif %}</div>
-            </div>
-            {% if c.id_image_path %}
-              <span class="badge ms-2 mt-1" style="background:rgba(96,165,250,.12);color:var(--accent);border:1px solid rgba(96,165,250,.25);font-size:.75rem">ID on file</span>
-            {% endif %}
-          </div>
-        </a>
-      {% else %}
-        <div style="color:var(--muted)" class="py-3 text-center">No customers yet.</div>
-      {% endfor %}
+    <div class="d-flex gap-2 align-items-center">
+      {% if session.get('role') == 'admin' %}
+        <button type="button" id="custDeleteBtn" class="btn btn-danger btn-sm" style="display:none"
+                onclick="submitCustomerDelete()">Delete Selected</button>
+        <a class="btn btn-primary btn-sm" href="/customers/new">New Customer</a>
+      {% endif %}
     </div>
   </div>
+
+  {% if session.get('role') == 'admin' and customers %}
+  <div id="custWarning" style="display:none; background:rgba(220,38,38,.08); border-bottom:1px solid rgba(220,38,38,.20); padding:10px 20px;">
+    <span style="color:#dc2626; font-size:.875rem;">&#9888; Warning: deleting a customer is permanent and cannot be undone. Customers with linked jobs will be skipped.</span>
+  </div>
+  {% endif %}
+
+  <div class="ax-card-b">
+    {% if session.get('role') == 'admin' and customers %}
+    <div class="px-3 py-2 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
+      <input type="checkbox" id="custSelectAll" class="form-check-input mt-0"
+             onchange="custToggleAll(this)" title="Select all">
+      <label for="custSelectAll" class="small mb-0" style="color:var(--muted);cursor:pointer">Select all</label>
+    </div>
+    {% endif %}
+
+    <form id="custDeleteForm" method="post" action="/customers/delete">
+      <div class="list-group list-group-flush">
+        {% for c in customers %}
+          <div class="list-group-item d-flex align-items-center gap-3 px-3" style="background:transparent;border-color:var(--line)">
+            {% if session.get('role') == 'admin' %}
+            <input type="checkbox" name="customer_ids" value="{{ c.id }}"
+                   class="form-check-input mt-0 cust-cb"
+                   onchange="custUpdateDeleteBtn()">
+            {% endif %}
+            <a href="/customers/{{ c.id }}" class="flex-grow-1 text-decoration-none">
+              <div class="fw-semibold" style="color:var(--text)">{{ c.last_name }}, {{ c.first_name }}{% if c.company %} <span class="small" style="color:var(--muted)">({{ c.company }})</span>{% endif %}</div>
+            </a>
+            {% if c.id_image_path %}
+              <span class="badge ms-2" style="background:rgba(96,165,250,.12);color:var(--accent);border:1px solid rgba(96,165,250,.25);font-size:.75rem">ID on file</span>
+            {% endif %}
+          </div>
+        {% else %}
+          <div style="color:var(--muted)" class="py-3 text-center">No customers yet.</div>
+        {% endfor %}
+      </div>
+    </form>
+  </div>
 </div>
+
+{% if session.get('role') == 'admin' %}
+<script>
+  function custUpdateDeleteBtn() {
+    var checked = document.querySelectorAll('.cust-cb:checked').length;
+    var btn = document.getElementById('custDeleteBtn');
+    var warn = document.getElementById('custWarning');
+    if (btn) btn.style.display = checked > 0 ? '' : 'none';
+    if (warn) warn.style.display = checked > 0 ? '' : 'none';
+  }
+
+  function custToggleAll(cb) {
+    document.querySelectorAll('.cust-cb').forEach(function(el) { el.checked = cb.checked; });
+    custUpdateDeleteBtn();
+  }
+
+  function submitCustomerDelete() {
+    var checked = document.querySelectorAll('.cust-cb:checked').length;
+    if (!checked) return;
+    document.getElementById('custDeleteForm').submit();
+  }
+</script>
+{% endif %}
 {% endblock %}
