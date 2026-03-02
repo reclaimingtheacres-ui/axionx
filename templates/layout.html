@@ -345,28 +345,41 @@
   function initGoogleMaps() {
     if (!google?.maps?.places?.PlaceAutocompleteElement) return;
 
-    function attachAutocomplete() {
-      const input = document.getElementById("customer_address");
-      if (!input || input.dataset.gmpAttached === "1") return;
+    function attachAll() {
+      document.querySelectorAll("input.ax-address").forEach((input) => {
+        if (input.dataset.gmpAttached === "1") return;
 
-      const pac = new google.maps.places.PlaceAutocompleteElement({
-        inputElement: input,
-        componentRestrictions: { country: ["au"] }
+        const pac = new google.maps.places.PlaceAutocompleteElement({
+          inputElement: input,
+          componentRestrictions: { country: ["au"] }
+        });
+
+        pac.addEventListener("gmp-placeselect", async (event) => {
+          const place = event.place;
+          if (!place) return;
+
+          await place.fetchFields({
+            fields: ["formattedAddress", "addressComponents", "location"]
+          });
+
+          input.value = place.formattedAddress || "";
+
+          const form = input.closest("form") || document;
+          const lat = form.querySelector(`input[name="${input.name}_lat"]`);
+          const lng = form.querySelector(`input[name="${input.name}_lng"]`);
+          if (place.location && lat && lng) {
+            lat.value = place.location.lat();
+            lng.value = place.location.lng();
+          }
+        });
+
+        input.dataset.gmpAttached = "1";
       });
-
-      pac.addEventListener("gmp-placeselect", async (event) => {
-        const place = event.place;
-        if (!place) return;
-        await place.fetchFields({ fields: ["formattedAddress"] });
-        input.value = place.formattedAddress || "";
-      });
-
-      input.dataset.gmpAttached = "1";
     }
 
-    attachAutocomplete();
+    attachAll();
 
-    const observer = new MutationObserver(() => attachAutocomplete());
+    const observer = new MutationObserver(() => attachAll());
     observer.observe(document.body, { childList: true, subtree: true });
   }
   window.axionInitPlaces = initGoogleMaps;
