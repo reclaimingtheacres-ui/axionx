@@ -358,7 +358,7 @@
           const place = event.place;
           if (!place) return;
           await place.fetchFields({ fields: ["formattedAddress"] });
-          input.value = place.formattedAddress || "";
+          input.value = place.formattedAddress || input.value;
         });
 
         input.dataset.gmpAttached = "1";
