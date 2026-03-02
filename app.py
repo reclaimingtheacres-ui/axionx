@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify, Response, abort
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -7,9 +7,11 @@ import csv
 import json
 import os
 import re
+import io
 import mimetypes
 from datetime import date, datetime
 import pytz
+from azure.storage.blob import BlobServiceClient, ContentSettings
 
 _melbourne = pytz.timezone("Australia/Melbourne")
 
@@ -20,9 +22,43 @@ app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(hour
 DB_PATH = "axion.db"
 
 UPLOAD_FOLDER = "uploads"
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv", "heic", "heif"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ── Azure Blob Storage ─────────────────────────────────────────────────────────
+_AZURE_CONN_STR  = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+_AZURE_CONTAINER = os.getenv("AZURE_UPLOADS_CONTAINER", "axion-uploads")
+
+try:
+    _blob_service      = BlobServiceClient.from_connection_string(_AZURE_CONN_STR) if _AZURE_CONN_STR else None
+    _uploads_container = _blob_service.get_container_client(_AZURE_CONTAINER) if _blob_service else None
+except Exception as _e:
+    print(f"[Azure] Client init failed: {_e}")
+    _blob_service = _uploads_container = None
+
+
+def upload_to_blob(file_storage, blob_name: str) -> int:
+    """Upload a Werkzeug FileStorage to Azure Blob. Returns file size in bytes."""
+    data = file_storage.read()
+    ct   = file_storage.mimetype or mimetypes.guess_type(blob_name)[0] or "application/octet-stream"
+    _uploads_container.upload_blob(
+        name=blob_name,
+        data=data,
+        overwrite=True,
+        content_settings=ContentSettings(content_type=ct),
+    )
+    return len(data)
+
+
+def delete_blob_safely(blob_name: str):
+    """Delete a blob, silently ignore errors."""
+    try:
+        if _uploads_container:
+            _uploads_container.delete_blob(blob_name)
+    except Exception:
+        pass
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 @app.route("/favicon.ico")
@@ -1677,15 +1713,17 @@ def delete_job(job_id: int):
     cur.execute("SELECT id FROM job_field_notes WHERE job_id = ?", (job_id,))
     note_ids = [r["id"] for r in cur.fetchall()]
     for nid in note_ids:
-        cur.execute("SELECT filepath FROM job_note_files WHERE job_field_note_id = ?", (nid,))
+        cur.execute("SELECT filename, filepath FROM job_note_files WHERE job_field_note_id = ?", (nid,))
         for f in cur.fetchall():
+            delete_blob_safely(f["filename"])
             try: os.remove(f["filepath"])
             except OSError: pass
         cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (nid,))
     cur.execute("DELETE FROM job_field_notes WHERE job_id = ?", (job_id,))
 
-    cur.execute("SELECT filepath FROM job_documents WHERE job_id = ?", (job_id,))
+    cur.execute("SELECT stored_filename, filepath FROM job_documents WHERE job_id = ?", (job_id,))
     for f in cur.fetchall():
+        delete_blob_safely(f["stored_filename"])
         try: os.remove(f["filepath"])
         except OSError: pass
     cur.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
@@ -1825,11 +1863,10 @@ def interaction_add(job_id: int):
     if photo and photo.filename:
         ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else ""
         if ext in {"png", "jpg", "jpeg", "webp", "heic"}:
-            upload_dir = os.path.join(app.config["UPLOAD_FOLDER"], "interactions", str(job_id))
-            os.makedirs(upload_dir, exist_ok=True)
             stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{secure_filename(photo.filename)}"
-            photo.save(os.path.join(upload_dir, stored_name))
-            photo_path = f"interactions/{job_id}/{stored_name}"
+            blob_name   = f"interactions/{job_id}/{stored_name}"
+            upload_to_blob(photo, blob_name)
+            photo_path = blob_name
 
     now = datetime.now().isoformat(timespec="seconds")
 
@@ -2239,7 +2276,7 @@ def customer_create():
                     safe_name = secure_filename(photo.filename)
                     safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
                     stored_name = f"cust_{safe_ts}_{i}_{safe_name}"
-                    photo.save(os.path.join(app.config["UPLOAD_FOLDER"], stored_name))
+                    upload_to_blob(photo, stored_name)
                     id_image_filename = safe_name
                     id_image_path = stored_name
 
@@ -2361,8 +2398,7 @@ def customer_edit_post(customer_id: int):
         filename = secure_filename(id_image.filename)
         safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
         unique_name = f"customer_{customer_id}_id_{safe_ts}_{filename}"
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
-        id_image.save(filepath)
+        upload_to_blob(id_image, unique_name)
         id_image_filename = filename
         id_image_path = unique_name
 
@@ -2505,14 +2541,13 @@ def add_job_note(job_id: int):
 
     for file in files:
         if file and file.filename and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            filename    = secure_filename(file.filename)
             unique_name = f"{job_id}_{note_id}_{filename}"
-            filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_name)
-            file.save(filepath)
+            upload_to_blob(file, unique_name)
             cur.execute("""
                 INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
                 VALUES (?, ?, ?, ?)
-            """, (note_id, unique_name, filepath, ts))
+            """, (note_id, unique_name, unique_name, ts))
 
     conn.commit()
     conn.close()
@@ -2541,13 +2576,12 @@ def delete_job_note(job_id: int, note_id: int):
         flash("You can only delete your own notes.", "danger")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
-    cur.execute("SELECT filepath FROM job_note_files WHERE job_field_note_id = ?", (note_id,))
+    cur.execute("SELECT filename, filepath FROM job_note_files WHERE job_field_note_id = ?", (note_id,))
     files = cur.fetchall()
     for f in files:
-        try:
-            os.remove(f["filepath"])
-        except OSError:
-            pass
+        delete_blob_safely(f["filename"])
+        try: os.remove(f["filepath"])
+        except OSError: pass
     cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (note_id,))
     cur.execute("DELETE FROM job_field_notes WHERE id = ?", (note_id,))
     conn.commit()
@@ -2561,7 +2595,18 @@ def delete_job_note(job_id: int, note_id: int):
 @app.get("/uploads/<path:filename>")
 @login_required
 def serve_upload(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    if _uploads_container:
+        try:
+            blob_client = _uploads_container.get_blob_client(filename)
+            download    = blob_client.download_blob()
+            mime        = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+            return Response(download.readall(), mimetype=mime)
+        except Exception:
+            pass
+    local_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    if os.path.exists(local_path):
+        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    abort(404)
 
 
 @app.post("/jobs/<int:job_id>/documents/upload")
@@ -2589,10 +2634,8 @@ def job_document_upload(job_id: int):
         original_filename = secure_filename(file.filename)
         ts_safe = now_ts().replace(":", "").replace("-", "").replace(" ", "")
         stored_filename = f"job_{job_id}_{ts_safe}_{original_filename}"
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
-        file.save(filepath)
         mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
-        file_size = os.path.getsize(filepath)
+        file_size = upload_to_blob(file, stored_filename)
         cur.execute("""
             INSERT INTO job_documents
                 (job_id, doc_type, title, original_filename, stored_filename,
