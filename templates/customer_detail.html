@@ -103,9 +103,8 @@
 </div>
 {% endblock %}
 
-<form id="deleteCustomerForm" method="post" action="/customers/{{ customer.id }}/delete" style="display:none"></form>
-
 {% block modals %}
+<form id="deleteCustomerForm" method="post" action="/customers/{{ customer.id }}/delete" style="display:none"></form>
 <div class="modal fade" id="deleteCustomerModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--panel2)">
