@@ -101,8 +101,10 @@
     </div>
   </div>
 </div>
+{% endblock %}
 
-<div class="modal fade" id="deleteCustomerModal" tabindex="-1">
+{% block modals %}
+<div class="modal fade" id="deleteCustomerModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--panel2)">
       <div class="modal-header border-0">
