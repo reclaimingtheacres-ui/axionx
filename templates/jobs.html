@@ -26,62 +26,92 @@
       </div>
     </form>
 
-    <div class="list-group list-group-flush">
-      {% for j in jobs %}
-        <div class="list-group-item" style="padding:.6rem .75rem;">
-          <div class="d-flex justify-content-between align-items-start gap-2">
-
-            <a href="/jobs/{{ j.id }}" class="text-decoration-none flex-grow-1" style="min-width:0;color:inherit;">
-              <div class="fw-semibold">{{ j.display_ref }} &mdash; {{ j.customer_name or "No customer" }}</div>
-              <div class="small" style="color:var(--muted)">
-                {{ j.client_name or "No client" }}{% if j.asset_reg %} &nbsp;|&nbsp; Reg: {{ j.asset_reg }}{% endif %}
-              </div>
-              <div class="small" style="color:var(--muted)">
-                {{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}
-              </div>
-              <div class="d-flex flex-wrap gap-1 mt-1">
-                {% if j.assigned_name %}
-                  <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(96,165,250,.13);color:var(--accent);border:1px solid rgba(96,165,250,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.75"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
-                    {{ j.assigned_name }}
-                  </span>
-                {% else %}
-                  <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(156,163,175,.1);color:var(--muted);border:1px solid rgba(156,163,175,.2);border-radius:999px;padding:1px 9px;font-size:.72rem;">
-                    Unassigned
-                  </span>
-                {% endif %}
-                {% if j.next_scheduled %}
-                  <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.8"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></svg>
-                    {{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[:4] }} {{ j.next_scheduled[11:16] }}
-                  </span>
-                {% endif %}
-              </div>
-            </a>
-
-            <div class="text-end flex-shrink-0" style="min-width:110px;">
-              {% if session.get('role') == 'admin' %}
-                <form method="post" action="/jobs/{{ j.id }}/status" style="margin:0;">
-                  <select name="status" class="form-select form-select-sm"
-                          style="font-size:.75rem;min-width:110px;"
-                          onchange="this.form.submit()">
-                    {% for s in statuses %}
-                      <option value="{{ s }}" {% if s == j.status %}selected{% endif %}>{{ s }}</option>
-                    {% endfor %}
-                  </select>
-                </form>
-              {% else %}
-                <span class="badge bg-secondary">{{ j.status }}</span>
-              {% endif %}
-              <div class="small mt-1" style="color:var(--muted)">{% if j.updated_at %}{{ j.updated_at[8:10] }}/{{ j.updated_at[5:7] }}/{{ j.updated_at[:4] }}{% endif %}</div>
-            </div>
-
-          </div>
-        </div>
+    {% for j in jobs %}
+      {% set is_suspended = j.status in ['Suspended', 'Awaiting Instructions'] %}
+      {% set bt = j.next_booking_type or '' %}
+      {% if is_suspended %}
+        {% set badge_color = '#ef4444' %}
+      {% elif 'Update' in bt %}
+        {% set badge_color = '#2563eb' %}
+      {% elif 'New' in bt %}
+        {% set badge_color = '#22c55e' %}
+      {% elif 'Re-attend' in bt %}
+        {% set badge_color = '#f59e0b' %}
       {% else %}
-        <div style="color:var(--muted)" class="py-3 text-center">No jobs found.</div>
-      {% endfor %}
-    </div>
+        {% set badge_color = '#9ca3af' %}
+      {% endif %}
+
+      <div style="display:flex;align-items:stretch;gap:12px;padding:.65rem .1rem;border-bottom:1px solid #e5e7eb;">
+
+        <a href="/jobs/{{ j.id }}" class="text-decoration-none flex-grow-1" style="min-width:0;color:inherit;">
+          <div class="fw-semibold">{{ j.display_ref }} &mdash; {{ j.customer_name or "No customer" }}</div>
+          <div class="small" style="color:var(--muted)">
+            {{ j.client_name or "No client" }}{% if j.asset_reg %} &nbsp;|&nbsp; Reg: {{ j.asset_reg }}{% endif %}
+          </div>
+          <div class="small" style="color:var(--muted)">
+            {{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}
+          </div>
+          <div class="d-flex flex-wrap gap-1 mt-1">
+            {% if j.assigned_name %}
+              <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(96,165,250,.13);color:var(--accent);border:1px solid rgba(96,165,250,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.75"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+                {{ j.assigned_name }}
+              </span>
+            {% else %}
+              <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(156,163,175,.1);color:var(--muted);border:1px solid rgba(156,163,175,.2);border-radius:999px;padding:1px 9px;font-size:.72rem;">
+                Unassigned
+              </span>
+            {% endif %}
+            {% if j.next_scheduled %}
+              <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.8"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></svg>
+                {{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[:4] }} {{ j.next_scheduled[11:16] }}
+              </span>
+            {% endif %}
+          </div>
+        </a>
+
+        <div style="width:180px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;">
+          {% if bt %}
+            <span style="display:inline-block;background:{{ badge_color }};color:#fff;border-radius:999px;padding:.25rem .85rem;font-size:.8rem;font-weight:600;white-space:nowrap;">
+              {{ bt }}
+            </span>
+          {% else %}
+            <span style="display:inline-block;background:#e5e7eb;color:#6b7280;border-radius:999px;padding:.25rem .85rem;font-size:.8rem;font-weight:500;white-space:nowrap;">
+              No booking
+            </span>
+          {% endif %}
+          {% if 'Update' in bt and j.next_sched_id %}
+            <form method="post" action="/jobs/{{ j.id }}/note-update-emailed" style="margin:0;">
+              <button type="submit" class="btn btn-sm" style="font-size:.72rem;padding:2px 10px;border:1px solid #2563eb;color:#2563eb;background:#fff;border-radius:999px;">
+                ✉ Update Emailed
+              </button>
+            </form>
+          {% endif %}
+        </div>
+
+        <div class="text-end flex-shrink-0" style="min-width:110px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;">
+          {% if session.get('role') == 'admin' %}
+            <form method="post" action="/jobs/{{ j.id }}/status" style="margin:0;">
+              <select name="status" class="form-select form-select-sm"
+                      style="font-size:.75rem;min-width:110px;"
+                      onchange="this.form.submit()">
+                {% for s in statuses %}
+                  <option value="{{ s }}" {% if s == j.status %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          {% else %}
+            <span class="badge bg-secondary">{{ j.status }}</span>
+          {% endif %}
+          <div class="small mt-1" style="color:var(--muted)">{% if j.updated_at %}{{ j.updated_at[8:10] }}/{{ j.updated_at[5:7] }}/{{ j.updated_at[:4] }}{% endif %}</div>
+        </div>
+
+      </div>
+    {% else %}
+      <div style="color:var(--muted)" class="py-3 text-center">No jobs found.</div>
+    {% endfor %}
+
   </div>
 </div>
 {% endblock %}

@@ -1050,7 +1050,16 @@ def jobs_list():
            (SELECT s.scheduled_for FROM schedules s
             WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
               AND s.scheduled_for >= datetime('now')
-            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled
+            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled,
+           (SELECT bt.name FROM schedules s
+            JOIN booking_types bt ON bt.id = s.booking_type_id
+            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
+              AND s.scheduled_for >= datetime('now')
+            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_booking_type,
+           (SELECT s.id FROM schedules s
+            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
+              AND s.scheduled_for >= datetime('now')
+            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
     LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -3178,10 +3187,12 @@ def my_today():
 
     cur.execute("""
         SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
+               bt.name AS booking_type_name,
                j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type='vehicle' LIMIT 1) AS asset_reg
         FROM schedules s
+        JOIN booking_types bt ON bt.id = s.booking_type_id
         JOIN jobs j ON j.id = s.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE date(s.scheduled_for) = ? AND s.assigned_to_user_id = ?
@@ -3193,6 +3204,49 @@ def my_today():
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
                            today=today, today_display=today_display)
+
+
+@app.post("/jobs/<int:job_id>/note-update-emailed")
+def note_update_emailed(job_id: int):
+    user_id = session.get("user_id")
+    user_name = session.get("user_name", "Unknown")
+    role = session.get("role")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        flash("Job not found.", "danger")
+        return redirect(url_for("jobs_list"))
+
+    if role == "agent" and job["assigned_user_id"] != user_id:
+        sched_check = conn.execute(
+            """SELECT 1 FROM schedules WHERE job_id = ? AND assigned_to_user_id = ?
+               AND status NOT IN ('Cancelled') LIMIT 1""",
+            (job_id, user_id)
+        ).fetchone()
+        if not sched_check:
+            conn.close()
+            flash("You do not have access to that job.", "danger")
+            return redirect(url_for("jobs_list"))
+
+    now_melb = datetime.now(_melbourne)
+    ts = now_melb.strftime("%d/%m/%Y %H:%M")
+    narrative = f"Update emailed — {ts} — {user_name}"
+    occurred_at = now_ts()
+    conn.execute(
+        """INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+           VALUES (?, 'Note', ?, ?, ?)""",
+        (job_id, narrative, occurred_at, occurred_at)
+    )
+    conn.commit()
+    conn.close()
+
+    flash("Update emailed note added.", "success")
+    ref = request.referrer or url_for("jobs_list")
+    return redirect(ref)
 
 
 if __name__ == "__main__":
