@@ -3035,20 +3035,41 @@ def job_item_delete(job_id: int, item_id: int):
 @login_required
 def add_job_note(job_id: int):
     note_text = request.form.get("note_text", "").strip()
+    barcode   = request.form.get("barcode", "").strip()
     files = request.files.getlist("attachments")
+
+    if barcode:
+        note_text = f"[Barcode: {barcode}]\n{note_text}".strip()
 
     if not note_text and not any(f.filename for f in files):
         flash("A note or attachment is required.", "danger")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
-    ts = now_ts()
+    # Admin can override staff and timestamp
+    if session.get("role") == "admin":
+        staff_uid_raw = request.form.get("staff_user_id", "").strip()
+        author_id = int(staff_uid_raw) if staff_uid_raw and staff_uid_raw.isdigit() else session.get("user_id")
+        note_date  = request.form.get("note_date", "").strip()
+        note_hour  = request.form.get("note_hour", "").strip()
+        note_min   = request.form.get("note_minute", "").strip()
+        if note_date and note_hour and note_min:
+            try:
+                ts = parse_interaction_datetime(note_date, f"{note_hour}:{note_min}")
+            except Exception:
+                ts = now_ts()
+        else:
+            ts = now_ts()
+    else:
+        author_id = session.get("user_id")
+        ts = now_ts()
+
     conn = db()
     cur = conn.cursor()
 
     cur.execute("""
         INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
         VALUES (?, ?, ?, ?)
-    """, (job_id, session.get("user_id"), note_text, ts))
+    """, (job_id, author_id, note_text, ts))
 
     note_id = cur.lastrowid
 

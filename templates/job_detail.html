@@ -2044,29 +2044,79 @@ document.addEventListener('click', function(e) {
 <div class="modal fade" id="addNoteModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
-      <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h6 class="modal-title" style="color:var(--text)">Add Note</h6>
+      <div class="modal-header" style="border-bottom:1px solid var(--line);gap:.5rem">
+        <span style="width:22px;height:22px;border-radius:50%;background:#22c55e;display:inline-block;flex-shrink:0"></span>
+        <h6 class="modal-title mb-0" style="color:var(--text);flex:1">Add Note/File</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <form method="post" action="/jobs/{{ job.id }}/notes/new" enctype="multipart/form-data">
+      <form id="addNoteForm" method="post" action="/jobs/{{ job.id }}/notes/new" enctype="multipart/form-data">
         <div class="modal-body">
-          <div class="mb-2">
-            <span id="addNoteDateTime" style="color:var(--muted);font-size:.78rem"></span>
-            <span style="color:var(--muted);font-size:.78rem"> &bull; submitting as <strong style="color:var(--text)">{{ session.get('user_name', 'Unknown') }}</strong></span>
+
+          <style>
+            .an-row { display:grid; grid-template-columns:110px 1fr; gap:.5rem 1rem; align-items:center; margin-bottom:.75rem; }
+            .an-label { font-size:.85rem; color:var(--muted); text-align:right; }
+            .an-label .info-dot { display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--accent);color:#fff;font-size:.6rem;font-weight:700;margin-left:3px;cursor:default; }
+          </style>
+
+          <!-- Staff -->
+          {% if session.get('role') == 'admin' %}
+          <div class="an-row">
+            <div class="an-label">Staff: <span class="info-dot" title="Who is this note attributed to?">i</span></div>
+            <select class="form-select form-select-sm" name="staff_user_id" id="an_staff">
+              {% for u in users %}
+              <option value="{{ u.id }}" {% if u.id == session.get('user_id') %}selected{% endif %}>
+                {{ u.full_name }}
+              </option>
+              {% endfor %}
+            </select>
           </div>
-          <div class="mb-2">
-            <textarea class="form-control form-control-sm" name="note_text" rows="5"
-                      placeholder="Enter note..." style="font-size:.85rem"></textarea>
+
+          <!-- Time Start -->
+          <div class="an-row">
+            <div class="an-label">Time Start:</div>
+            <div class="d-flex gap-2 align-items-center">
+              <input type="text" class="form-control form-control-sm" name="note_date" id="an_date"
+                     placeholder="dd/mm/yyyy" maxlength="10" style="max-width:120px">
+              <select class="form-select form-select-sm" name="note_hour" id="an_hour" style="max-width:72px">
+                {% for h in range(0,24) %}
+                <option value="{{ '%02d'|format(h) }}">{{ '%02d'|format(h) }}</option>
+                {% endfor %}
+              </select>
+              <select class="form-select form-select-sm" name="note_minute" id="an_minute" style="max-width:72px">
+                {% for m in range(0,60) %}
+                <option value="{{ '%02d'|format(m) }}">{{ '%02d'|format(m) }}</option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
-          <div>
-            <label class="form-label small mb-1" style="color:var(--muted)">Attachments (PNG, JPG, PDF, DOC, DOCX)</label>
-            <input class="form-control form-control-sm" type="file" name="attachments" multiple
-                   accept=".png,.jpg,.jpeg,.heic,.pdf,.doc,.docx" style="font-size:.8rem">
+          {% endif %}
+
+          <!-- Barcode -->
+          <div class="an-row">
+            <div class="an-label">Barcode:</div>
+            <input type="text" class="form-control form-control-sm" name="barcode" id="an_barcode"
+                   placeholder="Scan or enter barcode…" autocomplete="off">
           </div>
+
+          <!-- Description -->
+          <div class="an-row" style="align-items:flex-start">
+            <div class="an-label" style="padding-top:.35rem">Description: <span class="info-dot" title="Required if no file is attached">i</span></div>
+            <textarea class="form-control form-control-sm" name="note_text" id="an_text"
+                      rows="4" placeholder="Enter note…" style="font-size:.85rem;resize:vertical"></textarea>
+          </div>
+
+          <!-- File -->
+          <div class="an-row">
+            <div class="an-label">File: <span class="info-dot" title="PNG, JPG, PDF, DOC, DOCX">i</span></div>
+            <input class="form-control form-control-sm" type="file" name="attachments" id="an_file"
+                   multiple accept=".png,.jpg,.jpeg,.heic,.pdf,.doc,.docx" style="font-size:.8rem">
+          </div>
+
         </div>
-        <div class="modal-footer" style="border-top:1px solid var(--line)">
-          <button type="submit" class="btn btn-primary btn-sm">Save Note</button>
-          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
+          <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save">Save</button>
+          <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save_add" id="an_save_add">Save and Add</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="anClear()">Clear</button>
         </div>
       </form>
     </div>
@@ -2074,21 +2124,68 @@ document.addEventListener('click', function(e) {
 </div>
 <script>
 (function () {
-  var _addNoteModal = null;
-  window.axOpenAddNote = function () {
-    if (!_addNoteModal) _addNoteModal = new bootstrap.Modal(document.getElementById('addNoteModal'));
+  function anNow() {
     var now = new Date();
     var parts = {};
     new Intl.DateTimeFormat('en-AU', {
       timeZone: 'Australia/Melbourne',
       day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', hour12: true
+      hour: '2-digit', minute: '2-digit', hour12: false
     }).formatToParts(now).forEach(function(p){ parts[p.type] = p.value; });
-    var dateStr = parts.day + '/' + parts.month + '/' + parts.year +
-                  ' ' + parts.hour + ':' + parts.minute + ' ' + (parts.dayPeriod || '').toLowerCase();
-    document.getElementById('addNoteDateTime').textContent = dateStr;
-    _addNoteModal.show();
+    return {
+      dateStr: parts.day + '/' + parts.month + '/' + parts.year,
+      hour: parts.hour,
+      minute: parts.minute
+    };
+  }
+
+  function anSetNow() {
+    var t = anNow();
+    var dateEl = document.getElementById('an_date');
+    var hourEl = document.getElementById('an_hour');
+    var minEl  = document.getElementById('an_minute');
+    if (dateEl) dateEl.value = t.dateStr;
+    if (hourEl) hourEl.value = t.hour;
+    if (minEl)  minEl.value  = t.minute;
+  }
+
+  window.anClear = function() {
+    document.getElementById('an_text').value = '';
+    document.getElementById('an_barcode').value = '';
+    var fileEl = document.getElementById('an_file');
+    if (fileEl) { fileEl.value = ''; }
+    anSetNow();
   };
+
+  window.axOpenAddNote = function () {
+    anSetNow();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('addNoteModal')).show();
+    setTimeout(function(){ document.getElementById('an_text').focus(); }, 350);
+  };
+
+  /* Save and Add: submit then reopen cleared modal */
+  var saveAddBtn = document.getElementById('an_save_add');
+  if (saveAddBtn) {
+    saveAddBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      var form = document.getElementById('addNoteForm');
+      var text = document.getElementById('an_text').value.trim();
+      var barcode = document.getElementById('an_barcode').value.trim();
+      var fileEl  = document.getElementById('an_file');
+      var hasFile = fileEl && fileEl.files && fileEl.files.length > 0;
+      if (!text && !barcode && !hasFile) {
+        document.getElementById('an_text').focus();
+        return;
+      }
+      var fd = new FormData(form);
+      fetch(form.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function() {
+          anClear();
+          setTimeout(function(){ document.getElementById('an_text').focus(); }, 100);
+        })
+        .catch(function() {});
+    });
+  }
 })();
 </script>
 
