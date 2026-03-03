@@ -15,11 +15,15 @@
           </div>
           <div class="form-text" style="color:var(--muted)">Auto-generated &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit;vertical-align:baseline" onclick="openEntityModal('settings', '/admin/settings/popup')">change</button></div>
         </div>
-        <div class="col-12 col-lg-3">
+        <div class="col-12 col-lg-5">
           <label class="form-label">Client Reference</label>
-          <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,''); syncCJN()">
+          <div class="position-relative">
+            <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,''); syncCJN()" autocomplete="off">
+            <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
+          </div>
+          <div class="form-text" style="color:var(--muted)">Type to search previous jobs and clone</div>
         </div>
-        <div class="col-12 col-lg-3">
+        <div class="col-12 col-lg-4">
           <label class="form-label d-flex align-items-center gap-2">
             Client Job Number
             <span style="font-weight:400;font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:4px;">
@@ -28,13 +32,6 @@
             </span>
           </label>
           <input class="form-control" name="client_job_number" id="client_job_number" placeholder="e.g., CJN-001" oninput="this.value=this.value.replace(/\s/g,'')">
-        </div>
-        <div class="col-12 col-lg-3 d-flex flex-column justify-content-end">
-          <label class="form-label">Search Previous Jobs</label>
-          <div class="position-relative">
-            <input type="text" id="ref_search" class="form-control" placeholder="Search by reference or job no. to clone…" autocomplete="off">
-            <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
-          </div>
         </div>
       </div>
 
@@ -641,15 +638,14 @@ function removeEmailRow(btn) {
     });
   }
 
-  /* ── Reference search typeahead ──────────────────────────────────── */
-  var refSearch  = document.getElementById('ref_search');
+  /* ── Reference search typeahead (on client_reference field) ─────── */
   var refResults = document.getElementById('ref_results');
   var _cloneData = null;
   var _cloneBs   = null;
 
-  if (refSearch) {
-    refSearch.addEventListener('input', function () {
-      var q = refSearch.value.trim();
+  if (crEl && refResults) {
+    crEl.addEventListener('input', function () {
+      var q = crEl.value.trim();
       if (q.length < 2) { refResults.style.display = 'none'; return; }
       fetch('/jobs/search-reference?q=' + encodeURIComponent(q))
         .then(function (r) { return r.json(); })
@@ -675,7 +671,8 @@ function removeEmailRow(btn) {
             d.addEventListener('mousedown', function (e) {
               e.preventDefault();
               refResults.style.display = 'none';
-              refSearch.value = ref || job.display_ref;
+              crEl.value = ref || job.display_ref;
+              syncCJN();
               loadCloneModal(job.id);
             });
             refResults.appendChild(d);
@@ -684,11 +681,11 @@ function removeEmailRow(btn) {
         });
     });
 
-    refSearch.addEventListener('blur', function () {
+    crEl.addEventListener('blur', function () {
       setTimeout(function () { refResults.style.display = 'none'; }, 200);
     });
-    refSearch.addEventListener('focus', function () {
-      if (refSearch.value.trim().length >= 2) refSearch.dispatchEvent(new Event('input'));
+    crEl.addEventListener('focus', function () {
+      if (crEl.value.trim().length >= 2) crEl.dispatchEvent(new Event('input'));
     });
   }
 
