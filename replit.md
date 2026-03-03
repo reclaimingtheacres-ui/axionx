@@ -75,6 +75,28 @@ Every cue create, assign, status change, and user action is written to `audit_lo
 
 Filter by YYMM prefix (e.g. `2602`). Shows total jobs, jobs by status, and completed cues per agent for the month.
 
+## Field Resources (`/resources`)
+
+Available to all logged-in users (admin + agent) via sidebar. Two sections:
+- **Tow Operators** — company name, phone, address; add/edit/delete via popup modals (fetch-based, no page reload)
+- **Auction Yards** — yard name, address; same popup pattern
+
+Routes: `GET /resources`, `POST /resources/tow-operators/add|/<id>/edit|/<id>/delete`, `POST /resources/auction-yards/add|/<id>/edit|/<id>/delete`
+
+DB tables: `tow_operators`, `auction_yards`
+
+## Forms Tab (Job Detail)
+
+Each job's detail page has a "Forms" tab (visible to all users) containing:
+- **6 pre-defined forms** — Worksheet, VIR, Vehicle Inspection Report), Form 13, Transport Instructions, Repossession Lock, Termination Notice
+- Each form opens as a Bootstrap modal with a print-ready A4 layout, auto-populated from job data; editable fields use `contenteditable`; date/time fields auto-fill with current date/time
+- Transport Instructions includes dropdowns for Tow Operator and Auction Yard (populated from DB)
+- **Admin-only**: "Create Form" card that opens a builder modal — select fields from a static list, name the template, save. Custom templates appear as cards and open a print modal showing selected job fields
+- `@media print` CSS hides the shell and shows only `.form-print-area`
+
+Routes: `POST /form-templates/add`, `POST /form-templates/<id>/delete`  
+DB table: `form_templates` (name, field_list JSON, created_by, active)
+
 ## Create Job Enhancements
 
 - **Client Job Number** field (`jobs.client_job_number`) saved alongside client reference; "Same as reference" checkbox mirrors the reference value live.

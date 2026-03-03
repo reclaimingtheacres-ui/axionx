@@ -1,0 +1,304 @@
+{% extends "layout.html" %}
+{% block title %}Axionx | Field Resources{% endblock %}
+{% block page_title %}Field Resources{% endblock %}
+
+{% block content %}
+<style>
+  .res-table th { font-size:.8rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .res-table td { font-size:.92rem; vertical-align:middle; }
+  .res-table tr:last-child td { border-bottom:0; }
+  .res-empty { color:var(--muted); font-size:.9rem; padding:1.2rem .5rem; }
+</style>
+
+<div class="row g-4">
+
+  <!-- TOW OPERATORS -->
+  <div class="col-12 col-xl-6">
+    <div class="ax-card h-100">
+      <div class="ax-card-h d-flex justify-content-between align-items-center">
+        <span>Tow Operators</span>
+        <button class="btn btn-primary btn-sm" onclick="openTowModal(null)">+ Add Tow Operator</button>
+      </div>
+      <div class="ax-card-b p-0">
+        <table class="table res-table mb-0" id="tow-table">
+          <thead>
+            <tr>
+              <th class="ps-3">Company</th>
+              <th>Phone</th>
+              <th>Address</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tow-body">
+            {% for op in tow_operators %}
+            <tr id="tow-row-{{ op.id }}" data-id="{{ op.id }}"
+                data-company="{{ op.company_name|e }}" data-phone="{{ op.phone or ''|e }}" data-address="{{ op.address or ''|e }}">
+              <td class="ps-3 fw-semibold">{{ op.company_name }}</td>
+              <td>{{ op.phone or '—' }}</td>
+              <td>{{ op.address or '—' }}</td>
+              <td class="text-end pe-3">
+                <button class="btn btn-link btn-sm p-0 me-2" style="color:var(--accent)"
+                        onclick="openTowModal({{ op.id }})">Edit</button>
+                <button class="btn btn-link btn-sm p-0" style="color:#ef4444"
+                        onclick="deleteTow({{ op.id }}, this)">Delete</button>
+              </td>
+            </tr>
+            {% else %}
+            <tr id="tow-empty"><td colspan="4" class="res-empty ps-3">No tow operators yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUCTION YARDS -->
+  <div class="col-12 col-xl-6">
+    <div class="ax-card h-100">
+      <div class="ax-card-h d-flex justify-content-between align-items-center">
+        <span>Auction Yards</span>
+        <button class="btn btn-primary btn-sm" onclick="openYardModal(null)">+ Add Auction Yard</button>
+      </div>
+      <div class="ax-card-b p-0">
+        <table class="table res-table mb-0" id="yard-table">
+          <thead>
+            <tr>
+              <th class="ps-3">Auction Yard</th>
+              <th>Address</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="yard-body">
+            {% for yard in auction_yards %}
+            <tr id="yard-row-{{ yard.id }}" data-id="{{ yard.id }}"
+                data-name="{{ yard.name|e }}" data-address="{{ yard.address or ''|e }}">
+              <td class="ps-3 fw-semibold">{{ yard.name }}</td>
+              <td>{{ yard.address or '—' }}</td>
+              <td class="text-end pe-3">
+                <button class="btn btn-link btn-sm p-0 me-2" style="color:var(--accent)"
+                        onclick="openYardModal({{ yard.id }})">Edit</button>
+                <button class="btn btn-link btn-sm p-0" style="color:#ef4444"
+                        onclick="deleteYard({{ yard.id }}, this)">Delete</button>
+              </td>
+            </tr>
+            {% else %}
+            <tr id="yard-empty"><td colspan="3" class="res-empty ps-3">No auction yards yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- TOW OPERATOR MODAL -->
+<div class="modal fade" id="towModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;border:1px solid var(--line)">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title fw-700" id="towModalTitle">Add Tow Operator</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Company Name <span style="color:#ef4444">*</span></label>
+          <input type="text" id="tow_company" class="form-control" placeholder="e.g. Metro Towing" maxlength="120">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Phone</label>
+          <input type="text" id="tow_phone" class="form-control" placeholder="e.g. 03 9000 0000" maxlength="40">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Address</label>
+          <input type="text" id="tow_address" class="form-control" placeholder="Street address" maxlength="200">
+        </div>
+        <div id="tow_error" class="text-danger small mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveTow()" id="towSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AUCTION YARD MODAL -->
+<div class="modal fade" id="yardModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;border:1px solid var(--line)">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title fw-700" id="yardModalTitle">Add Auction Yard</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Auction Yard Name <span style="color:#ef4444">*</span></label>
+          <input type="text" id="yard_name" class="form-control" placeholder="e.g. Pickles Auctions" maxlength="120">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Address</label>
+          <input type="text" id="yard_address" class="form-control" placeholder="Street address" maxlength="200">
+        </div>
+        <div id="yard_error" class="text-danger small mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveYard()" id="yardSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var _towEditId  = null;
+var _yardEditId = null;
+
+var towModal  = new bootstrap.Modal(document.getElementById('towModal'));
+var yardModal = new bootstrap.Modal(document.getElementById('yardModal'));
+
+function openTowModal(id) {
+  _towEditId = id;
+  document.getElementById('towModalTitle').textContent = id ? 'Edit Tow Operator' : 'Add Tow Operator';
+  document.getElementById('tow_error').style.display = 'none';
+  if (id) {
+    var row = document.getElementById('tow-row-' + id);
+    document.getElementById('tow_company').value = row.dataset.company;
+    document.getElementById('tow_phone').value   = row.dataset.phone;
+    document.getElementById('tow_address').value = row.dataset.address;
+  } else {
+    document.getElementById('tow_company').value = '';
+    document.getElementById('tow_phone').value   = '';
+    document.getElementById('tow_address').value = '';
+  }
+  towModal.show();
+}
+
+function saveTow() {
+  var company = document.getElementById('tow_company').value.trim();
+  var phone   = document.getElementById('tow_phone').value.trim();
+  var address = document.getElementById('tow_address').value.trim();
+  var errEl   = document.getElementById('tow_error');
+  if (!company) { errEl.textContent = 'Company name is required.'; errEl.style.display = ''; return; }
+  errEl.style.display = 'none';
+  var url = _towEditId ? '/resources/tow-operators/' + _towEditId + '/edit' : '/resources/tow-operators/add';
+  var fd = new FormData();
+  fd.append('company_name', company);
+  fd.append('phone', phone);
+  fd.append('address', address);
+  document.getElementById('towSaveBtn').disabled = true;
+  fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      document.getElementById('towSaveBtn').disabled = false;
+      if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
+      towModal.hide();
+      if (_towEditId) {
+        var row = document.getElementById('tow-row-' + _towEditId);
+        row.dataset.company = company; row.dataset.phone = phone; row.dataset.address = address;
+        row.cells[0].innerHTML = '<span class="fw-semibold">' + esc(company) + '</span>';
+        row.cells[1].textContent = phone || '—';
+        row.cells[2].textContent = address || '—';
+      } else {
+        var empty = document.getElementById('tow-empty');
+        if (empty) empty.remove();
+        var tbody = document.getElementById('tow-body');
+        var tr = document.createElement('tr');
+        tr.id = 'tow-row-' + data.id;
+        tr.dataset.id = data.id; tr.dataset.company = company; tr.dataset.phone = phone; tr.dataset.address = address;
+        tr.innerHTML = '<td class="ps-3 fw-semibold">' + esc(company) + '</td><td>' + esc(phone||'—') + '</td><td>' + esc(address||'—') + '</td>'
+          + '<td class="text-end pe-3"><button class="btn btn-link btn-sm p-0 me-2" style="color:var(--accent)" onclick="openTowModal(' + data.id + ')">Edit</button>'
+          + '<button class="btn btn-link btn-sm p-0" style="color:#ef4444" onclick="deleteTow(' + data.id + ', this)">Delete</button></td>';
+        tbody.appendChild(tr);
+      }
+    })
+    .catch(function(){ document.getElementById('towSaveBtn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+}
+
+function deleteTow(id, btn) {
+  if (!confirm('Remove this tow operator?')) return;
+  fetch('/resources/tow-operators/' + id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        document.getElementById('tow-row-' + id).remove();
+        if (!document.getElementById('tow-body').querySelector('tr')) {
+          document.getElementById('tow-body').innerHTML = '<tr id="tow-empty"><td colspan="4" class="res-empty ps-3">No tow operators yet.</td></tr>';
+        }
+      }
+    });
+}
+
+function openYardModal(id) {
+  _yardEditId = id;
+  document.getElementById('yardModalTitle').textContent = id ? 'Edit Auction Yard' : 'Add Auction Yard';
+  document.getElementById('yard_error').style.display = 'none';
+  if (id) {
+    var row = document.getElementById('yard-row-' + id);
+    document.getElementById('yard_name').value    = row.dataset.name;
+    document.getElementById('yard_address').value = row.dataset.address;
+  } else {
+    document.getElementById('yard_name').value    = '';
+    document.getElementById('yard_address').value = '';
+  }
+  yardModal.show();
+}
+
+function saveYard() {
+  var name    = document.getElementById('yard_name').value.trim();
+  var address = document.getElementById('yard_address').value.trim();
+  var errEl   = document.getElementById('yard_error');
+  if (!name) { errEl.textContent = 'Auction yard name is required.'; errEl.style.display = ''; return; }
+  errEl.style.display = 'none';
+  var url = _yardEditId ? '/resources/auction-yards/' + _yardEditId + '/edit' : '/resources/auction-yards/add';
+  var fd = new FormData();
+  fd.append('name', name);
+  fd.append('address', address);
+  document.getElementById('yardSaveBtn').disabled = true;
+  fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      document.getElementById('yardSaveBtn').disabled = false;
+      if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
+      yardModal.hide();
+      if (_yardEditId) {
+        var row = document.getElementById('yard-row-' + _yardEditId);
+        row.dataset.name = name; row.dataset.address = address;
+        row.cells[0].innerHTML = '<span class="fw-semibold">' + esc(name) + '</span>';
+        row.cells[1].textContent = address || '—';
+      } else {
+        var empty = document.getElementById('yard-empty');
+        if (empty) empty.remove();
+        var tbody = document.getElementById('yard-body');
+        var tr = document.createElement('tr');
+        tr.id = 'yard-row-' + data.id;
+        tr.dataset.id = data.id; tr.dataset.name = name; tr.dataset.address = address;
+        tr.innerHTML = '<td class="ps-3 fw-semibold">' + esc(name) + '</td><td>' + esc(address||'—') + '</td>'
+          + '<td class="text-end pe-3"><button class="btn btn-link btn-sm p-0 me-2" style="color:var(--accent)" onclick="openYardModal(' + data.id + ')">Edit</button>'
+          + '<button class="btn btn-link btn-sm p-0" style="color:#ef4444" onclick="deleteYard(' + data.id + ', this)">Delete</button></td>';
+        tbody.appendChild(tr);
+      }
+    })
+    .catch(function(){ document.getElementById('yardSaveBtn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+}
+
+function deleteYard(id, btn) {
+  if (!confirm('Remove this auction yard?')) return;
+  fetch('/resources/auction-yards/' + id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        document.getElementById('yard-row-' + id).remove();
+        if (!document.getElementById('yard-body').querySelector('tr')) {
+          document.getElementById('yard-body').innerHTML = '<tr id="yard-empty"><td colspan="3" class="res-empty ps-3">No auction yards yet.</td></tr>';
+        }
+      }
+    });
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

@@ -78,6 +78,10 @@
       {% if schedules %}<span class="ax-tab-badge">{{ schedules|length }}</span>{% endif %}
     </button>
   </li>
+  <li class="nav-item" role="presentation">
+    <button class="ax-tab" id="tab-forms-btn" data-bs-toggle="tab"
+            data-bs-target="#tab-forms" type="button" role="tab">Forms</button>
+  </li>
   {% if session.get('role') == 'admin' %}
   <li class="nav-item" role="presentation">
     <button class="ax-tab" id="tab-settings-btn" data-bs-toggle="tab"
@@ -711,8 +715,817 @@
 </div><!-- /schedule ax-card -->
 </div><!-- /tab-schedule pane -->
 
+<div class="tab-pane fade" id="tab-forms" role="tabpanel">
+<style>
+.form-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.form-card-title {
+  font-weight: 600;
+  font-size: .95rem;
+  color: var(--text);
+}
+.form-card-sub {
+  font-size: .8rem;
+  color: var(--muted);
+  flex: 1;
+}
+@media print {
+  body > *,
+  .ax-shell > *,
+  .ax-main > * { display: none !important; }
+  .form-print-area { display: block !important; position: static !important; }
+  .modal { display: block !important; position: static !important; background: none !important; }
+  .modal-dialog { max-width: 100% !important; margin: 0 !important; }
+  .modal-content { border: none !important; box-shadow: none !important; }
+  .modal-header, .modal-footer { display: none !important; }
+  .no-print { display: none !important; }
+}
+.form-print-area {
+  font-family: Arial, sans-serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #000;
+}
+.fpa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid #000;
+  padding-bottom: .5rem;
+  margin-bottom: 1rem;
+}
+.fpa-company { font-size: 1.3rem; font-weight: 700; letter-spacing: .5px; }
+.fpa-title   { font-size: 1rem; font-weight: 600; text-align: right; }
+.fpa-section { margin-bottom: .8rem; }
+.fpa-label   { font-size: 9pt; text-transform: uppercase; letter-spacing: .05em; color: #555; margin-bottom: 1px; }
+.fpa-value   { font-size: 11pt; border-bottom: 1px solid #aaa; min-height: 22px; padding: 1px 2px; outline: none; }
+.fpa-row     { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1.5rem; }
+.fpa-row3    { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .5rem 1rem; }
+.fpa-check-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .3rem .5rem; }
+.fpa-check-item { display: flex; align-items: center; gap: .4rem; font-size: 10pt; }
+.fpa-divider { border: none; border-top: 1px solid #ccc; margin: .8rem 0; }
+table.fpa-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+table.fpa-table th { background: #eee; border: 1px solid #aaa; padding: 4px 8px; font-weight: 600; text-align: left; }
+table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
+</style>
+
+<div class="p-3">
+  <div class="row g-3">
+
+    <!-- WORKSHEET -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">Worksheet</div>
+        <div class="form-card-sub">Full job summary with all details</div>
+        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formWorksheet">Open</button>
+      </div>
+    </div>
+
+    <!-- VIR -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">VIR</div>
+        <div class="form-card-sub">Vehicle Inspection Report</div>
+        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formVIR">Open</button>
+      </div>
+    </div>
+
+    <!-- FORM 13 -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">Form 13</div>
+        <div class="form-card-sub">Legal repossession notice</div>
+        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formF13">Open</button>
+      </div>
+    </div>
+
+    <!-- TRANSPORT INSTRUCTIONS -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">Transport Instructions</div>
+        <div class="form-card-sub">Tow operator &amp; delivery details</div>
+        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formTransport">Open</button>
+      </div>
+    </div>
+
+    <!-- REPOSSESSION LOCK -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">Repossession Lock</div>
+        <div class="form-card-sub">Lock &amp; secure details</div>
+        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formRepoLock">Open</button>
+      </div>
+    </div>
+
+    <!-- TERMINATION NOTICE -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">Termination Notice</div>
+        <div class="form-card-sub">Customer termination letter</div>
+        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formTermination">Open</button>
+      </div>
+    </div>
+
+    <!-- CUSTOM TEMPLATES -->
+    {% for tmpl in form_templates %}
+    <div class="col-6 col-md-4 col-lg-3" id="ftcard-{{ tmpl.id }}">
+      <div class="form-card">
+        <div class="form-card-title">{{ tmpl.name }}</div>
+        <div class="form-card-sub">Custom form</div>
+        <div class="d-flex gap-2 mt-1">
+          <button class="btn btn-primary btn-sm flex-fill" onclick="openCustomForm({{ tmpl.id }}, {{ tmpl.field_list|tojson }}, '{{ tmpl.name|e }}')">Open</button>
+          {% if session.get('role') == 'admin' %}
+          <button class="btn btn-outline-danger btn-sm" onclick="deleteFormTemplate({{ tmpl.id }})">&#10005;</button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- CREATE FORM (admin only) -->
+    {% if session.get('role') == 'admin' %}
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card" style="border-style:dashed;border-color:var(--accent);background:transparent">
+        <div class="form-card-title" style="color:var(--accent)">+ Create Form</div>
+        <div class="form-card-sub">Build a custom form template</div>
+        <button class="btn btn-outline-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formBuilder">Create</button>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+
+<!-- ===== FORM MODALS ===== -->
+
+<!-- WORKSHEET MODAL -->
+<div class="modal fade" id="formWorksheet" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header no-print">
+        <h5 class="modal-title fw-600">Worksheet</h5>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-print-area" id="ws-print">
+          <div class="fpa-header">
+            <div class="fpa-company">Axionx</div>
+            <div class="fpa-title">WORKSHEET<br><small>Job {{ job.display_ref }}</small></div>
+          </div>
+          <div class="fpa-row3">
+            <div class="fpa-section">
+              <div class="fpa-label">Job Number</div>
+              <div class="fpa-value">{{ job.display_ref }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Contract Number</div>
+              <div class="fpa-value">{{ job.client_reference or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Date</div>
+              <div class="fpa-value" contenteditable="true" id="ws-date"></div>
+            </div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Client</div>
+              <div class="fpa-value">{{ job.client_name or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Lender</div>
+              <div class="fpa-value">{{ job.lender_name or '' }}</div>
+            </div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Customer Name</div>
+              <div class="fpa-value">{{ job.customer_name or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Account Number</div>
+              <div class="fpa-value">{{ job.account_number or '' }}</div>
+            </div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Job Address</div>
+            <div class="fpa-value" contenteditable="true" id="ws-address">{{ job.job_address or '' }}</div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-row3">
+            <div class="fpa-section">
+              <div class="fpa-label">Amount Owing</div>
+              <div class="fpa-value">{% if job.arrears_cents %}${{ "%.2f"|format(job.arrears_cents / 100) }}{% endif %}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Costs</div>
+              <div class="fpa-value">{% if job.costs_cents %}${{ "%.2f"|format(job.costs_cents / 100) }}{% endif %}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Monthly Payment</div>
+              <div class="fpa-value">{% if job.mmp_cents %}${{ "%.2f"|format(job.mmp_cents / 100) }}{% endif %}</div>
+            </div>
+          </div>
+          {% if job_items %}
+          <hr class="fpa-divider">
+          <div class="fpa-label" style="margin-bottom:.4rem">Security Items</div>
+          <table class="fpa-table">
+            <thead><tr><th>#</th><th>Type</th><th>Reg</th><th>VIN</th><th>Description</th></tr></thead>
+            <tbody>
+              {% for item in job_items %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ item.item_type|title }}</td>
+                <td>{{ item.reg or '' }}</td>
+                <td>{{ item.vin or '' }}</td>
+                <td>{{ item.description or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+          <hr class="fpa-divider" style="margin-top:2rem">
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Agent Signature</div>
+              <div class="fpa-value" style="margin-top:1.5rem"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Date</div>
+              <div class="fpa-value" style="margin-top:1.5rem"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- VIR MODAL -->
+<div class="modal fade" id="formVIR" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header no-print">
+        <h5 class="modal-title fw-600">Vehicle Inspection Report</h5>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-print-area">
+          <div class="fpa-header">
+            <div class="fpa-company">Axionx</div>
+            <div class="fpa-title">VEHICLE INSPECTION REPORT<br><small>Job {{ job.display_ref }}</small></div>
+          </div>
+          <div class="fpa-row3">
+            <div class="fpa-section">
+              <div class="fpa-label">Date</div>
+              <div class="fpa-value" contenteditable="true" id="vir-date"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Time</div>
+              <div class="fpa-value" contenteditable="true" id="vir-time"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Agent</div>
+              <div class="fpa-value">{{ session.get('user_name', '') }}</div>
+            </div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Location / Address</div>
+            <div class="fpa-value" contenteditable="true" id="vir-address">{{ job.job_address or '' }}</div>
+          </div>
+          <hr class="fpa-divider">
+          {% if job_items %}
+          {% set vi = job_items[0] %}
+          <div class="fpa-row3">
+            <div class="fpa-section">
+              <div class="fpa-label">Registration</div>
+              <div class="fpa-value" contenteditable="true">{{ vi.reg or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">VIN</div>
+              <div class="fpa-value" contenteditable="true">{{ vi.vin or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Type</div>
+              <div class="fpa-value">{{ vi.item_type|title }}</div>
+            </div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Description</div>
+            <div class="fpa-value" contenteditable="true">{{ vi.description or '' }}</div>
+          </div>
+          {% else %}
+          <div class="fpa-row3">
+            <div class="fpa-section"><div class="fpa-label">Registration</div><div class="fpa-value" contenteditable="true"></div></div>
+            <div class="fpa-section"><div class="fpa-label">VIN</div><div class="fpa-value" contenteditable="true"></div></div>
+            <div class="fpa-section"><div class="fpa-label">Type</div><div class="fpa-value" contenteditable="true"></div></div>
+          </div>
+          <div class="fpa-section"><div class="fpa-label">Description</div><div class="fpa-value" contenteditable="true"></div></div>
+          {% endif %}
+          <hr class="fpa-divider">
+          <div class="fpa-label" style="margin-bottom:.5rem">Condition Checklist</div>
+          <div class="fpa-check-grid">
+            {% for item in ['Interior', 'Exterior', 'Tyres', 'Keys Present', 'Fuel Level', 'Windscreen', 'Lights', 'Engine Running', 'Dashboard Warning Lights', 'Personal Items', 'Roadworthy', 'Odometer Recorded'] %}
+            <label class="fpa-check-item">
+              <input type="checkbox"> {{ item }}
+            </label>
+            {% endfor %}
+          </div>
+          <div class="fpa-section" style="margin-top:.8rem">
+            <div class="fpa-label">Odometer Reading</div>
+            <div class="fpa-value" contenteditable="true"></div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Notes / Damage</div>
+            <div class="fpa-value" contenteditable="true" style="min-height:60px"></div>
+          </div>
+          <hr class="fpa-divider" style="margin-top:2rem">
+          <div class="fpa-row">
+            <div class="fpa-section"><div class="fpa-label">Agent Signature</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+            <div class="fpa-section"><div class="fpa-label">Date</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- FORM 13 MODAL -->
+<div class="modal fade" id="formF13" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header no-print">
+        <h5 class="modal-title fw-600">Form 13</h5>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-print-area">
+          <div class="fpa-header">
+            <div class="fpa-company">Axionx</div>
+            <div class="fpa-title">FORM 13<br><small>Repossession Notice</small></div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">To (Customer Name)</div>
+              <div class="fpa-value" contenteditable="true">{{ job.customer_name or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Date</div>
+              <div class="fpa-value" contenteditable="true" id="f13-date"></div>
+            </div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Customer Address</div>
+            <div class="fpa-value" contenteditable="true" id="f13-address">{{ job.customer_address or job.job_address or '' }}</div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Lender / Credit Provider</div>
+              <div class="fpa-value">{{ job.lender_name or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Account Number</div>
+              <div class="fpa-value">{{ job.account_number or '' }}</div>
+            </div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Regulation Type</div>
+              <div class="fpa-value">{{ job.regulation_type or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Contract Number</div>
+              <div class="fpa-value">{{ job.client_reference or '' }}</div>
+            </div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-row3">
+            <div class="fpa-section">
+              <div class="fpa-label">Amount Owing</div>
+              <div class="fpa-value" contenteditable="true">{% if job.arrears_cents %}${{ "%.2f"|format(job.arrears_cents / 100) }}{% endif %}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Enforcement Costs</div>
+              <div class="fpa-value" contenteditable="true">{% if job.costs_cents %}${{ "%.2f"|format(job.costs_cents / 100) }}{% endif %}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Monthly Payment</div>
+              <div class="fpa-value" contenteditable="true">{% if job.mmp_cents %}${{ "%.2f"|format(job.mmp_cents / 100) }}{% endif %}</div>
+            </div>
+          </div>
+          {% if job_items %}
+          <hr class="fpa-divider">
+          <div class="fpa-label" style="margin-bottom:.4rem">Goods / Security</div>
+          <table class="fpa-table">
+            <thead><tr><th>Description</th><th>Registration</th><th>VIN / Serial</th></tr></thead>
+            <tbody>
+              {% for item in job_items %}
+              <tr>
+                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.reg or '' }}</td>
+                <td>{{ item.vin or item.serial_number or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+          <hr class="fpa-divider" style="margin-top:2rem">
+          <div class="fpa-row">
+            <div class="fpa-section"><div class="fpa-label">Authorised Signature</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+            <div class="fpa-section"><div class="fpa-label">Date</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- TRANSPORT INSTRUCTIONS MODAL -->
+<div class="modal fade" id="formTransport" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header no-print">
+        <h5 class="modal-title fw-600">Transport Instructions</h5>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-print-area">
+          <div class="fpa-header">
+            <div class="fpa-company">Axionx</div>
+            <div class="fpa-title">TRANSPORT INSTRUCTIONS<br><small>Job {{ job.display_ref }}</small></div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Date</div>
+              <div class="fpa-value" contenteditable="true" id="tr-date"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Time</div>
+              <div class="fpa-value" contenteditable="true" id="tr-time"></div>
+            </div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-label" style="margin-bottom:.3rem">Tow Operator</div>
+          <div class="no-print mb-2">
+            <select class="form-select form-select-sm" id="tr-tow-select" onchange="applyTowSelect()">
+              <option value="">— Select or type below —</option>
+              {% for op in tow_operators %}
+              <option value="{{ op.id }}" data-company="{{ op.company_name|e }}" data-phone="{{ op.phone or ''|e }}" data-address="{{ op.address or ''|e }}">{{ op.company_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Company</div>
+              <div class="fpa-value" contenteditable="true" id="tr-tow-company"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Phone</div>
+              <div class="fpa-value" contenteditable="true" id="tr-tow-phone"></div>
+            </div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Tow Company Address</div>
+            <div class="fpa-value" contenteditable="true" id="tr-tow-address"></div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-section">
+            <div class="fpa-label">Pickup Address</div>
+            <div class="fpa-value" contenteditable="true" id="tr-pickup">{{ job.job_address or '' }}</div>
+          </div>
+          <div class="fpa-label no-print" style="margin-bottom:.3rem">Destination (Auction Yard)</div>
+          <div class="no-print mb-2">
+            <select class="form-select form-select-sm" id="tr-yard-select" onchange="applyYardSelect()">
+              <option value="">— Select or type below —</option>
+              {% for yard in auction_yards %}
+              <option value="{{ yard.id }}" data-name="{{ yard.name|e }}" data-address="{{ yard.address or ''|e }}">{{ yard.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Destination / Auction Yard</div>
+              <div class="fpa-value" contenteditable="true" id="tr-dest-name"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Destination Address</div>
+              <div class="fpa-value" contenteditable="true" id="tr-dest-address"></div>
+            </div>
+          </div>
+          <hr class="fpa-divider">
+          {% if job_items %}
+          <div class="fpa-label" style="margin-bottom:.4rem">Vehicle / Security</div>
+          <table class="fpa-table">
+            <thead><tr><th>Description</th><th>Reg</th><th>VIN</th></tr></thead>
+            <tbody>
+              {% for item in job_items %}
+              <tr>
+                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.reg or '' }}</td>
+                <td>{{ item.vin or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+          <div class="fpa-section" style="margin-top:.8rem">
+            <div class="fpa-label">Special Instructions</div>
+            <div class="fpa-value" contenteditable="true" style="min-height:50px"></div>
+          </div>
+          <hr class="fpa-divider" style="margin-top:2rem">
+          <div class="fpa-row">
+            <div class="fpa-section"><div class="fpa-label">Authorised By</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+            <div class="fpa-section"><div class="fpa-label">Date</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- REPOSSESSION LOCK MODAL -->
+<div class="modal fade" id="formRepoLock" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header no-print">
+        <h5 class="modal-title fw-600">Repossession Lock</h5>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-print-area">
+          <div class="fpa-header">
+            <div class="fpa-company">Axionx</div>
+            <div class="fpa-title">REPOSSESSION LOCK<br><small>Job {{ job.display_ref }}</small></div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Date</div>
+              <div class="fpa-value" contenteditable="true" id="rl-date"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Time</div>
+              <div class="fpa-value" contenteditable="true" id="rl-time"></div>
+            </div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Agent Name</div>
+              <div class="fpa-value">{{ session.get('user_name', '') }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Job Number</div>
+              <div class="fpa-value">{{ job.display_ref }}</div>
+            </div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Property / Location Address</div>
+            <div class="fpa-value" contenteditable="true" id="rl-address">{{ job.job_address or '' }}</div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Customer Name</div>
+              <div class="fpa-value">{{ job.customer_name or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Account Number</div>
+              <div class="fpa-value">{{ job.account_number or '' }}</div>
+            </div>
+          </div>
+          {% if job_items %}
+          <hr class="fpa-divider">
+          <div class="fpa-label" style="margin-bottom:.4rem">Security / Goods</div>
+          <table class="fpa-table">
+            <thead><tr><th>Description</th><th>Reg</th><th>Serial / VIN</th></tr></thead>
+            <tbody>
+              {% for item in job_items %}
+              <tr>
+                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.reg or '' }}</td>
+                <td>{{ item.vin or item.serial_number or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+          <hr class="fpa-divider">
+          <div class="fpa-section">
+            <div class="fpa-label">Lock / Security Details</div>
+            <div class="fpa-value" contenteditable="true" style="min-height:50px"></div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Notes</div>
+            <div class="fpa-value" contenteditable="true" style="min-height:40px"></div>
+          </div>
+          <hr class="fpa-divider" style="margin-top:2rem">
+          <div class="fpa-row">
+            <div class="fpa-section"><div class="fpa-label">Agent Signature</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+            <div class="fpa-section"><div class="fpa-label">Date</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- TERMINATION NOTICE MODAL -->
+<div class="modal fade" id="formTermination" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header no-print">
+        <h5 class="modal-title fw-600">Termination Notice</h5>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-print-area">
+          <div class="fpa-header">
+            <div class="fpa-company">Axionx</div>
+            <div class="fpa-title">TERMINATION NOTICE<br><small>Job {{ job.display_ref }}</small></div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Date of Notice</div>
+              <div class="fpa-value" contenteditable="true" id="tn-date"></div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Effective Date</div>
+              <div class="fpa-value" contenteditable="true"></div>
+            </div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-section">
+            <div class="fpa-label">To (Customer Name)</div>
+            <div class="fpa-value" contenteditable="true">{{ job.customer_name or '' }}</div>
+          </div>
+          <div class="fpa-section">
+            <div class="fpa-label">Customer Address</div>
+            <div class="fpa-value" contenteditable="true" id="tn-address">{{ job.customer_address or job.job_address or '' }}</div>
+          </div>
+          <hr class="fpa-divider">
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Lender / Credit Provider</div>
+              <div class="fpa-value">{{ job.lender_name or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Account Number</div>
+              <div class="fpa-value">{{ job.account_number or '' }}</div>
+            </div>
+          </div>
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Contract Number</div>
+              <div class="fpa-value">{{ job.client_reference or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Regulation</div>
+              <div class="fpa-value">{{ job.regulation_type or '' }}</div>
+            </div>
+          </div>
+          {% if job_items %}
+          <hr class="fpa-divider">
+          <div class="fpa-label" style="margin-bottom:.4rem">Goods / Security Subject to Termination</div>
+          <table class="fpa-table">
+            <thead><tr><th>Description</th><th>Registration</th><th>Serial / VIN</th></tr></thead>
+            <tbody>
+              {% for item in job_items %}
+              <tr>
+                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.reg or '' }}</td>
+                <td>{{ item.vin or item.serial_number or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+          <div class="fpa-section" style="margin-top:.8rem">
+            <div class="fpa-label">Termination Reason / Notes</div>
+            <div class="fpa-value" contenteditable="true" style="min-height:50px"></div>
+          </div>
+          <hr class="fpa-divider" style="margin-top:2rem">
+          <div class="fpa-row">
+            <div class="fpa-section"><div class="fpa-label">Authorised Signature</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+            <div class="fpa-section"><div class="fpa-label">Date</div><div class="fpa-value" style="margin-top:1.5rem"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- FORM BUILDER MODAL (admin only) -->
 {% if session.get('role') == 'admin' %}
-<!-- ======== TAB: SETTINGS ======== -->
+<div class="modal fade" id="formBuilder" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title fw-600">Create Custom Form</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Form Name <span style="color:#ef4444">*</span></label>
+          <input type="text" id="fb-name" class="form-control" placeholder="e.g. Client Summary Sheet" maxlength="80">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Include Fields</label>
+          <div class="row g-2 mt-1" id="fb-fields">
+            {% set _fb_fields = [
+              ('job_number',        'Job Number'),
+              ('contract_number',   'Contract Number'),
+              ('client_name',       'Client Name'),
+              ('customer_name',     'Customer Name'),
+              ('customer_address',  'Customer Address'),
+              ('customer_phone',    'Customer Phone'),
+              ('lender_name',       'Lender Name'),
+              ('account_number',    'Account Number'),
+              ('regulation_type',   'Regulation Type'),
+              ('job_address',       'Job Address'),
+              ('security_type',     'Security Type'),
+              ('security_reg',      'Security Reg'),
+              ('security_vin',      'Security VIN'),
+              ('security_desc',     'Security Description'),
+              ('amount_owing',      'Amount Owing'),
+              ('costs',             'Costs'),
+              ('monthly_payment',   'Monthly Payment'),
+              ('current_date',      'Current Date'),
+            ] %}
+            {% for key, label in _fb_fields %}
+            <div class="col-6">
+              <div class="form-check">
+                <input class="form-check-input fb-field-cb" type="checkbox" value="{{ key }}" id="fb-{{ key }}">
+                <label class="form-check-label small" for="fb-{{ key }}">{{ label }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div id="fb-error" class="text-danger small mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="fb-save-btn" onclick="saveFormTemplate()">Save Template</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOM FORM PRINT MODAL -->
+<div class="modal fade" id="customFormModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header no-print">
+        <h5 class="modal-title fw-600" id="customFormTitle">Custom Form</h5>
+        <div class="d-flex gap-2 ms-auto">
+          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="form-print-area" id="custom-form-body">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+</div><!-- /tab-forms pane -->
+
+{% if session.get('role') == 'admin' %}
 <div class="tab-pane fade" id="tab-settings" role="tabpanel">
 <div class="ax-card mb-3" style="border-color:rgba(239,68,68,.35)">
   <div class="ax-card-h" style="color:#ef4444">Danger Zone</div>
@@ -738,6 +1551,7 @@ window.addEventListener('load', function () {
     'tab-job': document.getElementById('tab-job-btn'),
     'tab-notes': document.getElementById('tab-notes-btn'),
     'tab-schedule': document.getElementById('tab-schedule-btn'),
+    'tab-forms': document.getElementById('tab-forms-btn'),
     'tab-settings': document.getElementById('tab-settings-btn')
   };
   function activateHash() {
@@ -1272,6 +2086,145 @@ function axCopyVin(btn) {
       }, 150);
     }
   }
+})();
+</script>
+
+<script>
+(function () {
+  function todayStr() {
+    var d = new Date();
+    return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+  }
+  function nowTimeStr() {
+    var d = new Date(), h = d.getHours(), m = d.getMinutes(), ap = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    return h + ':' + String(m).padStart(2,'0') + ' ' + ap;
+  }
+  function setIfEl(id, val) { var e = document.getElementById(id); if (e && !e.textContent.trim()) e.textContent = val; }
+
+  var wsEl = document.getElementById('formWorksheet');
+  if (wsEl) wsEl.addEventListener('show.bs.modal', function () { setIfEl('ws-date', todayStr()); });
+  var virEl = document.getElementById('formVIR');
+  if (virEl) virEl.addEventListener('show.bs.modal', function () { setIfEl('vir-date', todayStr()); setIfEl('vir-time', nowTimeStr()); });
+  var f13El = document.getElementById('formF13');
+  if (f13El) f13El.addEventListener('show.bs.modal', function () { setIfEl('f13-date', todayStr()); });
+  var trEl = document.getElementById('formTransport');
+  if (trEl) trEl.addEventListener('show.bs.modal', function () { setIfEl('tr-date', todayStr()); setIfEl('tr-time', nowTimeStr()); });
+  var rlEl = document.getElementById('formRepoLock');
+  if (rlEl) rlEl.addEventListener('show.bs.modal', function () { setIfEl('rl-date', todayStr()); setIfEl('rl-time', nowTimeStr()); });
+  var tnEl = document.getElementById('formTermination');
+  if (tnEl) tnEl.addEventListener('show.bs.modal', function () { setIfEl('tn-date', todayStr()); });
+
+  window.applyTowSelect = function () {
+    var sel = document.getElementById('tr-tow-select');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    var f = function(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; };
+    f('tr-tow-company', opt.dataset.company || '');
+    f('tr-tow-phone',   opt.dataset.phone   || '');
+    f('tr-tow-address', opt.dataset.address || '');
+  };
+
+  window.applyYardSelect = function () {
+    var sel = document.getElementById('tr-yard-select');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    var f = function(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; };
+    f('tr-dest-name',    opt.dataset.name    || '');
+    f('tr-dest-address', opt.dataset.address || '');
+  };
+
+  {% if session.get('role') == 'admin' %}
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var _FIELD_LABELS = {
+    job_number:'Job Number', contract_number:'Contract Number', client_name:'Client Name',
+    customer_name:'Customer Name', customer_address:'Customer Address', customer_phone:'Customer Phone',
+    lender_name:'Lender Name', account_number:'Account Number', regulation_type:'Regulation Type',
+    job_address:'Job Address', security_type:'Security Type', security_reg:'Security Reg',
+    security_vin:'Security VIN', security_desc:'Security Description',
+    amount_owing:'Amount Owing', costs:'Costs', monthly_payment:'Monthly Payment', current_date:'Current Date'
+  };
+
+  var _JOB = {
+    job_number:       {{ job.display_ref|tojson }},
+    contract_number:  {{ (job.client_reference or '')|tojson }},
+    client_name:      {{ (job.client_name or '')|tojson }},
+    customer_name:    {{ (job.customer_name or '')|tojson }},
+    customer_address: {{ (job.customer_address or job.job_address or '')|tojson }},
+    customer_phone:   {{ (job.customer_phone or '')|tojson }},
+    lender_name:      {{ (job.lender_name or '')|tojson }},
+    account_number:   {{ (job.account_number or '')|tojson }},
+    regulation_type:  {{ (job.regulation_type or '')|tojson }},
+    job_address:      {{ (job.job_address or '')|tojson }},
+    security_type:    {{ ((job_items[0]['item_type']|title) if job_items else '')|tojson }},
+    security_reg:     {{ (job_items[0]['reg'] if job_items and job_items[0]['reg'] else '')|tojson }},
+    security_vin:     {{ (job_items[0]['vin'] if job_items and job_items[0]['vin'] else '')|tojson }},
+    security_desc:    {{ (job_items[0]['description'] if job_items and job_items[0]['description'] else '')|tojson }},
+    amount_owing:     {% if job.arrears_cents %}{{ ('$%.2f' % (job.arrears_cents / 100))|tojson }}{% else %}''{% endif %},
+    costs:            {% if job.costs_cents %}{{ ('$%.2f' % (job.costs_cents / 100))|tojson }}{% else %}''{% endif %},
+    monthly_payment:  {% if job.mmp_cents %}{{ ('$%.2f' % (job.mmp_cents / 100))|tojson }}{% else %}''{% endif %},
+    current_date:     ''
+  };
+
+  window.saveFormTemplate = function () {
+    var name = (document.getElementById('fb-name').value || '').trim();
+    var errEl = document.getElementById('fb-error');
+    var checked = Array.from(document.querySelectorAll('.fb-field-cb:checked')).map(function(cb){ return cb.value; });
+    if (!name) { errEl.textContent = 'Form name is required.'; errEl.style.display = ''; return; }
+    if (!checked.length) { errEl.textContent = 'Select at least one field.'; errEl.style.display = ''; return; }
+    errEl.style.display = 'none';
+    var fd = new FormData();
+    fd.append('name', name);
+    fd.append('field_list', JSON.stringify(checked));
+    document.getElementById('fb-save-btn').disabled = true;
+    fetch('/form-templates/add', { method:'POST', body:fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        document.getElementById('fb-save-btn').disabled = false;
+        if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
+        bootstrap.Modal.getInstance(document.getElementById('formBuilder')).hide();
+        document.getElementById('fb-name').value = '';
+        document.querySelectorAll('.fb-field-cb').forEach(function(cb){ cb.checked = false; });
+        var grid = document.querySelector('#tab-forms .row.g-3');
+        var createCardCol = document.querySelector('#tab-forms [style*="dashed"]').closest('[class^="col"]');
+        var col = document.createElement('div');
+        col.className = 'col-6 col-md-4 col-lg-3';
+        col.id = 'ftcard-' + data.id;
+        var fl = JSON.parse(data.field_list);
+        col.innerHTML = '<div class="form-card"><div class="form-card-title">' + esc(data.name) + '</div>'
+          + '<div class="form-card-sub">Custom form</div>'
+          + '<div class="d-flex gap-2 mt-1">'
+          + '<button class="btn btn-primary btn-sm flex-fill" onclick="openCustomForm(' + data.id + ',' + JSON.stringify(fl) + ',' + JSON.stringify(data.name) + ')">Open</button>'
+          + '<button class="btn btn-outline-danger btn-sm" onclick="deleteFormTemplate(' + data.id + ')">&#10005;</button>'
+          + '</div></div>';
+        grid.insertBefore(col, createCardCol);
+      })
+      .catch(function(){ document.getElementById('fb-save-btn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+  };
+
+  window.deleteFormTemplate = function (id) {
+    if (!confirm('Delete this form template?')) return;
+    fetch('/form-templates/' + id + '/delete', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'} })
+      .then(function(r){ return r.json(); })
+      .then(function(data){ if (data.ok) { var el = document.getElementById('ftcard-' + id); if (el) el.remove(); } });
+  };
+
+  window.openCustomForm = function (id, fieldList, formName) {
+    var jobData = Object.assign({}, _JOB, { current_date: todayStr() });
+    var html = '<div class="fpa-header"><div class="fpa-company">Axionx</div>'
+      + '<div class="fpa-title">' + esc(formName) + '</div></div>';
+    fieldList.forEach(function(key) {
+      var label = _FIELD_LABELS[key] || key;
+      var value = jobData[key] || '';
+      html += '<div class="fpa-section"><div class="fpa-label">' + esc(label) + '</div>'
+        + '<div class="fpa-value" contenteditable="true">' + esc(value) + '</div></div>';
+    });
+    document.getElementById('customFormTitle').textContent = formName;
+    document.getElementById('custom-form-body').innerHTML = html;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('customFormModal')).show();
+  };
+  {% endif %}
 })();
 </script>
 

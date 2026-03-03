@@ -445,6 +445,38 @@ def init_db():
         WHERE customer_id IS NOT NULL
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tow_operators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT NOT NULL,
+            phone TEXT,
+            address TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS auction_yards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            address TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS form_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            field_list TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -1498,7 +1530,11 @@ def job_detail(job_id: int):
         cur.execute("SELECT id, first_name, last_name, company FROM customers ORDER BY last_name, first_name")
     all_customers = cur.fetchall()
 
-    conn.close()
+    conn2 = db()
+    tow_operators = conn2.execute("SELECT * FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
+    auction_yards  = conn2.execute("SELECT * FROM auction_yards WHERE active=1 ORDER BY name").fetchall()
+    form_templates = conn2.execute("SELECT * FROM form_templates WHERE active=1 ORDER BY name").fetchall()
+    conn2.close()
 
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
@@ -1514,7 +1550,10 @@ def job_detail(job_id: int):
                            schedules=schedules, next_schedule=next_schedule,
                            job_linked_customers=job_linked_customers,
                            all_customers=all_customers,
-                           customer_roles=customer_roles)
+                           customer_roles=customer_roles,
+                           tow_operators=tow_operators,
+                           auction_yards=auction_yards,
+                           form_templates=form_templates)
 
 
 @app.post("/jobs/<int:job_id>/customers/add")
@@ -3471,6 +3510,138 @@ def note_update_emailed(job_id: int):
     flash("Update emailed note added.", "success")
     ref = request.referrer or url_for("jobs_list")
     return redirect(ref)
+
+
+@app.get("/resources")
+@login_required
+def resources():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM tow_operators WHERE active=1 ORDER BY company_name")
+    tow_operators = cur.fetchall()
+    cur.execute("SELECT * FROM auction_yards WHERE active=1 ORDER BY name")
+    auction_yards = cur.fetchall()
+    conn.close()
+    return render_template("resources.html", tow_operators=tow_operators, auction_yards=auction_yards)
+
+
+@app.post("/resources/tow-operators/add")
+@login_required
+def tow_operator_add():
+    company_name = request.form.get("company_name", "").strip()
+    phone = request.form.get("phone", "").strip() or None
+    address = request.form.get("address", "").strip() or None
+    if not company_name:
+        return jsonify({"ok": False, "error": "Company name is required."})
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO tow_operators (company_name, phone, address, created_at) VALUES (?,?,?,?)",
+                (company_name, phone, address, now_ts()))
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "id": new_id, "company_name": company_name, "phone": phone or "", "address": address or ""})
+
+
+@app.post("/resources/tow-operators/<int:op_id>/edit")
+@login_required
+def tow_operator_edit(op_id):
+    company_name = request.form.get("company_name", "").strip()
+    phone = request.form.get("phone", "").strip() or None
+    address = request.form.get("address", "").strip() or None
+    if not company_name:
+        return jsonify({"ok": False, "error": "Company name is required."})
+    conn = db()
+    conn.execute("UPDATE tow_operators SET company_name=?, phone=?, address=? WHERE id=?",
+                 (company_name, phone, address, op_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/resources/tow-operators/<int:op_id>/delete")
+@login_required
+def tow_operator_delete(op_id):
+    conn = db()
+    conn.execute("UPDATE tow_operators SET active=0 WHERE id=?", (op_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/resources/auction-yards/add")
+@login_required
+def auction_yard_add():
+    name = request.form.get("name", "").strip()
+    address = request.form.get("address", "").strip() or None
+    if not name:
+        return jsonify({"ok": False, "error": "Auction yard name is required."})
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("INSERT INTO auction_yards (name, address, created_at) VALUES (?,?,?)",
+                (name, address, now_ts()))
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "id": new_id, "name": name, "address": address or ""})
+
+
+@app.post("/resources/auction-yards/<int:yard_id>/edit")
+@login_required
+def auction_yard_edit(yard_id):
+    name = request.form.get("name", "").strip()
+    address = request.form.get("address", "").strip() or None
+    if not name:
+        return jsonify({"ok": False, "error": "Name is required."})
+    conn = db()
+    conn.execute("UPDATE auction_yards SET name=?, address=? WHERE id=?", (name, address, yard_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/resources/auction-yards/<int:yard_id>/delete")
+@login_required
+def auction_yard_delete(yard_id):
+    conn = db()
+    conn.execute("UPDATE auction_yards SET active=0 WHERE id=?", (yard_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/form-templates/add")
+@login_required
+@admin_required
+def form_template_add():
+    name = request.form.get("name", "").strip()
+    field_list = request.form.get("field_list", "").strip()
+    if not name or not field_list:
+        return jsonify({"ok": False, "error": "Name and at least one field are required."})
+    caller_id = session.get("user_id")
+    conn = db()
+    cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO form_templates (name, field_list, created_by, created_at) VALUES (?,?,?,?)",
+                    (name, field_list, caller_id, now_ts()))
+        new_id = cur.lastrowid
+        conn.commit()
+    except Exception:
+        conn.close()
+        return jsonify({"ok": False, "error": "A template with that name already exists."})
+    conn.close()
+    return jsonify({"ok": True, "id": new_id, "name": name, "field_list": field_list})
+
+
+@app.post("/form-templates/<int:tmpl_id>/delete")
+@login_required
+@admin_required
+def form_template_delete(tmpl_id):
+    conn = db()
+    conn.execute("UPDATE form_templates SET active=0 WHERE id=?", (tmpl_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
