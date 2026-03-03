@@ -1369,7 +1369,7 @@ def job_create():
     conn.close()
 
     flash("Job created.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("job_detail", job_id=job_id) + "?focus=lender")
 
 
 @app.get("/jobs/<int:job_id>")

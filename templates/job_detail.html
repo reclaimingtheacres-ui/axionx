@@ -222,7 +222,7 @@
           </div>
         </div>
         {% if session.get('role') == 'admin' %}
-        <details>
+        <details id="lender-details">
           <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
           <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-2">
             <div class="row g-2 mb-2">
@@ -1257,6 +1257,20 @@ function axCopyVin(btn) {
       h = h % 12 || 12;
       apTimeText.value = h + ':' + m + ' ' + ampm;
     });
+  }
+})();
+</script>
+
+<script>
+(function () {
+  if (new URLSearchParams(location.search).get('focus') === 'lender') {
+    var el = document.getElementById('lender-details');
+    if (el) {
+      el.open = true;
+      setTimeout(function () {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
   }
 })();
 </script>
