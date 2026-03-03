@@ -1269,6 +1269,8 @@ def job_new():
 
     prefill_customer_address = ""
     prefill_client_reference = request.args.get("client_reference", "")
+    prefill_lender_name      = request.args.get("lender_name", "")
+    prefill_account_number   = request.args.get("account_number", "")
     if new_customer_id:
         cur.execute("SELECT address FROM customers WHERE id = ?", (new_customer_id,))
         row = cur.fetchone()
@@ -1298,6 +1300,8 @@ def job_new():
                            new_user_id=new_user_id,
                            prefill_customer_address=prefill_customer_address,
                            prefill_client_reference=prefill_client_reference,
+                           prefill_lender_name=prefill_lender_name,
+                           prefill_account_number=prefill_account_number,
                            known_lenders=known_lenders,
                            booking_types=booking_types)
 
@@ -1425,6 +1429,11 @@ def job_create():
     conn.close()
 
     flash("Job created.", "success")
+    if request.form.get("add_another"):
+        params = {}
+        if lender_name:    params["lender_name"]    = lender_name
+        if account_number: params["account_number"] = account_number
+        return redirect(url_for("job_new", **params))
     return redirect(url_for("job_detail", job_id=job_id) + "?focus=lender")
 
 

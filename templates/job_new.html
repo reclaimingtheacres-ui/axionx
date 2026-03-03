@@ -18,7 +18,7 @@
         <div class="col-12 col-lg-5">
           <label class="form-label">Contract Number</label>
           <div class="position-relative">
-            <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,''); syncCJN()" autocomplete="off">
+            <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,'').replace(/[a-z]/g,c=>c.toUpperCase()); syncCJN(); syncContractToAccount();" autocomplete="off">
             <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
           </div>
           <div class="form-text" style="color:var(--muted)">Type to search previous jobs and clone</div>
@@ -216,7 +216,7 @@
       <div class="mt-3 d-flex gap-2">
         <button class="btn btn-primary" type="button"
                 onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('detailsModal')).show()">
-          Add Details &amp; Schedule
+          Next
         </button>
         <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
       </div>
@@ -639,8 +639,23 @@ function submitNewJobType() {
 
       </div>
       <div class="modal-footer" style="border-top:1px solid var(--line);">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Back</button>
-        <button type="submit" form="newJobForm" class="btn btn-primary">Create Job</button>
+        <!-- Lender & Security footer -->
+        <div id="mf-lender" class="d-flex gap-2 w-100 justify-content-end">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" onclick="goToModalTab('dtab-details')">Next</button>
+        </div>
+        <!-- Details & Instructions footer -->
+        <div id="mf-details" class="d-flex gap-2 w-100 justify-content-end" style="display:none!important">
+          <button type="button" class="btn btn-outline-secondary" onclick="goToModalTab('dtab-lender')">Back</button>
+          <button type="button" class="btn btn-primary" onclick="goToModalTab('dtab-schedule')">Next</button>
+        </div>
+        <!-- Schedule footer -->
+        <div id="mf-schedule" class="d-flex gap-2 w-100 justify-content-end" style="display:none!important">
+          <button type="button" class="btn btn-outline-secondary" onclick="goToModalTab('dtab-details')">Back</button>
+          <button type="button" class="btn btn-secondary" onclick="submitAddJob()">Add Job</button>
+          <input type="hidden" name="add_another" id="add_another_input" form="newJobForm" value="">
+          <button type="submit" form="newJobForm" class="btn btn-primary">Save</button>
+        </div>
       </div>
     </div>
   </div>
@@ -953,6 +968,79 @@ function submitNewJobType() {
 </script>
 
 <script>
+/* ── Modal tab switching + per-tab footer ───────────────────────────── */
+window.goToModalTab = function(tabId) {
+  var btn = document.querySelector('[data-bs-target="#' + tabId + '"]');
+  if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+};
+
+function updateModalFooter(activeTabId) {
+  var map = { 'dtab-lender': 'mf-lender', 'dtab-details': 'mf-details', 'dtab-schedule': 'mf-schedule' };
+  Object.keys(map).forEach(function(tab) {
+    var el = document.getElementById(map[tab]);
+    if (el) el.style.display = (tab === activeTabId) ? '' : 'none';
+  });
+}
+
+document.querySelectorAll('#detailsModal [data-bs-toggle="tab"]').forEach(function(btn) {
+  btn.addEventListener('shown.bs.tab', function(e) {
+    var target = e.target.getAttribute('data-bs-target').replace('#', '');
+    updateModalFooter(target);
+  });
+});
+
+/* ── Add Job: submit then redirect to new job pre-filled with lender ── */
+window.submitAddJob = function() {
+  var inp = document.getElementById('add_another_input');
+  if (inp) inp.value = '1';
+  document.getElementById('newJobForm').submit();
+};
+
+/* ── Contract Number → Account Number sync ──────────────────────────── */
+window.syncContractToAccount = function() {
+  var crEl  = document.getElementById('client_reference');
+  var accEl = document.querySelector('[name="account_number"]');
+  if (!crEl || !accEl || accEl._userEdited) return;
+  accEl.value = crEl.value;
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+  var accEl = document.querySelector('[name="account_number"]');
+  if (accEl) {
+    accEl.addEventListener('input', function() { accEl._userEdited = true; });
+  }
+
+  /* ── Asset address sync fix (DOMContentLoaded so modal elements exist) */
+  var customer = document.getElementById('customer_address');
+  var assetSync = document.getElementById('asset_same_as_customer');
+  if (customer && assetSync) {
+    function setField(input, value) {
+      if (typeof window.axionSetAddress === 'function') window.axionSetAddress(input, value);
+      else input.value = value;
+    }
+    function syncAssets() {
+      if (!assetSync.checked) return;
+      document.querySelectorAll('.asset-address').forEach(function(a) { setField(a, customer.value || ''); });
+    }
+    window.axionSyncAssets = syncAssets;
+    assetSync.addEventListener('change', function() { if (assetSync.checked) syncAssets(); });
+    customer.addEventListener('change', syncAssets);
+    customer.addEventListener('input',  syncAssets);
+  }
+
+  /* ── Prefill lender & account from URL params (after "Add Job") ───── */
+  var params = new URLSearchParams(window.location.search);
+  var prefillLender  = params.get('lender_name')    || '{{ prefill_lender_name|e }}';
+  var prefillAccount = params.get('account_number') || '{{ prefill_account_number|e }}';
+  if (prefillLender || prefillAccount) {
+    var lnEl  = document.getElementById('lender_name');
+    var accEl2 = document.querySelector('[name="account_number"]');
+    if (lnEl  && prefillLender)  lnEl.value  = prefillLender;
+    if (accEl2 && prefillAccount) { accEl2.value = prefillAccount; accEl2._userEdited = true; }
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('detailsModal')).show();
+  }
+});
+
 /* ── Booking type typeahead for Schedule tab ────────────────────────── */
 (function () {
   var BT_DATA = [
