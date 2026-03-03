@@ -969,9 +969,12 @@ def dashboard():
                 LEFT JOIN users u ON u.id = j.assigned_user_id"""
         if role == "agent":
             sql = base_sel + """
-                WHERE j.status = ? AND j.assigned_user_id = ?
+                WHERE j.status = ? AND (j.assigned_user_id = ? OR EXISTS (
+                    SELECT 1 FROM schedules s WHERE s.job_id = j.id
+                    AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+                ))
                 ORDER BY j.updated_at DESC"""
-            cur.execute(sql, (status, user_id))
+            cur.execute(sql, (status, user_id, user_id))
         else:
             sql = base_sel + """
                 WHERE j.status = ?
@@ -980,16 +983,19 @@ def dashboard():
         return cur.fetchall()
 
     if role == "agent":
-        base = "assigned_user_id = ?"
-        p    = (user_id,)
-        jobs_all       = jcount(base, p)
-        jobs_new       = jcount(base + " AND status = 'New'",                      (user_id,))
-        jobs_active    = jcount(base + " AND status = 'Active'",                   (user_id,))
-        jobs_phone     = jcount(base + " AND status = 'Active - Phone work only'", (user_id,))
-        jobs_suspended = jcount(base + " AND status = 'Suspended'",                (user_id,))
-        jobs_awaiting  = jcount(base + " AND status = 'Awaiting info from client'",(user_id,))
-        jobs_completed = jcount(base + " AND status = 'Completed'",                (user_id,))
-        jobs_invoiced  = jcount(base + " AND status = 'Invoiced'",                 (user_id,))
+        base = """(assigned_user_id = ? OR EXISTS (
+            SELECT 1 FROM schedules s WHERE s.job_id = jobs.id
+            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+        ))"""
+        uu   = (user_id, user_id)
+        jobs_all       = jcount(base, uu)
+        jobs_new       = jcount(base + " AND status = 'New'",                      (*uu,))
+        jobs_active    = jcount(base + " AND status = 'Active'",                   (*uu,))
+        jobs_phone     = jcount(base + " AND status = 'Active - Phone work only'", (*uu,))
+        jobs_suspended = jcount(base + " AND status = 'Suspended'",                (*uu,))
+        jobs_awaiting  = jcount(base + " AND status = 'Awaiting info from client'",(*uu,))
+        jobs_completed = jcount(base + " AND status = 'Completed'",                (*uu,))
+        jobs_invoiced  = jcount(base + " AND status = 'Invoiced'",                 (*uu,))
     else:
         jobs_all       = jcount()
         jobs_new       = jcount("status = 'New'")
