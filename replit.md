@@ -14,9 +14,8 @@ Workflow: `python app.py` on port 5000.
 
 ## Default Login
 
-A seed admin is created on first run if no users exist:
 - **Email**: `admin@axion.local`
-- **Password**: `admin`
+- **Password**: `Admin1234`
 
 ## Structure
 

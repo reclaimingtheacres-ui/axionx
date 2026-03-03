@@ -1279,6 +1279,8 @@ def job_new():
     job_types = cur.fetchall()
     cur.execute("SELECT DISTINCT lender_name FROM jobs WHERE lender_name IS NOT NULL ORDER BY lender_name")
     known_lenders = [r["lender_name"] for r in cur.fetchall()]
+    cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
+    booking_types = cur.fetchall()
     conn.close()
 
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
@@ -1296,7 +1298,8 @@ def job_new():
                            new_user_id=new_user_id,
                            prefill_customer_address=prefill_customer_address,
                            prefill_client_reference=prefill_client_reference,
-                           known_lenders=known_lenders)
+                           known_lenders=known_lenders,
+                           booking_types=booking_types)
 
 
 @app.post("/jobs/new")
@@ -1396,6 +1399,24 @@ def job_create():
         """, (job_id, (a_type or "other").lower(),
               a_desc or None, a_rego or None, a_vin or None, a_make or None, a_model or None, a_year or None,
               a_addr or None, a_ser or None, a_note or None, now))
+
+    sched_date = request.form.get("sched_date", "").strip()
+    sched_time = request.form.get("sched_time", "").strip()
+    sched_bt_id   = request.form.get("sched_booking_type_id", "").strip()
+    sched_bt_name = request.form.get("sched_booking_type_name", "").strip()
+    sched_user_id = request.form.get("sched_assigned_user_id", "").strip() or None
+    sched_notes   = request.form.get("sched_notes", "").strip() or None
+
+    if sched_date and (sched_bt_id or sched_bt_name):
+        sched_dt = f"{sched_date}T{sched_time or '09:00'}:00"
+        resolved_sched_bt = _resolve_booking_type(cur, sched_bt_id, sched_bt_name)
+        if resolved_sched_bt:
+            cur.execute("""
+                INSERT INTO schedules
+                (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_at, updated_at)
+                VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?)
+            """, (job_id, resolved_sched_bt, sched_dt, sched_notes,
+                  int(sched_user_id) if sched_user_id else None, now, now))
 
     conn.commit()
     conn.close()
@@ -3239,8 +3260,13 @@ def admin_settings():
     settings = cur.fetchone()
     cur.execute("SELECT * FROM booking_types ORDER BY name")
     booking_types = cur.fetchall()
+    cur.execute("SELECT * FROM tow_operators ORDER BY company_name")
+    tow_operators = cur.fetchall()
+    cur.execute("SELECT * FROM auction_yards ORDER BY name")
+    auction_yards = cur.fetchall()
     conn.close()
-    return render_template("settings.html", settings=settings, booking_types=booking_types)
+    return render_template("settings.html", settings=settings, booking_types=booking_types,
+                           tow_operators=tow_operators, auction_yards=auction_yards)
 
 
 @app.post("/admin/settings")
