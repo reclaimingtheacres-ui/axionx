@@ -8,16 +8,33 @@
   <div class="ax-card-b">
     <form method="post">
       <div class="row g-3 mb-3">
-        <div class="col-12 col-lg-6">
+        <div class="col-12 col-lg-3">
           <label class="form-label">Internal Job Number</label>
           <div class="form-control" style="background:rgba(96,165,250,.08)!important; border-color:rgba(96,165,250,.3)!important; color:var(--accent)!important; font-weight:700; letter-spacing:.05em">
             {{ next_number }}
           </div>
-          <div class="form-text" style="color:var(--muted)">Auto-generated on save &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit;vertical-align:baseline" onclick="openEntityModal('settings', '/admin/settings/popup')">change sequence</button></div>
+          <div class="form-text" style="color:var(--muted)">Auto-generated &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit;vertical-align:baseline" onclick="openEntityModal('settings', '/admin/settings/popup')">change</button></div>
         </div>
-        <div class="col-12 col-lg-6">
+        <div class="col-12 col-lg-3">
           <label class="form-label">Client Reference</label>
-          <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., 238139 (optional)" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,'')">
+          <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,''); syncCJN()">
+        </div>
+        <div class="col-12 col-lg-3">
+          <label class="form-label d-flex align-items-center gap-2">
+            Client Job Number
+            <span style="font-weight:400;font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:4px;">
+              <input type="checkbox" id="cjn_same" checked style="cursor:pointer;">
+              same as reference
+            </span>
+          </label>
+          <input class="form-control" name="client_job_number" id="client_job_number" placeholder="e.g., CJN-001" oninput="this.value=this.value.replace(/\s/g,'')">
+        </div>
+        <div class="col-12 col-lg-3 d-flex flex-column justify-content-end">
+          <label class="form-label">Search Previous Jobs</label>
+          <div class="position-relative">
+            <input type="text" id="ref_search" class="form-control" placeholder="Search by reference or job no. to clone…" autocomplete="off">
+            <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
+          </div>
         </div>
       </div>
 
@@ -576,4 +593,297 @@ function removeEmailRow(btn) {
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="cloneModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);">
+        <h5 class="modal-title" style="color:var(--text)">Clone Previous Job</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="cloneModalBody">
+        <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="cloneConfirmBtn" style="display:none;">Clone into New Job</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  /* ── "Same as reference" sync ─────────────────────────────────────── */
+  var crEl  = document.getElementById('client_reference');
+  var cjnEl = document.getElementById('client_job_number');
+  var cjnChk = document.getElementById('cjn_same');
+
+  function syncCJN() {
+    if (cjnChk && cjnChk.checked && crEl && cjnEl) {
+      cjnEl.value = crEl.value;
+    }
+  }
+  window.syncCJN = syncCJN;
+
+  if (cjnChk) {
+    cjnChk.addEventListener('change', function () {
+      if (cjnChk.checked) { syncCJN(); cjnEl.readOnly = true; cjnEl.style.background = ''; }
+      else { cjnEl.readOnly = false; cjnEl.focus(); }
+    });
+    cjnEl.readOnly = true;
+    syncCJN();
+  }
+
+  if (cjnEl) {
+    cjnEl.addEventListener('input', function () {
+      if (cjnChk) cjnChk.checked = false;
+    });
+  }
+
+  /* ── Reference search typeahead ──────────────────────────────────── */
+  var refSearch  = document.getElementById('ref_search');
+  var refResults = document.getElementById('ref_results');
+  var _cloneData = null;
+  var _cloneBs   = null;
+
+  if (refSearch) {
+    refSearch.addEventListener('input', function () {
+      var q = refSearch.value.trim();
+      if (q.length < 2) { refResults.style.display = 'none'; return; }
+      fetch('/jobs/search-reference?q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (items) {
+          refResults.innerHTML = '';
+          if (!items.length) {
+            refResults.innerHTML = '<div style="padding:10px 14px;color:var(--muted);font-size:.85rem;">No matching jobs found.</div>';
+            refResults.style.display = '';
+            return;
+          }
+          items.forEach(function (job) {
+            var d = document.createElement('div');
+            d.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.06);font-size:.88rem;';
+            var ref = job.client_reference || job.client_job_number || '';
+            d.innerHTML = '<span style="font-weight:600;">' + escHtml(job.display_ref) + '</span>'
+              + ' &mdash; ' + escHtml(job.customer_name || 'No customer')
+              + '<br><span style="color:var(--muted);font-size:.78rem;">'
+              + escHtml(job.client_name || '') + (ref ? ' &nbsp;|&nbsp; Ref: ' + escHtml(ref) : '')
+              + ' &nbsp;|&nbsp; ' + escHtml(job.status)
+              + '</span>';
+            d.addEventListener('mouseenter', function () { d.style.background = 'rgba(96,165,250,.1)'; });
+            d.addEventListener('mouseleave', function () { d.style.background = ''; });
+            d.addEventListener('mousedown', function (e) {
+              e.preventDefault();
+              refResults.style.display = 'none';
+              refSearch.value = ref || job.display_ref;
+              loadCloneModal(job.id);
+            });
+            refResults.appendChild(d);
+          });
+          refResults.style.display = '';
+        });
+    });
+
+    refSearch.addEventListener('blur', function () {
+      setTimeout(function () { refResults.style.display = 'none'; }, 200);
+    });
+    refSearch.addEventListener('focus', function () {
+      if (refSearch.value.trim().length >= 2) refSearch.dispatchEvent(new Event('input'));
+    });
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Clone modal ─────────────────────────────────────────────────── */
+  function loadCloneModal(jobId) {
+    var modalEl = document.getElementById('cloneModal');
+    var body    = document.getElementById('cloneModalBody');
+    var btn     = document.getElementById('cloneConfirmBtn');
+    body.innerHTML = '<div class="text-center py-3" style="color:var(--muted)">Loading…</div>';
+    btn.style.display = 'none';
+    _cloneData = null;
+
+    _cloneBs = bootstrap.Modal.getOrCreateInstance(modalEl);
+    _cloneBs.show();
+
+    fetch('/jobs/' + jobId + '/clone-data')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        _cloneData = data;
+        body.innerHTML = renderCloneSummary(data);
+        btn.style.display = '';
+      })
+      .catch(function () {
+        body.innerHTML = '<p class="text-danger">Could not load job data.</p>';
+      });
+  }
+
+  function renderCloneSummary(d) {
+    var rows = [
+      ['Job Ref', escHtml(d.display_ref)],
+      ['Client', escHtml(d.client_name)],
+      ['Customer', escHtml(d.customer_name)],
+      ['Client Reference', escHtml(d.client_reference)],
+      ['Client Job Number', escHtml(d.client_job_number)],
+      ['Job Type', escHtml(d.job_type)],
+      ['Visit Type', escHtml(d.visit_type)],
+      ['Status', escHtml(d.status)],
+      ['Priority', escHtml(d.priority)],
+      ['Address', escHtml(d.job_address)],
+      ['Description', '<span style="white-space:pre-wrap">' + escHtml(d.description) + '</span>'],
+    ];
+    if (d.lender_name) {
+      rows.push(['Lender', escHtml(d.lender_name)]);
+      if (d.account_number) rows.push(['Account #', escHtml(d.account_number)]);
+      if (d.arrears) rows.push(['Arrears', '$' + escHtml(d.arrears)]);
+    }
+    var html = '<table class="table table-sm mb-0"><tbody>';
+    rows.forEach(function (r) {
+      if (!r[1] || r[1] === '') return;
+      html += '<tr><td style="width:160px;color:var(--muted);font-size:.82rem;">' + r[0] + '</td><td style="font-size:.88rem;">' + r[1] + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    if (d.assets && d.assets.length) {
+      html += '<hr><div style="font-weight:600;font-size:.82rem;color:var(--muted);margin-bottom:6px;">ASSETS (' + d.assets.length + ')</div>';
+      d.assets.forEach(function (a) {
+        html += '<div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:.85rem;">';
+        html += '<strong>' + escHtml(a.item_type) + '</strong>';
+        if (a.description) html += ' &mdash; ' + escHtml(a.description);
+        if (a.reg) html += ' &nbsp;|&nbsp; Reg: ' + escHtml(a.reg);
+        if (a.make || a.model) html += ' &nbsp;|&nbsp; ' + escHtml(a.make) + ' ' + escHtml(a.model);
+        html += '</div>';
+      });
+    }
+    return html;
+  }
+
+  document.getElementById('cloneConfirmBtn').addEventListener('click', function () {
+    if (!_cloneData) return;
+    if (_cloneBs) _cloneBs.hide();
+    applyClone(_cloneData);
+  });
+
+  /* ── applyClone — populate the form ─────────────────────────────── */
+  function applyClone(d) {
+    /* Client reference & job number */
+    var cr = document.getElementById('client_reference');
+    var cjn = document.getElementById('client_job_number');
+    if (cr) cr.value = d.client_reference || '';
+    if (cjn) {
+      if (cjnChk && cjnChk.checked) {
+        cjn.value = d.client_reference || '';
+      } else {
+        cjn.value = d.client_job_number || '';
+      }
+    }
+
+    /* Client typeahead */
+    if (d.client_id) {
+      var cliSearch = document.getElementById('client_search');
+      var cliHidden = document.getElementById('client_id_val');
+      if (cliSearch) cliSearch.value = d.client_name || '';
+      if (cliHidden) cliHidden.value = d.client_id || '';
+    }
+
+    /* Customer typeahead + address */
+    if (d.customer_id) {
+      var cusSearch = document.getElementById('customer_search');
+      var cusHidden = document.getElementById('customer_id_val');
+      if (cusSearch) cusSearch.value = d.customer_name || '';
+      if (cusHidden) cusHidden.value = d.customer_id || '';
+      if (d.customer_address) {
+        var addrEl = document.getElementById('customer_address');
+        if (addrEl) {
+          if (window.axionSetAddress) window.axionSetAddress(addrEl, d.customer_address);
+          else addrEl.value = d.customer_address;
+        }
+      }
+    }
+
+    /* Selects */
+    function setSelect(name, val) {
+      var el = document.querySelector('select[name="' + name + '"]');
+      if (!el) return;
+      for (var i = 0; i < el.options.length; i++) {
+        if (el.options[i].value === val) { el.selectedIndex = i; return; }
+      }
+    }
+    setSelect('job_type', d.job_type);
+    setSelect('visit_type', d.visit_type);
+    setSelect('status', d.status);
+    setSelect('priority', d.priority);
+    if (typeof toggleLenderAsset === 'function') toggleLenderAsset();
+
+    /* Address & description */
+    var jaEl = document.getElementById('job_address');
+    if (jaEl && d.job_address) {
+      if (window.axionSetAddress) window.axionSetAddress(jaEl, d.job_address);
+      else jaEl.value = d.job_address;
+      var jSync = document.getElementById('job_same_as_customer');
+      if (jSync) jSync.checked = false;
+    }
+    var descEl = document.querySelector('textarea[name="description"]');
+    if (descEl) descEl.value = d.description || '';
+
+    /* Lender fields */
+    function setInput(name, val) {
+      var el = document.querySelector('[name="' + name + '"]');
+      if (el && val) el.value = val;
+    }
+    setInput('lender_name', d.lender_name);
+    setInput('account_number', d.account_number);
+    setSelect('regulation_type', d.regulation_type);
+    setInput('arrears', d.arrears);
+    setInput('costs', d.costs);
+    setInput('mmp', d.mmp);
+    setInput('job_due_date', d.job_due_date);
+
+    /* Assets — clear existing rows then add cloned ones */
+    if (d.assets && d.assets.length) {
+      var wrap = document.getElementById('assetsWrap');
+      if (wrap) {
+        wrap.querySelectorAll('.asset-row').forEach(function (r) { r.remove(); });
+        d.assets.forEach(function (a) {
+          if (typeof addAssetRow === 'function') addAssetRow();
+          var rows = wrap.querySelectorAll('.asset-row');
+          var row = rows[rows.length - 1];
+          if (!row) return;
+          function setRowInput(placeholder, val) {
+            if (!val) return;
+            var el = row.querySelector('input[placeholder="' + placeholder + '"]');
+            if (el) el.value = val;
+          }
+          var typeMap = {'vehicle':'Vehicle','property':'Property','equipment':'Equipment'};
+          var typeSel = row.querySelector('select[name="asset_type[]"]');
+          if (typeSel) {
+            var want = typeMap[a.item_type] || 'Vehicle';
+            for (var i=0;i<typeSel.options.length;i++) {
+              if (typeSel.options[i].value === want) { typeSel.selectedIndex=i; break; }
+            }
+          }
+          var descInp = row.querySelector('input[name="asset_description[]"]');
+          if (descInp) descInp.value = a.description || '';
+          setRowInput('Rego', a.reg);
+          setRowInput('VIN', a.vin);
+          setRowInput('Year', a.year);
+          setRowInput('Make', a.make);
+          setRowInput('Model', a.model);
+          setRowInput('Serial (equipment)', a.serial_number);
+          var addrInp = row.querySelector('.asset-address');
+          if (addrInp && a.property_address) {
+            if (window.axionSetAddress) window.axionSetAddress(addrInp, a.property_address);
+            else addrInp.value = a.property_address;
+          }
+        });
+        if (typeof window.axionSyncAssets === 'function') window.axionSyncAssets();
+      }
+    }
+
+    /* Scroll to top of form */
+    document.querySelector('form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+})();
+</script>
 {% endblock %}

@@ -392,6 +392,7 @@ def init_db():
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
     add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
     add_column_if_missing(cur, "jobs", "bill_to_client_id", "INTEGER")
+    add_column_if_missing(cur, "jobs", "client_job_number", "TEXT")
     add_column_if_missing(cur, "customers", "role", "TEXT")
 
     _default_booking_types = [
@@ -1129,6 +1130,92 @@ def jobs_list():
     return render_template("jobs.html", jobs=rows, statuses=statuses, status=status, q=q)
 
 
+@app.get("/jobs/search-reference")
+@admin_required
+def jobs_search_reference():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f"%{q}%"
+    conn = db()
+    rows = conn.execute("""
+        SELECT j.id, j.display_ref, j.client_reference, j.client_job_number,
+               j.status, j.job_type,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               c.name AS client_name
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients c ON c.id = j.client_id
+        WHERE j.client_reference LIKE ? OR j.client_job_number LIKE ?
+        ORDER BY j.created_at DESC
+        LIMIT 10
+    """, (like, like)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.get("/jobs/<int:job_id>/clone-data")
+@admin_required
+def job_clone_data(job_id: int):
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+    customer = None
+    if job["customer_id"]:
+        customer = conn.execute("SELECT * FROM customers WHERE id = ?", (job["customer_id"],)).fetchone()
+    client = None
+    if job["client_id"]:
+        client = conn.execute("SELECT id, name FROM clients WHERE id = ?", (job["client_id"],)).fetchone()
+    assets = conn.execute(
+        "SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    conn.close()
+
+    def cents_to_str(c):
+        return f"{c/100:.2f}" if c else ""
+
+    return jsonify({
+        "client_id":        job["client_id"],
+        "client_name":      client["name"] if client else "",
+        "customer_id":      job["customer_id"],
+        "customer_name":    (customer["first_name"] + " " + customer["last_name"]) if customer else "",
+        "customer_address": customer["address"] if customer else "",
+        "client_reference": job["client_reference"] or "",
+        "client_job_number": job["client_job_number"] or "",
+        "job_type":         job["job_type"],
+        "visit_type":       job["visit_type"],
+        "status":           job["status"],
+        "priority":         job["priority"],
+        "job_address":      job["job_address"] or "",
+        "description":      job["description"] or "",
+        "lender_name":      job["lender_name"] or "",
+        "account_number":   job["account_number"] or "",
+        "regulation_type":  job["regulation_type"] or "",
+        "arrears":          cents_to_str(job["arrears_cents"]),
+        "costs":            cents_to_str(job["costs_cents"]),
+        "mmp":              cents_to_str(job["mmp_cents"]),
+        "job_due_date":     job["job_due_date"] or "",
+        "display_ref":      job["display_ref"],
+        "assets": [
+            {
+                "item_type":        a["item_type"],
+                "description":      a["description"] or "",
+                "reg":              a["reg"] or "",
+                "vin":              a["vin"] or "",
+                "make":             a["make"] or "",
+                "model":            a["model"] or "",
+                "year":             a["year"] or "",
+                "property_address": a["property_address"] or "",
+                "serial_number":    a["serial_number"] or "",
+                "notes":            a["notes"] or "",
+            }
+            for a in assets
+        ]
+    })
+
+
 @app.get("/jobs/new")
 @login_required
 @admin_required
@@ -1186,6 +1273,7 @@ def job_new():
 def job_create():
     internal_job_number = generate_internal_job_number()
     client_reference = request.form.get("client_reference", "").strip()
+    client_job_number = request.form.get("client_job_number", "").strip() or None
     client_id = request.form.get("client_id") or None
     customer_id = request.form.get("customer_id") or None
     bill_to_client_id = request.form.get("bill_to_client_id") or None
@@ -1214,7 +1302,7 @@ def job_create():
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO jobs (
-            internal_job_number, client_reference, display_ref,
+            internal_job_number, client_reference, client_job_number, display_ref,
             client_id, customer_id, bill_to_client_id, assigned_user_id,
             job_type, visit_type, status, priority,
             job_address, description,
@@ -1222,9 +1310,9 @@ def job_create():
             arrears_cents, costs_cents, mmp_cents, job_due_date,
             created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        internal_job_number, client_reference or None, display_ref,
+        internal_job_number, client_reference or None, client_job_number, display_ref,
         client_id, customer_id, bill_to_client_id, assigned_user_id,
         job_type, visit_type, status, priority,
         job_address, description,
