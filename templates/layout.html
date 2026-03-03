@@ -288,7 +288,7 @@
 
         {% if session.get('role') == 'agent' %}
           <div class="hint">My Work</div>
-          <a href="/my/today" class="{% if request.path.startswith('/my') %}active{% endif %}">My Today</a>
+          <a href="/my/today" class="{% if request.path.startswith('/my/today') %}active{% endif %}">My Today</a>
         {% endif %}
 
         {% if session.get('role') == 'admin' %}
@@ -308,6 +308,7 @@
             {{ session.get('user_name') }}
             <span class="badge {% if session.get('role') == 'admin' %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ session.get('role') }}</span>
           </div>
+          <a href="/my/settings" class="{% if request.path.startswith('/my/settings') %}active{% endif %}">Settings</a>
           <a href="/logout">Logout</a>
         {% else %}
           <a href="/login" class="{% if request.path.startswith('/login') or request.path.startswith('/signup') %}active{% endif %}">Login</a>

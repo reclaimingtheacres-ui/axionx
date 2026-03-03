@@ -1,0 +1,25 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block content %}
+<div class="ax-card" style="max-width:480px;">
+  <div class="ax-card-h">Change Password</div>
+  <div class="ax-card-b">
+    <form method="post" action="/my/settings/password" autocomplete="off">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Current Password</label>
+        <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">New Password</label>
+        <input type="password" name="new_password" class="form-control" required autocomplete="new-password" minlength="6">
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Confirm New Password</label>
+        <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-primary">Update Password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

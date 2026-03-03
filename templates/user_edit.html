@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Edit User{% endblock %}
+{% block page_title %}Edit User{% endblock %}
+{% block content %}
+<div class="ax-card" style="max-width:520px;">
+  <div class="ax-card-h">Edit User</div>
+  <div class="ax-card-b">
+    <form method="post" action="/users/{{ u.id }}/edit">
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Full Name</label>
+        <input type="text" name="full_name" class="form-control" value="{{ u.full_name }}" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Email</label>
+        <input type="email" name="email" class="form-control" value="{{ u.email }}" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Role</label>
+        <select name="role" class="form-select">
+          <option value="agent" {% if u.role == 'agent' %}selected{% endif %}>Agent</option>
+          <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Admin</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="active" id="activeCheck" {% if u.active %}checked{% endif %}>
+          <label class="form-check-label" for="activeCheck">Active</label>
+        </div>
+      </div>
+      <hr>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">New Password <span class="text-muted fw-normal">(leave blank to keep current)</span></label>
+        <input type="password" name="new_password" class="form-control" placeholder="Enter new password…" autocomplete="new-password">
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="/users" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

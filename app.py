@@ -2796,6 +2796,70 @@ def admin_user_create():
     return redirect(url_for("user_create"))
 
 
+@app.get("/users/<int:user_id>/edit")
+@admin_required
+def user_edit(user_id: int):
+    conn = db()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for("users_list"))
+    return render_template("user_edit.html", u=user)
+
+
+@app.post("/users/<int:user_id>/edit")
+@admin_required
+def user_edit_save(user_id: int):
+    full_name = request.form.get("full_name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    role = request.form.get("role", "agent").strip()
+    active = 1 if request.form.get("active") else 0
+    new_password = request.form.get("new_password", "").strip()
+
+    if not full_name or not email:
+        flash("Name and email are required.", "danger")
+        return redirect(url_for("user_edit", user_id=user_id))
+
+    conn = db()
+    try:
+        if new_password:
+            conn.execute(
+                "UPDATE users SET full_name=?, email=?, role=?, active=?, password=? WHERE id=?",
+                (full_name, email, role, active, generate_password_hash(new_password), user_id)
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET full_name=?, email=?, role=?, active=? WHERE id=?",
+                (full_name, email, role, active, user_id)
+            )
+        conn.commit()
+        audit("user", user_id, "edit", f"User updated: {full_name} ({role})", {"email": email, "active": active})
+        flash("User updated.", "success")
+    except sqlite3.IntegrityError:
+        flash("That email address is already in use.", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("users_list"))
+
+
+@app.post("/users/<int:user_id>/delete")
+@admin_required
+def user_delete(user_id: int):
+    if user_id == session.get("user_id"):
+        flash("You cannot delete your own account.", "danger")
+        return redirect(url_for("users_list"))
+    conn = db()
+    user = conn.execute("SELECT full_name FROM users WHERE id = ?", (user_id,)).fetchone()
+    if user:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        audit("user", user_id, "delete", f"User deleted: {user['full_name']}", {})
+        flash("User deleted.", "success")
+    conn.close()
+    return redirect(url_for("users_list"))
+
+
 # -------- CSV Import --------
 @app.get("/import/jobs")
 @admin_required
@@ -3204,6 +3268,47 @@ def my_today():
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
                            today=today, today_display=today_display)
+
+
+@app.get("/my/settings")
+def my_settings():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    return render_template("my_settings.html")
+
+
+@app.post("/my/settings/password")
+def my_settings_password():
+    user_id = session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+    current = request.form.get("current_password", "").strip()
+    new_pw = request.form.get("new_password", "").strip()
+    confirm = request.form.get("confirm_password", "").strip()
+
+    if not current or not new_pw or not confirm:
+        flash("All fields are required.", "danger")
+        return redirect(url_for("my_settings"))
+    if new_pw != confirm:
+        flash("New passwords do not match.", "danger")
+        return redirect(url_for("my_settings"))
+    if len(new_pw) < 6:
+        flash("Password must be at least 6 characters.", "danger")
+        return redirect(url_for("my_settings"))
+
+    conn = db()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user or not check_password_hash(user["password"], current):
+        conn.close()
+        flash("Current password is incorrect.", "danger")
+        return redirect(url_for("my_settings"))
+
+    conn.execute("UPDATE users SET password = ? WHERE id = ?",
+                 (generate_password_hash(new_pw), user_id))
+    conn.commit()
+    conn.close()
+    flash("Password updated successfully.", "success")
+    return redirect(url_for("my_settings"))
 
 
 @app.post("/jobs/<int:job_id>/note-update-emailed")
