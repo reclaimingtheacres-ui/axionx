@@ -14,7 +14,7 @@
 </style>
 <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0">
 
-<div class="d-flex justify-content-between align-items-start mb-3">
+<div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
   <div>
     <div style="color:var(--muted); font-size:.85rem">
       Internal: {{ job.internal_job_number }}{% if job.client_reference %} | Client Ref: {{ job.client_reference }}{% endif %}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} | {{ cx }}{% endif %}
@@ -23,44 +23,114 @@
       {{ job.job_type }} | {{ job.visit_type }} | Priority: {{ job.priority }}{% if job.assigned_name %} | Assigned: {{ job.assigned_name }}{% endif %}{% if next_schedule %} | Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% if next_schedule.assigned_to_name %} — {{ next_schedule.assigned_to_name }}{% endif %}{% endif %}
     </div>
   </div>
-  {% if session.get('role') == 'admin' %}
+
+  <!-- ===== ACTION BAR ===== -->
   <div class="d-flex align-items-center gap-2 flex-wrap">
-  <button type="button" class="btn btn-outline-secondary btn-sm"
-          onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('editJobModal')).show()">
-    &#9998; Edit Job
-  </button>
-  <form method="post" action="/jobs/{{ job.id }}/status" class="d-inline">
-    {% set s = job.status %}
-    {% if s == 'New' %}{% set sc = '#3b82f6' %}
-    {% elif s in ('Active', 'Active - Phone work only') %}{% set sc = '#22c55e' %}
-    {% elif s in ('Suspended', 'Awaiting info from client') %}{% set sc = '#f59e0b' %}
-    {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
-    {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
-    {% else %}{% set sc = '#6b7280' %}{% endif %}
-    <select name="status" data-current-status="{{ job.status }}" onchange="handleStatusChange(this)"
-            style="background:{{ sc }}20; color:{{ sc }}; border:1.5px solid {{ sc }}50;
-                   border-radius:999px; padding:4px 12px; font-size:.82rem; font-weight:600;
-                   cursor:pointer; outline:none; appearance:none; -webkit-appearance:none;
-                   padding-right:28px; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%23{{ sc[1:] }}' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
-                   background-repeat:no-repeat; background-position:right 8px center;">
-      {% for st in ['New','Active','Active - Phone work only','Suspended','Awaiting info from client','Completed','Invoiced'] %}
-        <option value="{{ st }}" {% if st == job.status %}selected{% endif %}>{{ st }}</option>
-      {% endfor %}
-    </select>
-  </form>
+
+    {% if session.get('role') == 'admin' %}
+
+    <!-- Add to Job -->
+    <div class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        Add to Job
+      </button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#" onclick="axOpenAddNote();return false">Add File / Note</a></li>
+        <li><a class="dropdown-item" href="#" onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addDocModal')).show();return false">Add Document</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="#" onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('editJobModal')).show();return false">Edit Job Details</a></li>
+      </ul>
+    </div>
+
+    <!-- Create Document -->
+    <div class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        Create Document
+      </button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formWorksheet">Worksheet</a></li>
+        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formVIR">Vehicle Inspection Report</a></li>
+        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formF13">Form 13</a></li>
+        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formTransport">Transport Instructions</a></li>
+        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formRepoLock">Repossession Lock</a></li>
+        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formTermination">Termination Notice</a></li>
+        {% if form_templates %}
+        <li><hr class="dropdown-divider"></li>
+        {% for tmpl in form_templates %}
+        <li><a class="dropdown-item" href="#" onclick="openCustomForm({{ tmpl.id }}, {{ tmpl.field_list|tojson }}, '{{ tmpl.name|e }}');return false">{{ tmpl.name }}</a></li>
+        {% endfor %}
+        {% endif %}
+      </ul>
+    </div>
+
+    <!-- Copy -->
+    <div class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        Copy
+      </button>
+      <ul class="dropdown-menu">
+        <li>
+          <form method="post" action="/jobs/{{ job.id }}/clone" style="margin:0">
+            <button type="submit" class="dropdown-item">Clone Job</button>
+          </form>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Send Message -->
+    <div class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        Send Message
+      </button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#" onclick="openSendMsg('email');return false">Send Email</a></li>
+        <li><a class="dropdown-item" href="#" onclick="openSendMsg('sms');return false">Send SMS</a></li>
+        <li><a class="dropdown-item" href="#" onclick="openSendMsg('both');return false">Send Both</a></li>
+      </ul>
+    </div>
+
+    <!-- Add Bookings -->
+    <button class="btn btn-primary btn-sm" type="button"
+            onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).show()">
+      Add Bookings
+    </button>
+
+    <!-- Status pill -->
+    <form method="post" action="/jobs/{{ job.id }}/status" class="d-inline">
+      {% set s = job.status %}
+      {% if s == 'New' %}{% set sc = '#3b82f6' %}
+      {% elif s in ('Active', 'Active - Phone work only') %}{% set sc = '#22c55e' %}
+      {% elif s in ('Suspended', 'Awaiting info from client') %}{% set sc = '#f59e0b' %}
+      {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
+      {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
+      {% else %}{% set sc = '#6b7280' %}{% endif %}
+      <select name="status" data-current-status="{{ job.status }}" onchange="handleStatusChange(this)"
+              style="background:{{ sc }}20; color:{{ sc }}; border:1.5px solid {{ sc }}50;
+                     border-radius:999px; padding:4px 12px; font-size:.82rem; font-weight:600;
+                     cursor:pointer; outline:none; appearance:none; -webkit-appearance:none;
+                     padding-right:28px; background-image:url('data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2212%22 height%3D%2212%22 viewBox%3D%220 0 24 24%22%3E%3Cpath fill%3D%22%23{{ sc[1:] }}%22 d%3D%22M7 10l5 5 5-5z%22%2F%3E%3C%2Fsvg%3E');
+                     background-repeat:no-repeat; background-position:right 8px center;">
+        {% for st in ['New','Active','Active - Phone work only','Suspended','Awaiting info from client','Completed','Invoiced'] %}
+          <option value="{{ st }}" {% if st == job.status %}selected{% endif %}>{{ st }}</option>
+        {% endfor %}
+      </select>
+    </form>
+
+    {% else %}
+    <!-- Agent: status badge only -->
+    <span class="badge fs-6"
+          style="{% set s = job.status %}
+                 {% if s == 'New' %}background:#3b82f620;color:#3b82f6;border:1.5px solid #3b82f650
+                 {% elif s in ('Active','Active - Phone work only') %}background:#22c55e20;color:#22c55e;border:1.5px solid #22c55e50
+                 {% elif s in ('Suspended','Awaiting info from client') %}background:#f59e0b20;color:#f59e0b;border:1.5px solid #f59e0b50
+                 {% elif s == 'Completed' %}background:#14b8a620;color:#14b8a6;border:1.5px solid #14b8a650
+                 {% elif s == 'Invoiced' %}background:#a855f720;color:#a855f7;border:1.5px solid #a855f750
+                 {% else %}background:#6b728020;color:#6b7280;border:1.5px solid #6b728050{% endif %}">
+      {{ job.status }}
+    </span>
+    {% endif %}
+
   </div>
-  {% else %}
-  <span class="badge fs-6"
-        style="{% set s = job.status %}
-               {% if s == 'New' %}background:#3b82f620;color:#3b82f6;border:1.5px solid #3b82f650
-               {% elif s in ('Active','Active - Phone work only') %}background:#22c55e20;color:#22c55e;border:1.5px solid #22c55e50
-               {% elif s in ('Suspended','Awaiting info from client') %}background:#f59e0b20;color:#f59e0b;border:1.5px solid #f59e0b50
-               {% elif s == 'Completed' %}background:#14b8a620;color:#14b8a6;border:1.5px solid #14b8a650
-               {% elif s == 'Invoiced' %}background:#a855f720;color:#a855f7;border:1.5px solid #a855f750
-               {% else %}background:#6b728020;color:#6b7280;border:1.5px solid #6b728050{% endif %}">
-    {{ job.status }}
-  </span>
-  {% endif %}
 </div>
 
 <!-- ======== TAB NAV ======== -->
@@ -2412,5 +2482,334 @@ function axCopyVin(btn) {
   {% endif %}
 })();
 </script>
+
+<!-- ── Add Document Modal ─────────────────────────────────────────────── -->
+{% if session.get('role') == 'admin' %}
+<div class="modal fade" id="addDocModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title" style="color:var(--text)">Add Document</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Document Type</label>
+            <select class="form-select" name="doc_type">
+              {% for dt in doc_types %}
+              <option value="{{ dt }}">{{ dt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Title <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+            <input class="form-control" name="title" placeholder="e.g. Signed authority">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">File(s) <span style="color:#ef4444">*</span></label>
+            <input class="form-control" type="file" name="file" multiple
+                   accept=".png,.jpg,.jpeg,.heic,.pdf,.doc,.docx,.xls,.xlsx">
+            <div class="form-text" style="color:var(--muted)">PNG, JPG, PDF, DOC, DOCX, XLS, XLSX</div>
+          </div>
+          <div class="mb-1">
+            <label class="form-label small fw-semibold">Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+            <textarea class="form-control" name="notes" rows="2" placeholder="Any notes about this document…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid var(--line)">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Upload</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Booking Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="addBookingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" style="color:var(--text)">Add Bookings</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="abk-error" class="alert alert-danger mb-3" style="display:none"></div>
+
+        <!-- Date & Time -->
+        <div class="row g-3 mb-3 align-items-center">
+          <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px">Booking Start:</div>
+          <div class="col">
+            <div class="d-flex gap-2 align-items-center">
+              <input type="date" id="abk_date" class="form-control" style="max-width:180px">
+              <input type="time" id="abk_time" class="form-control" style="max-width:120px" value="09:00">
+            </div>
+          </div>
+        </div>
+
+        <!-- Duration -->
+        <div class="row g-3 mb-3 align-items-center">
+          <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px">Duration (hours : minutes):</div>
+          <div class="col">
+            <div class="d-flex gap-2 align-items-center">
+              <input type="number" id="abk_hours" class="form-control" placeholder="# Hours" min="0" style="max-width:110px">
+              <input type="number" id="abk_mins" class="form-control" value="30" min="0" max="59" style="max-width:80px">
+            </div>
+          </div>
+        </div>
+
+        <!-- Booking Label -->
+        <div class="row g-3 mb-3 align-items-center">
+          <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px">Booking Label:</div>
+          <div class="col">
+            <input type="text" id="abk_label" class="form-control" value="New Booking" style="max-width:260px">
+          </div>
+        </div>
+
+        <!-- Booking Details -->
+        <div class="row g-3 mb-3 align-items-start">
+          <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px;padding-top:.45rem">Booking Details:</div>
+          <div class="col">
+            <textarea id="abk_details" class="form-control" rows="3" style="resize:vertical"></textarea>
+          </div>
+        </div>
+
+        <!-- Unassigned -->
+        <div class="row g-3 mb-4 align-items-center">
+          <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px">Create Unassigned Bookings:</div>
+          <div class="col">
+            <input type="checkbox" id="abk_unassigned" class="form-check-input" style="width:18px;height:18px">
+          </div>
+        </div>
+
+        <!-- Assign Staff -->
+        <div id="abk_staff_section">
+          <div style="color:var(--accent);font-size:.85rem;font-weight:500;margin-bottom:.8rem">Assign Staff:</div>
+          <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem">
+            <div class="d-flex gap-2 mb-3">
+              <input type="text" id="abk_staff_search" class="form-control form-control-sm"
+                     placeholder="Search Staff" oninput="abkFilterStaff(this.value)">
+            </div>
+            <div class="d-flex gap-3 mb-2 small">
+              <a href="#" style="color:var(--accent)" onclick="abkSelectAll(true);return false">Select All</a>
+              <a href="#" style="color:var(--accent)" onclick="abkSelectAll(false);return false">Unselect All</a>
+              <span id="abk_selected_count" style="margin-left:auto;color:var(--muted)">0 staff selected</span>
+            </div>
+            <div class="row g-2" id="abk_staff_grid">
+              {% for u in users %}
+              <div class="col-12 col-sm-6 abk-staff-item" data-name="{{ u.full_name|lower }}">
+                <label class="d-flex align-items-center gap-2 p-2 rounded" style="cursor:pointer;border:1px solid var(--line);border-radius:8px!important">
+                  <input type="checkbox" class="form-check-input abk-staff-chk" value="{{ u.id }}"
+                         style="flex-shrink:0" onchange="abkCountSelected()">
+                  <span class="d-flex align-items-center justify-content-center fw-bold text-white rounded"
+                        style="width:36px;height:36px;flex-shrink:0;font-size:.8rem;
+                               background:{{ ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#06b6d4']|random }}">
+                    {{ u.full_name[:2].upper() }}
+                  </span>
+                  <span style="font-size:.88rem;color:var(--text);flex:1;min-width:0">{{ u.full_name }}</span>
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <div class="d-flex gap-2 align-items-center w-100">
+          <button type="button" class="btn btn-primary" id="abk_save_close" onclick="abkSave(false)">Save &amp; Close</button>
+          <button type="button" class="btn btn-primary" id="abk_save_another" onclick="abkSave(true)">Save &amp; Add Another</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Send Message Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="sendMsgModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title" id="sendMsgTitle" style="color:var(--text)">Send Message</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="msg-sent-alert" class="alert alert-success mb-3" style="display:none">Message logged successfully.</div>
+        <div id="msg-form-body">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Type</label>
+            <div id="msg_type_badge" class="badge" style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.85rem;padding:5px 10px">Email</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">To</label>
+            <input type="text" id="msg_to" class="form-control" placeholder="Recipient name / number">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Subject / Reference</label>
+            <input type="text" id="msg_subject" class="form-control" value="{{ job.display_ref }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">Message</label>
+            <textarea id="msg_body" class="form-control" rows="5" placeholder="Type your message…"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="msg_send_btn" onclick="doSendMsg()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Send Message ─────────────────────────────────────────────────────── */
+var _msgType = 'email';
+function openSendMsg(type) {
+  _msgType = type;
+  var labels = { email: 'Email', sms: 'SMS', both: 'Email & SMS' };
+  document.getElementById('sendMsgTitle').textContent = 'Send ' + (labels[type] || 'Message');
+  document.getElementById('msg_type_badge').textContent = labels[type] || type;
+  document.getElementById('msg-sent-alert').style.display = 'none';
+  document.getElementById('msg-form-body').style.display = '';
+  document.getElementById('msg_send_btn').style.display = '';
+  document.getElementById('msg_to').value = '';
+  document.getElementById('msg_body').value = '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).show();
+}
+function doSendMsg() {
+  var to      = document.getElementById('msg_to').value.trim();
+  var subject = document.getElementById('msg_subject').value.trim();
+  var body    = document.getElementById('msg_body').value.trim();
+  if (!body) { alert('Please enter a message.'); return; }
+  var btn = document.getElementById('msg_send_btn');
+  btn.disabled = true;
+  var fd = new FormData();
+  fd.append('msg_type', _msgType);
+  fd.append('recipient', to);
+  fd.append('subject', subject);
+  fd.append('body', body);
+  fetch('/jobs/{{ job.id }}/notes/new', {
+    method: 'POST',
+    body: (function(){ var f = new FormData(); f.append('note_text', '[' + _msgType.toUpperCase() + ' TO: ' + to + ']\n' + body); return f; })(),
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  }).then(function() {
+    btn.disabled = false;
+    document.getElementById('msg-sent-alert').style.display = '';
+    document.getElementById('msg-form-body').style.display = 'none';
+    document.getElementById('msg_send_btn').style.display = 'none';
+    setTimeout(function(){
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
+    }, 1800);
+  }).catch(function() { btn.disabled = false; });
+}
+
+/* ── Add Booking Modal ────────────────────────────────────────────────── */
+(function() {
+  var abkModal = null;
+
+  document.getElementById('abk_unassigned').addEventListener('change', function() {
+    document.getElementById('abk_staff_section').style.opacity = this.checked ? '0.35' : '1';
+    document.getElementById('abk_staff_section').style.pointerEvents = this.checked ? 'none' : '';
+  });
+
+  var abkEl = document.getElementById('addBookingModal');
+  abkEl.addEventListener('show.bs.modal', function() {
+    document.getElementById('abk-error').style.display = 'none';
+    var today = new Date();
+    var yyyy = today.getFullYear();
+    var mm = String(today.getMonth()+1).padStart(2,'0');
+    var dd = String(today.getDate()).padStart(2,'0');
+    document.getElementById('abk_date').value = yyyy + '-' + mm + '-' + dd;
+    document.getElementById('abk_time').value = '09:00';
+    document.getElementById('abk_label').value = 'New Booking';
+    document.getElementById('abk_details').value = '';
+    document.getElementById('abk_unassigned').checked = false;
+    document.getElementById('abk_staff_section').style.opacity = '1';
+    document.getElementById('abk_staff_section').style.pointerEvents = '';
+    abkSelectAll(false);
+  });
+
+  window.abkFilterStaff = function(q) {
+    q = q.toLowerCase();
+    document.querySelectorAll('.abk-staff-item').forEach(function(el) {
+      el.style.display = (!q || el.dataset.name.includes(q)) ? '' : 'none';
+    });
+  };
+
+  window.abkSelectAll = function(sel) {
+    document.querySelectorAll('.abk-staff-chk').forEach(function(cb) {
+      if (cb.closest('.abk-staff-item').style.display !== 'none') cb.checked = sel;
+    });
+    abkCountSelected();
+  };
+
+  window.abkCountSelected = function() {
+    var n = document.querySelectorAll('.abk-staff-chk:checked').length;
+    document.getElementById('abk_selected_count').textContent = n + ' staff selected';
+  };
+
+  function abkDisable(dis) {
+    ['abk_save_close','abk_save_another'].forEach(function(id){
+      document.getElementById(id).disabled = dis;
+    });
+  }
+
+  window.abkSave = function(addAnother) {
+    var date = document.getElementById('abk_date').value;
+    var time = document.getElementById('abk_time').value;
+    var label = document.getElementById('abk_label').value.trim() || 'New Booking';
+    var details = document.getElementById('abk_details').value.trim();
+    var unassigned = document.getElementById('abk_unassigned').checked;
+    var errEl = document.getElementById('abk-error');
+
+    if (!date) { errEl.textContent = 'Please select a booking date.'; errEl.style.display = ''; return; }
+    if (!time) { errEl.textContent = 'Please select a booking time.'; errEl.style.display = ''; return; }
+    errEl.style.display = 'none';
+
+    var checkedIds = [];
+    document.querySelectorAll('.abk-staff-chk:checked').forEach(function(cb){ checkedIds.push(cb.value); });
+
+    var fd = new FormData();
+    var parts = date.split('-');
+    fd.append('schedule_date', parts[2] + '/' + parts[1] + '/' + parts[0]);
+    fd.append('schedule_time', time);
+    fd.append('booking_label', label);
+    fd.append('booking_details', details);
+    if (unassigned) fd.append('unassigned', '1');
+    checkedIds.forEach(function(id){ fd.append('assigned_user_ids', id); });
+
+    abkDisable(true);
+    fetch('/jobs/{{ job.id }}/schedule/ajax', {
+      method: 'POST',
+      body: fd,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      abkDisable(false);
+      if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
+      if (addAnother) {
+        document.getElementById('abk_label').value = 'New Booking';
+        document.getElementById('abk_details').value = '';
+        abkSelectAll(false);
+        errEl.textContent = data.count + ' booking(s) saved. Fill in details for the next booking.';
+        errEl.style.display = '';
+        errEl.className = 'alert alert-success mb-3';
+        setTimeout(function(){ errEl.style.display = 'none'; errEl.className = 'alert alert-danger mb-3'; }, 2500);
+      } else {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).hide();
+        window.location.reload();
+      }
+    })
+    .catch(function() {
+      abkDisable(false);
+      errEl.textContent = 'Network error. Please try again.';
+      errEl.style.display = '';
+    });
+  };
+})();
+</script>
+{% endif %}
 
 {% endblock %}

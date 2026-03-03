@@ -1506,7 +1506,7 @@ def job_detail(job_id: int):
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
 
-    cur.execute("SELECT id, name FROM clients WHERE active = 1 ORDER BY name")
+    cur.execute("SELECT id, name FROM clients ORDER BY name")
     all_clients = cur.fetchall()
 
     cur.execute("SELECT id, first_name, last_name, company, address FROM customers ORDER BY last_name, first_name")
@@ -1719,6 +1719,123 @@ def add_schedule(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+@app.post("/jobs/<int:job_id>/schedule/ajax")
+@login_required
+@admin_required
+def add_schedule_ajax(job_id: int):
+    date_str  = request.form.get("schedule_date", "").strip()
+    time_str  = request.form.get("schedule_time", "").strip()
+    bt_name   = request.form.get("booking_label", "New Booking").strip() or "New Booking"
+    notes     = request.form.get("booking_details", "").strip() or None
+    caller_id = session.get("user_id")
+    unassigned = request.form.get("unassigned") == "1"
+    user_ids  = request.form.getlist("assigned_user_ids")
+    now       = now_ts()
+
+    if not date_str or not time_str:
+        return jsonify({"ok": False, "error": "Date and time are required."})
+
+    try:
+        dt_str = parse_interaction_datetime(date_str, time_str)
+    except Exception:
+        return jsonify({"ok": False, "error": "Invalid date or time."})
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM booking_types WHERE name = ? COLLATE NOCASE", (bt_name,))
+    bt_row = cur.fetchone()
+    if bt_row:
+        bt_id = bt_row["id"]
+    else:
+        cur.execute("INSERT INTO booking_types (name) VALUES (?)", (bt_name,))
+        bt_id = cur.lastrowid
+
+    created = []
+    if unassigned or not user_ids:
+        cur.execute("""INSERT INTO schedules
+            (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_by_user_id, created_at)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?)""",
+            (job_id, bt_id, dt_str, bt_name, notes, caller_id, now))
+        created.append({"id": cur.lastrowid, "assigned_to": None})
+    else:
+        for uid in user_ids:
+            try:
+                uid_int = int(uid)
+            except ValueError:
+                continue
+            cur.execute("""INSERT INTO schedules
+                (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_by_user_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (job_id, bt_id, dt_str, bt_name, notes, uid_int, caller_id, now))
+            created.append({"id": cur.lastrowid, "assigned_to": uid_int})
+
+    cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                   VALUES (?, 'Schedule', ?, ?, ?)""",
+                (job_id, f"Booking '{bt_name}' added for {dt_str[:10]}.", now, now))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "count": len(created)})
+
+
+@app.post("/jobs/<int:job_id>/clone")
+@login_required
+@admin_required
+def job_clone(job_id: int):
+    conn = db()
+    src = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not src:
+        conn.close()
+        flash("Job not found.", "danger")
+        return redirect(url_for("jobs_list"))
+
+    conn2 = db()
+    cur2 = conn2.cursor()
+    cur2.execute("SELECT * FROM system_settings WHERE id = 1")
+    settings = cur2.fetchone()
+    prefix   = settings["job_prefix"] if settings else "0000"
+    seq      = (settings["job_sequence"] or 0) + 1
+    internal = f"{prefix}{seq:03d}"
+    cur2.execute("UPDATE system_settings SET job_sequence = ? WHERE id = 1", (seq,))
+
+    now = now_ts()
+    caller_id = session.get("user_id")
+    cur2.execute("""INSERT INTO jobs
+        (internal_job_number, display_ref, client_id, customer_id,
+         client_reference,
+         job_type, visit_type, status, priority,
+         job_address, description, assigned_user_id,
+         created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (internal, internal,
+         src["client_id"], src["customer_id"],
+         src["client_reference"],
+         src["job_type"], src["visit_type"], "New", src["priority"],
+         src["job_address"], src["description"], src["assigned_user_id"],
+         now, now))
+    new_id = cur2.lastrowid
+
+    src_items = conn.execute("SELECT * FROM job_items WHERE job_id = ?", (job_id,)).fetchall()
+    item_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()
+                 if r[1] not in ("id", "job_id")]
+    for item in src_items:
+        cols_present = [c for c in item_cols if c in dict(item)]
+        if not cols_present:
+            continue
+        ph = ",".join("?" * (len(cols_present) + 1))
+        col_str = "job_id," + ",".join(cols_present)
+        vals = [new_id] + [item[c] for c in cols_present]
+        cur2.execute(f"INSERT INTO job_items ({col_str}) VALUES ({ph})", vals)
+
+    cur2.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                   VALUES (?, 'Create', ?, ?, ?)""",
+                (new_id, f"Job cloned from {src['internal_job_number']}.", now, now))
+
+    conn.close()
+    conn2.commit()
+    conn2.close()
+    flash(f"Job cloned as {internal}.", "success")
+    return redirect(url_for("job_detail", job_id=new_id))
 
 
 @app.post("/jobs/<int:job_id>/activate")
