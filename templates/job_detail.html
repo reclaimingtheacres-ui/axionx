@@ -620,9 +620,6 @@
               {% endfor %}
             </select>
           </div>
-          <div class="col-md-3">
-            <button class="btn btn-primary w-100" type="submit">Add Booking</button>
-          </div>
           <div class="col-12">
             <textarea name="notes" class="form-control" rows="2"
                       placeholder="Optional notes about this booking"></textarea>
@@ -639,6 +636,9 @@
           {% else %}
           <input type="hidden" name="assigned_to_user_id" value="{{ job.assigned_user_id or '' }}">
           {% endif %}
+          <div class="col-md-4">
+            <button class="btn btn-primary w-100" type="submit">Add Booking</button>
+          </div>
         </form>
         {% endif %}
 
@@ -819,6 +819,16 @@ window.addEventListener('load', function () {
   tt.addEventListener("input", (e) => {
     e.target.value=e.target.value.replace(/\s+/g," ");
   });
+
+  (function autoPopulateNow(){
+    const now = new Date();
+    const d = pad2(now.getDate()), m = pad2(now.getMonth()+1), y = now.getFullYear();
+    const H = pad2(now.getHours()), M = pad2(now.getMinutes());
+    dt.value = d+"/"+m+"/"+y;
+    dp.value = y+"-"+m+"-"+d;
+    tp.value = H+":"+M;
+    tt.value = toAmPm(H+":"+M);
+  })();
 })();
 </script>
 
