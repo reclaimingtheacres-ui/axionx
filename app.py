@@ -1563,15 +1563,34 @@ def job_customer_remove(job_id: int, jc_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+def _resolve_booking_type(cur, bt_id: str, bt_name: str):
+    """Return a valid booking_type id — looking up by id, then by name, creating if new."""
+    if bt_id:
+        try:
+            row = cur.execute("SELECT id FROM booking_types WHERE id = ?", (int(bt_id),)).fetchone()
+            if row:
+                return row["id"]
+        except Exception:
+            pass
+    if bt_name:
+        row = cur.execute("SELECT id FROM booking_types WHERE LOWER(name) = LOWER(?)", (bt_name,)).fetchone()
+        if row:
+            return row["id"]
+        cur.execute("INSERT INTO booking_types (name, active) VALUES (?, 1)", (bt_name,))
+        return cur.lastrowid
+    return None
+
+
 @app.post("/jobs/<int:job_id>/schedule")
 @login_required
 @admin_required
 def add_schedule(job_id: int):
-    date_str   = request.form.get("schedule_date", "").strip()
-    time_str   = request.form.get("schedule_time", "").strip()
-    bt_id      = request.form.get("booking_type_id", "").strip()
-    notes      = request.form.get("notes", "").strip() or None
-    caller_id  = session.get("user_id")
+    date_str    = request.form.get("schedule_date", "").strip()
+    time_str    = request.form.get("schedule_time", "").strip()
+    bt_id       = request.form.get("booking_type_id", "").strip()
+    bt_name     = request.form.get("booking_type_name", "").strip()
+    notes       = request.form.get("notes", "").strip() or None
+    caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
 
     if caller_role == "admin":
@@ -1581,7 +1600,7 @@ def add_schedule(job_id: int):
     else:
         assigned_to = caller_id
 
-    if not date_str or not time_str or not bt_id:
+    if not date_str or not time_str or (not bt_id and not bt_name):
         flash("Date, time and booking type are required.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
 
@@ -1593,14 +1612,19 @@ def add_schedule(job_id: int):
 
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT name FROM booking_types WHERE id = ?", (int(bt_id),))
-    bt_row = cur.fetchone()
+    resolved_bt_id = _resolve_booking_type(cur, bt_id, bt_name)
+    if not resolved_bt_id:
+        conn.close()
+        flash("Invalid booking type.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    bt_row = cur.execute("SELECT name FROM booking_types WHERE id = ?", (resolved_bt_id,)).fetchone()
     bt_status = bt_row["name"] if bt_row else "Active"
     cur.execute("""
         INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes,
                                assigned_to_user_id, created_by_user_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (job_id, int(bt_id), dt_str, bt_status, notes, assigned_to, caller_id, now_ts()))
+    """, (job_id, resolved_bt_id, dt_str, bt_status, notes, assigned_to, caller_id, now_ts()))
     conn.commit()
     conn.close()
 
@@ -1636,19 +1660,21 @@ def job_activate(job_id):
                    VALUES (?, ?, ?, ?, ?)""",
                 (job_id, "Status Update", f"Status changed to '{new_status}'.", now, now))
 
-    if date_str and time_str and bt_id:
+    bt_name = request.form.get("booking_type_name", "").strip()
+    if date_str and time_str and (bt_id or bt_name):
         try:
             dt_str = parse_interaction_datetime(date_str, time_str)
-            cur.execute("SELECT name FROM booking_types WHERE id = ?", (int(bt_id),))
-            bt_row = cur.fetchone()
-            bt_status = bt_row["name"] if bt_row else new_status
-            assigned_int = int(assigned_to) if assigned_to else None
-            cur.execute("""INSERT INTO schedules
-                           (job_id, booking_type_id, scheduled_for, status, notes,
-                            assigned_to_user_id, created_by_user_id, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (job_id, int(bt_id), dt_str, bt_status, notes,
-                         assigned_int, caller_id, now_ts()))
+            resolved_bt_id = _resolve_booking_type(cur, bt_id, bt_name)
+            if resolved_bt_id:
+                bt_row = cur.execute("SELECT name FROM booking_types WHERE id = ?", (resolved_bt_id,)).fetchone()
+                bt_status = bt_row["name"] if bt_row else new_status
+                assigned_int = int(assigned_to) if assigned_to else None
+                cur.execute("""INSERT INTO schedules
+                               (job_id, booking_type_id, scheduled_for, status, notes,
+                                assigned_to_user_id, created_by_user_id, created_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (job_id, resolved_bt_id, dt_str, bt_status, notes,
+                             assigned_int, caller_id, now_ts()))
         except Exception:
             flash("Schedule date/time invalid — status updated but no schedule created.", "warning")
 

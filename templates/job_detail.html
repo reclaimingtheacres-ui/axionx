@@ -613,12 +613,12 @@
                    placeholder="hh:mm am" maxlength="8" autocomplete="off" required>
           </div>
           <div class="col-md-3">
-            <select name="booking_type_id" class="form-select" required>
-              <option value="" disabled selected>Booking type…</option>
-              {% for bt in booking_types %}
-                <option value="{{ bt.id }}">{{ bt.name }}</option>
-              {% endfor %}
-            </select>
+            <div class="position-relative">
+              <input type="text" id="bt_search" name="booking_type_name" class="form-control"
+                     placeholder="Booking type…" autocomplete="off" required>
+              <input type="hidden" name="booking_type_id" id="bt_id_hidden">
+              <div id="bt_dropdown" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+            </div>
           </div>
           <div class="col-12">
             <textarea name="notes" class="form-control" rows="2"
