@@ -9,14 +9,14 @@
     <form method="post">
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-3">
-          <label class="form-label">Internal Job Number</label>
+          <label class="form-label">Job Number</label>
           <div class="form-control" style="background:rgba(96,165,250,.08)!important; border-color:rgba(96,165,250,.3)!important; color:var(--accent)!important; font-weight:700; letter-spacing:.05em">
             {{ next_number }}
           </div>
           <div class="form-text" style="color:var(--muted)">Auto-generated &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit;vertical-align:baseline" onclick="openEntityModal('settings', '/admin/settings/popup')">change</button></div>
         </div>
         <div class="col-12 col-lg-5">
-          <label class="form-label">Client Reference</label>
+          <label class="form-label">Contract Number</label>
           <div class="position-relative">
             <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,''); syncCJN()" autocomplete="off">
             <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
@@ -27,8 +27,8 @@
           <label class="form-label d-flex align-items-center gap-2">
             Client Job Number
             <span style="font-weight:400;font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:4px;">
-              <input type="checkbox" id="cjn_same" checked style="cursor:pointer;">
-              same as reference
+              <input type="checkbox" id="cjn_same" style="cursor:pointer;">
+              same as contract number
             </span>
           </label>
           <input class="form-control" name="client_job_number" id="client_job_number" placeholder="e.g., CJN-001" oninput="this.value=this.value.replace(/\s/g,'')">
@@ -625,11 +625,9 @@ function removeEmailRow(btn) {
 
   if (cjnChk) {
     cjnChk.addEventListener('change', function () {
-      if (cjnChk.checked) { syncCJN(); cjnEl.readOnly = true; cjnEl.style.background = ''; }
-      else { cjnEl.readOnly = false; cjnEl.focus(); }
+      if (cjnChk.checked) { syncCJN(); cjnEl.readOnly = true; cjnEl.style.opacity = ''; }
+      else { cjnEl.readOnly = false; cjnEl.value = ''; cjnEl.focus(); }
     });
-    cjnEl.readOnly = true;
-    syncCJN();
   }
 
   if (cjnEl) {
