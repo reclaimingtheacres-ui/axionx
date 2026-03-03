@@ -1571,13 +1571,20 @@ def job_detail(job_id: int):
 
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
+    priorities = ["Low", "Normal", "High", "Urgent"]
     item_types = ["vehicle", "property", "equipment", "other"]
     doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
     customer_roles = ["Primary", "Director", "Guarantor", "Borrower", "Spouse", "Other"]
 
+    conn3 = db()
+    job_types_rows = conn3.execute("SELECT name FROM job_types WHERE active=1 ORDER BY name").fetchall()
+    conn3.close()
+    job_types = [r["name"] for r in job_types_rows]
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
-                           statuses=statuses, visit_types=visit_types, users=users,
+                           statuses=statuses, visit_types=visit_types, priorities=priorities,
+                           job_types=job_types, users=users,
                            field_notes=field_notes, documents=documents,
                            doc_types=doc_types, booking_types=booking_types,
                            schedules=schedules, next_schedule=next_schedule,
@@ -2092,6 +2099,58 @@ def job_update(job_id: int):
         """, (job_id, "System",
                 f"Agent unassigned and pending schedules cancelled — job marked '{status}'.",
                 now, now))
+
+    conn.commit()
+    conn.close()
+    flash("Job updated.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/edit")
+@login_required
+@admin_required
+def job_edit(job_id: int):
+    client_reference  = request.form.get("client_reference", "").strip() or None
+    client_job_number = request.form.get("client_job_number", "").strip() or None
+    job_type          = request.form.get("job_type", "").strip()
+    visit_type        = request.form.get("visit_type", "").strip()
+    status            = request.form.get("status", "").strip()
+    priority          = request.form.get("priority", "").strip()
+    job_address       = request.form.get("job_address", "").strip() or None
+    description       = request.form.get("description", "").strip() or None
+    assigned_user_id  = request.form.get("assigned_user_id") or None
+    now = now_ts()
+
+    conn = db()
+    cur  = conn.cursor()
+    cur.execute("SELECT internal_job_number FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        flash("Job not found.", "danger")
+        return redirect(url_for("jobs_list"))
+
+    internal = row["internal_job_number"]
+    display_ref = internal
+    if client_reference:
+        display_ref = f"{internal} ({client_reference})"
+
+    cur.execute("""
+        UPDATE jobs SET
+            client_reference=?, client_job_number=?, display_ref=?,
+            job_type=?, visit_type=?, status=?, priority=?,
+            job_address=?, description=?, assigned_user_id=?,
+            updated_at=?
+        WHERE id=?
+    """, (client_reference, client_job_number, display_ref,
+          job_type, visit_type, status, priority,
+          job_address, description, assigned_user_id,
+          now, job_id))
+
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, 'Edit', ?, ?, ?)
+    """, (job_id, f"Job details updated. Status: {status}, Type: {job_type}, Visit: {visit_type}.", now, now))
 
     conn.commit()
     conn.close()
