@@ -1852,6 +1852,68 @@ def booking_type_delete():
         flash(f"Cannot delete — booking type(s) with existing schedules: {', '.join(blocked)}.", "warning")
     return redirect(url_for("admin_settings"))
 
+@app.post("/booking-type/<int:bt_id>/edit")
+@login_required
+@admin_required
+def edit_booking_type(bt_id):
+    name = request.form.get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Name is required."})
+    conn = db()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE booking_types SET name = ? WHERE id = ?", (name, bt_id))
+        conn.commit()
+    except Exception:
+        conn.close()
+        return jsonify({"ok": False, "error": "That booking type name already exists."})
+    conn.close()
+    return jsonify({"ok": True, "name": name})
+
+
+@app.post("/booking-type/<int:bt_id>/delete")
+@login_required
+@admin_required
+def delete_booking_type_single(bt_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) cnt FROM schedules WHERE booking_type_id = ?", (bt_id,))
+    count = cur.fetchone()["cnt"]
+    if count > 0:
+        conn.close()
+        return jsonify({"ok": False, "error": f"Cannot delete — used by {count} schedule(s)."})
+    cur.execute("DELETE FROM booking_types WHERE id = ?", (bt_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/admin/settings/change-password")
+@login_required
+@admin_required
+def admin_change_password():
+    user_id = session.get("user_id")
+    current = request.form.get("current_password", "").strip()
+    new_pw  = request.form.get("new_password", "").strip()
+    confirm = request.form.get("confirm_password", "").strip()
+    if not current or not new_pw or not confirm:
+        return jsonify({"ok": False, "error": "All fields are required."})
+    if new_pw != confirm:
+        return jsonify({"ok": False, "error": "New passwords do not match."})
+    if len(new_pw) < 6:
+        return jsonify({"ok": False, "error": "Password must be at least 6 characters."})
+    conn = db()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user or not check_password_hash(user["password"], current):
+        conn.close()
+        return jsonify({"ok": False, "error": "Current password is incorrect."})
+    conn.execute("UPDATE users SET password = ? WHERE id = ?",
+                 (generate_password_hash(new_pw), user_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.post("/job-type")
 @login_required
 @admin_required

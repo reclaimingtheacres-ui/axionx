@@ -155,9 +155,6 @@
 var _towEditId  = null;
 var _yardEditId = null;
 
-var towModal  = new bootstrap.Modal(document.getElementById('towModal'));
-var yardModal = new bootstrap.Modal(document.getElementById('yardModal'));
-
 function openTowModal(id) {
   _towEditId = id;
   document.getElementById('towModalTitle').textContent = id ? 'Edit Tow Operator' : 'Add Tow Operator';
@@ -172,7 +169,7 @@ function openTowModal(id) {
     document.getElementById('tow_phone').value   = '';
     document.getElementById('tow_address').value = '';
   }
-  towModal.show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('towModal')).show();
 }
 
 function saveTow() {
@@ -193,7 +190,7 @@ function saveTow() {
     .then(function(data) {
       document.getElementById('towSaveBtn').disabled = false;
       if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
-      towModal.hide();
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('towModal')).hide();
       if (_towEditId) {
         var row = document.getElementById('tow-row-' + _towEditId);
         row.dataset.company = company; row.dataset.phone = phone; row.dataset.address = address;
@@ -242,7 +239,7 @@ function openYardModal(id) {
     document.getElementById('yard_name').value    = '';
     document.getElementById('yard_address').value = '';
   }
-  yardModal.show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('yardModal')).show();
 }
 
 function saveYard() {
@@ -261,7 +258,7 @@ function saveYard() {
     .then(function(data) {
       document.getElementById('yardSaveBtn').disabled = false;
       if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
-      yardModal.hide();
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('yardModal')).hide();
       if (_yardEditId) {
         var row = document.getElementById('yard-row-' + _yardEditId);
         row.dataset.name = name; row.dataset.address = address;

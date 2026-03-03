@@ -1,129 +1,281 @@
 {% extends "layout.html" %}
-{% block title %}Axion | System Settings{% endblock %}
+{% block title %}Axionx | System Settings{% endblock %}
 {% block page_title %}System Settings{% endblock %}
 
 {% block content %}
-<div class="ax-card mb-4">
-  <div class="ax-card-h">Internal Job Number Settings</div>
-  <div class="ax-card-b">
+<style>
+  .settings-nav .nav-link {
+    color: var(--muted);
+    font-size: .9rem;
+    font-weight: 500;
+    padding: .45rem 1.1rem;
+    border-radius: 8px;
+  }
+  .settings-nav .nav-link.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .settings-nav .nav-link:not(.active):hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .bt-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .65rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .bt-row:last-child { border-bottom: 0; }
+  .bt-name { color: var(--text); font-size: .95rem; }
+</style>
 
-    <p class="small mb-4" style="color:var(--muted)">
-      Job numbers are generated as <strong style="color:var(--text)">{{ settings.job_prefix }}001</strong>,
-      <strong style="color:var(--text)">{{ settings.job_prefix }}002</strong> etc.
-      The next job created will be <strong style="color:var(--accent)">{{ settings.job_prefix }}{{ "%03d"|format(settings.job_sequence + 1) }}</strong>.
-    </p>
+<!-- Sub-navigation -->
+<div class="mb-4">
+  <ul class="nav settings-nav gap-1" id="settingsTabs">
+    <li class="nav-item">
+      <a class="nav-link" href="#job-numbers" data-tab="job-numbers">Job Number Settings</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#booking-types" data-tab="booking-types">Booking Types</a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#change-password" data-tab="change-password">Change Password</a>
+    </li>
+  </ul>
+</div>
 
-    <form method="post">
-      <div class="row g-3 mb-3">
-        <div class="col-12 col-lg-4">
-          <label class="form-label">Job Prefix (YYMM)</label>
-          <input class="form-control" name="job_prefix" value="{{ settings.job_prefix }}" placeholder="e.g. 2602">
-          <div class="form-text" style="color:var(--muted)">4-character month prefix</div>
+<!-- TAB: Job Number Settings -->
+<div class="tab-pane-custom" id="tab-job-numbers">
+  <div class="ax-card">
+    <div class="ax-card-h">Job Number Settings</div>
+    <div class="ax-card-b">
+      <p class="small mb-4" style="color:var(--muted)">
+        Job numbers are generated as <strong style="color:var(--text)">{{ settings.job_prefix }}001</strong>,
+        <strong style="color:var(--text)">{{ settings.job_prefix }}002</strong> etc.
+        The next job created will be <strong style="color:var(--accent)">{{ settings.job_prefix }}{{ "%03d"|format(settings.job_sequence + 1) }}</strong>.
+      </p>
+      <form method="post" action="/admin/settings">
+        <div class="row g-3 mb-3">
+          <div class="col-12 col-lg-4">
+            <label class="form-label">Job Prefix (YYMM)</label>
+            <input class="form-control" name="job_prefix" value="{{ settings.job_prefix }}" placeholder="e.g. 2602">
+            <div class="form-text" style="color:var(--muted)">4-character month prefix</div>
+          </div>
+          <div class="col-12 col-lg-4">
+            <label class="form-label">Current Sequence</label>
+            <input class="form-control" name="job_sequence" type="number" min="0" value="{{ settings.job_sequence }}">
+            <div class="form-text" style="color:var(--muted)">Next job will use this + 1</div>
+          </div>
         </div>
-        <div class="col-12 col-lg-4">
-          <label class="form-label">Current Sequence</label>
-          <input class="form-control" name="job_sequence" type="number" min="0" value="{{ settings.job_sequence }}">
-          <div class="form-text" style="color:var(--muted)">Next job will use this + 1</div>
+        <div class="form-check mb-4">
+          <input class="form-check-input" type="checkbox" name="auto_prefix_enabled" id="autoCheck"
+                 {% if settings.auto_prefix_enabled %}checked{% endif %}>
+          <label class="form-check-label" for="autoCheck">
+            Auto-update prefix each month (recommended)
+          </label>
         </div>
-      </div>
-
-      <div class="form-check mb-4">
-        <input class="form-check-input" type="checkbox" name="auto_prefix_enabled" id="autoCheck"
-               {% if settings.auto_prefix_enabled %}checked{% endif %}>
-        <label class="form-check-label" for="autoCheck">
-          Auto-update prefix each month (recommended)
-        </label>
-      </div>
-
-      <button class="btn btn-primary">Save Settings</button>
-    </form>
-
+        <button class="btn btn-primary">Save Settings</button>
+      </form>
+    </div>
   </div>
 </div>
 
-<div class="ax-card">
-  <div class="ax-card-h d-flex justify-content-between align-items-center">
-    <div>Booking Types</div>
-    <button type="button" id="btDeleteBtn" class="btn btn-danger btn-sm" style="display:none"
-            onclick="confirmBtDelete()">Delete Selected</button>
-  </div>
-  <div class="ax-card-b">
-
-    <form method="post" action="/booking-type" class="d-flex gap-2 mb-3 px-1">
-      <input type="text" name="new_booking_type" class="form-control form-control-sm"
-             placeholder="New booking type name…" maxlength="80" required>
-      <button type="submit" class="btn btn-primary btn-sm text-nowrap">+ Add</button>
-    </form>
-
-    {% if booking_types %}
-    <div class="px-1 pb-1 mb-1 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
-      <input type="checkbox" id="btSelectAll" class="form-check-input mt-0"
-             onchange="toggleBtAll(this)" title="Select all">
-      <label for="btSelectAll" class="small mb-0" style="color:var(--muted);cursor:pointer">Select all</label>
+<!-- TAB: Booking Types -->
+<div class="tab-pane-custom" id="tab-booking-types" style="display:none">
+  <div class="ax-card">
+    <div class="ax-card-h d-flex justify-content-between align-items-center">
+      <span>Booking Types</span>
+      <button class="btn btn-primary btn-sm" onclick="openBtModal(null)">+ Add</button>
     </div>
-    {% endif %}
-
-    <form id="btDeleteForm" method="post" action="/booking-type/delete">
-      <div class="list-group list-group-flush">
-        {% for bt in booking_types %}
-          <div class="list-group-item d-flex align-items-center gap-3 px-1"
-               style="background:transparent;border-color:var(--line)">
-            <input type="checkbox" name="bt_ids" value="{{ bt.id }}"
-                   class="form-check-input mt-0 bt-cb"
-                   onchange="updateBtDeleteBtn()">
-            <span style="color:var(--text)">{{ bt.name }}</span>
-            {% if not bt.active %}<span class="badge bg-secondary ms-2">Inactive</span>{% endif %}
-          </div>
-        {% else %}
-          <div class="py-3 text-center small" style="color:var(--muted)">No booking types yet.</div>
-        {% endfor %}
+    <div class="ax-card-b" id="bt-list">
+      {% for bt in booking_types %}
+      <div class="bt-row" id="bt-row-{{ bt.id }}">
+        <span class="bt-name" id="bt-name-{{ bt.id }}">{{ bt.name }}</span>
+        <div class="d-flex gap-3">
+          <button class="btn btn-link btn-sm p-0" style="color:var(--accent)"
+                  onclick="openBtModal({{ bt.id }}, '{{ bt.name|e }}')">Edit</button>
+          <button class="btn btn-link btn-sm p-0" style="color:#ef4444"
+                  onclick="deleteBt({{ bt.id }}, this)">Delete</button>
+        </div>
       </div>
-    </form>
+      {% else %}
+      <div id="bt-empty" class="py-3 text-center small" style="color:var(--muted)">No booking types yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
 
+<!-- TAB: Change Password -->
+<div class="tab-pane-custom" id="tab-change-password" style="display:none">
+  <div class="ax-card">
+    <div class="ax-card-h">Change Password</div>
+    <div class="ax-card-b">
+      <div id="pw-alert" class="alert mb-3" style="display:none"></div>
+      <div class="row g-3">
+        <div class="col-12 col-lg-5">
+          <label class="form-label">Current Password</label>
+          <input type="password" class="form-control" id="pw_current" autocomplete="current-password">
+        </div>
+      </div>
+      <div class="row g-3 mt-0">
+        <div class="col-12 col-lg-5">
+          <label class="form-label">New Password</label>
+          <input type="password" class="form-control" id="pw_new" autocomplete="new-password">
+          <div class="form-text" style="color:var(--muted)">Minimum 6 characters</div>
+        </div>
+        <div class="col-12 col-lg-5">
+          <label class="form-label">Confirm New Password</label>
+          <input type="password" class="form-control" id="pw_confirm" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="mt-4">
+        <button class="btn btn-primary" id="pw-save-btn" onclick="savePassword()">Update Password</button>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block modals %}
-<div class="modal fade" id="btDeleteModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+<!-- Booking Type Add/Edit Modal -->
+<div class="modal fade" id="btModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
       <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title" style="color:var(--text)">Delete Booking Types</h5>
+        <h5 class="modal-title" id="btModalTitle" style="color:var(--text)">Add Booking Type</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p style="color:var(--text)">Are you sure you want to delete <strong id="btDeleteCount"></strong>?</p>
-        <p class="small mb-0" style="color:var(--muted)">
-          Booking types with existing schedules cannot be deleted.
-        </p>
+        <label class="form-label small fw-semibold">Name <span style="color:#ef4444">*</span></label>
+        <input type="text" id="bt_name_input" class="form-control" placeholder="e.g. Recovery" maxlength="80">
+        <div id="bt_modal_error" class="text-danger small mt-2" style="display:none"></div>
       </div>
       <div class="modal-footer" style="border-top:1px solid var(--line)">
-        <button type="button" class="btn btn-danger" onclick="submitBtDelete()">Yes, Delete</button>
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="bt-save-btn" onclick="saveBt()">Save</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-  function updateBtDeleteBtn() {
-    var n = document.querySelectorAll('.bt-cb:checked').length;
-    document.getElementById('btDeleteBtn').style.display = n > 0 ? '' : 'none';
-  }
-  function toggleBtAll(cb) {
-    document.querySelectorAll('.bt-cb').forEach(function(el){ el.checked = cb.checked; });
-    updateBtDeleteBtn();
-  }
-  function confirmBtDelete() {
-    var n = document.querySelectorAll('.bt-cb:checked').length;
-    if (!n) return;
-    document.getElementById('btDeleteCount').textContent =
-      n === 1 ? '1 booking type' : n + ' booking types';
-    new bootstrap.Modal(document.getElementById('btDeleteModal')).show();
-  }
-  function submitBtDelete() {
-    document.getElementById('btDeleteForm').submit();
-  }
+var _btEditId = null;
+
+function showTab(name) {
+  document.querySelectorAll('.tab-pane-custom').forEach(function(el){ el.style.display = 'none'; });
+  document.querySelectorAll('.settings-nav .nav-link').forEach(function(el){ el.classList.remove('active'); });
+  var pane = document.getElementById('tab-' + name);
+  if (pane) pane.style.display = '';
+  var link = document.querySelector('.settings-nav .nav-link[data-tab="' + name + '"]');
+  if (link) link.classList.add('active');
+  location.hash = name;
+}
+
+document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
+  link.addEventListener('click', function(e) {
+    e.preventDefault();
+    showTab(this.dataset.tab);
+  });
+});
+
+(function() {
+  var hash = location.hash.replace('#', '') || 'job-numbers';
+  showTab(hash);
+})();
+
+function openBtModal(id, name) {
+  _btEditId = id;
+  document.getElementById('btModalTitle').textContent = id ? 'Edit Booking Type' : 'Add Booking Type';
+  document.getElementById('bt_name_input').value = name || '';
+  document.getElementById('bt_modal_error').style.display = 'none';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('btModal')).show();
+  setTimeout(function(){ document.getElementById('bt_name_input').focus(); }, 300);
+}
+
+function saveBt() {
+  var name  = document.getElementById('bt_name_input').value.trim();
+  var errEl = document.getElementById('bt_modal_error');
+  if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = ''; return; }
+  errEl.style.display = 'none';
+  document.getElementById('bt-save-btn').disabled = true;
+  var url = _btEditId ? '/booking-type/' + _btEditId + '/edit' : '/booking-type/ajax';
+  var fd = new FormData();
+  fd.append(_btEditId ? 'name' : 'name', name);
+  fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      document.getElementById('bt-save-btn').disabled = false;
+      if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('btModal')).hide();
+      if (_btEditId) {
+        document.getElementById('bt-name-' + _btEditId).textContent = data.name;
+      } else {
+        var empty = document.getElementById('bt-empty');
+        if (empty) empty.remove();
+        var list = document.getElementById('bt-list');
+        var div = document.createElement('div');
+        div.className = 'bt-row';
+        div.id = 'bt-row-' + data.id;
+        div.innerHTML = '<span class="bt-name" id="bt-name-' + data.id + '">' + esc(data.name) + '</span>'
+          + '<div class="d-flex gap-3">'
+          + '<button class="btn btn-link btn-sm p-0" style="color:var(--accent)" onclick="openBtModal(' + data.id + ', \'' + esc(data.name).replace(/'/g, "\\'") + '\')">Edit</button>'
+          + '<button class="btn btn-link btn-sm p-0" style="color:#ef4444" onclick="deleteBt(' + data.id + ', this)">Delete</button>'
+          + '</div>';
+        list.appendChild(div);
+      }
+    })
+    .catch(function(){ document.getElementById('bt-save-btn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+}
+
+function deleteBt(id, btn) {
+  if (!confirm('Delete this booking type?')) return;
+  fetch('/booking-type/' + id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (!data.ok) { alert(data.error); return; }
+      var row = document.getElementById('bt-row-' + id);
+      if (row) row.remove();
+      if (!document.querySelector('#bt-list .bt-row')) {
+        var list = document.getElementById('bt-list');
+        list.innerHTML = '<div id="bt-empty" class="py-3 text-center small" style="color:var(--muted)">No booking types yet.</div>';
+      }
+    });
+}
+
+function savePassword() {
+  var current = document.getElementById('pw_current').value.trim();
+  var newPw   = document.getElementById('pw_new').value.trim();
+  var confirm = document.getElementById('pw_confirm').value.trim();
+  var alertEl = document.getElementById('pw-alert');
+  var btn     = document.getElementById('pw-save-btn');
+  alertEl.style.display = 'none';
+  btn.disabled = true;
+  var fd = new FormData();
+  fd.append('current_password', current);
+  fd.append('new_password', newPw);
+  fd.append('confirm_password', confirm);
+  fetch('/admin/settings/change-password', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      if (data.ok) {
+        alertEl.className = 'alert alert-success mb-3';
+        alertEl.textContent = 'Password updated successfully.';
+        document.getElementById('pw_current').value = '';
+        document.getElementById('pw_new').value = '';
+        document.getElementById('pw_confirm').value = '';
+      } else {
+        alertEl.className = 'alert alert-danger mb-3';
+        alertEl.textContent = data.error;
+      }
+      alertEl.style.display = '';
+    })
+    .catch(function(){ btn.disabled = false; alertEl.className = 'alert alert-danger mb-3'; alertEl.textContent = 'Network error.'; alertEl.style.display = ''; });
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 </script>
 {% endblock %}
