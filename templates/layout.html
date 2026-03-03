@@ -308,7 +308,6 @@
             {{ session.get('user_name') }}
             <span class="badge {% if session.get('role') == 'admin' %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ session.get('role') }}</span>
           </div>
-          <a href="/my/settings" class="{% if request.path.startswith('/my/settings') %}active{% endif %}">Settings</a>
           <a href="/logout">Logout</a>
         {% else %}
           <a href="/login" class="{% if request.path.startswith('/login') or request.path.startswith('/signup') %}active{% endif %}">Login</a>
