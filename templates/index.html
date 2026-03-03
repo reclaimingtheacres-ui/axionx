@@ -48,6 +48,7 @@
       <div class="ax-tile-value">{{ jobs_awaiting }}</div>
     </a>
   </div>
+  {% if session.get('role') != 'agent' %}
   <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-completed" href="/jobs?status=Completed">
       <div class="ax-tile-title">Completed</div>
@@ -60,6 +61,7 @@
       <div class="ax-tile-value">{{ jobs_invoiced }}</div>
     </a>
   </div>
+  {% endif %}
 </div>
 
 {% set label_map = {
@@ -73,6 +75,7 @@
 } %}
 
 {% for status, key in status_list %}
+  {% if not (session.get('role') == 'agent' and status in ['Completed', 'Invoiced']) %}
   {% set jobs = rows_by_status[status] %}
   {% if jobs %}
   {% set lbl, colour = label_map[status] %}
@@ -123,6 +126,7 @@
       </table>
     </div>
   </div>
+  {% endif %}
   {% endif %}
 {% endfor %}
 
