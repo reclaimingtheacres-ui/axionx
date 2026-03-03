@@ -1710,9 +1710,33 @@ document.addEventListener('click', function(e) {
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" action="/jobs/{{ job.id }}/edit">
+      <input type="hidden" name="client_id"   id="ej_client_id_val"   value="{{ job.client_id or '' }}">
+      <input type="hidden" name="customer_id" id="ej_customer_id_val" value="{{ job.customer_id or '' }}">
       <div class="modal-body">
 
-        <div class="mb-1 mt-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">REFERENCE</div>
+        <div class="mb-1 mt-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">CLIENT &amp; CUSTOMER</div>
+        <div class="row g-2 mb-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label">Client</label>
+            <div class="position-relative">
+              <input type="text" class="form-control" id="ej_client_search"
+                     value="{{ job.client_name or '' }}"
+                     placeholder="Type to search client…" autocomplete="off" spellcheck="false">
+              <div id="ej_client_drop" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15)"></div>
+            </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Customer</label>
+            <div class="position-relative">
+              <input type="text" class="form-control" id="ej_customer_search"
+                     value="{{ job.customer_name or '' }}"
+                     placeholder="Type to search customer…" autocomplete="off" spellcheck="false">
+              <div id="ej_customer_drop" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15)"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">REFERENCE</div>
         <div class="row g-2 mb-3">
           <div class="col-12 col-md-6">
             <label class="form-label">Contract Number</label>
@@ -1764,7 +1788,7 @@ document.addEventListener('click', function(e) {
 
         <div class="mb-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">ASSIGNMENT &amp; ADDRESS</div>
         <div class="row g-2 mb-3">
-          <div class="col-12 col-md-6">
+          <div class="col-12 col-md-4">
             <label class="form-label">Assigned To</label>
             <select class="form-select" name="assigned_user_id">
               <option value="">— Unassigned —</option>
@@ -1773,7 +1797,7 @@ document.addEventListener('click', function(e) {
               {% endfor %}
             </select>
           </div>
-          <div class="col-12 col-md-6">
+          <div class="col-12 col-md-8">
             <label class="form-label">Job Address</label>
             <input class="form-control" name="job_address" value="{{ job.job_address or '' }}"
                    placeholder="Street, Suburb, State, Postcode">
@@ -1782,7 +1806,7 @@ document.addEventListener('click', function(e) {
 
         <div class="mb-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">DESCRIPTION &amp; INSTRUCTIONS</div>
         <div class="mb-1">
-          <textarea class="form-control" name="description" rows="6"
+          <textarea class="form-control" name="description" rows="5"
                     placeholder="Job description, field agent instructions, access codes…"
                     style="resize:vertical">{{ job.description or '' }}</textarea>
           <div class="form-text" style="color:var(--muted)">Visible to assigned agents.</div>
@@ -1794,6 +1818,62 @@ document.addEventListener('click', function(e) {
         <button type="submit" class="btn btn-primary">Save Changes</button>
       </div>
       </form>
+
+      <script>
+      (function () {
+        var CLIENT_DATA = [
+          {% for c in all_clients %}{"id":{{ c.id }},"label":{{ c.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+        ];
+        var CUSTOMER_DATA = [
+          {% for c in all_customers_for_edit %}{"id":{{ c.id }},"label":{{ ((c.first_name or '') ~ ' ' ~ (c.last_name or '') ~ ((' (' ~ c.company ~ ')') if c.company else ''))|trim|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+        ];
+
+        function makeTA(searchId, hiddenId, dropId, data) {
+          var searchEl = document.getElementById(searchId);
+          var hiddenEl = document.getElementById(hiddenId);
+          var dropEl   = document.getElementById(dropId);
+          if (!searchEl) return;
+
+          function render(items) {
+            dropEl.innerHTML = '';
+            if (!items.length) { dropEl.style.display = 'none'; return; }
+            items.slice(0, 12).forEach(function(item) {
+              var div = document.createElement('div');
+              div.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:.9rem;border-bottom:1px solid var(--line);color:var(--text);';
+              div.textContent = item.label;
+              div.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                searchEl.value = item.label;
+                hiddenEl.value = item.id;
+                dropEl.style.display = 'none';
+              });
+              div.addEventListener('mouseenter', function(){ div.style.background='rgba(96,165,250,.12)'; });
+              div.addEventListener('mouseleave', function(){ div.style.background=''; });
+              dropEl.appendChild(div);
+            });
+            dropEl.style.display = '';
+          }
+
+          searchEl.addEventListener('input', function() {
+            hiddenEl.value = '';
+            var q = searchEl.value.trim().toLowerCase();
+            if (!q) { dropEl.style.display = 'none'; return; }
+            render(data.filter(function(d){ return d.label.toLowerCase().includes(q); }));
+          });
+          searchEl.addEventListener('focus', function() {
+            var q = searchEl.value.trim().toLowerCase();
+            if (q) render(data.filter(function(d){ return d.label.toLowerCase().includes(q); }));
+            else render(data.slice(0, 12));
+          });
+          searchEl.addEventListener('blur', function() {
+            setTimeout(function(){ dropEl.style.display = 'none'; }, 200);
+          });
+        }
+
+        makeTA('ej_client_search',   'ej_client_id_val',   'ej_client_drop',   CLIENT_DATA);
+        makeTA('ej_customer_search', 'ej_customer_id_val', 'ej_customer_drop', CUSTOMER_DATA);
+      })();
+      </script>
     </div>
   </div>
 </div>

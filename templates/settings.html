@@ -28,17 +28,6 @@
   }
   .bt-row:last-child { border-bottom: 0; }
   .bt-name { color: var(--text); font-size: .95rem; }
-  .res-row {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding: .7rem 0;
-    border-bottom: 1px solid var(--line);
-    gap: 1rem;
-  }
-  .res-row:last-child { border-bottom: 0; }
-  .res-row-name { color: var(--text); font-size: .95rem; font-weight: 500; }
-  .res-row-sub  { color: var(--muted); font-size: .8rem; margin-top: 1px; }
 </style>
 
 <!-- Sub-navigation -->
@@ -49,12 +38,6 @@
     </li>
     <li class="nav-item">
       <a class="nav-link" href="#booking-types" data-tab="booking-types">Booking Types</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#tow-operators" data-tab="tow-operators">Tow Operators</a>
-    </li>
-    <li class="nav-item">
-      <a class="nav-link" href="#auction-yards" data-tab="auction-yards">Auction Yards</a>
     </li>
     <li class="nav-item">
       <a class="nav-link" href="#change-password" data-tab="change-password">Change Password</a>
@@ -113,73 +96,11 @@
           <button class="btn btn-link btn-sm p-0" style="color:var(--accent)"
                   onclick="openBtModal({{ bt.id }}, '{{ bt.name|e }}')">Edit</button>
           <button class="btn btn-link btn-sm p-0" style="color:#ef4444"
-                  onclick="deleteBt({{ bt.id }}, this)">Delete</button>
+                  onclick="deleteBt({{ bt.id }})">Delete</button>
         </div>
       </div>
       {% else %}
       <div id="bt-empty" class="py-3 text-center small" style="color:var(--muted)">No booking types yet.</div>
-      {% endfor %}
-    </div>
-  </div>
-</div>
-
-<!-- TAB: Tow Operators -->
-<div class="tab-pane-custom" id="tab-tow-operators" style="display:none">
-  <div class="ax-card">
-    <div class="ax-card-h d-flex justify-content-between align-items-center">
-      <span>Tow Operators</span>
-      <button class="btn btn-primary btn-sm" onclick="openTowModal(null)">+ Add</button>
-    </div>
-    <div class="ax-card-b" id="tow-list">
-      {% for op in tow_operators %}
-      {% if op.active %}
-      <div class="res-row" id="tow-row-{{ op.id }}">
-        <div>
-          <div class="res-row-name" id="tow-name-{{ op.id }}">{{ op.company_name }}</div>
-          <div class="res-row-sub" id="tow-sub-{{ op.id }}">
-            {% if op.phone %}{{ op.phone }}{% endif %}{% if op.phone and op.address %} &middot; {% endif %}{% if op.address %}{{ op.address }}{% endif %}
-          </div>
-        </div>
-        <div class="d-flex gap-3 flex-shrink-0 align-items-center">
-          <button class="btn btn-link btn-sm p-0" style="color:var(--accent)"
-                  onclick="openTowModal({{ op.id }}, '{{ op.company_name|e }}', '{{ (op.phone or '')|e }}', '{{ (op.address or '')|e }}')">Edit</button>
-          <button class="btn btn-link btn-sm p-0" style="color:#ef4444"
-                  onclick="deleteTow({{ op.id }})">Delete</button>
-        </div>
-      </div>
-      {% endif %}
-      {% else %}
-      <div id="tow-empty" class="py-3 text-center small" style="color:var(--muted)">No tow operators yet.</div>
-      {% endfor %}
-    </div>
-  </div>
-</div>
-
-<!-- TAB: Auction Yards -->
-<div class="tab-pane-custom" id="tab-auction-yards" style="display:none">
-  <div class="ax-card">
-    <div class="ax-card-h d-flex justify-content-between align-items-center">
-      <span>Auction Yards</span>
-      <button class="btn btn-primary btn-sm" onclick="openYardModal(null)">+ Add</button>
-    </div>
-    <div class="ax-card-b" id="yard-list">
-      {% for yard in auction_yards %}
-      {% if yard.active %}
-      <div class="res-row" id="yard-row-{{ yard.id }}">
-        <div>
-          <div class="res-row-name" id="yard-name-{{ yard.id }}">{{ yard.name }}</div>
-          <div class="res-row-sub" id="yard-sub-{{ yard.id }}">{{ yard.address or '' }}</div>
-        </div>
-        <div class="d-flex gap-3 flex-shrink-0 align-items-center">
-          <button class="btn btn-link btn-sm p-0" style="color:var(--accent)"
-                  onclick="openYardModal({{ yard.id }}, '{{ yard.name|e }}', '{{ (yard.address or '')|e }}')">Edit</button>
-          <button class="btn btn-link btn-sm p-0" style="color:#ef4444"
-                  onclick="deleteYard({{ yard.id }})">Delete</button>
-        </div>
-      </div>
-      {% endif %}
-      {% else %}
-      <div id="yard-empty" class="py-3 text-center small" style="color:var(--muted)">No auction yards yet.</div>
       {% endfor %}
     </div>
   </div>
@@ -238,64 +159,6 @@
   </div>
 </div>
 
-<!-- Tow Operator Add/Edit Modal -->
-<div class="modal fade" id="towModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
-      <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title" id="towModalTitle" style="color:var(--text)">Add Tow Operator</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Company Name <span style="color:#ef4444">*</span></label>
-          <input type="text" id="tow_company_input" class="form-control" placeholder="e.g. ABC Towing" maxlength="120">
-        </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Phone</label>
-          <input type="text" id="tow_phone_input" class="form-control" placeholder="e.g. 0412 345 678" maxlength="30">
-        </div>
-        <div class="mb-1">
-          <label class="form-label small fw-semibold">Address</label>
-          <input type="text" id="tow_address_input" class="form-control" placeholder="e.g. 12 Smith St, Melbourne VIC" maxlength="200">
-        </div>
-        <div id="tow_modal_error" class="text-danger small mt-2" style="display:none"></div>
-      </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line)">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="tow-save-btn" onclick="saveTow()">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Auction Yard Add/Edit Modal -->
-<div class="modal fade" id="yardModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
-      <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title" id="yardModalTitle" style="color:var(--text)">Add Auction Yard</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Name <span style="color:#ef4444">*</span></label>
-          <input type="text" id="yard_name_input" class="form-control" placeholder="e.g. Melbourne Auctions" maxlength="120">
-        </div>
-        <div class="mb-1">
-          <label class="form-label small fw-semibold">Address</label>
-          <input type="text" id="yard_address_input" class="form-control" placeholder="e.g. 45 Yard Rd, Clayton VIC" maxlength="200">
-        </div>
-        <div id="yard_modal_error" class="text-danger small mt-2" style="display:none"></div>
-      </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line)">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="yard-save-btn" onclick="saveYard()">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 /* ── Tab switching ──────────────────────────────────────────────────── */
 function showTab(name) {
@@ -316,8 +179,9 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 });
 
 (function() {
-  var hash = location.hash.replace('#', '') || 'job-numbers';
-  showTab(hash);
+  var validTabs = ['job-numbers', 'booking-types', 'change-password'];
+  var hash = location.hash.replace('#', '');
+  showTab(validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers');
 })();
 
 function esc(s) {
@@ -385,148 +249,6 @@ function deleteBt(id) {
     });
 }
 
-/* ── Tow Operators ──────────────────────────────────────────────────── */
-var _towEditId = null;
-
-function openTowModal(id, company, phone, address) {
-  _towEditId = id;
-  document.getElementById('towModalTitle').textContent = id ? 'Edit Tow Operator' : 'Add Tow Operator';
-  document.getElementById('tow_company_input').value = company || '';
-  document.getElementById('tow_phone_input').value   = phone   || '';
-  document.getElementById('tow_address_input').value = address || '';
-  document.getElementById('tow_modal_error').style.display = 'none';
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('towModal')).show();
-  setTimeout(function(){ document.getElementById('tow_company_input').focus(); }, 300);
-}
-
-function saveTow() {
-  var company = document.getElementById('tow_company_input').value.trim();
-  var phone   = document.getElementById('tow_phone_input').value.trim();
-  var address = document.getElementById('tow_address_input').value.trim();
-  var errEl   = document.getElementById('tow_modal_error');
-  var btn     = document.getElementById('tow-save-btn');
-  if (!company) { errEl.textContent = 'Company name is required.'; errEl.style.display = ''; return; }
-  errEl.style.display = 'none';
-  btn.disabled = true;
-  var url = _towEditId ? '/resources/tow-operators/' + _towEditId + '/edit' : '/resources/tow-operators/add';
-  var fd = new FormData();
-  fd.append('company_name', company);
-  fd.append('phone', phone);
-  fd.append('address', address);
-  fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      btn.disabled = false;
-      if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
-      bootstrap.Modal.getOrCreateInstance(document.getElementById('towModal')).hide();
-      var sub = [phone, address].filter(Boolean).join(' · ');
-      if (_towEditId) {
-        document.getElementById('tow-name-' + _towEditId).textContent = company;
-        document.getElementById('tow-sub-' + _towEditId).textContent  = sub;
-      } else {
-        var empty = document.getElementById('tow-empty');
-        if (empty) empty.remove();
-        var list = document.getElementById('tow-list');
-        var div = document.createElement('div');
-        div.className = 'res-row';
-        div.id = 'tow-row-' + data.id;
-        div.innerHTML = '<div>'
-          + '<div class="res-row-name" id="tow-name-' + data.id + '">' + esc(company) + '</div>'
-          + '<div class="res-row-sub" id="tow-sub-' + data.id + '">' + esc(sub) + '</div>'
-          + '</div>'
-          + '<div class="d-flex gap-3 flex-shrink-0 align-items-center">'
-          + '<button class="btn btn-link btn-sm p-0" style="color:var(--accent)" onclick="openTowModal(' + data.id + ', \'' + esc(company).replace(/'/g,"\\'") + '\', \'' + esc(phone).replace(/'/g,"\\'") + '\', \'' + esc(address).replace(/'/g,"\\'") + '\')">Edit</button>'
-          + '<button class="btn btn-link btn-sm p-0" style="color:#ef4444" onclick="deleteTow(' + data.id + ')">Delete</button>'
-          + '</div>';
-        list.appendChild(div);
-      }
-    })
-    .catch(function(){ btn.disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
-}
-
-function deleteTow(id) {
-  if (!confirm('Remove this tow operator?')) return;
-  fetch('/resources/tow-operators/' + id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      if (!data.ok) { alert(data.error || 'Error'); return; }
-      var row = document.getElementById('tow-row-' + id);
-      if (row) row.remove();
-      if (!document.querySelector('#tow-list .res-row')) {
-        document.getElementById('tow-list').innerHTML = '<div id="tow-empty" class="py-3 text-center small" style="color:var(--muted)">No tow operators yet.</div>';
-      }
-    });
-}
-
-/* ── Auction Yards ──────────────────────────────────────────────────── */
-var _yardEditId = null;
-
-function openYardModal(id, name, address) {
-  _yardEditId = id;
-  document.getElementById('yardModalTitle').textContent = id ? 'Edit Auction Yard' : 'Add Auction Yard';
-  document.getElementById('yard_name_input').value    = name    || '';
-  document.getElementById('yard_address_input').value = address || '';
-  document.getElementById('yard_modal_error').style.display = 'none';
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('yardModal')).show();
-  setTimeout(function(){ document.getElementById('yard_name_input').focus(); }, 300);
-}
-
-function saveYard() {
-  var name    = document.getElementById('yard_name_input').value.trim();
-  var address = document.getElementById('yard_address_input').value.trim();
-  var errEl   = document.getElementById('yard_modal_error');
-  var btn     = document.getElementById('yard-save-btn');
-  if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = ''; return; }
-  errEl.style.display = 'none';
-  btn.disabled = true;
-  var url = _yardEditId ? '/resources/auction-yards/' + _yardEditId + '/edit' : '/resources/auction-yards/add';
-  var fd = new FormData();
-  fd.append('name', name);
-  fd.append('address', address);
-  fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      btn.disabled = false;
-      if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
-      bootstrap.Modal.getOrCreateInstance(document.getElementById('yardModal')).hide();
-      if (_yardEditId) {
-        document.getElementById('yard-name-' + _yardEditId).textContent = name;
-        document.getElementById('yard-sub-'  + _yardEditId).textContent = address;
-      } else {
-        var empty = document.getElementById('yard-empty');
-        if (empty) empty.remove();
-        var list = document.getElementById('yard-list');
-        var div = document.createElement('div');
-        div.className = 'res-row';
-        div.id = 'yard-row-' + data.id;
-        div.innerHTML = '<div>'
-          + '<div class="res-row-name" id="yard-name-' + data.id + '">' + esc(name) + '</div>'
-          + '<div class="res-row-sub" id="yard-sub-' + data.id + '">' + esc(address) + '</div>'
-          + '</div>'
-          + '<div class="d-flex gap-3 flex-shrink-0 align-items-center">'
-          + '<button class="btn btn-link btn-sm p-0" style="color:var(--accent)" onclick="openYardModal(' + data.id + ', \'' + esc(name).replace(/'/g,"\\'") + '\', \'' + esc(address).replace(/'/g,"\\'") + '\')">Edit</button>'
-          + '<button class="btn btn-link btn-sm p-0" style="color:#ef4444" onclick="deleteYard(' + data.id + ')">Delete</button>'
-          + '</div>';
-        list.appendChild(div);
-      }
-    })
-    .catch(function(){ btn.disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
-}
-
-function deleteYard(id) {
-  if (!confirm('Remove this auction yard?')) return;
-  fetch('/resources/auction-yards/' + id + '/delete', { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      if (!data.ok) { alert(data.error || 'Error'); return; }
-      var row = document.getElementById('yard-row-' + id);
-      if (row) row.remove();
-      if (!document.querySelector('#yard-list .res-row')) {
-        document.getElementById('yard-list').innerHTML = '<div id="yard-empty" class="py-3 text-center small" style="color:var(--muted)">No auction yards yet.</div>';
-      }
-    });
-}
-
 /* ── Change Password ────────────────────────────────────────────────── */
 function savePassword() {
   var current = document.getElementById('pw_current').value.trim();
@@ -534,29 +256,46 @@ function savePassword() {
   var confirm = document.getElementById('pw_confirm').value.trim();
   var alertEl = document.getElementById('pw-alert');
   var btn     = document.getElementById('pw-save-btn');
+
   alertEl.style.display = 'none';
+  alertEl.className = 'alert mb-3';
+
+  if (!current || !newPw || !confirm) {
+    alertEl.textContent = 'All fields are required.';
+    alertEl.classList.add('alert-danger');
+    alertEl.style.display = '';
+    return;
+  }
+
   btn.disabled = true;
   var fd = new FormData();
   fd.append('current_password', current);
   fd.append('new_password', newPw);
   fd.append('confirm_password', confirm);
-  fetch('/admin/settings/change-password', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+
+  fetch('/settings/change-password', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     .then(function(r){ return r.json(); })
     .then(function(data) {
       btn.disabled = false;
-      if (data.ok) {
-        alertEl.className = 'alert alert-success mb-3';
-        alertEl.textContent = 'Password updated successfully.';
-        document.getElementById('pw_current').value = '';
-        document.getElementById('pw_new').value = '';
-        document.getElementById('pw_confirm').value = '';
-      } else {
-        alertEl.className = 'alert alert-danger mb-3';
+      if (!data.ok) {
         alertEl.textContent = data.error;
+        alertEl.classList.add('alert-danger');
+        alertEl.style.display = '';
+        return;
       }
+      alertEl.textContent = 'Password updated successfully.';
+      alertEl.classList.add('alert-success');
       alertEl.style.display = '';
+      document.getElementById('pw_current').value = '';
+      document.getElementById('pw_new').value = '';
+      document.getElementById('pw_confirm').value = '';
     })
-    .catch(function(){ btn.disabled = false; alertEl.className = 'alert alert-danger mb-3'; alertEl.textContent = 'Network error.'; alertEl.style.display = ''; });
+    .catch(function() {
+      btn.disabled = false;
+      alertEl.textContent = 'Network error. Please try again.';
+      alertEl.classList.add('alert-danger');
+      alertEl.style.display = '';
+    });
 }
 </script>
 {% endblock %}

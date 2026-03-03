@@ -1506,6 +1506,12 @@ def job_detail(job_id: int):
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
 
+    cur.execute("SELECT id, name FROM clients WHERE active = 1 ORDER BY name")
+    all_clients = cur.fetchall()
+
+    cur.execute("SELECT id, first_name, last_name, company, address FROM customers ORDER BY last_name, first_name")
+    all_customers_for_edit = cur.fetchall()
+
     cur.execute("""
         SELECT fn.*, u.full_name author_name
         FROM job_field_notes fn
@@ -1590,6 +1596,8 @@ def job_detail(job_id: int):
                            schedules=schedules, next_schedule=next_schedule,
                            job_linked_customers=job_linked_customers,
                            all_customers=all_customers,
+                           all_clients=all_clients,
+                           all_customers_for_edit=all_customers_for_edit,
                            customer_roles=customer_roles,
                            tow_operators=tow_operators,
                            auction_yards=auction_yards,
@@ -1928,6 +1936,33 @@ def delete_booking_type_single(bt_id):
     return jsonify({"ok": True})
 
 
+@app.post("/settings/change-password")
+@login_required
+def settings_change_password():
+    user_id = session.get("user_id")
+    current = request.form.get("current_password", "").strip()
+    new_pw  = request.form.get("new_password", "").strip()
+    confirm = request.form.get("confirm_password", "").strip()
+    if not current or not new_pw or not confirm:
+        return jsonify({"ok": False, "error": "All fields are required."})
+    if new_pw != confirm:
+        return jsonify({"ok": False, "error": "New passwords do not match."})
+    if len(new_pw) < 6:
+        return jsonify({"ok": False, "error": "Password must be at least 6 characters."})
+    if new_pw == current:
+        return jsonify({"ok": False, "error": "New password must differ from current password."})
+    conn = db()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user or not check_password_hash(user["password"], current):
+        conn.close()
+        return jsonify({"ok": False, "error": "Current password is incorrect."})
+    conn.execute("UPDATE users SET password = ? WHERE id = ?",
+                 (generate_password_hash(new_pw), user_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.post("/admin/settings/change-password")
 @login_required
 @admin_required
@@ -2112,6 +2147,8 @@ def job_update(job_id: int):
 def job_edit(job_id: int):
     client_reference  = request.form.get("client_reference", "").strip() or None
     client_job_number = request.form.get("client_job_number", "").strip() or None
+    client_id         = request.form.get("client_id") or None
+    customer_id       = request.form.get("customer_id") or None
     job_type          = request.form.get("job_type", "").strip()
     visit_type        = request.form.get("visit_type", "").strip()
     status            = request.form.get("status", "").strip()
@@ -2138,14 +2175,27 @@ def job_edit(job_id: int):
     cur.execute("""
         UPDATE jobs SET
             client_reference=?, client_job_number=?, display_ref=?,
+            client_id=?, customer_id=?,
             job_type=?, visit_type=?, status=?, priority=?,
             job_address=?, description=?, assigned_user_id=?,
             updated_at=?
         WHERE id=?
     """, (client_reference, client_job_number, display_ref,
+          client_id, customer_id,
           job_type, visit_type, status, priority,
           job_address, description, assigned_user_id,
           now, job_id))
+
+    # Sync primary job_customers entry if customer changed
+    if customer_id:
+        cur.execute("SELECT id FROM job_customers WHERE job_id = ? AND role = 'Primary'", (job_id,))
+        existing = cur.fetchone()
+        if existing:
+            cur.execute("UPDATE job_customers SET customer_id = ? WHERE id = ?",
+                        (int(customer_id), existing["id"]))
+        else:
+            cur.execute("""INSERT INTO job_customers (job_id, customer_id, role, sort_order, created_at)
+                           VALUES (?, ?, 'Primary', 0, ?)""", (job_id, int(customer_id), now))
 
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
