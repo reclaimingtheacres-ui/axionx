@@ -1055,8 +1055,12 @@ def jobs_list():
     params = []
 
     if role == "agent":
-        sql += " AND j.assigned_user_id = ?"
-        params.append(user_id)
+        sql += """ AND (j.assigned_user_id = ? OR EXISTS (
+            SELECT 1 FROM schedules s
+            WHERE s.job_id = j.id AND s.assigned_to_user_id = ?
+              AND s.status NOT IN ('Cancelled')
+        ))"""
+        params.extend([user_id, user_id])
 
     if status:
         if status == "Active":
@@ -3143,6 +3147,7 @@ def report_monthly():
 @login_required
 def my_today():
     today = datetime.now().date().isoformat()
+    today_display = today[8:10] + "/" + today[5:7] + "/" + today[:4]
     user_id = session.get("user_id")
 
     conn = db()
@@ -3159,9 +3164,24 @@ def my_today():
         ORDER BY ci.priority DESC, ci.id
     """, (today, user_id))
     cues = cur.fetchall()
+
+    cur.execute("""
+        SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
+               j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type='vehicle' LIMIT 1) AS asset_reg
+        FROM schedules s
+        JOIN jobs j ON j.id = s.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE date(s.scheduled_for) = ? AND s.assigned_to_user_id = ?
+          AND s.status NOT IN ('Cancelled', 'Completed')
+        ORDER BY s.scheduled_for
+    """, (today, user_id))
+    schedules = cur.fetchall()
     conn.close()
 
-    return render_template("my_today.html", cues=cues, today=today)
+    return render_template("my_today.html", cues=cues, schedules=schedules,
+                           today=today, today_display=today_display)
 
 
 if __name__ == "__main__":
