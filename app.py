@@ -1379,17 +1379,20 @@ def job_create():
     serials       = request.form.getlist("asset_serial[]")
     asset_notes   = request.form.getlist("asset_notes[]")
 
+    def _al(lst, i):
+        return (lst[i] if i < len(lst) else "") or ""
+
     for i in range(len(asset_types)):
-        a_type  = (asset_types[i]  or "").strip()
-        a_desc  = (descs[i]        or "").strip()
-        a_rego  = (regos[i]        or "").strip()
-        a_vin   = (vins[i]         or "").strip()
-        a_year  = (years[i]        or "").strip()
-        a_make  = (makes[i]        or "").strip()
-        a_model = (models[i]       or "").strip()
-        a_addr  = (addresses[i]    or "").strip()
-        a_ser   = (serials[i]      or "").strip()
-        a_note  = (asset_notes[i]  or "").strip()
+        a_type  = _al(asset_types, i).strip()
+        a_desc  = _al(descs,       i).strip()
+        a_rego  = _al(regos,       i).strip()
+        a_vin   = _al(vins,        i).strip()
+        a_year  = _al(years,       i).strip()
+        a_make  = _al(makes,       i).strip()
+        a_model = _al(models,      i).strip()
+        a_addr  = _al(addresses,   i).strip()
+        a_ser   = _al(serials,     i).strip()
+        a_note  = _al(asset_notes, i).strip()
         if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year]):
             continue
         cur.execute("""
