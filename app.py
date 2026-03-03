@@ -1541,6 +1541,7 @@ def job_activate(job_id):
 
 @app.get("/schedule")
 @login_required
+@admin_required
 def schedule_index():
     from datetime import timedelta
     now    = datetime.now()
@@ -1903,6 +1904,7 @@ def interaction_add(job_id: int):
 # -------- Clients --------
 @app.get("/clients")
 @login_required
+@admin_required
 def clients_list():
     conn = db()
     cur = conn.cursor()
@@ -2181,6 +2183,7 @@ def client_edit_post(client_id: int):
 # -------- Customers --------
 @app.get("/customers")
 @login_required
+@admin_required
 def customers_list():
     conn = db()
     cur = conn.cursor()

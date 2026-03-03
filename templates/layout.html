@@ -280,9 +280,11 @@
         <div class="hint">Workspace</div>
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
+        {% if session.get('role') != 'agent' %}
         <a href="/clients" class="{% if request.path.startswith('/clients') %}active{% endif %}">Clients</a>
         <a href="/customers" class="{% if request.path.startswith('/customers') %}active{% endif %}">Customers</a>
         <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
+        {% endif %}
 
         {% if session.get('role') == 'agent' %}
           <div class="hint">My Work</div>
@@ -317,7 +319,7 @@
       <div class="ax-topbar">
         <div class="title">{% block page_title %}Axion{% endblock %}</div>
         <div style="display:flex; align-items:center; gap:14px;">
-          {% if session.get('user_id') %}
+          {% if session.get('user_id') and session.get('role') != 'agent' %}
             <a href="/jobs/new" class="btn btn-primary btn-sm">+ New Job</a>
           {% endif %}
           <div style="color:var(--muted); font-size:.85rem;">

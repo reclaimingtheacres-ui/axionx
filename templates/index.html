@@ -131,6 +131,8 @@
 {% endif %}
 
 <div class="mt-3">
+  {% if session.get('role') != 'agent' %}
   <a class="btn btn-primary" href="/jobs/new">+ New Job</a>
+  {% endif %}
 </div>
 {% endblock %}
