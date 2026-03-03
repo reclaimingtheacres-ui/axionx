@@ -1307,9 +1307,15 @@ def job_detail(job_id: int):
     role = session.get("role")
     user_id = session.get("user_id")
     if role == "agent" and job["assigned_user_id"] != user_id:
-        conn.close()
-        flash("You do not have access to that job.", "danger")
-        return redirect(url_for("jobs_list"))
+        sched_check = conn.execute(
+            """SELECT 1 FROM schedules WHERE job_id = ? AND assigned_to_user_id = ?
+               AND status NOT IN ('Cancelled') LIMIT 1""",
+            (job_id, user_id)
+        ).fetchone()
+        if not sched_check:
+            conn.close()
+            flash("You do not have access to that job.", "danger")
+            return redirect(url_for("jobs_list"))
 
     cur.execute("""
     SELECT * FROM interactions
