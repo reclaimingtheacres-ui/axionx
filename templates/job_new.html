@@ -96,12 +96,10 @@
           <button class="btn btn-outline-secondary btn-sm mt-2" type="button"
                   data-bs-toggle="collapse" data-bs-target="#addJobType">+ Add Job Type</button>
           <div class="collapse mt-2" id="addJobType">
-            <form method="post" action="/job-type">
-              <div class="input-group">
-                <input name="new_job_type" class="form-control" placeholder="New job type name…">
-                <button class="btn btn-outline-primary" type="submit">Save</button>
-              </div>
-            </form>
+            <div class="input-group">
+              <input id="addJobTypeInput" class="form-control" placeholder="New job type name…">
+              <button class="btn btn-outline-primary" type="button" onclick="submitNewJobType()">Save</button>
+            </div>
           </div>
           {% endif %}
         </div>
@@ -572,6 +570,16 @@ function removeEmailRow(btn) {
   } else {
     btn.closest('.email-row').remove();
   }
+}
+function submitNewJobType() {
+  var inp = document.getElementById('addJobTypeInput');
+  var val = (inp ? inp.value : '').trim();
+  if (!val) return;
+  var fd = new FormData();
+  fd.append('new_job_type', val);
+  fetch('/job-type', { method: 'POST', body: fd })
+    .then(function() { location.reload(); })
+    .catch(function() { alert('Could not save job type. Please try again.'); });
 }
 </script>
 {% endblock %}
