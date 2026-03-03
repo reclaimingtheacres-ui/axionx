@@ -130,10 +130,16 @@
       box-shadow: 0 2px 8px rgba(0,0,0,.06);
       overflow: visible;
     }
-    .pac-container,
-    .gmp-place-autocomplete__suggestions-container { z-index: 20000 !important; }
-    #entityModal .modal-body,
-    #entityModal .modal-content { overflow: visible !important; }
+    .pac-container{
+      z-index: 2147483647 !important;
+      position: fixed !important;
+    }
+    .modal,
+    .modal-dialog,
+    .modal-content,
+    .modal-body{
+      overflow: visible !important;
+    }
     gmp-place-autocomplete {
       display: block;
       width: 100%;
