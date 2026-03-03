@@ -225,6 +225,9 @@
         <details id="lender-details">
           <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
           <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-2">
+            <div class="mb-3">
+              <button class="btn btn-primary btn-sm">Save Lender Details</button>
+            </div>
             <div class="row g-2 mb-2">
               <div class="col-12 col-lg-4">
                 <label class="form-label">Lender Name</label>
@@ -340,11 +343,11 @@
 
         {% if session.get('role') == 'admin' %}
         <details>
-          <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer; list-style:none">+ Add Item</summary>
+          <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer; list-style:none">+ Add Security</summary>
           <form method="post" action="/jobs/{{ job.id }}/items/new" class="mt-2">
             <div class="row g-2 mb-2">
               <div class="col-12 col-lg-3">
-                <label class="form-label">Item Type</label>
+                <label class="form-label">Security Type</label>
                 <select class="form-select" name="item_type" id="itemTypeSelect" onchange="showItemFields(this.value)">
                   {% for t in item_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
                 </select>
@@ -401,7 +404,7 @@
               </div>
             </div>
 
-            <button class="btn btn-primary btn-sm">Add Item</button>
+            <button class="btn btn-primary btn-sm">Add Security</button>
           </form>
         </details>
         {% endif %}
