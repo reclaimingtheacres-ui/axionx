@@ -3339,12 +3339,11 @@ def note_update_emailed(job_id: int):
 
     now_melb = datetime.now(_melbourne)
     ts = now_melb.strftime("%d/%m/%Y %H:%M")
-    narrative = f"Update emailed — {ts} — {user_name}"
-    occurred_at = now_ts()
+    note_text = f"Update emailed — {ts} — {user_name}"
     conn.execute(
-        """INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
-           VALUES (?, 'Note', ?, ?, ?)""",
-        (job_id, narrative, occurred_at, occurred_at)
+        """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (job_id, user_id, note_text, now_ts())
     )
     conn.commit()
     conn.close()
