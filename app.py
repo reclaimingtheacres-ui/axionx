@@ -1285,7 +1285,7 @@ def job_create():
     job_address = request.form.get("job_address", "").strip()
     description = request.form.get("description", "").strip()
     lender_name = request.form.get("lender_name", "").strip()
-    account_number = request.form.get("account_number", "").strip()
+    account_number = request.form.get("account_number", "").strip() or client_reference or None
     regulation_type = request.form.get("regulation_type", "").strip()
     arrears_cents = money_to_cents(request.form.get("arrears"))
     costs_cents = money_to_cents(request.form.get("costs"))
