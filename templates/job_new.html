@@ -72,24 +72,11 @@
         <input class="form-control ax-address" id="customer_address" name="customer_address" placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false" value="{{ prefill_customer_address }}">
       </div>
 
-      <div class="mb-3">
-        <label class="form-label">Assign To</label>
-        <div class="d-flex gap-2 align-items-center">
-          <select class="form-select" name="assigned_user_id" style="max-width:260px;">
-            <option value="">Unassigned</option>
-            {% for u in users %}
-              <option value="{{u.id}}">{{ u.full_name }}</option>
-            {% endfor %}
-          </select>
-          <button type="button" class="btn btn-outline-secondary btn-sm text-nowrap"
-                  onclick="openEntityModal('agent', '/users/new-popup')">+ Add Agent</button>
-        </div>
-      </div>
 
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-3">
           <label class="form-label">Job Type</label>
-          <select class="form-select" name="job_type" id="jobTypeSelect" onchange="toggleLenderAsset()">
+          <select class="form-select" name="job_type" id="jobTypeSelect">
             {% for jt in job_types %}<option value="{{ jt.name }}">{{ jt.name }}</option>{% endfor %}
           </select>
           {% if session.get('role') == 'admin' %}
@@ -132,113 +119,6 @@
         </label>
       </div>
 
-      <div class="mb-4">
-        <label class="form-label">Description / Instructions</label>
-        <textarea class="form-control" name="description" rows="4"></textarea>
-      </div>
-
-      <div class="ax-card mt-3" id="lenderSection">
-        <div class="ax-card-h">Lender / Financials</div>
-        <div class="ax-card-b">
-          <div class="row g-2">
-            <div class="col-12 col-lg-4">
-              <label class="form-label">Lender</label>
-              <input class="form-control" name="lender_name" id="lender_name"
-                     list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off">
-              <datalist id="lender_list">
-                {% for ln in known_lenders %}
-                  <option value="{{ ln }}">
-                {% endfor %}
-              </datalist>
-            </div>
-            <div class="col-12 col-lg-4">
-              <label class="form-label">Account number</label>
-              <input class="form-control" name="account_number" placeholder="e.g. 1234567">
-            </div>
-            <div class="col-12 col-lg-4">
-              <label class="form-label">Regulation</label>
-              <select class="form-select" name="regulation_type">
-                <option value="">Select…</option>
-                <option>REGULATED</option>
-                <option>UNREGULATED</option>
-              </select>
-            </div>
-          </div>
-          <div class="row g-2 mt-1">
-            <div class="col-12 col-md-3">
-              <label class="form-label">Arrears</label>
-              <input class="form-control" name="arrears" placeholder="$0.00">
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label">Costs</label>
-              <input class="form-control" name="costs" placeholder="$0.00">
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label">MMP</label>
-              <input class="form-control" name="mmp" placeholder="$0.00">
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label">Due date</label>
-              <input class="form-control" type="date" name="job_due_date">
-            </div>
-          </div>
-          <div class="form-text mt-2" style="color:var(--muted)">Total calculates automatically on the job.</div>
-        </div>
-      </div>
-
-      <div class="ax-card mt-3" id="assetSection">
-        <div class="ax-card-h d-flex justify-content-between align-items-center">
-          <span>Assets (optional)</span>
-          <label style="display:flex; gap:.5rem; align-items:center; font-weight:400; font-size:.85rem; color:var(--muted); cursor:pointer;">
-            <input type="checkbox" id="asset_same_as_customer">
-            Use customer address
-          </label>
-        </div>
-        <div class="ax-card-b" id="assetsWrap">
-
-          <div class="asset-row border rounded p-3 mb-2" style="border-color:var(--line)!important">
-            <div class="row g-2">
-              <div class="col-12 col-lg-3">
-                <label class="form-label">Asset type</label>
-                <select class="form-select" name="asset_type[]">
-                  <option>Vehicle</option>
-                  <option>Property</option>
-                  <option>Equipment</option>
-                  <option>Other</option>
-                </select>
-              </div>
-              <div class="col-12 col-lg-9">
-                <label class="form-label">Description</label>
-                <input class="form-control" name="asset_description[]" placeholder="e.g. Ford Ranger / House / Catering trailer">
-              </div>
-            </div>
-            <div class="row g-2 mt-2">
-              <div class="col-12 col-md-4"><input class="form-control" name="asset_rego[]" placeholder="Rego"></div>
-              <div class="col-12 col-md-4"><input class="form-control" name="asset_vin[]" placeholder="VIN"></div>
-            </div>
-            <div class="row g-2 mt-2">
-              <div class="col-12 col-md-8">
-                <input class="form-control asset-address ax-address" name="asset_address[]" placeholder="Asset address (property/site)" autocomplete="off" spellcheck="false">
-              </div>
-              <div class="col-12 col-md-4">
-                <input class="form-control" name="asset_serial[]" placeholder="Serial (equipment)">
-              </div>
-            </div>
-            <div class="row g-2 mt-2">
-              <div class="col-12">
-                <input class="form-control" name="asset_notes[]" placeholder="Notes (optional)">
-              </div>
-            </div>
-            <div class="mt-2 d-flex justify-content-end">
-              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeAssetRow(this)">Remove</button>
-            </div>
-          </div>
-
-        </div>
-        <div class="ax-card-b pt-0">
-          <button type="button" class="btn btn-outline-primary" onclick="addAssetRow()">+ Add another asset</button>
-        </div>
-      </div>
 
       <script>
       function addAssetRow() {
@@ -333,19 +213,123 @@
       </script>
 
 
-      <script>
-      function toggleLenderAsset() {
-        var show = document.getElementById('jobTypeSelect').value === 'Repo/Collect';
-        document.getElementById('lenderSection').style.display = show ? '' : 'none';
-        document.getElementById('assetSection').style.display = show ? '' : 'none';
-      }
-      document.addEventListener('DOMContentLoaded', toggleLenderAsset);
-      </script>
-
       <div class="mt-3 d-flex gap-2">
-        <button class="btn btn-primary">Create Job</button>
+        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#detailsModal">Add Details</button>
         <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
       </div>
+
+      <!-- Details modal — INSIDE the form so all fields submit together -->
+      <div class="modal fade" id="detailsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+          <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
+            <div class="modal-header" style="border-bottom:1px solid var(--line);">
+              <h5 class="modal-title" style="color:var(--text)">Lender &amp; Security Details</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+
+              <!-- Lender Details -->
+              <div class="mb-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">LENDER DETAILS</div>
+              <div class="row g-2 mb-2">
+                <div class="col-12 col-lg-4">
+                  <label class="form-label">Lender</label>
+                  <input class="form-control" name="lender_name" id="lender_name" list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off">
+                  <datalist id="lender_list">
+                    {% for ln in known_lenders %}<option value="{{ ln }}">{% endfor %}
+                  </datalist>
+                </div>
+                <div class="col-12 col-lg-4">
+                  <label class="form-label">Account Number</label>
+                  <input class="form-control" name="account_number" placeholder="e.g. 1234567">
+                </div>
+                <div class="col-12 col-lg-4">
+                  <label class="form-label">Regulation</label>
+                  <select class="form-select" name="regulation_type">
+                    <option value="">Select…</option>
+                    <option>REGULATED</option>
+                    <option>UNREGULATED</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row g-2 mb-3">
+                <div class="col-12 col-md-3">
+                  <label class="form-label">Arrears</label>
+                  <input class="form-control" name="arrears" placeholder="$0.00">
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label">Costs</label>
+                  <input class="form-control" name="costs" placeholder="$0.00">
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label">MMP</label>
+                  <input class="form-control" name="mmp" placeholder="$0.00">
+                </div>
+                <div class="col-12 col-md-3">
+                  <label class="form-label">Due Date</label>
+                  <input class="form-control" type="date" name="job_due_date">
+                </div>
+              </div>
+
+              <hr style="border-color:var(--line);margin:1rem 0">
+
+              <!-- Security Details -->
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">SECURITY DETAILS</div>
+                <label style="display:flex;gap:.5rem;align-items:center;font-weight:400;font-size:.85rem;color:var(--muted);cursor:pointer;">
+                  <input type="checkbox" id="asset_same_as_customer">
+                  Use customer address
+                </label>
+              </div>
+              <div id="assetsWrap">
+                <div class="asset-row border rounded p-3 mb-2" style="border-color:var(--line)!important">
+                  <div class="row g-2">
+                    <div class="col-12 col-lg-3">
+                      <label class="form-label">Security Type</label>
+                      <select class="form-select" name="asset_type[]">
+                        <option>Vehicle</option>
+                        <option>Property</option>
+                        <option>Equipment</option>
+                        <option>Other</option>
+                      </select>
+                    </div>
+                    <div class="col-12 col-lg-9">
+                      <label class="form-label">Description</label>
+                      <input class="form-control" name="asset_description[]" placeholder="e.g. Ford Ranger / House / Catering trailer">
+                    </div>
+                  </div>
+                  <div class="row g-2 mt-2">
+                    <div class="col-12 col-md-4"><input class="form-control" name="asset_rego[]" placeholder="Rego"></div>
+                    <div class="col-12 col-md-4"><input class="form-control" name="asset_vin[]" placeholder="VIN"></div>
+                  </div>
+                  <div class="row g-2 mt-2">
+                    <div class="col-12 col-md-8">
+                      <input class="form-control asset-address ax-address" name="asset_address[]" placeholder="Asset address (property/site)" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <input class="form-control" name="asset_serial[]" placeholder="Serial (equipment)">
+                    </div>
+                  </div>
+                  <div class="row g-2 mt-2">
+                    <div class="col-12">
+                      <input class="form-control" name="asset_notes[]" placeholder="Notes (optional)">
+                    </div>
+                  </div>
+                  <div class="mt-2 d-flex justify-content-end">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeAssetRow(this)">Remove</button>
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm mt-1" onclick="addAssetRow()">+ Add Security</button>
+
+            </div>
+            <div class="modal-footer" style="border-top:1px solid var(--line);">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Back</button>
+              <button type="submit" class="btn btn-primary">Create Job</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </form>
   </div>
 </div>
