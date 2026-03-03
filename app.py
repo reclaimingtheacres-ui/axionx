@@ -1041,7 +1041,12 @@ def jobs_list():
            c.name AS client_name,
            (cu.first_name || ' ' || cu.last_name) AS customer_name,
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
-           u.full_name AS assigned_name,
+           COALESCE(u.full_name, (
+               SELECT u2.full_name FROM schedules s2
+               JOIN users u2 ON u2.id = s2.assigned_to_user_id
+               WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed')
+               ORDER BY s2.scheduled_for ASC LIMIT 1
+           )) AS assigned_name,
            (SELECT s.scheduled_for FROM schedules s
             WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
               AND s.scheduled_for >= datetime('now')
