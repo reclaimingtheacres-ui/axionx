@@ -53,6 +53,7 @@ externalPort = 80
 [userenv.shared]
 SMTP_HOST = "smtp.office365.com"
 SMTP_PORT = "587"
+BREAK_GLASS_TOKEN = "80902e78a0d1aa061400b018f3562e1368e46e424146d93052fd18cbb06b6202"
 
 [deployment]
 deploymentTarget = "autoscale"
