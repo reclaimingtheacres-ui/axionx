@@ -6,7 +6,38 @@
 <div class="ax-card">
   <div class="ax-card-h">Create Job</div>
   <div class="ax-card-b">
+
+    <!-- Auto-fill upload zone -->
+    {% if autofill_notice %}
+    <div class="alert mb-3 d-flex align-items-start gap-2"
+         style="background:rgba(96,165,250,.12);border:1.5px solid rgba(96,165,250,.4);border-radius:12px;color:var(--text)">
+      <span style="font-size:1.2rem;line-height:1.2">&#128196;</span>
+      <div>
+        <strong>Auto-filled from document</strong> &mdash; {{ autofill_notice.split('—',1)[1].strip() if '—' in autofill_notice else autofill_notice }}
+        <div class="small mt-1" style="color:var(--muted)">Review every field below before saving. The source document will be attached to the job automatically.</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="mb-3">
+      <button type="button" class="btn btn-outline-secondary btn-sm"
+              onclick="document.getElementById('autofillZone').classList.toggle('d-none')"
+              style="font-size:.82rem">
+        &#128196; Upload instruction document to auto-fill
+      </button>
+      <div id="autofillZone" class="d-none mt-2">
+        <form method="post" action="/jobs/new/autofill-upload" enctype="multipart/form-data"
+              style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+          <input type="file" name="instruction_file" class="form-control form-control-sm"
+                 accept=".pdf,.docx,.doc" style="max-width:340px" required>
+          <button type="submit" class="btn btn-primary btn-sm">Extract &amp; Auto-fill</button>
+          <span class="small" style="color:var(--muted)">Supports PDF and Word (.docx)</span>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
     <form method="post" id="newJobForm">
+      {% if autofill_id %}<input type="hidden" name="autofill_id" value="{{ autofill_id }}">{% endif %}
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-3">
           <label class="form-label">Job Number</label>
@@ -402,6 +433,17 @@
 })();
 </script>
 
+{% if autofill and autofill.customer and autofill.customer.full_name %}
+<script>
+(function() {
+  var custSearch = document.getElementById('customer_search');
+  if (custSearch && !custSearch.value) {
+    custSearch.value = {{ autofill.customer.full_name | tojson }};
+  }
+})();
+</script>
+{% endif %}
+
 <script>
 function addPhoneRow() {
   var container = document.getElementById('phoneRows');
@@ -490,28 +532,32 @@ function submitNewJobType() {
             <div class="col-12 col-lg-4">
               <label class="form-label">Lender</label>
               <input class="form-control" name="lender_name" id="lender_name" form="newJobForm"
-                     list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off">
+                     list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off"
+                     value="{{ prefill_lender_name or (autofill.lender_name if autofill else '') }}">
               <datalist id="lender_list">
                 {% for ln in known_lenders %}<option value="{{ ln }}">{% endfor %}
               </datalist>
             </div>
             <div class="col-12 col-lg-4">
               <label class="form-label">Account Number</label>
-              <input class="form-control" name="account_number" form="newJobForm" placeholder="e.g. 1234567">
+              <input class="form-control" name="account_number" form="newJobForm" placeholder="e.g. 1234567"
+                     value="{{ prefill_account_number or (autofill.account_number if autofill else '') }}">
             </div>
             <div class="col-12 col-lg-4">
               <label class="form-label">Regulation</label>
               <select class="form-select" name="regulation_type" form="newJobForm">
                 <option value="">Select…</option>
-                <option>REGULATED</option>
-                <option>UNREGULATED</option>
+                {% set _rt = autofill.regulated_type if autofill else '' %}
+                <option {% if _rt == 'REGULATED' %}selected{% endif %}>REGULATED</option>
+                <option {% if _rt == 'UNREGULATED' %}selected{% endif %}>UNREGULATED</option>
               </select>
             </div>
           </div>
           <div class="row g-2 mb-3">
             <div class="col-12 col-md-3">
               <label class="form-label">Arrears</label>
-              <input class="form-control" name="arrears" form="newJobForm" placeholder="$0.00">
+              <input class="form-control" name="arrears" form="newJobForm" placeholder="$0.00"
+                     value="{{ autofill.financials.arrears if autofill and autofill.financials else '' }}">
             </div>
             <div class="col-12 col-md-3">
               <label class="form-label">Costs</label>
@@ -548,16 +594,25 @@ function submitNewJobType() {
                 </div>
                 <div class="col-12 col-lg-9">
                   <label class="form-label">Description</label>
+                  {% set _sec = autofill.security if autofill else None %}
                   <input class="form-control" name="asset_description[]" form="newJobForm"
-                         placeholder="e.g. Ford Ranger / House / Catering trailer">
+                         placeholder="e.g. Ford Ranger / House / Catering trailer"
+                         value="{% if _sec %}{{ ([_sec.year, _sec.make, _sec.model, _sec.colour] | select | join(' ')) }}{% endif %}">
                 </div>
               </div>
+              {% if _sec %}
+              <input type="hidden" name="asset_year[]"  form="newJobForm" value="{{ _sec.year or '' }}">
+              <input type="hidden" name="asset_make[]"  form="newJobForm" value="{{ _sec.make or '' }}">
+              <input type="hidden" name="asset_model[]" form="newJobForm" value="{{ _sec.model or '' }}">
+              {% endif %}
               <div class="row g-2 mt-2">
                 <div class="col-12 col-md-4">
-                  <input class="form-control" name="asset_rego[]" form="newJobForm" placeholder="Rego">
+                  <input class="form-control" name="asset_rego[]" form="newJobForm" placeholder="Rego"
+                         value="{{ _sec.rego if _sec else '' }}">
                 </div>
                 <div class="col-12 col-md-4">
-                  <input class="form-control" name="asset_vin[]" form="newJobForm" placeholder="VIN">
+                  <input class="form-control" name="asset_vin[]" form="newJobForm" placeholder="VIN"
+                         value="{{ _sec.vin if _sec else '' }}">
                 </div>
               </div>
               <div class="row g-2 mt-2">
@@ -589,7 +644,7 @@ function submitNewJobType() {
             <label class="form-label">Description &amp; Instructions</label>
             <textarea class="form-control" name="description" form="newJobForm" rows="10"
                       placeholder="Job description, field agent instructions, access codes, contact times, background information…"
-                      style="resize:vertical;"></textarea>
+                      style="resize:vertical;">{% if autofill and autofill.instructions_raw %}{{ autofill.instructions_raw }}{% endif %}</textarea>
             <div class="form-text" style="color:var(--muted)">Visible to assigned agents on their job view.</div>
           </div>
         </div>

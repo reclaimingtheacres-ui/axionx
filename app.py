@@ -8,6 +8,7 @@ import json
 import os
 import re
 import io
+import uuid
 import mimetypes
 from datetime import date, datetime
 import pytz
@@ -477,6 +478,29 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS pending_uploads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        original_filename TEXT NOT NULL,
+        storage_key TEXT NOT NULL,
+        content_type TEXT,
+        uploaded_by_user_id INTEGER,
+        uploaded_at TEXT NOT NULL
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS document_extractions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pending_upload_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'success',
+        provider_used TEXT NOT NULL DEFAULT 'rule_based',
+        extracted_json TEXT NOT NULL,
+        extracted_text TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -498,6 +522,126 @@ def _ensure_db():
 def now_ts():
     melb = pytz.timezone("Australia/Melbourne")
     return datetime.now(melb).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+# ── Document auto-fill helpers ────────────────────────────────────────────────
+
+PENDING_UPLOAD_DIR = os.path.join(UPLOAD_FOLDER, "pending")
+os.makedirs(PENDING_UPLOAD_DIR, exist_ok=True)
+
+
+def _save_pending_upload(file_storage):
+    original = secure_filename(file_storage.filename or "upload")
+    ext = os.path.splitext(original)[1].lower()
+    key = f"{uuid.uuid4().hex}{ext}"
+    path = os.path.join(PENDING_UPLOAD_DIR, key)
+    file_storage.save(path)
+    return original, file_storage.mimetype or "application/octet-stream", key, path
+
+
+def _extract_text_docx(path):
+    from docx import Document
+    doc = Document(path)
+    parts = []
+    for p in doc.paragraphs:
+        t = (p.text or "").strip()
+        if t:
+            parts.append(t)
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [(c.text or "").strip() for c in row.cells]
+            line = " | ".join(c for c in cells if c)
+            if line:
+                parts.append(line)
+    return "\n".join(parts)
+
+
+def _extract_text_pdf(path):
+    from pypdf import PdfReader
+    reader = PdfReader(path)
+    out = []
+    for page in reader.pages:
+        t = (page.extract_text() or "").strip()
+        if t:
+            out.append(t)
+    return "\n".join(out)
+
+
+def _normalise_phone(s):
+    if not s:
+        return None
+    cleaned = "".join(ch for ch in s if ch.isdigit() or ch == "+")
+    return cleaned or None
+
+
+def _parse_instruction_text(text):
+    def find_after(patterns):
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                val = (m.group(1) or "").strip()
+                return val if val else None
+        return None
+
+    contract    = find_after([r"Contract\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)"])
+    account     = find_after([r"Account\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)"])
+    client_ref  = find_after([r"Authority\s*Ref[:\s]*([A-Za-z0-9\-\/]+)",
+                               r"Client\s*Reference[:\s]*([A-Za-z0-9\-\/]+)"])
+    lender      = find_after([r"(?:Lender|Finance\s*Company|Financier)[:\s]*([A-Za-z0-9 ,.'&\-]+)"])
+    cust_name   = find_after([r"Customer\s*Name[:\s]*([A-Za-z ,.'\-]+)",
+                               r"Debtor\s*Name[:\s]*([A-Za-z ,.'\-]+)"])
+    dob         = find_after([r"D\.?O\.?B\.?[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
+                               r"Date\s*of\s*Birth[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})"])
+    email       = find_after([r"Email[:\s]*([^\s]+@[^\s]+)"])
+    vin         = find_after([r"\bVIN\b[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
+                               r"VIN[\/]Chassis[:\s]*([A-HJ-NPR-Z0-9]{11,17})"])
+    rego        = find_after([r"\bReg(?:istration|o)?\b[:\s]*([A-Za-z0-9]{2,8})\b",
+                               r"\bPlate\b[:\s]*([A-Za-z0-9]{2,8})\b"])
+    engine_no   = find_after([r"Engine\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-]+)"])
+    colour      = find_after([r"Colou?r[:\s]*([A-Za-z]+)"])
+    year        = find_after([r"\bYear\b[:\s]*([12][0-9]{3})"])
+    make        = find_after([r"\bMake\b[:\s]*([A-Za-z][A-Za-z0-9\- ]{1,20})"])
+    model       = find_after([r"\bModel\b[:\s]*([A-Za-z0-9\- ]{1,30})"])
+    arrears     = find_after([r"Arrears[:\s]*\$?\s*([0-9,]+\.\d{2})"])
+    due_date    = find_after([r"(?:Next\s*Due\s*Date|Due\s*Date|Payment\s*Due)[:\s]*([0-9]{1,2}[A-Za-z]{3}[0-9]{2,4}|[0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})"])
+    phone       = find_after([r"(?:Contact\s*Number|Mobile|Phone)[:\s]*([+0-9\(\)\s\-]{8,20})"])
+    phone       = _normalise_phone(phone)
+    reg_type    = find_after([r"Contract\s*Type[:\s]*(REGULATED|UNREGULATED)",
+                               r"\b(REGULATED|UNREGULATED)\b"])
+    addr        = find_after([r"(?:Service|Customer|Property)\s*Address[:\s]*([^\n]+)",
+                               r"Address[:\s]*([^\n]+)"])
+    addr        = addr.strip(" ,") if addr else None
+
+    return {
+        "client_reference":  client_ref,
+        "contract_number":   contract,
+        "account_number":    account,
+        "regulated_type":    reg_type,
+        "lender_name":       lender,
+        "customer": {
+            "full_name": cust_name,
+            "dob":       dob,
+            "email":     email,
+            "mobile":    phone,
+        },
+        "job_address_full": addr,
+        "security": {
+            "year":          year,
+            "make":          make,
+            "model":         model,
+            "rego":          rego,
+            "vin":           vin,
+            "engine_number": engine_no,
+            "colour":        colour,
+        },
+        "financials": {
+            "arrears":   arrears,
+            "due_date":  due_date,
+        },
+        "instructions_raw": None,
+    }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def money_to_cents(s: str) -> int:
@@ -1248,6 +1392,67 @@ def job_clone_data(job_id: int):
     })
 
 
+@app.post("/jobs/new/autofill-upload")
+@login_required
+@admin_required
+def job_new_autofill_upload():
+    f = request.files.get("instruction_file")
+    if not f or not f.filename:
+        flash("No file selected.", "warning")
+        return redirect(url_for("job_new"))
+
+    ext = os.path.splitext(secure_filename(f.filename))[1].lower()
+    if ext not in (".docx", ".pdf", ".doc"):
+        flash("Auto-fill only supports Word (.docx) and PDF (.pdf) files.", "warning")
+        return redirect(url_for("job_new"))
+
+    try:
+        original, mimetype, storage_key, path = _save_pending_upload(f)
+    except Exception as e:
+        flash(f"Could not save file: {e}", "danger")
+        return redirect(url_for("job_new"))
+
+    extracted_text = None
+    try:
+        if ext == ".docx":
+            extracted_text = _extract_text_docx(path)
+        elif ext in (".pdf",):
+            extracted_text = _extract_text_pdf(path)
+        elif ext == ".doc":
+            flash("Old .doc format is not supported — please save as .docx and try again.", "warning")
+            os.remove(path)
+            return redirect(url_for("job_new"))
+    except Exception as e:
+        flash(f"Could not read document: {e}", "danger")
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+        return redirect(url_for("job_new"))
+
+    extracted = _parse_instruction_text(extracted_text or "")
+
+    now = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO pending_uploads (original_filename, storage_key, content_type, uploaded_by_user_id, uploaded_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (original, storage_key, mimetype, session.get("user_id"), now))
+    pending_id = cur.lastrowid
+
+    cur.execute("""
+        INSERT INTO document_extractions (pending_upload_id, status, provider_used, extracted_json, extracted_text, created_at)
+        VALUES (?, 'success', 'rule_based', ?, ?, ?)
+    """, (pending_id, json.dumps(extracted), extracted_text, now))
+    extraction_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for("job_new", autofill_id=extraction_id))
+
+
 @app.get("/jobs/new")
 @login_required
 @admin_required
@@ -1266,11 +1471,41 @@ def job_new():
     new_client_id   = request.args.get("new_client_id",   type=int)
     new_customer_id = request.args.get("new_customer_id", type=int)
     new_user_id     = request.args.get("new_user_id",     type=int)
+    autofill_id     = request.args.get("autofill_id",     type=int)
+
+    autofill        = None
+    autofill_notice = None
+    autofill_filename = None
+    if autofill_id:
+        row = cur.execute("""
+            SELECT de.extracted_json, pu.original_filename
+            FROM document_extractions de
+            JOIN pending_uploads pu ON pu.id = de.pending_upload_id
+            WHERE de.id = ?
+        """, (autofill_id,)).fetchone()
+        if row:
+            try:
+                autofill = json.loads(row["extracted_json"])
+                autofill_filename = row["original_filename"]
+                autofill_notice = f"Auto-filled from \"{autofill_filename}\" — review and adjust fields before saving."
+            except Exception:
+                pass
 
     prefill_customer_address = ""
     prefill_client_reference = request.args.get("client_reference", "")
     prefill_lender_name      = request.args.get("lender_name", "")
     prefill_account_number   = request.args.get("account_number", "")
+
+    if autofill:
+        if not prefill_client_reference:
+            prefill_client_reference = autofill.get("client_reference") or autofill.get("contract_number") or ""
+        if not prefill_lender_name:
+            prefill_lender_name = autofill.get("lender_name") or ""
+        if not prefill_account_number:
+            prefill_account_number = autofill.get("account_number") or ""
+        if not prefill_customer_address:
+            prefill_customer_address = autofill.get("job_address_full") or ""
+
     if new_customer_id:
         cur.execute("SELECT address FROM customers WHERE id = ?", (new_customer_id,))
         row = cur.fetchone()
@@ -1303,7 +1538,10 @@ def job_new():
                            prefill_lender_name=prefill_lender_name,
                            prefill_account_number=prefill_account_number,
                            known_lenders=known_lenders,
-                           booking_types=booking_types)
+                           booking_types=booking_types,
+                           autofill=autofill,
+                           autofill_id=autofill_id,
+                           autofill_notice=autofill_notice)
 
 
 @app.post("/jobs/new")
@@ -1424,6 +1662,46 @@ def job_create():
                 VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?)
             """, (job_id, resolved_sched_bt, sched_dt, sched_notes,
                   int(sched_user_id) if sched_user_id else None, now, now))
+
+    # Link autofill document to the new job
+    autofill_id = request.form.get("autofill_id", "").strip()
+    if autofill_id and autofill_id.isdigit():
+        pu_row = cur.execute("""
+            SELECT pu.id, pu.original_filename, pu.storage_key, pu.content_type, pu.uploaded_by_user_id
+            FROM document_extractions de
+            JOIN pending_uploads pu ON pu.id = de.pending_upload_id
+            WHERE de.id = ?
+        """, (int(autofill_id),)).fetchone()
+        if pu_row:
+            pending_path = os.path.join(PENDING_UPLOAD_DIR, pu_row["storage_key"])
+            stored_name  = f"{job_id}_autofill_{pu_row['original_filename']}"
+            try:
+                cur.execute("""
+                    INSERT INTO job_documents
+                    (job_id, doc_type, title, original_filename, stored_filename, mime_type, uploaded_by_user_id, uploaded_at)
+                    VALUES (?, 'Instruction', 'Auto-fill source document', ?, ?, ?, ?, ?)
+                """, (job_id, pu_row["original_filename"], stored_name,
+                      pu_row["content_type"], pu_row["uploaded_by_user_id"] or session.get("user_id"), now))
+                if _uploads_container:
+                    with open(pending_path, "rb") as fh:
+                        import io as _io
+                        _uploads_container.upload_blob(
+                            name=stored_name, data=fh, overwrite=True,
+                            content_settings=ContentSettings(content_type=pu_row["content_type"] or "application/octet-stream")
+                        )
+                else:
+                    import shutil
+                    dest = os.path.join(UPLOAD_FOLDER, stored_name)
+                    shutil.copy2(pending_path, dest)
+            except Exception:
+                pass
+            finally:
+                try:
+                    os.remove(pending_path)
+                except Exception:
+                    pass
+            cur.execute("DELETE FROM pending_uploads WHERE id = ?", (pu_row["id"],))
+            cur.execute("DELETE FROM document_extractions WHERE id = ?", (int(autofill_id),))
 
     conn.commit()
     conn.close()
