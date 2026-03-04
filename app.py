@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify, Response, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify, Response, abort, make_response
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -16,9 +16,17 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 
 _melbourne = pytz.timezone("Australia/Melbourne")
 
+from security import throttle_check, throttle_fail, throttle_success
+from datetime import timedelta as _td
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "axion-dev-secret")
-app.config["PERMANENT_SESSION_LIFETIME"] = __import__("datetime").timedelta(hours=8)
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=_td(hours=8),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=(os.getenv("ENV", "dev") == "prod"),
+)
 
 DB_PATH = "axion.db"
 
@@ -26,6 +34,21 @@ UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv", "heic", "heif"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+@app.after_request
+def add_security_headers(resp):
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    resp.headers["Content-Security-Policy"] = (
+        "default-src 'self' https: data:; "
+        "img-src 'self' https: data:; "
+        "script-src 'self' 'unsafe-inline' https:; "
+        "style-src 'self' 'unsafe-inline' https:;"
+    )
+    return resp
+
 
 # ── Azure Blob Storage ─────────────────────────────────────────────────────────
 _AZURE_CONN_STR  = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
@@ -1017,20 +1040,38 @@ def login_post():
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "").strip()
 
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    ip_key = f"ip:{ip}"
+
     conn = db()
     cur = conn.cursor()
+
+    allowed, locked_until = throttle_check(conn, ip_key)
+    if not allowed:
+        conn.close()
+        flash(f"Too many failed attempts. Try again after {locked_until} UTC.", "danger")
+        return redirect(url_for("login"))
+
     cur.execute("SELECT * FROM users WHERE email = ? AND active = 1", (email,))
     user = cur.fetchone()
-    conn.close()
 
     if not user or not check_password_hash(user["password"], password):
+        throttle_fail(conn, ip_key)
+        conn.commit()
+        conn.close()
+        audit("auth", None, "login_failed", f"Failed login attempt for '{email}'", {"ip": ip})
         flash("Invalid email or password.", "danger")
         return redirect(url_for("login"))
+
+    throttle_success(conn, ip_key)
+    conn.commit()
+    conn.close()
 
     session.permanent = True
     session["user_id"] = user["id"]
     session["user_name"] = user["full_name"]
     session["role"] = user["role"]
+    audit("auth", user["id"], "login_success", f"Login: {user['full_name']}", {"ip": ip})
     next_url = request.args.get("next", "").strip()
     return redirect(next_url if next_url and next_url.startswith("/") else url_for("jobs_list"))
 
@@ -3429,6 +3470,61 @@ def serve_upload(filename):
     local_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     if os.path.exists(local_path):
         return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    abort(404)
+
+
+@app.get("/jobs/<int:job_id>/documents/<int:doc_id>/download")
+@login_required
+def download_job_document(job_id: int, doc_id: int):
+    conn = db()
+    cur = conn.cursor()
+
+    if session.get("role") == "agent":
+        user_id = session.get("user_id")
+        access = conn.execute(
+            """SELECT 1 FROM jobs WHERE id=? AND (
+               assigned_user_id=? OR EXISTS (
+                 SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                 AND status NOT IN ('Cancelled')
+               )
+             )""",
+            (job_id, user_id, job_id, user_id),
+        ).fetchone()
+        if not access:
+            conn.close()
+            return ("Not found", 404)
+
+    cur.execute(
+        "SELECT original_filename, stored_filename, mime_type FROM job_documents WHERE id=? AND job_id=?",
+        (doc_id, job_id),
+    )
+    doc = cur.fetchone()
+    if not doc:
+        conn.close()
+        return ("Not found", 404)
+
+    stored = doc["stored_filename"]
+    mime = doc["mime_type"] or mimetypes.guess_type(stored)[0] or "application/octet-stream"
+
+    if _uploads_container:
+        try:
+            data = _uploads_container.get_blob_client(stored).download_blob().readall()
+            audit("job_document", doc_id, "download", f"Document downloaded: {doc['original_filename']}", {"job_id": job_id})
+            conn.close()
+            resp = make_response(data)
+            resp.headers["Content-Type"] = mime
+            resp.headers["Content-Disposition"] = f'attachment; filename="{doc["original_filename"]}"'
+            return resp
+        except Exception:
+            pass
+
+    local_path = os.path.join(app.config["UPLOAD_FOLDER"], stored)
+    if os.path.exists(local_path):
+        audit("job_document", doc_id, "download", f"Document downloaded: {doc['original_filename']}", {"job_id": job_id})
+        conn.close()
+        return send_from_directory(app.config["UPLOAD_FOLDER"], stored, as_attachment=True, download_name=doc["original_filename"])
+
+    conn.close()
     abort(404)
 
 
