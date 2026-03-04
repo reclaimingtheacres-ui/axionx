@@ -4275,7 +4275,10 @@ def resources():
     cur.execute("SELECT * FROM auction_yards WHERE active=1 ORDER BY name")
     auction_yards = cur.fetchall()
     conn.close()
-    return render_template("resources.html", tow_operators=tow_operators, auction_yards=auction_yards)
+    resp = make_response(render_template("resources.html", tow_operators=tow_operators, auction_yards=auction_yards))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 @app.post("/resources/tow-operators/add")
