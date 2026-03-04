@@ -24,10 +24,13 @@ from datetime import timedelta as _td
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+is_prod = os.environ.get("ENV", "").lower() in ("prod", "production") or os.environ.get("FLASK_ENV", "").lower() == "production"
+
 app.secret_key = os.environ.get("SESSION_SECRET", "axion-dev-secret")
 app.config.update(
     PERMANENT_SESSION_LIFETIME=_td(hours=8),
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=is_prod,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
 )
