@@ -9,3 +9,12 @@ attached_assets/
 axion.db
 database.db
 database.db
+
+# SQLite / local data
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
+/backups/
