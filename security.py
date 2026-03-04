@@ -9,12 +9,24 @@ def _parse_dt(s):
     return datetime.strptime(s, "%Y-%m-%d %H:%M:%S") if s else None
 
 
+def _ensure_throttle_table(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS login_throttle (
+            key TEXT PRIMARY KEY,
+            fail_count INTEGER NOT NULL DEFAULT 0,
+            locked_until TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+
+
 def throttle_check(conn, key):
     """
     Returns (allowed: bool, locked_until: str|None).
     Checks whether the given key (e.g. "ip:1.2.3.4") is currently locked out.
     """
     cur = conn.cursor()
+    _ensure_throttle_table(cur)
     cur.execute(
         "SELECT fail_count, locked_until FROM login_throttle WHERE key=?", (key,)
     )
