@@ -756,7 +756,7 @@ function submitNewJobType() {
             </div>
             <div class="col-12 col-lg-3">
               <label class="form-label fw-semibold">Date</label>
-              <input type="date" class="form-control" name="sched_date" form="newJobForm">
+              <input type="date" class="form-control" id="sched_date" name="sched_date" form="newJobForm">
             </div>
             <div class="col-12 col-lg-2">
               <label class="form-label fw-semibold">Time</label>
@@ -1226,6 +1226,20 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(function () { dropEl.style.display = 'none'; }, 200);
     if (!hiddenId.value) hiddenName.value = searchEl.value.trim();
   });
+})();
+</script>
+
+<script>
+(function () {
+  var el = document.getElementById('sched_date');
+  if (el && !el.value) {
+    var tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    var y = tomorrow.getFullYear();
+    var m = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    var d = String(tomorrow.getDate()).padStart(2, '0');
+    el.value = y + '-' + m + '-' + d;
+  }
 })();
 </script>
 {% endblock %}
