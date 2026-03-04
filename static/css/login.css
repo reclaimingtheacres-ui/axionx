@@ -193,44 +193,52 @@
   .login-left{padding:32px 24px;}
 }
 
-/* --- Right panel: badge entrance + float animation (CSS-only) --- */
-.lp-badges-animated{
+/* --- Right panel: cross-fade rotator with brightness flash (CSS-only) --- */
+.lp-rotator{
   position:relative;
+  min-height:300px;
+}
+
+.lp-badges{
   display:flex;
   gap:10px;
   flex-wrap:wrap;
   justify-content:center;
+  margin-top:20px;
 }
 
-.lp-badges-animated .lp-badge{
+.lp-slide{
+  position:absolute;
+  inset:0;
   opacity:0;
-  transform:translateY(8px);
-  animation-name:lpBadgeIn,lpBadgeFloat;
-  animation-duration:700ms,6s;
-  animation-timing-function:ease,ease-in-out;
-  animation-fill-mode:forwards,both;
-  animation-iteration-count:1,infinite;
+  transform:translateY(6px);
+  pointer-events:none;
+  filter:brightness(1);
+  text-align:center;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
 }
 
-.lp-badges-animated .lp-b1{animation-delay:0.10s,1.2s;}
-.lp-badges-animated .lp-b2{animation-delay:0.25s,1.2s;}
-.lp-badges-animated .lp-b3{animation-delay:0.40s,1.2s;}
-.lp-badges-animated .lp-b4{animation-delay:0.55s,1.2s;}
-.lp-badges-animated .lp-b5{animation-delay:0.70s,1.2s;}
-
-@keyframes lpBadgeIn{
-  to{opacity:1;transform:translateY(0);}
+.lp-slide-ops{
+  animation:lpFadeSwap 12s infinite;
 }
 
-@keyframes lpBadgeFloat{
-  0%,100%{transform:translateY(0);}
-  50%{transform:translateY(-3px);}
+.lp-slide-sec{
+  animation:lpFadeSwap 12s infinite;
+  animation-delay:6s;
+}
+
+@keyframes lpFadeSwap{
+  0%   {opacity:0;transform:translateY(6px);filter:brightness(1.08);}
+  8%   {opacity:1;transform:translateY(0);  filter:brightness(1);}
+  42%  {opacity:1;transform:translateY(0);  filter:brightness(1);}
+  50%  {opacity:0;transform:translateY(6px);filter:brightness(1.08);}
+  100% {opacity:0;transform:translateY(6px);filter:brightness(1.08);}
 }
 
 @media(prefers-reduced-motion:reduce){
-  .lp-badges-animated .lp-badge{
-    animation:none !important;
-    opacity:1;
-    transform:none;
-  }
+  .lp-slide{position:static;opacity:1;transform:none;animation:none;filter:none;}
+  .lp-slide-ops{display:none;}
 }
