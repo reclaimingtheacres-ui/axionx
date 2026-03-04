@@ -73,7 +73,7 @@
             <tr id="yard-row-{{ yard.id }}" data-id="{{ yard.id }}"
                 data-name="{{ yard.name|e }}" data-address="{{ yard.address or ''|e }}">
               <td class="ps-3 fw-semibold">{{ yard.name }}</td>
-              <td>{{ yard.address or '—' }}</td>
+              <td>{% if yard.address %}{{ yard.address.split('\n') | select | join(', ') }}{% else %}—{% endif %}</td>
               <td class="text-end pe-3">
                 <button class="btn btn-link btn-sm p-0 me-2" style="color:var(--accent)"
                         onclick="openYardModal({{ yard.id }})">Edit</button>
@@ -137,9 +137,15 @@
           <label class="form-label small fw-semibold">Auction Yard Name <span style="color:#ef4444">*</span></label>
           <input type="text" id="yard_name" class="form-control" placeholder="e.g. Pickles Auctions" maxlength="120">
         </div>
-        <div class="mb-2">
-          <label class="form-label small fw-semibold">Address</label>
-          <input type="text" id="yard_address" class="form-control" placeholder="Street address" maxlength="200">
+        <div class="mb-1">
+          <label class="form-label small fw-semibold">Addresses</label>
+          <div id="yard_addresses_wrap">
+            <div class="yard-addr-row d-flex gap-2 mb-2">
+              <input type="text" class="form-control yard-addr-input" placeholder="Street address" maxlength="200">
+              <button type="button" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap" onclick="removeYardAddress(this)">Remove</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-1" onclick="addYardAddress()">+ Add Address</button>
         </div>
         <div id="yard_error" class="text-danger small mt-2" style="display:none"></div>
       </div>
@@ -227,24 +233,67 @@ function deleteTow(id, btn) {
     });
 }
 
+function _setYardAddresses(addresses) {
+  var wrap = document.getElementById('yard_addresses_wrap');
+  wrap.innerHTML = '';
+  var list = addresses.length ? addresses : [''];
+  list.forEach(function(addr) {
+    var row = document.createElement('div');
+    row.className = 'yard-addr-row d-flex gap-2 mb-2';
+    row.innerHTML = '<input type="text" class="form-control yard-addr-input" placeholder="Street address" maxlength="200" value="' + esc(addr) + '">'
+      + '<button type="button" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap" onclick="removeYardAddress(this)">Remove</button>';
+    wrap.appendChild(row);
+  });
+}
+
+function addYardAddress() {
+  var wrap = document.getElementById('yard_addresses_wrap');
+  var row = document.createElement('div');
+  row.className = 'yard-addr-row d-flex gap-2 mb-2';
+  row.innerHTML = '<input type="text" class="form-control yard-addr-input" placeholder="Street address" maxlength="200">'
+    + '<button type="button" class="btn btn-outline-secondary btn-sm" style="white-space:nowrap" onclick="removeYardAddress(this)">Remove</button>';
+  wrap.appendChild(row);
+  row.querySelector('input').focus();
+}
+
+function removeYardAddress(btn) {
+  var wrap = document.getElementById('yard_addresses_wrap');
+  var rows = wrap.querySelectorAll('.yard-addr-row');
+  if (rows.length <= 1) { btn.closest('.yard-addr-row').querySelector('input').value = ''; return; }
+  btn.closest('.yard-addr-row').remove();
+}
+
+function _getYardAddresses() {
+  return Array.from(document.querySelectorAll('.yard-addr-input'))
+    .map(function(i){ return i.value.trim(); })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function _formatAddresses(str) {
+  if (!str) return '—';
+  return str.split('\n').filter(Boolean).join(', ');
+}
+
 function openYardModal(id) {
   _yardEditId = id;
   document.getElementById('yardModalTitle').textContent = id ? 'Edit Auction Yard' : 'Add Auction Yard';
   document.getElementById('yard_error').style.display = 'none';
   if (id) {
     var row = document.getElementById('yard-row-' + id);
-    document.getElementById('yard_name').value    = row.dataset.name;
-    document.getElementById('yard_address').value = row.dataset.address;
+    document.getElementById('yard_name').value = row.dataset.name;
+    var addrs = (row.dataset.address || '').split('\n').filter(Boolean);
+    _setYardAddresses(addrs);
   } else {
-    document.getElementById('yard_name').value    = '';
-    document.getElementById('yard_address').value = '';
+    document.getElementById('yard_name').value = '';
+    _setYardAddresses([]);
   }
   bootstrap.Modal.getOrCreateInstance(document.getElementById('yardModal')).show();
 }
 
 function saveYard() {
   var name    = document.getElementById('yard_name').value.trim();
-  var address = document.getElementById('yard_address').value.trim();
+  var address = _getYardAddresses();
   var errEl   = document.getElementById('yard_error');
   if (!name) { errEl.textContent = 'Auction yard name is required.'; errEl.style.display = ''; return; }
   errEl.style.display = 'none';
@@ -263,7 +312,7 @@ function saveYard() {
         var row = document.getElementById('yard-row-' + _yardEditId);
         row.dataset.name = name; row.dataset.address = address;
         row.cells[0].innerHTML = '<span class="fw-semibold">' + esc(name) + '</span>';
-        row.cells[1].textContent = address || '—';
+        row.cells[1].textContent = _formatAddresses(address);
       } else {
         var empty = document.getElementById('yard-empty');
         if (empty) empty.remove();
@@ -271,7 +320,7 @@ function saveYard() {
         var tr = document.createElement('tr');
         tr.id = 'yard-row-' + data.id;
         tr.dataset.id = data.id; tr.dataset.name = name; tr.dataset.address = address;
-        tr.innerHTML = '<td class="ps-3 fw-semibold">' + esc(name) + '</td><td>' + esc(address||'—') + '</td>'
+        tr.innerHTML = '<td class="ps-3 fw-semibold">' + esc(name) + '</td><td>' + esc(_formatAddresses(address)) + '</td>'
           + '<td class="text-end pe-3"><button class="btn btn-link btn-sm p-0 me-2" style="color:var(--accent)" onclick="openYardModal(' + data.id + ')">Edit</button>'
           + '<button class="btn btn-link btn-sm p-0" style="color:#ef4444" onclick="deleteYard(' + data.id + ', this)">Delete</button></td>';
         tbody.appendChild(tr);

@@ -434,6 +434,7 @@ def init_db():
     add_column_if_missing(cur, "jobs", "bill_to_client_id", "INTEGER")
     add_column_if_missing(cur, "jobs", "client_job_number", "TEXT")
     add_column_if_missing(cur, "customers", "role", "TEXT")
+    add_column_if_missing(cur, "jobs", "deliver_to", "TEXT")
 
     _default_booking_types = [
         "New Visit", "Re-attend", "Urgent New Visit",
@@ -1584,6 +1585,8 @@ def job_new():
     known_lenders = [r["lender_name"] for r in cur.fetchall()]
     cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
     booking_types = cur.fetchall()
+    cur.execute("SELECT id, name FROM auction_yards WHERE active = 1 ORDER BY name")
+    auction_yards = cur.fetchall()
     conn.close()
 
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
@@ -1605,6 +1608,7 @@ def job_new():
                            prefill_account_number=prefill_account_number,
                            known_lenders=known_lenders,
                            booking_types=booking_types,
+                           auction_yards=auction_yards,
                            autofill=autofill,
                            autofill_id=autofill_id,
                            autofill_notice=autofill_notice)
@@ -1627,6 +1631,7 @@ def job_create():
     priority = request.form.get("priority", "Normal").strip()
     job_address = request.form.get("job_address", "").strip()
     description = request.form.get("description", "").strip()
+    deliver_to  = request.form.get("deliver_to", "").strip() or None
     lender_name = request.form.get("lender_name", "").strip()
     account_number = request.form.get("account_number", "").strip() or client_reference or None
     regulation_type = request.form.get("regulation_type", "").strip()
@@ -1648,17 +1653,17 @@ def job_create():
             internal_job_number, client_reference, client_job_number, display_ref,
             client_id, customer_id, bill_to_client_id, assigned_user_id,
             job_type, visit_type, status, priority,
-            job_address, description,
+            job_address, description, deliver_to,
             lender_name, account_number, regulation_type,
             arrears_cents, costs_cents, mmp_cents, job_due_date,
             created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         internal_job_number, client_reference or None, client_job_number, display_ref,
         client_id, customer_id, bill_to_client_id, assigned_user_id,
         job_type, visit_type, status, priority,
-        job_address, description,
+        job_address, description, deliver_to,
         lender_name or None, account_number or None, regulation_type or None,
         arrears_cents or None, costs_cents or None, mmp_cents or None, job_due_date,
         now, now

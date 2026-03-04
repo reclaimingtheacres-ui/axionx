@@ -681,17 +681,13 @@ function submitNewJobType() {
                   <input class="form-control asset-year" name="asset_year[]" form="newJobForm" placeholder="Year"
                          value="{{ _sec.year if _sec else '' }}">
                 </div>
-                <div class="col-6 col-md-3">
+                <div class="col-6 col-md-5">
                   <input class="form-control asset-make" name="asset_make[]" form="newJobForm" placeholder="Make"
                          value="{{ _sec.make if _sec else '' }}">
                 </div>
-                <div class="col-6 col-md-4">
+                <div class="col-12 col-md-5">
                   <input class="form-control asset-model" name="asset_model[]" form="newJobForm" placeholder="Model"
                          value="{{ _sec.model if _sec else '' }}">
-                </div>
-                <div class="col-6 col-md-3">
-                  <input class="form-control asset-engine" name="asset_engine[]" form="newJobForm" placeholder="Engine"
-                         value="{{ _sec.engine_number if _sec else '' }}">
                 </div>
               </div>
               <div class="row g-2 mt-2">
@@ -702,6 +698,10 @@ function submitNewJobType() {
                 <div class="col-12 col-md-4">
                   <input class="form-control asset-vin" name="asset_vin[]" form="newJobForm" placeholder="VIN"
                          value="{{ _sec.vin if _sec else '' }}">
+                </div>
+                <div class="col-12 col-md-4">
+                  <input class="form-control asset-engine" name="asset_engine[]" form="newJobForm" placeholder="Engine"
+                         value="{{ _sec.engine_number if _sec else '' }}">
                 </div>
               </div>
               <div class="row g-2 mt-2">
@@ -729,9 +729,20 @@ function submitNewJobType() {
         <!-- ── Tab 2: Details & Instructions ─────────────────────────── -->
         <div class="tab-pane fade" id="dtab-details">
           <div class="mb-1 mt-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">JOB DETAILS &amp; INSTRUCTIONS</div>
+          <div class="mb-3">
+            <label class="form-label">Deliver To</label>
+            <input class="form-control" name="deliver_to" form="newJobForm"
+                   id="deliver_to_input"
+                   list="deliver_to_list"
+                   placeholder="Type auction yard name…"
+                   autocomplete="off">
+            <datalist id="deliver_to_list">
+              {% for yard in auction_yards %}<option value="{{ yard.name }}">{% endfor %}
+            </datalist>
+          </div>
           <div class="mb-1">
             <label class="form-label">Description &amp; Instructions</label>
-            <textarea class="form-control" name="description" form="newJobForm" rows="10"
+            <textarea class="form-control" name="description" form="newJobForm" rows="9"
                       placeholder="Job description, field agent instructions, access codes, contact times, background information…"
                       style="resize:vertical;">{% if autofill and autofill.instructions_raw %}{{ autofill.instructions_raw }}{% endif %}</textarea>
             <div class="form-text" style="color:var(--muted)">Visible to assigned agents on their job view.</div>
