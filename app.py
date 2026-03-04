@@ -10,6 +10,7 @@ import re
 import io
 import uuid
 import mimetypes
+import traceback
 from datetime import date, datetime
 import pytz
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -48,6 +49,13 @@ def add_security_headers(resp):
         "style-src 'self' 'unsafe-inline' https:;"
     )
     return resp
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    tb = traceback.format_exc()
+    print(f"[UNHANDLED EXCEPTION] {request.method} {request.path}\n{tb}", flush=True)
+    return "Internal Server Error", 500
 
 
 # ── Azure Blob Storage ─────────────────────────────────────────────────────────

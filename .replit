@@ -30,7 +30,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "gunicorn -b 0.0.0.0:5000 app:app"
+args = "gunicorn -b 0.0.0.0:5000 --capture-output --log-level warning app:app 2>&1"
 waitForPort = 5000
 
 [[workflows.workflow]]
