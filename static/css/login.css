@@ -192,3 +192,45 @@
   .login-right{display:none;}
   .login-left{padding:32px 24px;}
 }
+
+/* --- Right panel: badge entrance + float animation (CSS-only) --- */
+.lp-badges-animated{
+  position:relative;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+
+.lp-badges-animated .lp-badge{
+  opacity:0;
+  transform:translateY(8px);
+  animation-name:lpBadgeIn,lpBadgeFloat;
+  animation-duration:700ms,6s;
+  animation-timing-function:ease,ease-in-out;
+  animation-fill-mode:forwards,both;
+  animation-iteration-count:1,infinite;
+}
+
+.lp-badges-animated .lp-b1{animation-delay:0.10s,1.2s;}
+.lp-badges-animated .lp-b2{animation-delay:0.25s,1.2s;}
+.lp-badges-animated .lp-b3{animation-delay:0.40s,1.2s;}
+.lp-badges-animated .lp-b4{animation-delay:0.55s,1.2s;}
+.lp-badges-animated .lp-b5{animation-delay:0.70s,1.2s;}
+
+@keyframes lpBadgeIn{
+  to{opacity:1;transform:translateY(0);}
+}
+
+@keyframes lpBadgeFloat{
+  0%,100%{transform:translateY(0);}
+  50%{transform:translateY(-3px);}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .lp-badges-animated .lp-badge{
+    animation:none !important;
+    opacity:1;
+    transform:none;
+  }
+}
