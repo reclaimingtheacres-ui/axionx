@@ -30,7 +30,7 @@
           <input type="file" name="instruction_file" class="form-control form-control-sm"
                  accept=".pdf,.docx,.doc" style="max-width:340px" required>
           <button type="submit" class="btn btn-primary btn-sm">Extract &amp; Auto-fill</button>
-          <span class="small" style="color:var(--muted)">Supports PDF and Word (.docx)</span>
+          <span class="small" style="color:var(--muted)">Supports PDF and Word (.doc, .docx)</span>
         </form>
       </div>
     </div>
@@ -694,19 +694,8 @@ function submitNewJobType() {
 
       </div>
       <div class="modal-footer" style="border-top:1px solid var(--line);">
-        <!-- Lender & Security footer -->
-        <div id="mf-lender" class="d-flex gap-2 w-100 justify-content-end">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="button" class="btn btn-primary" onclick="goToModalTab('dtab-details')">Next</button>
-        </div>
-        <!-- Details & Instructions footer -->
-        <div id="mf-details" class="d-flex gap-2 w-100 justify-content-end" style="display:none!important">
-          <button type="button" class="btn btn-outline-secondary" onclick="goToModalTab('dtab-lender')">Back</button>
-          <button type="button" class="btn btn-primary" onclick="goToModalTab('dtab-schedule')">Next</button>
-        </div>
-        <!-- Schedule footer -->
-        <div id="mf-schedule" class="d-flex gap-2 w-100 justify-content-end" style="display:none!important">
-          <button type="button" class="btn btn-outline-secondary" onclick="goToModalTab('dtab-details')">Back</button>
+        <div class="d-flex gap-2 w-100 justify-content-end">
+          <button type="button" class="btn btn-outline-secondary" id="detailsBackBtn" onclick="detailsModalBack()">Back</button>
           <button type="button" class="btn btn-secondary" onclick="submitAddJob()">Add Job</button>
           <input type="hidden" name="add_another" id="add_another_input" form="newJobForm" value="">
           <button type="submit" form="newJobForm" class="btn btn-primary">Save</button>

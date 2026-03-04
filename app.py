@@ -567,6 +567,18 @@ def _extract_text_pdf(path):
     return "\n".join(out)
 
 
+def _extract_text_doc(path):
+    import subprocess
+    result = subprocess.run(
+        ["antiword", "-w", "0", path],
+        capture_output=True, text=True, timeout=15
+    )
+    text = result.stdout.strip()
+    if not text and result.returncode != 0:
+        raise RuntimeError(f"antiword failed: {result.stderr.strip() or 'unknown error'}")
+    return text
+
+
 def _normalise_phone(s):
     if not s:
         return None
@@ -1403,7 +1415,7 @@ def job_new_autofill_upload():
 
     ext = os.path.splitext(secure_filename(f.filename))[1].lower()
     if ext not in (".docx", ".pdf", ".doc"):
-        flash("Auto-fill only supports Word (.docx) and PDF (.pdf) files.", "warning")
+        flash("Auto-fill only supports Word (.doc, .docx) and PDF (.pdf) files.", "warning")
         return redirect(url_for("job_new"))
 
     try:
@@ -1416,12 +1428,10 @@ def job_new_autofill_upload():
     try:
         if ext == ".docx":
             extracted_text = _extract_text_docx(path)
-        elif ext in (".pdf",):
+        elif ext == ".pdf":
             extracted_text = _extract_text_pdf(path)
         elif ext == ".doc":
-            flash("Old .doc format is not supported — please save as .docx and try again.", "warning")
-            os.remove(path)
-            return redirect(url_for("job_new"))
+            extracted_text = _extract_text_doc(path)
     except Exception as e:
         flash(f"Could not read document: {e}", "danger")
         try:
