@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 import sqlite3
 import csv
 import json
@@ -22,12 +23,13 @@ from security import throttle_check, throttle_fail, throttle_success
 from datetime import timedelta as _td
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get("SESSION_SECRET", "axion-dev-secret")
 app.config.update(
     PERMANENT_SESSION_LIFETIME=_td(hours=8),
+    SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=(os.getenv("ENV", "dev") == "prod"),
 )
 
 DB_PATH = "axion.db"
