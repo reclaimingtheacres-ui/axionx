@@ -17,6 +17,10 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backup Scheduler"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -28,6 +32,17 @@ outputType = "webview"
 task = "shell.exec"
 args = "gunicorn -b 0.0.0.0:5000 app:app"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Backup Scheduler"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 backup_scheduler.py"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [[ports]]
 localPort = 5000
