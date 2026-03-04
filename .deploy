@@ -1,1 +1,19 @@
-deploy() { git add . && git commit -m "$1" && git push origin main; }
+deploy() {
+  msg="$1"
+  if [ -z "$msg" ]; then
+    echo "Usage: deploy \"message\""
+    return 1
+  fi
+
+  # Stage everything
+  git add .
+
+  # If nothing to commit, exit cleanly
+  if git diff --cached --quiet; then
+    echo "No changes to deploy."
+    return 0
+  fi
+
+  # Commit + push
+  git commit -m "$msg" && git push origin main
+}
