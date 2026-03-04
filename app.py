@@ -1005,113 +1005,17 @@ def login():
     return render_template("login.html")
 
 
-@app.route("/dev/break-glass", methods=["GET", "POST"])
+@app.route("/dev/break-glass")
 def break_glass():
-    BREAK_GLASS_TOKEN = os.environ.get("BREAK_GLASS_TOKEN", "")
-    supplied = request.args.get("token", "") or request.form.get("token", "")
+    token = request.args.get("token")
 
-    if not BREAK_GLASS_TOKEN or not hmac.compare_digest(
-        supplied.encode("utf-8"), BREAK_GLASS_TOKEN.encode("utf-8")
-    ):
-        abort(404)
+    if token != os.environ.get("DEV_ACCESS_TOKEN"):
+        abort(403)
 
-    error = None
-    success = None
+    session["user_id"] = "breakglass"
+    session["role"] = "admin"
 
-    if request.method == "POST":
-        action    = request.form.get("action", "")
-        full_name = request.form.get("full_name", "").strip()
-        email     = request.form.get("email", "").strip().lower()
-        password  = request.form.get("password", "").strip()
-
-        if action == "create":
-            if not full_name or not email or not password:
-                error = "All fields are required."
-            elif len(password) < 6:
-                error = "Password must be at least 6 characters."
-            else:
-                conn = db()
-                existing = conn.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
-                if existing:
-                    error = f"An account with email '{email}' already exists."
-                    conn.close()
-                else:
-                    hashed = generate_password_hash(password)
-                    cur = conn.cursor()
-                    cur.execute(
-                        "INSERT INTO users (full_name, email, password, role, active, created_at) VALUES (?,?,?,'admin',1,?)",
-                        (full_name, email, hashed, now_ts())
-                    )
-                    user_id = cur.lastrowid
-                    conn.commit()
-                    conn.close()
-                    session["user_id"]   = user_id
-                    session["user_name"] = full_name
-                    session["role"]      = "admin"
-                    return redirect(url_for("index"))
-
-        elif action == "login_as":
-            conn = db()
-            user = conn.execute(
-                "SELECT id, full_name, role FROM users WHERE email=? AND active=1", (email,)
-            ).fetchone()
-            conn.close()
-            if not user:
-                error = f"No active account found for '{email}'."
-            else:
-                session["user_id"]   = user["id"]
-                session["user_name"] = user["full_name"]
-                session["role"]      = user["role"]
-                return redirect(url_for("index"))
-
-    token_param = f"?token={supplied}"
-    return f"""<!doctype html>
-<html>
-<head><title>Break Glass Access</title>
-<style>
-  body{{font-family:sans-serif;max-width:480px;margin:80px auto;padding:0 20px;background:#f8f9fa}}
-  h2{{color:#1e293b;margin-bottom:4px}}
-  .sub{{color:#64748b;font-size:.9rem;margin-bottom:28px}}
-  label{{display:block;font-size:.85rem;font-weight:600;color:#374151;margin-bottom:4px}}
-  input[type=text],input[type=email],input[type=password]{{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:.95rem;box-sizing:border-box;margin-bottom:14px}}
-  .btn{{width:100%;padding:9px;border:none;border-radius:6px;font-size:.95rem;cursor:pointer;font-weight:600}}
-  .btn-primary{{background:#2563eb;color:#fff;margin-bottom:8px}}
-  .btn-secondary{{background:#e2e8f0;color:#1e293b}}
-  .error{{background:#fee2e2;color:#b91c1c;padding:10px 14px;border-radius:6px;font-size:.88rem;margin-bottom:16px}}
-  .section{{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:22px;margin-bottom:18px}}
-  .section h3{{font-size:1rem;margin:0 0 16px;color:#1e293b}}
-  .warn{{background:#fff7ed;border:1px solid #fed7aa;color:#92400e;font-size:.82rem;padding:10px 14px;border-radius:6px;margin-bottom:20px}}
-</style></head>
-<body>
-<h2>Break Glass Access</h2>
-<p class="sub">Developer emergency access — Axionx</p>
-<div class="warn">This page is for authorised developer use only. All access is logged.</div>
-{"<div class='error'>" + error + "</div>" if error else ""}
-<div class="section">
-  <h3>Create New Admin Account</h3>
-  <form method="post" action="/dev/break-glass{token_param}">
-    <input type="hidden" name="token" value="{supplied}">
-    <input type="hidden" name="action" value="create">
-    <label>Full Name</label>
-    <input type="text" name="full_name" placeholder="Admin Name" required>
-    <label>Email</label>
-    <input type="email" name="email" placeholder="admin@example.com" required>
-    <label>Password</label>
-    <input type="password" name="password" placeholder="Min 6 characters" required>
-    <button class="btn btn-primary" type="submit">Create &amp; Sign In</button>
-  </form>
-</div>
-<div class="section">
-  <h3>Sign In as Existing User</h3>
-  <form method="post" action="/dev/break-glass{token_param}">
-    <input type="hidden" name="token" value="{supplied}">
-    <input type="hidden" name="action" value="login_as">
-    <label>Email</label>
-    <input type="email" name="email" placeholder="existing@example.com" required>
-    <button class="btn btn-secondary" type="submit">Sign In Without Password</button>
-  </form>
-</div>
-</body></html>"""
+    return redirect("/")
 
 
 @app.post("/login")
