@@ -262,6 +262,8 @@ def init_db():
         serial_number TEXT,
         identifier TEXT,
 
+        engine_number TEXT,
+
         notes TEXT,
 
         created_at TEXT NOT NULL,
@@ -447,6 +449,7 @@ def init_db():
         ("lender_name",    "TEXT"),
         ("account_number", "TEXT"),
         ("regulation_type","TEXT"),
+        ("engine_number",  "TEXT"),
     ]:
         add_column_if_missing(cur, "job_items", col, coltype)
 
@@ -1680,6 +1683,7 @@ def job_create():
     years         = request.form.getlist("asset_year[]")
     makes         = request.form.getlist("asset_make[]")
     models        = request.form.getlist("asset_model[]")
+    engines       = request.form.getlist("asset_engine[]")
     addresses     = request.form.getlist("asset_address[]")
     serials       = request.form.getlist("asset_serial[]")
     asset_notes   = request.form.getlist("asset_notes[]")
@@ -1688,25 +1692,26 @@ def job_create():
         return (lst[i] if i < len(lst) else "") or ""
 
     for i in range(len(asset_types)):
-        a_type  = _al(asset_types, i).strip()
-        a_desc  = _al(descs,       i).strip()
-        a_rego  = _al(regos,       i).strip()
-        a_vin   = _al(vins,        i).strip()
-        a_year  = _al(years,       i).strip()
-        a_make  = _al(makes,       i).strip()
-        a_model = _al(models,      i).strip()
-        a_addr  = _al(addresses,   i).strip()
-        a_ser   = _al(serials,     i).strip()
-        a_note  = _al(asset_notes, i).strip()
-        if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year]):
+        a_type   = _al(asset_types, i).strip()
+        a_desc   = _al(descs,       i).strip()
+        a_rego   = _al(regos,       i).strip()
+        a_vin    = _al(vins,        i).strip()
+        a_year   = _al(years,       i).strip()
+        a_make   = _al(makes,       i).strip()
+        a_model  = _al(models,      i).strip()
+        a_engine = _al(engines,     i).strip()
+        a_addr   = _al(addresses,   i).strip()
+        a_ser    = _al(serials,     i).strip()
+        a_note   = _al(asset_notes, i).strip()
+        if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year, a_engine]):
             continue
         cur.execute("""
             INSERT INTO job_items
-            (job_id, item_type, description, reg, vin, make, model, year, property_address, serial_number, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (job_id, item_type, description, reg, vin, make, model, year, engine_number, property_address, serial_number, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (job_id, (a_type or "other").lower(),
               a_desc or None, a_rego or None, a_vin or None, a_make or None, a_model or None, a_year or None,
-              a_addr or None, a_ser or None, a_note or None, now))
+              a_engine or None, a_addr or None, a_ser or None, a_note or None, now))
 
     sched_date = request.form.get("sched_date", "").strip()
     sched_time = request.form.get("sched_time", "").strip()

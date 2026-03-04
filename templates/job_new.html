@@ -180,6 +180,82 @@
 
       <script>
       (function () {
+        function buildDesc(row) {
+          var year   = (row.querySelector('.asset-year')   || {}).value || '';
+          var make   = (row.querySelector('.asset-make')   || {}).value || '';
+          var model  = (row.querySelector('.asset-model')  || {}).value || '';
+          var engine = (row.querySelector('.asset-engine') || {}).value || '';
+          var rego   = (row.querySelector('.asset-rego')   || {}).value || '';
+          var vin    = (row.querySelector('.asset-vin')    || {}).value || '';
+          var parts  = [year, make, model].filter(function(v){ return v.trim(); });
+          if (engine.trim()) parts.push('ENG: ' + engine.trim());
+          if (rego.trim())   parts.push('REG: ' + rego.trim());
+          if (vin.trim())    parts.push('VIN: ' + vin.trim());
+          return parts.join(' ');
+        }
+
+        function parseDesc(row, desc) {
+          var yearM   = desc.match(/\b((?:19|20)\d{2})\b/);
+          var engM    = desc.match(/ENG:\s*(\S+)/i);
+          var regM    = desc.match(/REG:\s*(\S+)/i);
+          var vinM    = desc.match(/VIN:\s*(\S+)/i);
+          var base    = desc
+            .replace(/ENG:\s*\S+/gi, '')
+            .replace(/REG:\s*\S+/gi, '')
+            .replace(/VIN:\s*\S+/gi, '')
+            .replace(/\b(?:19|20)\d{2}\b/, '')
+            .trim();
+          var words   = base.split(/\s+/).filter(Boolean);
+          var make    = words[0] || '';
+          var model   = words.slice(1).join(' ');
+
+          function set(cls, val) {
+            var el = row.querySelector(cls);
+            if (el) el.value = val;
+          }
+          set('.asset-year',   yearM  ? yearM[1]  : '');
+          set('.asset-make',   make);
+          set('.asset-model',  model);
+          set('.asset-engine', engM   ? engM[1]   : '');
+          set('.asset-rego',   regM   ? regM[1]   : '');
+          set('.asset-vin',    vinM   ? vinM[1]   : '');
+        }
+
+        var wrap = document.getElementById('assetsWrap');
+        if (!wrap) return;
+
+        var _updatingDesc = false;
+        var _updatingFields = false;
+
+        wrap.addEventListener('input', function (e) {
+          var row = e.target.closest('.asset-row');
+          if (!row) return;
+
+          if (e.target.classList.contains('asset-description')) {
+            if (_updatingDesc) return;
+            _updatingFields = true;
+            parseDesc(row, e.target.value);
+            _updatingFields = false;
+          } else if (
+            e.target.classList.contains('asset-year')   ||
+            e.target.classList.contains('asset-make')   ||
+            e.target.classList.contains('asset-model')  ||
+            e.target.classList.contains('asset-engine') ||
+            e.target.classList.contains('asset-rego')   ||
+            e.target.classList.contains('asset-vin')
+          ) {
+            if (_updatingFields) return;
+            _updatingDesc = true;
+            var descEl = row.querySelector('.asset-description');
+            if (descEl) descEl.value = buildDesc(row);
+            _updatingDesc = false;
+          }
+        });
+      })();
+      </script>
+
+      <script>
+      (function () {
         const customer = document.getElementById("customer_address");
         const job = document.getElementById("job_address");
         const jobSync = document.getElementById("job_same_as_customer");
@@ -582,6 +658,7 @@ function submitNewJobType() {
               Use customer address
             </label>
           </div>
+          {% set _sec = autofill.security if autofill else None %}
           <div id="assetsWrap">
             <div class="asset-row border rounded p-3 mb-2" style="border-color:var(--line)!important">
               <div class="row g-2">
@@ -594,24 +671,36 @@ function submitNewJobType() {
                 </div>
                 <div class="col-12 col-lg-9">
                   <label class="form-label">Description</label>
-                  {% set _sec = autofill.security if autofill else None %}
-                  <input class="form-control" name="asset_description[]" form="newJobForm"
-                         placeholder="e.g. Ford Ranger / House / Catering trailer"
+                  <input class="form-control asset-description" name="asset_description[]" form="newJobForm"
+                         placeholder="e.g. 2019 Ford Ranger XL REG: ABC123 VIN: … ENG: …"
                          value="{% if _sec %}{{ ([_sec.year, _sec.make, _sec.model, _sec.colour] | select | join(' ')) }}{% endif %}">
                 </div>
               </div>
-              {% if _sec %}
-              <input type="hidden" name="asset_year[]"  form="newJobForm" value="{{ _sec.year or '' }}">
-              <input type="hidden" name="asset_make[]"  form="newJobForm" value="{{ _sec.make or '' }}">
-              <input type="hidden" name="asset_model[]" form="newJobForm" value="{{ _sec.model or '' }}">
-              {% endif %}
+              <div class="row g-2 mt-2">
+                <div class="col-6 col-md-2">
+                  <input class="form-control asset-year" name="asset_year[]" form="newJobForm" placeholder="Year"
+                         value="{{ _sec.year if _sec else '' }}">
+                </div>
+                <div class="col-6 col-md-3">
+                  <input class="form-control asset-make" name="asset_make[]" form="newJobForm" placeholder="Make"
+                         value="{{ _sec.make if _sec else '' }}">
+                </div>
+                <div class="col-6 col-md-4">
+                  <input class="form-control asset-model" name="asset_model[]" form="newJobForm" placeholder="Model"
+                         value="{{ _sec.model if _sec else '' }}">
+                </div>
+                <div class="col-6 col-md-3">
+                  <input class="form-control asset-engine" name="asset_engine[]" form="newJobForm" placeholder="Engine"
+                         value="{{ _sec.engine_number if _sec else '' }}">
+                </div>
+              </div>
               <div class="row g-2 mt-2">
                 <div class="col-12 col-md-4">
-                  <input class="form-control" name="asset_rego[]" form="newJobForm" placeholder="Rego"
+                  <input class="form-control asset-rego" name="asset_rego[]" form="newJobForm" placeholder="Rego"
                          value="{{ _sec.rego if _sec else '' }}">
                 </div>
                 <div class="col-12 col-md-4">
-                  <input class="form-control" name="asset_vin[]" form="newJobForm" placeholder="VIN"
+                  <input class="form-control asset-vin" name="asset_vin[]" form="newJobForm" placeholder="VIN"
                          value="{{ _sec.vin if _sec else '' }}">
                 </div>
               </div>
