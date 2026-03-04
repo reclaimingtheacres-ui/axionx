@@ -1005,16 +1005,39 @@ def login():
     return render_template("login.html")
 
 
+def _client_ip():
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or ""
+
+def _audit(event: str, ip: str, ok: bool):
+    print(f"[BREAKGLASS] {datetime.utcnow().isoformat()}Z event={event} ok={ok} ip={ip}")
+
 @app.route("/dev/break-glass")
 def break_glass():
-    token = request.args.get("token")
+    if os.environ.get("DEV_BREAKGLASS_ENABLED", "false").lower() != "true":
+        abort(404)
 
-    if token != os.environ.get("DEV_ACCESS_TOKEN"):
-        abort(403)
+    ip = _client_ip()
 
+    allow = [x.strip() for x in os.environ.get("DEV_BREAKGLASS_IPS", "").split(",") if x.strip()]
+    if allow and ip not in allow:
+        _audit("ip_block", ip, False)
+        abort(404)
+
+    provided = request.args.get("token", "")
+    expected = os.environ.get("DEV_ACCESS_TOKEN", "")
+    if not expected or not hmac.compare_digest(provided, expected):
+        _audit("token_fail", ip, False)
+        abort(404)
+
+    session.clear()
     session["user_id"] = "breakglass"
     session["role"] = "admin"
+    session["breakglass"] = True
 
+    _audit("login_success", ip, True)
     return redirect("/")
 
 
