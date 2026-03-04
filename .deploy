@@ -1,19 +1,16 @@
-deploy() {
+push() {
   msg="$1"
   if [ -z "$msg" ]; then
-    echo "Usage: deploy \"message\""
+    echo 'Usage: push "message"'
     return 1
   fi
 
-  # Stage everything
   git add .
 
-  # If nothing to commit, exit cleanly
   if git diff --cached --quiet; then
-    echo "No changes to deploy."
+    echo "No changes to push."
     return 0
   fi
 
-  # Commit + push
   git commit -m "$msg" && git push origin main
 }
