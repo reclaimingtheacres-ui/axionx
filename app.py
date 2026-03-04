@@ -35,7 +35,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
 )
 
-DB_PATH = "axion.db"
+DB_PATH = os.getenv("DB_PATH", "axion.db")
 
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv", "heic", "heif"}
