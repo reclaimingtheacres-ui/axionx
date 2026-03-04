@@ -568,9 +568,10 @@ def _extract_text_pdf(path):
 
 
 def _extract_text_doc(path):
-    import subprocess
+    import subprocess, shutil
+    antiword = shutil.which("antiword") or "/nix/store/2dmscr1xvlnzjn2ip10f72njczhskggs-replit-runtime-path/bin/antiword"
     result = subprocess.run(
-        ["antiword", "-w", "0", path],
+        [antiword, "-w", "0", path],
         capture_output=True, text=True, timeout=15
     )
     text = result.stdout.strip()
