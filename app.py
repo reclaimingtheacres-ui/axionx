@@ -1001,46 +1001,7 @@ def reset_password_post(token):
 def login():
     if session.get("user_id"):
         return redirect(url_for("index"))
-    allow_signup = users_count() == 0
-    return render_template("login.html", allow_signup=allow_signup)
-
-
-@app.get("/signup")
-def signup():
-    if users_count() > 0:
-        return ("Signup disabled. Ask an admin to create your account.", 403)
-    return render_template("signup.html")
-
-
-@app.post("/signup")
-def signup_post():
-    if users_count() > 0:
-        return ("Signup disabled. Ask an admin to create your account.", 403)
-
-    full_name = request.form.get("full_name", "").strip()
-    email = request.form.get("email", "").strip().lower()
-    password = request.form.get("password", "")
-
-    if not full_name or not email or not password:
-        flash("All fields are required.", "danger")
-        return redirect(url_for("signup"))
-
-    hashed = generate_password_hash(password)
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO users (full_name, email, password, role, active, created_at)
-        VALUES (?, ?, ?, 'admin', 1, ?)
-    """, (full_name, email, hashed, now_ts()))
-    user_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-
-    session["user_id"] = user_id
-    session["user_name"] = full_name
-    session["role"] = "admin"
-    flash(f"Welcome, {full_name}! Admin account created.", "success")
-    return redirect(url_for("admin_dashboard"))
+    return render_template("login.html")
 
 
 @app.post("/login")

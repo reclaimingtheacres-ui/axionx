@@ -49,12 +49,6 @@
           <a href="/forgot-password">Forgot password?</a>
         </div>
 
-        {% if allow_signup %}
-          <div class="lf-links">
-            <a href="/signup">Create admin account</a>
-          </div>
-        {% endif %}
-
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% for cat, msg in messages %}
             <div class="{{ 'lf-error' if cat == 'danger' else 'lf-success' }}">{{ msg }}</div>
