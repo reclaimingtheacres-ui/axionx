@@ -174,6 +174,7 @@
 }
 .login-promo{
   text-align:center;
+  width:100%;
 }
 .login-promo h2{
   font-size:26px;font-weight:700;
@@ -193,52 +194,42 @@
   .login-left{padding:32px 24px;}
 }
 
-/* --- Right panel: cross-fade rotator with brightness flash (CSS-only) --- */
-.lp-rotator{
-  position:relative;
-  min-height:300px;
+/* --- Right panel: cross-fade rotator (CSS-only) --- */
+.lp-rotator {
+  position: relative;
+  width: 100%;
+  min-height: 360px;
 }
 
-.lp-badges{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  justify-content:center;
-  margin-top:20px;
+.lp-badges {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 20px;
 }
 
-.lp-slide{
-  position:absolute;
-  inset:0;
-  opacity:0;
-  transform:translateY(6px);
-  pointer-events:none;
-  filter:brightness(1);
-  text-align:center;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
+.lp-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  text-align: center;
 }
 
-.lp-slide-ops{
-  animation:lpFadeSwap 12s infinite;
+.lp-slide-ops { animation: lpFadeSwap 10s infinite; }
+.lp-slide-sec { animation: lpFadeSwap 10s infinite; animation-delay: 5s; }
+
+@keyframes lpFadeSwap {
+  0%   { opacity: 0; transform: translateY(8px); }
+  8%   { opacity: 1; transform: translateY(0); }
+  42%  { opacity: 1; transform: translateY(0); }
+  50%  { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 0; transform: translateY(8px); }
 }
 
-.lp-slide-sec{
-  animation:lpFadeSwap 12s infinite;
-  animation-delay:6s;
-}
-
-@keyframes lpFadeSwap{
-  0%   {opacity:0;transform:translateY(6px);filter:brightness(1.08);}
-  8%   {opacity:1;transform:translateY(0);  filter:brightness(1);}
-  42%  {opacity:1;transform:translateY(0);  filter:brightness(1);}
-  50%  {opacity:0;transform:translateY(6px);filter:brightness(1.08);}
-  100% {opacity:0;transform:translateY(6px);filter:brightness(1.08);}
-}
-
-@media(prefers-reduced-motion:reduce){
-  .lp-slide{position:static;opacity:1;transform:none;animation:none;filter:none;}
-  .lp-slide-ops{display:none;}
+@media (prefers-reduced-motion: reduce) {
+  .lp-slide { position: static; opacity: 1; transform: none; animation: none; }
+  .lp-slide-ops { display: none; }
 }
