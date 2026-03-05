@@ -140,6 +140,7 @@
               data-client-email="{{ (c.client_email or '')|e }}"
               data-agent-email="{{ (c.agent_email or '')|e }}"
               data-agent-name="{{ (c.agent_name or '')|e }}"
+              data-client-name="{{ (c.client_name or 'Client')|e }}"
               onclick="openEmailModal(this)">Email</button>
             <a class="q-update-btn" href="/jobs/{{ c.job_id }}" target="_blank">Update</a>
           </div>
@@ -190,6 +191,7 @@
               data-client-email="{{ (c.client_email or '')|e }}"
               data-agent-email="{{ (c.agent_email or '')|e }}"
               data-agent-name="{{ (c.agent_name or '')|e }}"
+              data-client-name="{{ (c.client_name or 'Client')|e }}"
               onclick="openEmailModal(this)">Email</button>
             <a class="q-update-btn" href="/jobs/{{ c.job_id }}" target="_blank">Update</a>
           </div>
@@ -240,6 +242,7 @@
               data-client-email="{{ (c.client_email or '')|e }}"
               data-agent-email="{{ (c.agent_email or '')|e }}"
               data-agent-name="{{ (c.agent_name or '')|e }}"
+              data-client-name="{{ (c.client_name or 'Client')|e }}"
               onclick="openEmailModal(this)">Email</button>
             <a class="q-update-btn" href="/jobs/{{ c.job_id }}" target="_blank">Update</a>
           </div>
@@ -382,55 +385,521 @@ function sendQueueEmail() {
 
 {% block modals %}
 <!-- ── EMAIL MODAL ─────────────────────────────────────────────────── -->
+<style>
+.em-modal-body { display:flex; min-height:520px; }
+.em-left  { flex:0 0 54%; padding:1.25rem 1.4rem; overflow-y:auto; border-right:1px solid var(--line); }
+.em-right { flex:1; padding:1.1rem 1.2rem; overflow-y:auto; background:var(--card); }
+.em-section-title {
+  font-size:.78rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--muted); margin:.9rem 0 .35rem;
+}
+.em-field-label {
+  font-size:.82rem; font-weight:600; color:#2563eb;
+  min-width:80px; padding-top:2px;
+}
+.em-row { display:flex; align-items:flex-start; gap:.6rem; margin-bottom:.6rem; }
+.em-check-row {
+  display:flex; align-items:center; gap:.55rem;
+  padding:.3rem 0; font-size:.88rem;
+}
+.em-check-row input[type=checkbox] { width:15px; height:15px; cursor:pointer; flex-shrink:0; }
+.em-custom-email-row {
+  display:flex; align-items:center; gap:.5rem;
+  margin:.25rem 0 .25rem 26px;
+}
+.em-add-link {
+  font-size:.82rem; color:#2563eb; cursor:pointer; text-decoration:none;
+  white-space:nowrap; margin-left:auto;
+}
+.em-add-link:hover { text-decoration:underline; }
+.em-quick-link {
+  display:block; font-size:.82rem; color:#2563eb;
+  cursor:pointer; text-decoration:none; margin-bottom:.15rem;
+}
+.em-quick-link:hover { text-decoration:underline; }
+.em-reply-hint {
+  font-size:.78rem; color:#2563eb; margin-top:.2rem; margin-left:22px;
+}
+.em-attach-title {
+  font-size:1rem; font-weight:700; color:var(--text); margin-bottom:.3rem;
+}
+.em-attach-sub {
+  font-size:.82rem; color:var(--muted); margin-bottom:.75rem;
+}
+.em-attach-table { width:100%; border-collapse:collapse; font-size:.8rem; }
+.em-attach-table th {
+  font-size:.72rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.05em; color:var(--muted); padding:.35rem .4rem;
+  border-bottom:2px solid var(--line); text-align:left;
+}
+.em-attach-table td {
+  padding:.45rem .4rem; border-bottom:1px solid var(--line);
+  vertical-align:top; color:var(--text);
+}
+.em-attach-table tr:last-child td { border-bottom:none; }
+.em-attach-table .em-date { white-space:nowrap; color:var(--muted); font-size:.76rem; }
+.em-attach-table .em-staff { color:var(--muted); white-space:nowrap; }
+.em-mime-icon { font-size:1.15rem; line-height:1; }
+.em-empty-row td { color:var(--muted); font-style:italic; font-size:.8rem; padding:.5rem .4rem; }
+</style>
+
 <div class="modal fade" id="emailModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content" style="border-radius:16px;border:1px solid var(--line)">
-      <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title fw-semibold">Send Email Update</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+  <div class="modal-dialog modal-dialog-centered" style="max-width:900px;width:96vw">
+    <div class="modal-content" style="border-radius:14px;border:1px solid var(--line);overflow:hidden">
+
+      <div class="modal-header" style="border-bottom:1px solid var(--line);padding:.75rem 1.25rem">
+        <h5 class="modal-title fw-semibold" style="font-size:.97rem">
+          Send Email
+          <span id="em_job_badge" class="badge bg-secondary ms-2" style="font-size:.72rem;font-weight:600;vertical-align:middle"></span>
+        </h5>
+        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body">
-        <input type="hidden" id="em_job_id">
 
-        <div class="mb-3 d-flex align-items-center gap-3">
-          <div class="small fw-semibold" style="color:var(--muted);white-space:nowrap">Job:</div>
-          <div id="em_job_ref" class="fw-semibold"></div>
-        </div>
+      <div class="em-modal-body">
 
-        <div class="mb-2">
-          <label class="form-label small fw-semibold">Quick Fill</label>
-          <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('client')">Client</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('agent')">Agent</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('both')">Both</button>
+        <!-- ── LEFT: compose ── -->
+        <div class="em-left">
+          <input type="hidden" id="em_job_id">
+
+          <!-- Send To -->
+          <div class="em-row">
+            <div class="em-field-label">Send To:</div>
+            <div style="flex:1">
+              <div id="em_to_rows"></div>
+              <a class="em-add-link" onclick="_emAddCustomTo()">+ Add Custom Email</a>
+              <div id="em_custom_to_rows"></div>
+            </div>
           </div>
+
+          <!-- Copy To -->
+          <div class="em-row">
+            <div class="em-field-label">Copy To:</div>
+            <div style="flex:1">
+              <div class="em-check-row" style="color:var(--muted);font-size:.82rem">Custom</div>
+              <div id="em_cc_rows">
+                <div class="em-custom-email-row" style="margin-left:0">
+                  <input type="checkbox" id="em_cc_0" class="em-cc-check" style="width:15px;height:15px">
+                  <input type="text" class="form-control form-control-sm em-cc-input"
+                         placeholder="Enter 1 email address only"
+                         style="flex:1;border-radius:8px;font-size:.84rem"
+                         oninput="document.getElementById('em_cc_0').checked=this.value.trim().length>0">
+                </div>
+              </div>
+              <a class="em-add-link" onclick="_emAddCustomCc()" style="margin-left:0">+ Add Custom Email</a>
+            </div>
+          </div>
+
+          <!-- Reply to -->
+          <div class="em-row">
+            <div class="em-field-label"></div>
+            <div style="flex:1">
+              <div class="em-check-row">
+                <input type="checkbox" id="em_reply_to_company">
+                <label for="em_reply_to_company" style="cursor:pointer">Reply to Company</label>
+              </div>
+              <div class="em-reply-hint" id="em_reply_hint" style="display:none"></div>
+            </div>
+          </div>
+
+          <!-- Subject -->
+          <div class="em-row">
+            <div class="em-field-label">Subject:</div>
+            <div style="flex:1">
+              <input type="text" id="em_subject" class="form-control form-control-sm"
+                     style="border-radius:8px;font-size:.88rem">
+            </div>
+          </div>
+
+          <!-- Message -->
+          <div class="em-section-title" style="color:#6b7280;font-size:.8rem;font-weight:600;text-transform:none;letter-spacing:0">Message:</div>
+          <textarea id="em_body" class="form-control" rows="5"
+                    placeholder="Enter your message..."
+                    style="border-radius:8px;font-size:.88rem;resize:vertical"></textarea>
+
+          <!-- Signature -->
+          <div class="em-section-title" style="margin-top:.8rem;color:#2563eb;font-size:.8rem;font-weight:600;text-transform:none;letter-spacing:0">Email Signature:</div>
+          <textarea id="em_signature" class="form-control" rows="3"
+                    placeholder="e.g. Regards,&#10;Your Company"
+                    style="border-radius:8px;font-size:.88rem;resize:vertical"></textarea>
+
+          <!-- Include logo -->
+          <div class="d-flex align-items-center gap-2 mt-2 mb-1">
+            <input type="checkbox" id="em_include_logo" checked style="width:15px;height:15px">
+            <label for="em_include_logo" style="font-size:.85rem;cursor:pointer">Include company logo</label>
+          </div>
+
+          <!-- Quick inserts + Send me a copy -->
+          <div class="d-flex align-items-start justify-content-between mt-1">
+            <div>
+              <a class="em-quick-link" onclick="_emAddJobDetails()">Add Job Details</a>
+              <a class="em-quick-link" onclick="_emAddJobDescription()">Add Job Description</a>
+              <a class="em-quick-link" onclick="_emAddJobShareLink()">Add Job Share Link</a>
+            </div>
+            <div class="d-flex align-items-center gap-2 mt-1">
+              <input type="checkbox" id="em_send_me_copy" style="width:15px;height:15px">
+              <label for="em_send_me_copy" style="font-size:.85rem;cursor:pointer">Send me a copy</label>
+            </div>
+          </div>
+
+          <!-- Feedback -->
+          <div id="em_error"   class="alert alert-danger  py-2 small mt-2" style="display:none"></div>
+          <div id="em_success" class="alert alert-success py-2 small mt-2" style="display:none"></div>
         </div>
 
-        <div class="mb-3">
-          <label class="form-label small fw-semibold" for="em_to_addresses">To <span style="color:#ef4444">*</span></label>
-          <input type="text" id="em_to_addresses" class="form-control form-control-sm"
-                 placeholder="email@example.com, another@example.com">
-          <div id="em_to_hint" class="form-text" style="color:var(--muted);font-size:.78rem"></div>
-        </div>
+        <!-- ── RIGHT: attach ── -->
+        <div class="em-right">
+          <!-- Notes & Files -->
+          <div class="em-attach-title">Attach Notes or Files</div>
+          <div class="em-attach-sub">Select the notes and/or files that you wish to attach to your email below:</div>
+          <div id="em_attach_loading" style="color:var(--muted);font-size:.82rem">Loading&hellip;</div>
+          <table class="em-attach-table" id="em_notes_table" style="display:none">
+            <thead>
+              <tr>
+                <th style="width:22px"><input type="checkbox" id="em_check_all_notes" style="width:14px;height:14px" onchange="_emToggleAll('em_note_check',this.checked)"></th>
+                <th>Added</th>
+                <th></th>
+                <th>Description</th>
+                <th>Staff</th>
+              </tr>
+            </thead>
+            <tbody id="em_notes_body"></tbody>
+          </table>
 
-        <div class="mb-3">
-          <label class="form-label small fw-semibold" for="em_subject">Subject</label>
-          <input type="text" id="em_subject" class="form-control form-control-sm">
+          <!-- Forms -->
+          <div class="em-attach-title mt-3" id="em_forms_section" style="display:none">Attach Forms</div>
+          <div class="em-attach-sub" id="em_forms_sub" style="display:none">Select the forms that you wish to attach to your email below:</div>
+          <table class="em-attach-table" id="em_forms_table" style="display:none">
+            <thead>
+              <tr>
+                <th style="width:22px"><input type="checkbox" id="em_check_all_forms" style="width:14px;height:14px" onchange="_emToggleAll('em_form_check',this.checked)"></th>
+                <th>Added</th>
+                <th>Description</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="em_forms_body"></tbody>
+          </table>
         </div>
-
-        <div class="mb-2">
-          <label class="form-label small fw-semibold" for="em_body">Message <span style="color:#ef4444">*</span></label>
-          <textarea id="em_body" class="form-control" rows="6" placeholder="Enter your update message..."></textarea>
-        </div>
-
-        <div id="em_error" class="alert alert-danger py-2 small mt-2" style="display:none"></div>
-        <div id="em_success" class="alert alert-success py-2 small mt-2" style="display:none"></div>
       </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line)">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" id="em_send_btn" onclick="sendQueueEmail()">Send Email</button>
+
+      <!-- Footer -->
+      <div class="modal-footer" style="border-top:1px solid var(--line);padding:.6rem 1.2rem;justify-content:flex-start;gap:1rem">
+        <button type="button" class="btn btn-primary btn-sm px-4" id="em_send_btn" onclick="sendQueueEmail()">Send</button>
+        <div class="d-flex align-items-center gap-2">
+          <input type="checkbox" id="em_send_another" style="width:14px;height:14px">
+          <label for="em_send_another" style="font-size:.85rem;cursor:pointer;color:var(--muted)">Send Another Message</label>
+        </div>
+        <button type="button" class="btn btn-link btn-sm ms-auto text-muted" data-bs-dismiss="modal" style="text-decoration:none">Cancel</button>
       </div>
+
     </div>
   </div>
 </div>
+
+<script>
+/* ── Email modal state ─────────────────────────────────────────────── */
+var _em = {
+  jobId: null, jobRef: '', jobAddress: '', jobDescription: '',
+  clientEmail: '', clientName: '',
+  agentEmail: '', agentName: '',
+  customToCount: 0, ccCount: 1
+};
+
+function openEmailModal(btn) {
+  var d = btn.dataset;
+  _em.jobId       = d.jobId;
+  _em.jobRef      = d.jobRef      || d.jobId;
+  _em.clientEmail = d.clientEmail || '';
+  _em.clientName  = d.clientName  || 'Client';
+  _em.agentEmail  = d.agentEmail  || '';
+  _em.agentName   = d.agentName   || 'Agent';
+  _em.customToCount = 0;
+  _em.ccCount = 1;
+
+  document.getElementById('em_job_id').value        = _em.jobId;
+  document.getElementById('em_job_badge').textContent = _em.jobRef;
+  document.getElementById('em_subject').value       = 'A message from Axion re Job#' + _em.jobRef;
+  document.getElementById('em_body').value          = '';
+  document.getElementById('em_error').style.display   = 'none';
+  document.getElementById('em_success').style.display = 'none';
+  document.getElementById('em_send_btn').disabled   = false;
+  document.getElementById('em_custom_to_rows').innerHTML = '';
+  document.getElementById('em_check_all_notes').checked = false;
+
+  document.getElementById('em_reply_hint').style.display = 'none';
+  document.getElementById('em_reply_to_company').onchange = null;
+
+  var sig = localStorage.getItem('axion_email_sig') || '';
+  document.getElementById('em_signature').value = sig;
+  document.getElementById('em_signature').oninput = function() {
+    localStorage.setItem('axion_email_sig', this.value);
+  };
+
+  _emBuildToRows();
+  _emResetAttach();
+
+  fetch('/queue/job-attachments/' + _em.jobId, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      _em.jobDescription = (data.job && data.job.description) || '';
+      _em.jobAddress     = (data.job && data.job.job_address)  || '';
+      if (data.signature && !sig) {
+        document.getElementById('em_signature').value = data.signature;
+      }
+      if (data.smtp_from) {
+        var hint = document.getElementById('em_reply_hint');
+        hint.textContent = 'Replies to this email will be sent to ' + data.smtp_from;
+        document.getElementById('em_reply_to_company').onchange = function() {
+          hint.style.display = this.checked ? '' : 'none';
+        };
+      }
+      _emRenderAttach(data);
+    })
+    .catch(function() {
+      document.getElementById('em_attach_loading').textContent = 'Could not load attachments.';
+    });
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('emailModal')).show();
+}
+
+function _emBuildToRows() {
+  var rows = document.getElementById('em_to_rows');
+  rows.innerHTML = '';
+  var recipients = [];
+  if (_em.clientEmail) recipients.push({name: _em.clientName, email: _em.clientEmail, id: 'em_to_client'});
+  if (_em.agentEmail)  recipients.push({name: 'Agent: ' + _em.agentName, email: _em.agentEmail, id: 'em_to_agent'});
+  if (recipients.length === 0) {
+    rows.innerHTML = '<div style="font-size:.82rem;color:var(--muted);font-style:italic">No recipients on file for this job.</div>';
+    return;
+  }
+  recipients.forEach(function(r) {
+    var div = document.createElement('div');
+    div.className = 'em-check-row';
+    div.innerHTML = '<input type="checkbox" id="' + r.id + '" class="em-to-check" checked value="' + _esc(r.email) + '">' +
+      '<label for="' + r.id + '" style="cursor:pointer">' + _esc(r.name) + ' <span style="color:var(--muted)">(' + _esc(r.email) + ')</span></label>';
+    rows.appendChild(div);
+  });
+}
+
+function _emAddCustomTo() {
+  var idx = ++_em.customToCount;
+  var id  = 'em_custom_to_' + idx;
+  var row = document.createElement('div');
+  row.className = 'em-custom-email-row';
+  row.id = 'em_custom_to_row_' + idx;
+  row.innerHTML =
+    '<input type="checkbox" id="' + id + '_chk" class="em-to-check" style="width:15px;height:15px">' +
+    '<input type="text" class="form-control form-control-sm" placeholder="Enter email address"' +
+    ' id="' + id + '" style="flex:1;border-radius:8px;font-size:.84rem"' +
+    ' oninput="document.getElementById(\'' + id + '_chk\').checked=this.value.trim().length>0">' +
+    '<a onclick="document.getElementById(\'em_custom_to_row_' + idx + '\').remove()" style="cursor:pointer;color:var(--muted);font-size:1.1rem;line-height:1">&times;</a>';
+  document.getElementById('em_custom_to_rows').appendChild(row);
+}
+
+function _emAddCustomCc() {
+  var idx = ++_em.ccCount;
+  var id  = 'em_cc_' + idx;
+  var row = document.createElement('div');
+  row.className = 'em-custom-email-row';
+  row.id = 'em_cc_row_' + idx;
+  row.style.marginLeft = '0';
+  row.innerHTML =
+    '<input type="checkbox" id="' + id + '" class="em-cc-check" style="width:15px;height:15px">' +
+    '<input type="text" class="form-control form-control-sm em-cc-input" placeholder="Enter email address"' +
+    ' style="flex:1;border-radius:8px;font-size:.84rem"' +
+    ' oninput="document.getElementById(\'' + id + '\').checked=this.value.trim().length>0">' +
+    '<a onclick="document.getElementById(\'em_cc_row_' + idx + '\').remove()" style="cursor:pointer;color:var(--muted);font-size:1.1rem;line-height:1">&times;</a>';
+  document.getElementById('em_cc_rows').appendChild(row);
+}
+
+function _emGetToList() {
+  var emails = [];
+  document.querySelectorAll('#em_to_rows .em-to-check, #em_custom_to_rows .em-to-check').forEach(function(chk) {
+    if (!chk.checked) return;
+    var val = chk.value || '';
+    if (!val) {
+      var inp = chk.parentElement.querySelector('input[type=text]');
+      if (inp) val = inp.value.trim();
+    }
+    if (val && val.indexOf('@') !== -1) emails.push(val);
+  });
+  return emails;
+}
+
+function _emGetCcList() {
+  var emails = [];
+  document.querySelectorAll('#em_cc_rows .em-cc-check').forEach(function(chk) {
+    if (!chk.checked) return;
+    var inp = chk.parentElement ? chk.parentElement.querySelector('.em-cc-input') : null;
+    if (!inp) {
+      var next = chk.nextElementSibling;
+      if (next && next.type === 'text') inp = next;
+    }
+    var val = inp ? inp.value.trim() : '';
+    if (val && val.indexOf('@') !== -1) emails.push(val);
+  });
+  return emails;
+}
+
+function _emAddJobDetails() {
+  var txt = 'Job: ' + _em.jobRef;
+  if (_em.jobAddress) txt += '\nAddress: ' + _em.jobAddress;
+  _emAppendToBody(txt);
+}
+function _emAddJobDescription() {
+  if (_em.jobDescription) _emAppendToBody('Description: ' + _em.jobDescription);
+  else _emAppendToBody('(No job description on file)');
+}
+function _emAddJobShareLink() {
+  _emAppendToBody('Job link: ' + window.location.origin + '/jobs/' + _em.jobId);
+}
+function _emAppendToBody(txt) {
+  var ta = document.getElementById('em_body');
+  ta.value = ta.value ? ta.value + '\n' + txt : txt;
+  ta.focus();
+}
+
+/* ── Attachments right panel ─────────────────────────────────── */
+function _emResetAttach() {
+  document.getElementById('em_attach_loading').style.display = '';
+  document.getElementById('em_attach_loading').textContent   = 'Loading\u2026';
+  document.getElementById('em_notes_table').style.display    = 'none';
+  document.getElementById('em_forms_table').style.display    = 'none';
+  document.getElementById('em_forms_section').style.display  = 'none';
+  document.getElementById('em_forms_sub').style.display      = 'none';
+  document.getElementById('em_notes_body').innerHTML         = '';
+  document.getElementById('em_forms_body').innerHTML         = '';
+}
+
+function _emRenderAttach(data) {
+  document.getElementById('em_attach_loading').style.display = 'none';
+
+  var nb = document.getElementById('em_notes_body');
+  var items = (data.notes || []).concat(data.docs || []);
+  if (items.length === 0) {
+    nb.innerHTML = '<tr class="em-empty-row"><td colspan="5">No notes or files on this job.</td></tr>';
+  } else {
+    items.forEach(function(item) {
+      var icon = _emMimeIcon(item.type === 'note' ? 'note' : item.mime);
+      var chkId = 'em_item_' + item.type + '_' + item.id;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="checkbox" id="' + chkId + '" class="em-note-check"' +
+        ' data-type="' + item.type + '" data-id="' + item.id + '" style="width:14px;height:14px"></td>' +
+        '<td class="em-date">' + _esc(item.added) + '</td>' +
+        '<td class="em-mime-icon">' + icon + '</td>' +
+        '<td>' + _esc(item.description || '') + '</td>' +
+        '<td class="em-staff">' + _esc(item.staff || '') + '</td>';
+      nb.appendChild(tr);
+    });
+  }
+  document.getElementById('em_notes_table').style.display = '';
+
+  var fb = document.getElementById('em_forms_body');
+  var forms = data.forms || [];
+  if (forms.length > 0) {
+    forms.forEach(function(f) {
+      var chkId = 'em_form_' + f.id;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="checkbox" id="' + chkId + '" class="em-form-check"' +
+        ' data-id="' + f.id + '" style="width:14px;height:14px"></td>' +
+        '<td class="em-date">' + _esc(f.added) + '</td>' +
+        '<td>' + _esc(f.description) + '</td>' +
+        '<td><span class="badge bg-success" style="font-size:.7rem">' + _esc(f.status) + '</span></td>';
+      fb.appendChild(tr);
+    });
+    document.getElementById('em_forms_section').style.display = '';
+    document.getElementById('em_forms_sub').style.display     = '';
+    document.getElementById('em_forms_table').style.display   = '';
+  }
+}
+
+function _emMimeIcon(typeOrMime) {
+  if (typeOrMime === 'note') return '&#128444;';
+  if (!typeOrMime) return '&#128196;';
+  if (typeOrMime.indexOf('pdf') !== -1) return '&#128196;';
+  if (typeOrMime.indexOf('image') !== -1) return '&#128247;';
+  if (typeOrMime.indexOf('word') !== -1 || typeOrMime.indexOf('document') !== -1) return '&#128196;';
+  if (typeOrMime.indexOf('sheet') !== -1 || typeOrMime.indexOf('excel') !== -1) return '&#128202;';
+  return '&#128196;';
+}
+
+function _emToggleAll(cls, checked) {
+  document.querySelectorAll('.' + cls).forEach(function(el) { el.checked = checked; });
+}
+
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Send ────────────────────────────────────────────────────── */
+function sendQueueEmail() {
+  var jobId   = document.getElementById('em_job_id').value;
+  var subject = document.getElementById('em_subject').value.trim();
+  var body    = document.getElementById('em_body').value.trim();
+  var sig     = document.getElementById('em_signature').value.trim();
+  var errEl   = document.getElementById('em_error');
+  var okEl    = document.getElementById('em_success');
+  errEl.style.display = 'none';
+  okEl.style.display  = 'none';
+
+  if (!body) { errEl.textContent = 'Please enter a message.'; errEl.style.display = ''; return; }
+
+  var toList = _emGetToList();
+  if (toList.length === 0) { errEl.textContent = 'Please select at least one recipient.'; errEl.style.display = ''; return; }
+
+  var ccList = _emGetCcList();
+
+  var noteIds = [], docIds = [];
+  document.querySelectorAll('.em-note-check:checked').forEach(function(chk) {
+    if (chk.dataset.type === 'note') noteIds.push(parseInt(chk.dataset.id));
+    else docIds.push(parseInt(chk.dataset.id));
+  });
+
+  document.getElementById('em_send_btn').disabled = true;
+  var fd = new FormData();
+  fd.append('job_id',           jobId);
+  fd.append('subject',          subject);
+  fd.append('body',             body);
+  fd.append('email_signature',  sig);
+  fd.append('to_recipients',    JSON.stringify(toList));
+  fd.append('cc_recipients',    JSON.stringify(ccList));
+  fd.append('selected_note_ids',JSON.stringify(noteIds));
+  fd.append('selected_doc_ids', JSON.stringify(docIds));
+  fd.append('send_me_a_copy',   document.getElementById('em_send_me_copy').checked ? '1' : '0');
+  fd.append('include_logo',     document.getElementById('em_include_logo').checked ? '1' : '0');
+
+  fetch('/queue/send-email', {method:'POST', body:fd, headers:{'X-Requested-With':'XMLHttpRequest'}})
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    document.getElementById('em_send_btn').disabled = false;
+    if (!data.ok) {
+      errEl.textContent = data.error;
+      errEl.style.display = '';
+    } else {
+      var msg = data.smtp_skipped
+        ? 'Logged \u2014 email will be sent once SMTP is configured. (To: ' + data.sent_to + ')'
+        : 'Email sent to ' + data.sent_to;
+      if (document.getElementById('em_send_another').checked) {
+        okEl.textContent = msg + ' \u2014 Ready for another message.';
+        okEl.style.display = '';
+        document.getElementById('em_body').value = '';
+        document.getElementById('em_error').style.display = 'none';
+      } else {
+        okEl.textContent = msg;
+        okEl.style.display = '';
+        setTimeout(function(){
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('emailModal')).hide();
+        }, 2000);
+      }
+    }
+  })
+  .catch(function(){
+    document.getElementById('em_send_btn').disabled = false;
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.style.display = '';
+  });
+}
+</script>
 {% endblock %}

@@ -430,6 +430,7 @@ def init_db():
         add_column_if_missing(cur, "jobs", col, coltype)
 
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
+    add_column_if_missing(cur, "system_settings", "email_signature", "TEXT")
     add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
     add_column_if_missing(cur, "jobs", "bill_to_client_id", "INTEGER")
     add_column_if_missing(cur, "jobs", "client_job_number", "TEXT")
@@ -904,6 +905,8 @@ import smtplib as _smtplib
 import os as _os
 from email.mime.multipart import MIMEMultipart as _MIMEMultipart
 from email.mime.text import MIMEText as _MIMEText
+from email.mime.base import MIMEBase as _MIMEBase
+from email import encoders as _encoders
 
 
 def send_reset_email(to_addr, reset_link):
@@ -937,8 +940,11 @@ def send_reset_email(to_addr, reset_link):
         s.sendmail(frm, to_addr, msg.as_string())
 
 
-def send_email(to_list, subject, body_txt, body_html=None):
-    """Generic SMTP helper. to_list is a list of email strings."""
+def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachments=None):
+    """Generic SMTP helper.
+    to_list/cc_list: lists of email strings.
+    attachments: list of (filename, bytes_data, mime_type_str) tuples.
+    """
     import os as _os
     host = _os.environ.get("SMTP_HOST", "smtp.gmail.com")
     port = int(_os.environ.get("SMTP_PORT", "587"))
@@ -947,21 +953,38 @@ def send_email(to_list, subject, body_txt, body_html=None):
     frm  = _os.environ.get("SMTP_FROM", user)
     if not user or not pswd:
         raise RuntimeError("SMTP credentials not configured.")
-    to_list = [e for e in to_list if e and "@" in e]
+    to_list = [e for e in (to_list or []) if e and "@" in e]
     if not to_list:
         raise ValueError("No valid recipient email addresses.")
-    msg = _MIMEMultipart("alternative")
+    cc_list = [e for e in (cc_list or []) if e and "@" in e]
+
+    msg = _MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"]    = frm
     msg["To"]      = ", ".join(to_list)
-    msg.attach(_MIMEText(body_txt, "plain"))
+    if cc_list:
+        msg["Cc"] = ", ".join(cc_list)
+
+    alt = _MIMEMultipart("alternative")
+    alt.attach(_MIMEText(body_txt, "plain"))
     if body_html:
-        msg.attach(_MIMEText(body_html, "html"))
+        alt.attach(_MIMEText(body_html, "html"))
+    msg.attach(alt)
+
+    for fname, fdata, fmime in (attachments or []):
+        maintype, subtype = (fmime or "application/octet-stream").split("/", 1)
+        part = _MIMEBase(maintype, subtype)
+        part.set_payload(fdata)
+        _encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment", filename=fname)
+        msg.attach(part)
+
+    all_recipients = to_list + cc_list
     with _smtplib.SMTP(host, port, timeout=10) as s:
         s.ehlo()
         s.starttls()
         s.login(user, pswd)
-        s.sendmail(frm, to_list, msg.as_string())
+        s.sendmail(frm, all_recipients, msg.as_string())
 
 
 @app.get("/forgot-password")
@@ -4142,6 +4165,79 @@ def cue_complete(cue_id: int):
     return redirect(referrer)
 
 
+@app.get("/queue/job-attachments/<int:job_id>")
+@admin_required
+def queue_job_attachments(job_id: int):
+    conn = db()
+    notes_rows = conn.execute("""
+        SELECT fn.id, fn.note_text, fn.created_at,
+               u.full_name AS staff_name
+        FROM job_field_notes fn
+        LEFT JOIN users u ON u.id = fn.created_by_user_id
+        WHERE fn.job_id = ?
+        ORDER BY fn.created_at DESC
+    """, (job_id,)).fetchall()
+
+    docs_rows = conn.execute("""
+        SELECT d.id, d.title, d.original_filename, d.mime_type,
+               d.uploaded_at, d.doc_type,
+               u.full_name AS staff_name
+        FROM job_documents d
+        LEFT JOIN users u ON u.id = d.uploaded_by_user_id
+        WHERE d.job_id = ?
+        ORDER BY d.uploaded_at DESC
+    """, (job_id,)).fetchall()
+
+    forms_rows = conn.execute(
+        "SELECT id, name, created_at FROM form_templates WHERE active=1 ORDER BY name"
+    ).fetchall()
+
+    job_row = conn.execute(
+        "SELECT display_ref, description, job_address FROM jobs WHERE id=?", (job_id,)
+    ).fetchone()
+
+    sig_row = conn.execute("SELECT email_signature FROM system_settings WHERE id=1").fetchone()
+    conn.close()
+
+    def _fmt_dt(ts):
+        try:
+            return datetime.fromisoformat(ts).strftime("%d %b %Y %H:%M")
+        except Exception:
+            return ts or ""
+
+    notes = [{
+        "id": r["id"], "type": "note",
+        "added": _fmt_dt(r["created_at"]),
+        "description": (r["note_text"] or "")[:180],
+        "staff": r["staff_name"] or ""
+    } for r in notes_rows]
+
+    docs = [{
+        "id": r["id"], "type": "doc",
+        "added": _fmt_dt(r["uploaded_at"]),
+        "filename": r["original_filename"],
+        "description": r["title"] or r["original_filename"],
+        "mime": r["mime_type"] or "application/octet-stream",
+        "doc_type": r["doc_type"] or "",
+        "staff": r["staff_name"] or ""
+    } for r in docs_rows]
+
+    forms = [{
+        "id": r["id"],
+        "added": _fmt_dt(r["created_at"]),
+        "description": r["name"],
+        "status": "Available"
+    } for r in forms_rows]
+
+    smtp_from = os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", ""))
+    return jsonify({
+        "notes": notes, "docs": docs, "forms": forms,
+        "job": dict(job_row) if job_row else {},
+        "signature": (sig_row["email_signature"] or "") if sig_row else "",
+        "smtp_from": smtp_from
+    })
+
+
 @app.post("/queue/<int:cue_id>/dismiss")
 @admin_required
 def queue_dismiss(cue_id: int):
@@ -4158,16 +4254,38 @@ def queue_dismiss(cue_id: int):
 @app.post("/queue/send-email")
 @admin_required
 def queue_send_email():
-    job_id       = request.form.get("job_id", "").strip()
-    recipient    = request.form.get("recipient", "client")
-    to_addresses = request.form.get("to_addresses", "").strip()
-    subject      = request.form.get("subject", "").strip()
-    body         = request.form.get("body", "").strip()
+    import json as _json
+    job_id           = request.form.get("job_id", "").strip()
+    subject          = request.form.get("subject", "").strip()
+    body             = request.form.get("body", "").strip()
+    email_signature  = request.form.get("email_signature", "").strip()
+    to_json          = request.form.get("to_recipients", "[]")
+    cc_json          = request.form.get("cc_recipients", "[]")
+    note_ids_json    = request.form.get("selected_note_ids", "[]")
+    doc_ids_json     = request.form.get("selected_doc_ids", "[]")
+    send_me_a_copy   = request.form.get("send_me_a_copy") == "1"
 
     if not job_id or not body:
         return jsonify({"ok": False, "error": "Job and message body are required."})
-    if not to_addresses:
-        return jsonify({"ok": False, "error": "Please enter at least one recipient email address."})
+
+    try:
+        to_list   = [e.strip() for e in _json.loads(to_json)  if e and "@" in e]
+        cc_list   = [e.strip() for e in _json.loads(cc_json)  if e and "@" in e]
+        note_ids  = [int(x) for x in _json.loads(note_ids_json)]
+        doc_ids   = [int(x) for x in _json.loads(doc_ids_json)]
+    except Exception:
+        return jsonify({"ok": False, "error": "Invalid request data."})
+
+    if send_me_a_copy:
+        me = conn_user_email = db().execute(
+            "SELECT email FROM users WHERE id=?", (session.get("user_id"),)
+        ).fetchone()
+        if me and me["email"] and me["email"] not in to_list and me["email"] not in cc_list:
+            cc_list.append(me["email"])
+        conn_user_email = None
+
+    if not to_list:
+        return jsonify({"ok": False, "error": "Please select or enter at least one recipient."})
 
     conn = db()
     job = conn.execute("""
@@ -4176,33 +4294,55 @@ def queue_send_email():
         LEFT JOIN users ag ON ag.id = j.assigned_user_id
         WHERE j.id = ?
     """, (job_id,)).fetchone()
-    conn.close()
 
     if not job:
+        conn.close()
         return jsonify({"ok": False, "error": "Job not found."})
-
-    to_list = [e.strip() for e in to_addresses.split(",") if e.strip() and "@" in e.strip()]
-    if not to_list:
-        return jsonify({"ok": False, "error": "No valid email addresses provided."})
 
     if not subject:
         subject = f"Job Update \u2014 {job['display_ref']}"
 
-    recipient_label_map = {"client": "Client", "agent": "Agent", "both": "Client & Agent", "custom": "Custom"}
-    recipient_label = recipient_label_map.get(recipient, recipient)
+    full_body_txt = body
+    if email_signature:
+        full_body_txt += f"\n\n{email_signature}"
 
-    html_body = f"""<div style="font-family:sans-serif;max-width:600px">
+    if note_ids:
+        note_rows = conn.execute(
+            f"SELECT note_text, created_at FROM job_field_notes WHERE id IN ({','.join('?'*len(note_ids))}) AND job_id=?",
+            note_ids + [int(job_id)]
+        ).fetchall()
+        if note_rows:
+            full_body_txt += "\n\n--- Attached Notes ---\n"
+            for nr in note_rows:
+                full_body_txt += f"\n[{nr['created_at'][:16]}] {nr['note_text']}"
+
+    body_html = f"""<div style="font-family:sans-serif;max-width:640px">
 <p><strong>Job:</strong> {job['display_ref']}</p>
-<p>{body.replace(chr(10), '<br>')}</p>
+<p>{full_body_txt.replace(chr(10), '<br>')}</p>
 <hr style="border:none;border-top:1px solid #e5e7eb">
 <p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
 </div>"""
+
+    file_attachments = []
+    if doc_ids:
+        doc_rows = conn.execute(
+            f"SELECT original_filename, stored_filename, mime_type FROM job_documents WHERE id IN ({','.join('?'*len(doc_ids))}) AND job_id=?",
+            doc_ids + [int(job_id)]
+        ).fetchall()
+        for dr in doc_rows:
+            local_path = os.path.join(UPLOAD_FOLDER, dr["stored_filename"])
+            if os.path.exists(local_path):
+                with open(local_path, "rb") as fh:
+                    file_attachments.append((dr["original_filename"], fh.read(), dr["mime_type"] or "application/octet-stream"))
+
+    conn.close()
 
     smtp_ok = bool(os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASS"))
     smtp_skipped = False
     if smtp_ok:
         try:
-            send_email(to_list, subject, body, html_body)
+            send_email(to_list, subject, full_body_txt, body_html,
+                       cc_list=cc_list, attachments=file_attachments)
         except Exception as exc:
             return jsonify({"ok": False, "error": f"SMTP error: {exc}"})
     else:
@@ -4210,11 +4350,18 @@ def queue_send_email():
 
     mel_now = datetime.now(_melbourne)
     ts_str  = mel_now.strftime("%d/%m/%Y %H:%M")
-    to_str  = ", ".join(to_list)
+    to_str  = ", ".join(to_list + (["CC: " + e for e in cc_list] if cc_list else []))
+    doc_count  = len(file_attachments)
+    note_count = len(note_ids)
+    extras = []
+    if note_count: extras.append(f"{note_count} note(s) appended")
+    if doc_count:  extras.append(f"{doc_count} file(s) attached")
+    extras_str = (" — " + "; ".join(extras)) if extras else ""
+
     if smtp_skipped:
-        note_txt = f"Email queued (SMTP not yet configured) to {to_str} — {ts_str} — {session.get('user_name', 'Admin')}"
+        note_txt = f"Email queued (SMTP not configured) to {to_str}{extras_str} — {ts_str} — {session.get('user_name', 'Admin')}"
     else:
-        note_txt = f"Email sent to {to_str} — {ts_str} — {session.get('user_name', 'Admin')}"
+        note_txt = f"Email sent to {to_str}{extras_str} — {ts_str} — {session.get('user_name', 'Admin')}"
 
     conn2 = db()
     conn2.execute(
@@ -4225,7 +4372,7 @@ def queue_send_email():
     conn2.close()
 
     audit("job", int(job_id), "email_sent", note_txt)
-    return jsonify({"ok": True, "sent_to": to_str, "smtp_skipped": smtp_skipped})
+    return jsonify({"ok": True, "sent_to": ", ".join(to_list), "smtp_skipped": smtp_skipped})
 
 
 # -------- Assignment board --------
