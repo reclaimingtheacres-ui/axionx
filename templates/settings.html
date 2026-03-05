@@ -50,6 +50,9 @@
       <a class="nav-link" href="#auction-yards" data-tab="auction-yards">Auction Yards</a>
     </li>
     <li class="nav-item">
+      <a class="nav-link" href="#ai-settings" data-tab="ai-settings">AI Settings</a>
+    </li>
+    <li class="nav-item">
       <a class="nav-link" href="#change-password" data-tab="change-password">Change Password</a>
     </li>
   </ul>
@@ -194,6 +197,81 @@
   </div>
 </div>
 
+<!-- TAB: AI Settings -->
+<div class="tab-pane-custom" id="tab-ai-settings" style="display:none">
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">AI Update Builder Settings</div>
+    <div class="ax-card-b">
+      <p class="small mb-3" style="color:var(--muted)">
+        The AI Update Builder uses OpenAI to generate field attendance narratives.
+        By default it uses Replit's built-in AI access (billed to your Replit credits).
+        You can switch to your own OpenAI API key at any time.
+      </p>
+      <form method="post" action="/admin/settings/ai">
+        <div class="form-check form-switch mb-3">
+          <input class="form-check-input" type="checkbox" name="ai_use_own_key" id="aiUseOwnKey"
+                 {% if settings.ai_use_own_key %}checked{% endif %}>
+          <label class="form-check-label" for="aiUseOwnKey">Use my own OpenAI API key</label>
+        </div>
+        <div id="own_key_section" {% if not settings.ai_use_own_key %}style="display:none"{% endif %}>
+          <div class="mb-3">
+            <label class="form-label">OpenAI API Key</label>
+            <input class="form-control" name="openai_api_key" type="password"
+                   value="{{ settings.openai_api_key or '' }}"
+                   placeholder="sk-…"
+                   autocomplete="new-password">
+            <div class="form-text" style="color:var(--muted)">Your key is stored encrypted at rest and never logged.</div>
+          </div>
+        </div>
+        <button class="btn btn-primary">Save AI Settings</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="ax-card">
+    <div class="ax-card-h d-flex justify-content-between align-items-center">
+      <span>AI Usage Log</span>
+      <span class="small text-muted">Last 50 uses</span>
+    </div>
+    <div class="ax-card-b p-0">
+      <table class="table res-table mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">When</th>
+            <th>User</th>
+            <th>Job</th>
+            <th>Feature</th>
+            <th>Tokens</th>
+            <th class="pe-3">Key Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in ai_usage %}
+          <tr>
+            <td class="ps-3 small">{{ row.created_at[:16] }}</td>
+            <td class="small">{{ row.user_name or row.user_id }}</td>
+            <td class="small">
+              {% if row.job_id %}
+              <a href="/jobs/{{ row.job_id }}">{{ row.job_ref or row.job_id }}</a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="small">{{ row.feature }}</td>
+            <td class="small">{{ row.tokens_used or '—' }}</td>
+            <td class="pe-3 small">
+              <span class="badge {% if row.key_source == 'own' %}bg-primary{% else %}bg-secondary{% endif %}">
+                {{ row.key_source }}
+              </span>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-muted small ps-3 py-3">No AI usage recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- TAB: Change Password -->
 <div class="tab-pane-custom" id="tab-change-password" style="display:none">
   <div class="ax-card">
@@ -326,7 +404,7 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 });
 
 (function() {
-  var validTabs = ['job-numbers', 'booking-types', 'tow-operators', 'auction-yards', 'change-password'];
+  var validTabs = ['job-numbers', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password'];
   var hash = location.hash.replace('#', '');
   showTab(validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers');
 })();
@@ -334,6 +412,17 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+/* ── AI Settings ────────────────────────────────────────────────────── */
+(function() {
+  var toggle = document.getElementById('aiUseOwnKey');
+  var section = document.getElementById('own_key_section');
+  if (toggle && section) {
+    toggle.addEventListener('change', function() {
+      section.style.display = this.checked ? 'block' : 'none';
+    });
+  }
+})();
 
 /* ── Booking Types ──────────────────────────────────────────────────── */
 var _btEditId = null;

@@ -1,0 +1,387 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Update Builder — {{ job.display_ref }}{% endblock %}
+{% block page_title %}Update Builder — {{ job.display_ref }}{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="/jobs/{{ job.id }}" class="btn btn-outline-secondary btn-sm">&larr; Back to Job</a>
+</div>
+
+<div class="row g-4">
+  <!-- LEFT: Form panel -->
+  <div class="col-12 col-lg-6">
+    <div class="card" style="background:var(--surface);border:1px solid var(--border)">
+      <div class="card-body">
+
+        <h6 class="mb-3 fw-semibold" style="color:var(--text)">Attendance Details</h6>
+
+        <!-- Auto-fill read-only context -->
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label small text-muted mb-1">Job Reference</label>
+            <input class="form-control form-control-sm" readonly value="{{ job.display_ref }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label small text-muted mb-1">Client</label>
+            <input class="form-control form-control-sm" readonly value="{{ client.name if client else '—' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted mb-1">Customer</label>
+            <input class="form-control form-control-sm" readonly
+              value="{{ (customer.first_name + ' ' + customer.last_name) if customer else '—' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label small text-muted mb-1">Address Attended</label>
+            <input class="form-control form-control-sm" readonly value="{{ job.job_address or '—' }}">
+          </div>
+        </div>
+
+        <hr style="border-color:var(--border)">
+
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label small mb-1">Date of Attendance</label>
+            <input type="date" id="attend_date" class="form-control form-control-sm"
+                   value="{{ draft.attend_date or now_date }}">
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-1">Time</label>
+            <input type="time" id="attend_time" class="form-control form-control-sm"
+                   value="{{ draft.attend_time or now_time }}">
+          </div>
+        </div>
+
+        <!-- First / Re-attendance -->
+        <div class="mb-3">
+          <label class="form-label small mb-1">Attendance Type</label>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="attendance_type" id="att_first" value="first"
+                {% if draft.is_first_attendance %}checked{% endif %}>
+              <label class="form-check-label small" for="att_first">First Attendance</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="attendance_type" id="att_re" value="re"
+                {% if not draft.is_first_attendance %}checked{% endif %}>
+              <label class="form-check-label small" for="att_re">Re-Attendance</label>
+            </div>
+          </div>
+        </div>
+
+        <div id="prop_desc_section" class="mb-3" {% if not draft.is_first_attendance %}style="display:none"{% endif %}>
+          <label class="form-label small mb-1">Property Description <span class="text-muted">(first attendance only)</span></label>
+          <textarea id="property_description" class="form-control form-control-sm" rows="2"
+                    placeholder="e.g. Single-storey brick residence with attached garage...">{{ draft.property_description or '' }}</textarea>
+        </div>
+
+        <hr style="border-color:var(--border)">
+        <h6 class="mb-2 fw-semibold small" style="color:var(--text)">Security</h6>
+
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="security_sighted"
+            {% if draft.security_sighted %}checked{% endif %}>
+          <label class="form-check-label small" for="security_sighted">Security sighted</label>
+        </div>
+        <div id="security_fields" {% if not draft.security_sighted %}style="display:none"{% endif %}>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <input type="text" id="security_make_model" class="form-control form-control-sm"
+                     placeholder="Make / Model (optional)"
+                     value="{{ draft.security_make_model or '' }}">
+            </div>
+            <div class="col-6">
+              <input type="text" id="security_reg" class="form-control form-control-sm"
+                     placeholder="Registration"
+                     value="{{ draft.security_reg or '' }}">
+            </div>
+            <div class="col-12">
+              <input type="text" id="security_location" class="form-control form-control-sm"
+                     placeholder="Location (e.g. driveway, street, garage)"
+                     value="{{ draft.security_location or '' }}">
+            </div>
+          </div>
+        </div>
+
+        <hr style="border-color:var(--border)">
+        <h6 class="mb-2 fw-semibold small" style="color:var(--text)">Actions Taken</h6>
+
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="calling_card"
+            {% if draft.calling_card %}checked{% endif %}>
+          <label class="form-check-label small" for="calling_card">Calling card left</label>
+        </div>
+
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="call_made"
+            {% if draft.call_made %}checked{% endif %}>
+          <label class="form-check-label small" for="call_made">Telephone call made</label>
+        </div>
+        <div id="call_fields" {% if not draft.call_made %}style="display:none"{% endif %} class="ms-4 mb-2">
+          <select id="call_outcome" class="form-select form-select-sm mb-2">
+            <option value="">Select outcome…</option>
+            <option value="answered" {% if draft.call_outcome == 'answered' %}selected{% endif %}>Answered</option>
+            <option value="diverted to voicemail" {% if draft.call_outcome == 'diverted to voicemail' %}selected{% endif %}>Diverted to voicemail</option>
+            <option value="no answer" {% if draft.call_outcome == 'no answer' %}selected{% endif %}>No answer</option>
+            <option value="disconnected" {% if draft.call_outcome == 'disconnected' %}selected{% endif %}>Disconnected / not connected</option>
+            <option value="other" {% if draft.call_outcome and draft.call_outcome not in ('answered','diverted to voicemail','no answer','disconnected') %}selected{% endif %}>Other (specify below)</option>
+          </select>
+          <div id="call_other_wrap" style="display:none">
+            <input type="text" id="call_outcome_other" class="form-control form-control-sm"
+                   placeholder="Describe call outcome…">
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="voicemail_left"
+              {% if draft.voicemail_left %}checked{% endif %}>
+            <label class="form-check-label small" for="voicemail_left">Voicemail message left</label>
+          </div>
+        </div>
+
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="sms_sent"
+            {% if draft.sms_sent %}checked{% endif %}>
+          <label class="form-check-label small" for="sms_sent">SMS sent</label>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small mb-1">Customer Mobile</label>
+          <input type="text" id="customer_mobile" class="form-control form-control-sm"
+                 value="{{ draft.customer_mobile or customer_mobile or '' }}"
+                 placeholder="04xx xxx xxx">
+          <div class="form-text" style="color:var(--muted);font-size:.75rem">Used for call/SMS references in the narrative.</div>
+        </div>
+
+        <hr style="border-color:var(--border)">
+        <h6 class="mb-2 fw-semibold small" style="color:var(--text)">Neighbour Interaction <span class="text-muted fw-normal">(optional)</span></h6>
+
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="neighbour_toggle"
+            {% if draft.neighbour_outcome %}checked{% endif %}>
+          <label class="form-check-label small" for="neighbour_toggle">Neighbour interaction occurred</label>
+        </div>
+        <div id="neighbour_fields" {% if not draft.neighbour_outcome %}style="display:none"{% endif %} class="ms-4">
+          <select id="neighbour_outcome" class="form-select form-select-sm mb-2">
+            <option value="">Select outcome…</option>
+            <option value="Neighbours were not present to interview."
+              {% if draft.neighbour_outcome == 'Neighbours were not present to interview.' %}selected{% endif %}>
+              Neighbours not present to interview
+            </option>
+            <option value="Neighbours interviewed were unable to confirm the customer's occupancy."
+              {% if draft.neighbour_outcome == "Neighbours interviewed were unable to confirm the customer's occupancy." %}selected{% endif %}>
+              Neighbours could not confirm occupancy
+            </option>
+            <option value="other"
+              {% if draft.neighbour_outcome and draft.neighbour_outcome not in ("Neighbours were not present to interview.", "Neighbours interviewed were unable to confirm the customer's occupancy.") %}selected{% endif %}>
+              Other (free text)
+            </option>
+          </select>
+          <div id="neighbour_other_wrap" style="display:none">
+            <textarea id="neighbour_outcome_other" class="form-control form-control-sm" rows="2"
+                      placeholder="Describe neighbour interaction…"></textarea>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <button id="btn_generate" class="btn btn-primary w-100">
+            <span id="btn_generate_text">&#x2728; Generate Update</span>
+            <span id="btn_generate_spinner" class="spinner-border spinner-border-sm ms-2" style="display:none"></span>
+          </button>
+          <div id="generate_error" class="text-danger small mt-2" style="display:none"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Generated narrative + save -->
+  <div class="col-12 col-lg-6">
+    <div class="card h-100" style="background:var(--surface);border:1px solid var(--border)">
+      <div class="card-body d-flex flex-column">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="fw-semibold mb-0" style="color:var(--text)">Generated Narrative</h6>
+          <div id="poc_eta_badge" style="display:none" class="text-muted small"></div>
+        </div>
+        <div id="narrative_placeholder" class="text-muted small mb-3">
+          Fill in the form and click <strong>Generate Update</strong> to produce the narrative.
+        </div>
+        <textarea id="final_narrative" class="form-control flex-grow-1 mb-3"
+                  rows="14" placeholder="Narrative will appear here after generation…"
+                  style="font-size:.9rem;resize:vertical">{{ draft.generated_narrative or '' }}</textarea>
+
+        {% if draft.generated_narrative %}
+        <div id="poc_eta_badge" style="display:block" class="text-muted small mb-2">
+          Previously generated — edit above if needed before saving.
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2">
+          <button id="btn_save" class="btn btn-success flex-grow-1">
+            Save Update to Job
+          </button>
+          <a href="/jobs/{{ job.id }}" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+        <div id="save_error" class="text-danger small mt-2" style="display:none"></div>
+        <div id="save_success" class="text-success small mt-2" style="display:none">Saved! Redirecting…</div>
+
+        <div class="mt-3 pt-2 border-top" style="border-color:var(--border)!important">
+          <p class="small text-muted mb-1"><strong>Points of contact rules:</strong></p>
+          <ul class="small text-muted mb-0" style="padding-left:1.2rem">
+            <li>Attendance + calling card = 1 point</li>
+            <li>Call + voicemail left = 1 point</li>
+            <li>SMS sent = 1 point</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<input type="hidden" id="draft_id" value="{{ draft.id }}">
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const $ = id => document.getElementById(id);
+
+  $('att_first').addEventListener('change', () => {
+    $('prop_desc_section').style.display = 'block';
+  });
+  $('att_re').addEventListener('change', () => {
+    $('prop_desc_section').style.display = 'none';
+  });
+
+  $('security_sighted').addEventListener('change', function() {
+    $('security_fields').style.display = this.checked ? 'block' : 'none';
+  });
+
+  $('call_made').addEventListener('change', function() {
+    $('call_fields').style.display = this.checked ? 'block' : 'none';
+  });
+
+  $('call_outcome').addEventListener('change', function() {
+    $('call_other_wrap').style.display = this.value === 'other' ? 'block' : 'none';
+    const vmWrap = $('voicemail_left').closest('.form-check');
+    vmWrap.style.display = (this.value === 'diverted to voicemail' || this.value === 'answered') ? 'block' : 'block';
+  });
+
+  $('neighbour_toggle').addEventListener('change', function() {
+    $('neighbour_fields').style.display = this.checked ? 'block' : 'none';
+  });
+
+  $('neighbour_outcome').addEventListener('change', function() {
+    $('neighbour_other_wrap').style.display = this.value === 'other' ? 'block' : 'none';
+  });
+
+  function getNeighbourOutcome() {
+    if (!$('neighbour_toggle').checked) return '';
+    const val = $('neighbour_outcome').value;
+    if (val === 'other') return $('neighbour_outcome_other').value.trim();
+    return val;
+  }
+
+  function getCallOutcome() {
+    const val = $('call_outcome').value;
+    if (val === 'other') return $('call_outcome_other').value.trim();
+    return val;
+  }
+
+  function buildPayload() {
+    return {
+      draft_id: parseInt($('draft_id').value) || null,
+      attend_date: $('attend_date').value,
+      attend_time: $('attend_time').value,
+      is_first_attendance: $('att_first').checked,
+      property_description: $('property_description').value.trim(),
+      security_sighted: $('security_sighted').checked,
+      security_make_model: $('security_make_model').value.trim(),
+      security_reg: $('security_reg').value.trim(),
+      security_location: $('security_location').value.trim(),
+      calling_card: $('calling_card').checked,
+      call_made: $('call_made').checked,
+      call_outcome: getCallOutcome(),
+      voicemail_left: $('voicemail_left').checked && $('call_made').checked,
+      sms_sent: $('sms_sent').checked,
+      customer_mobile: $('customer_mobile').value.trim(),
+      neighbour_outcome: getNeighbourOutcome(),
+    };
+  }
+
+  $('btn_generate').addEventListener('click', async function() {
+    const err = $('generate_error');
+    err.style.display = 'none';
+    $('btn_generate_text').textContent = 'Generating…';
+    $('btn_generate_spinner').style.display = 'inline-block';
+    this.disabled = true;
+
+    try {
+      const resp = await fetch(window.location.pathname + '/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(buildPayload()),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        err.textContent = data.error || 'Generation failed.';
+        err.style.display = 'block';
+      } else {
+        $('final_narrative').value = data.narrative;
+        $('narrative_placeholder').style.display = 'none';
+        if (data.poc !== undefined && data.eta) {
+          const b = $('poc_eta_badge');
+          b.textContent = `${data.poc} point${data.poc !== 1 ? 's' : ''} of contact · ETA: ${data.eta}`;
+          b.style.display = 'block';
+        }
+      }
+    } catch (e) {
+      err.textContent = 'Network error — please try again.';
+      err.style.display = 'block';
+    } finally {
+      $('btn_generate_text').textContent = '✨ Generate Update';
+      $('btn_generate_spinner').style.display = 'none';
+      this.disabled = false;
+    }
+  });
+
+  $('btn_save').addEventListener('click', async function() {
+    const narrative = $('final_narrative').value.trim();
+    if (!narrative) {
+      $('save_error').textContent = 'Please generate a narrative before saving.';
+      $('save_error').style.display = 'block';
+      return;
+    }
+    this.disabled = true;
+    this.textContent = 'Saving…';
+    const payload = buildPayload();
+    payload.final_narrative = narrative;
+    payload.generated_narrative = $('final_narrative').dataset.generated || narrative;
+
+    try {
+      const resp = await fetch(window.location.pathname + '/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        $('save_error').textContent = data.error || 'Save failed.';
+        $('save_error').style.display = 'block';
+        this.disabled = false;
+        this.textContent = 'Save Update to Job';
+      } else {
+        $('save_success').style.display = 'block';
+        setTimeout(() => { window.location.href = data.redirect; }, 800);
+      }
+    } catch (e) {
+      $('save_error').textContent = 'Network error — please try again.';
+      $('save_error').style.display = 'block';
+      this.disabled = false;
+      this.textContent = 'Save Update to Job';
+    }
+  });
+
+  document.querySelectorAll('[id^="security_make_model"],[id^="security_reg"],[id^="security_location"]').forEach(el => {
+    if (!el) return;
+  });
+})();
+</script>
+{% endblock %}

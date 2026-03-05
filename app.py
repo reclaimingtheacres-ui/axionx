@@ -561,6 +561,66 @@ def init_db():
     conn.close()
 
 
+def _migrate_update_builder():
+    conn = db()
+    cur = conn.cursor()
+    add_column_if_missing(cur, "jobs", "is_regional", "INTEGER")
+    add_column_if_missing(cur, "jobs", "confirmed_skip", "INTEGER")
+    add_column_if_missing(cur, "system_settings", "openai_api_key", "TEXT")
+    add_column_if_missing(cur, "system_settings", "ai_use_own_key", "INTEGER")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_updates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        created_by_user_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'draft',
+        attend_date TEXT,
+        attend_time TEXT,
+        is_first_attendance INTEGER NOT NULL DEFAULT 0,
+        property_description TEXT,
+        security_sighted INTEGER NOT NULL DEFAULT 0,
+        security_make_model TEXT,
+        security_reg TEXT,
+        security_location TEXT,
+        calling_card INTEGER NOT NULL DEFAULT 0,
+        neighbour_outcome TEXT,
+        call_made INTEGER NOT NULL DEFAULT 0,
+        call_outcome TEXT,
+        voicemail_left INTEGER NOT NULL DEFAULT 0,
+        sms_sent INTEGER NOT NULL DEFAULT 0,
+        customer_mobile TEXT,
+        points_of_contact INTEGER NOT NULL DEFAULT 0,
+        eta_next_date TEXT,
+        generated_narrative TEXT,
+        final_narrative TEXT,
+        narrative_edited INTEGER NOT NULL DEFAULT 0,
+        structured_inputs_json TEXT,
+        ai_model_used TEXT,
+        ai_tokens_used INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS ai_usage_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        job_id INTEGER,
+        feature TEXT NOT NULL,
+        model TEXT,
+        tokens_used INTEGER,
+        key_source TEXT NOT NULL DEFAULT 'replit',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+
 @app.context_processor
 def inject_globals():
     return {
@@ -572,6 +632,7 @@ def inject_globals():
 @app.before_request
 def _ensure_db():
     init_db()
+    _migrate_update_builder()
 
 
 # -------- Helpers --------
@@ -3698,6 +3759,386 @@ def job_document_upload(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
 
+# -------- Update Builder (AI Assist) --------
+
+def _get_ai_client():
+    conn = db()
+    settings = conn.execute("SELECT * FROM system_settings WHERE id=1").fetchone()
+    conn.close()
+    use_own = settings and settings["ai_use_own_key"]
+    own_key = settings and settings["openai_api_key"]
+    if use_own and own_key:
+        from openai import OpenAI
+        return OpenAI(api_key=own_key), "own"
+    from openai import OpenAI
+    return OpenAI(
+        api_key=os.getenv("REPLIT_AI_KEY", os.getenv("OPENAI_API_KEY", "")),
+        base_url="https://ai.replit.com"
+    ), "replit"
+
+
+def _calc_next_business_day(from_date, days_ahead=2):
+    import datetime as _dt
+    d = from_date
+    added = 0
+    while added < days_ahead:
+        d += _dt.timedelta(days=1)
+        if d.weekday() < 5:
+            added += 1
+    return d
+
+
+def _build_swpi_prompt(inputs, job_ctx):
+    attend_date = inputs.get("attend_date", "")
+    attend_time = inputs.get("attend_time", "")
+    is_first    = inputs.get("is_first_attendance", False)
+    prop_desc   = inputs.get("property_description", "")
+    sec_sighted = inputs.get("security_sighted", False)
+    sec_mm      = inputs.get("security_make_model", "")
+    sec_reg     = inputs.get("security_reg", "")
+    sec_loc     = inputs.get("security_location", "")
+    cc          = inputs.get("calling_card", False)
+    neighbour   = inputs.get("neighbour_outcome", "")
+    call_made   = inputs.get("call_made", False)
+    call_out    = inputs.get("call_outcome", "")
+    voicemail   = inputs.get("voicemail_left", False)
+    sms_sent    = inputs.get("sms_sent", False)
+    mobile      = (inputs.get("customer_mobile") or "").replace(" ", "")
+    poc         = inputs.get("points_of_contact", 0)
+    eta_date    = inputs.get("eta_next_date", "")
+    confirmed_skip = job_ctx.get("confirmed_skip", False)
+    is_regional = job_ctx.get("is_regional", False)
+
+    prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
+Write a formal attendance update in SWPI's house style using the structured facts below.
+
+RULES:
+- Third person, "Our agent attended..." or "Our agent..."
+- British/Australian spelling throughout (e.g. "sighted" not "spotted", "endeavoured", "colour")
+- Never use acronyms in the final output. Always spell out full phrases.
+- The narrative must be a single block of continuous prose (no bullet points, no headings).
+- Security NOT sighted must include: "The security was not sighted at or in the immediate vicinity."
+- Security SIGHTED must describe what was found and where.
+- If calling card was left, include EXACTLY: "A calling card was left in a sealed envelope addressed to the customer, marked 'Private and Confidential,' and wedged in the door, requesting urgent contact."
+- If first attendance, include a brief property description naturally in the narrative.
+- If re-attendance, do NOT include any property description.
+- For phone calls, reference the outcome naturally. If voicemail was left, say a message was left.
+- For SMS, reference the customer's mobile number without spaces: {mobile if mobile else "[customer mobile]"}
+- Neighbours: use approved phrases if applicable.
+- Before the ETA line, include: "This constitutes {poc} point{'s' if poc != 1 else ''} of contact."
+- End with: "ETA next attendance: {eta_date}."
+- If confirmed skip, note this appropriately in the narrative.
+- If regional, acknowledge the travel context briefly.
+
+JOB CONTEXT:
+Job reference: {job_ctx.get('job_ref', '')}
+Customer: {job_ctx.get('customer_name', '')}
+Client: {job_ctx.get('client_name', '')}
+Address attended: {job_ctx.get('job_address', '')}
+Customer mobile: {mobile}
+Confirmed skip: {'Yes' if confirmed_skip else 'No'}
+Regional job: {'Yes' if is_regional else 'No'}
+
+ATTENDANCE FACTS:
+Date/time of attendance: {attend_date} {attend_time}
+First attendance: {'Yes' if is_first else 'No (re-attendance)'}"""
+
+    if is_first and prop_desc:
+        prompt += f"\nProperty description: {prop_desc}"
+
+    prompt += f"""
+Security sighted: {'Yes' if sec_sighted else 'No'}"""
+    if sec_sighted:
+        if sec_mm:
+            prompt += f"\nSecurity make/model: {sec_mm}"
+        if sec_reg:
+            prompt += f"\nSecurity registration: {sec_reg}"
+        if sec_loc:
+            prompt += f"\nSecurity location: {sec_loc}"
+
+    prompt += f"""
+Calling card left: {'Yes' if cc else 'No'}
+Neighbour interaction: {neighbour if neighbour else 'None'}
+Phone call made: {'Yes' if call_made else 'No'}"""
+    if call_made:
+        prompt += f"\nCall outcome: {call_out}"
+        if voicemail:
+            prompt += "\nVoicemail left: Yes"
+    prompt += f"""
+SMS sent: {'Yes' if sms_sent else 'No'}
+Points of contact: {poc}
+ETA next attendance: {eta_date}
+
+Write the attendance update narrative now."""
+    return prompt
+
+
+@app.get("/jobs/<int:job_id>/update-builder")
+@login_required
+def update_builder(job_id: int):
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        abort(404)
+    role = session.get("role", "")
+    uid  = session.get("user_id")
+    if role not in ("admin", "both"):
+        if job["assigned_user_id"] != uid:
+            conn.close()
+            flash("Access denied.", "danger")
+            return redirect(url_for("job_detail", job_id=job_id))
+
+    customer = None
+    customer_mobile = ""
+    if job["customer_id"]:
+        customer = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone()
+        phone_row = conn.execute(
+            "SELECT phone_number FROM contact_phone_numbers WHERE entity_type='customer' AND entity_id=? AND label='Mobile' LIMIT 1",
+            (job["customer_id"],)
+        ).fetchone()
+        customer_mobile = phone_row["phone_number"] if phone_row else ""
+
+    client = None
+    if job["client_id"]:
+        client = conn.execute("SELECT name FROM clients WHERE id=?", (job["client_id"],)).fetchone()
+
+    draft = conn.execute(
+        "SELECT * FROM job_updates WHERE job_id=? AND created_by_user_id=? AND status='draft' ORDER BY id DESC LIMIT 1",
+        (job_id, uid)
+    ).fetchone()
+
+    if not draft:
+        ts = now_ts()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO job_updates (job_id, created_by_user_id, status, customer_mobile, created_at, updated_at)
+            VALUES (?, ?, 'draft', ?, ?, ?)
+        """, (job_id, uid, customer_mobile, ts, ts))
+        draft_id = cur.lastrowid
+        conn.commit()
+        draft = conn.execute("SELECT * FROM job_updates WHERE id=?", (draft_id,)).fetchone()
+    conn.close()
+
+    from datetime import datetime as _dt2
+    mel_now = _dt2.now(_melbourne)
+    now_date = mel_now.strftime("%Y-%m-%d")
+    now_time = mel_now.strftime("%H:%M")
+    return render_template("update_builder.html",
+                           job=job, customer=customer, client=client,
+                           customer_mobile=customer_mobile, draft=draft,
+                           now_date=now_date, now_time=now_time)
+
+
+@app.post("/jobs/<int:job_id>/update-builder/generate")
+@login_required
+def update_builder_generate(job_id: int):
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"error": "Job not found"}), 404
+
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+        conn.close()
+        return jsonify({"error": "Access denied"}), 403
+
+    data = request.get_json(force=True)
+
+    is_first    = bool(data.get("is_first_attendance"))
+    cc          = bool(data.get("calling_card"))
+    call_made   = bool(data.get("call_made"))
+    voicemail   = bool(data.get("voicemail_left")) and call_made
+    sms_sent    = bool(data.get("sms_sent"))
+    confirmed_skip = bool(job["confirmed_skip"] if "confirmed_skip" in job.keys() else False)
+
+    poc = 0
+    if cc:
+        poc += 1
+    if voicemail:
+        poc += 1
+    if sms_sent:
+        poc += 1
+
+    attend_date_str = data.get("attend_date", "")
+    try:
+        from datetime import datetime as _dt2
+        attend_date_obj = _dt2.strptime(attend_date_str, "%Y-%m-%d").date()
+    except Exception:
+        attend_date_obj = _dt2.now(_melbourne).date()
+
+    if not confirmed_skip:
+        eta_obj  = _calc_next_business_day(attend_date_obj, days_ahead=2)
+        eta_str  = eta_obj.strftime("%d %B %Y")
+    else:
+        eta_str = "TBC"
+
+    customer_name = ""
+    if job["customer_id"]:
+        c = conn.execute("SELECT first_name, last_name FROM customers WHERE id=?", (job["customer_id"],)).fetchone()
+        if c:
+            customer_name = f"{c['first_name']} {c['last_name']}"
+
+    client_name = ""
+    if job["client_id"]:
+        cl = conn.execute("SELECT name FROM clients WHERE id=?", (job["client_id"],)).fetchone()
+        if cl:
+            client_name = cl["name"]
+
+    job_ctx = {
+        "job_ref":       job["display_ref"] or job["internal_job_number"],
+        "customer_name": customer_name,
+        "client_name":   client_name,
+        "job_address":   job["job_address"] or "",
+        "confirmed_skip": confirmed_skip,
+        "is_regional":   bool(job["is_regional"] if "is_regional" in job.keys() else False),
+    }
+    inputs_for_prompt = dict(data)
+    inputs_for_prompt["points_of_contact"] = poc
+    inputs_for_prompt["eta_next_date"] = eta_str
+    inputs_for_prompt["voicemail_left"] = voicemail
+
+    prompt = _build_swpi_prompt(inputs_for_prompt, job_ctx)
+
+    try:
+        ai_client, key_source = _get_ai_client()
+        response = ai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=800,
+            temperature=0.3,
+        )
+        narrative = response.choices[0].message.content.strip()
+        tokens_used = response.usage.total_tokens if response.usage else None
+        model_used = "gpt-4o-mini"
+    except Exception as e:
+        conn.close()
+        return jsonify({"error": f"AI generation failed: {str(e)}"}), 500
+
+    draft_id = data.get("draft_id")
+    ts = now_ts()
+    structured_json = json.dumps({k: v for k, v in data.items() if k != "draft_id"})
+    if draft_id:
+        conn.execute("""
+            UPDATE job_updates SET
+                attend_date=?, attend_time=?, is_first_attendance=?,
+                property_description=?, security_sighted=?, security_make_model=?,
+                security_reg=?, security_location=?, calling_card=?,
+                neighbour_outcome=?, call_made=?, call_outcome=?,
+                voicemail_left=?, sms_sent=?, customer_mobile=?,
+                points_of_contact=?, eta_next_date=?,
+                generated_narrative=?, ai_model_used=?, ai_tokens_used=?,
+                structured_inputs_json=?, updated_at=?
+            WHERE id=? AND created_by_user_id=?
+        """, (
+            data.get("attend_date"), data.get("attend_time"),
+            1 if is_first else 0,
+            data.get("property_description", ""),
+            1 if data.get("security_sighted") else 0,
+            data.get("security_make_model", ""), data.get("security_reg", ""), data.get("security_location", ""),
+            1 if cc else 0,
+            data.get("neighbour_outcome", ""),
+            1 if call_made else 0, data.get("call_outcome", ""),
+            1 if voicemail else 0, 1 if sms_sent else 0,
+            data.get("customer_mobile", ""),
+            poc, eta_str,
+            narrative, model_used, tokens_used,
+            structured_json, ts,
+            draft_id, uid
+        ))
+        conn.commit()
+
+    conn.execute("""
+        INSERT INTO ai_usage_log (user_id, job_id, feature, model, tokens_used, key_source, created_at)
+        VALUES (?, ?, 'update_builder', ?, ?, ?, ?)
+    """, (uid, job_id, model_used, tokens_used, key_source, ts))
+    conn.commit()
+    conn.close()
+
+    audit("job_update_draft", draft_id or 0, "generate",
+          f"AI narrative generated for job {job_id}",
+          {"poc": poc, "eta": eta_str, "tokens": tokens_used})
+
+    return jsonify({
+        "narrative": narrative,
+        "poc": poc,
+        "eta": eta_str,
+        "tokens": tokens_used,
+    })
+
+
+@app.post("/jobs/<int:job_id>/update-builder/save")
+@login_required
+def update_builder_save(job_id: int):
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"error": "Job not found"}), 404
+
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+        conn.close()
+        return jsonify({"error": "Access denied"}), 403
+
+    data = request.get_json(force=True)
+    draft_id     = data.get("draft_id")
+    final_text   = (data.get("final_narrative") or "").strip()
+    gen_text     = (data.get("generated_narrative") or "").strip()
+    was_edited   = 1 if final_text != gen_text else 0
+
+    if not final_text:
+        conn.close()
+        return jsonify({"error": "No narrative to save"}), 400
+
+    ts = now_ts()
+    if draft_id:
+        conn.execute("""
+            UPDATE job_updates SET
+                final_narrative=?, narrative_edited=?, status='complete',
+                updated_at=?
+            WHERE id=? AND created_by_user_id=?
+        """, (final_text, was_edited, ts, draft_id, uid))
+        conn.commit()
+
+    conn.execute("""
+        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
+        VALUES (?, ?, ?, ?)
+    """, (job_id, uid, f"[AI Update]\n{final_text}", ts))
+    conn.commit()
+
+    cue_today = conn.execute(
+        "SELECT id FROM cue_items WHERE job_id=? AND assigned_user_id=? AND visit_type='Update Required' AND status IN ('Pending','In Progress')",
+        (job_id, uid)
+    ).fetchone()
+    if cue_today:
+        conn.execute("UPDATE cue_items SET status='Completed', completed_at=?, updated_at=? WHERE id=?",
+                     (ts, ts, cue_today["id"]))
+        conn.commit()
+
+    conn.close()
+    audit("job_update", draft_id or 0, "save",
+          f"Field update saved for job {job_id}",
+          {"edited": was_edited})
+    return jsonify({"ok": True, "redirect": url_for("job_detail", job_id=job_id, _anchor="tab-notes")})
+
+
+@app.get("/jobs/<int:job_id>/update-builder/draft-check")
+@login_required
+def update_builder_draft_check(job_id: int):
+    uid = session.get("user_id")
+    conn = db()
+    draft = conn.execute(
+        "SELECT id FROM job_updates WHERE job_id=? AND created_by_user_id=? AND status='draft' LIMIT 1",
+        (job_id, uid)
+    ).fetchone()
+    conn.close()
+    return jsonify({"has_draft": bool(draft), "draft_id": draft["id"] if draft else None})
+
+
 # -------- Users (admin only) --------
 @app.get("/users")
 @admin_required
@@ -4027,9 +4468,21 @@ def admin_settings():
     tow_operators = cur.fetchall()
     cur.execute("SELECT * FROM auction_yards ORDER BY name")
     auction_yards = cur.fetchall()
+    try:
+        cur.execute("""
+            SELECT al.*, u.full_name AS user_name, j.display_ref AS job_ref
+            FROM ai_usage_log al
+            LEFT JOIN users u ON u.id = al.user_id
+            LEFT JOIN jobs j ON j.id = al.job_id
+            ORDER BY al.created_at DESC LIMIT 50
+        """)
+        ai_usage = cur.fetchall()
+    except Exception:
+        ai_usage = []
     conn.close()
     return render_template("settings.html", settings=settings, booking_types=booking_types,
-                           tow_operators=tow_operators, auction_yards=auction_yards)
+                           tow_operators=tow_operators, auction_yards=auction_yards,
+                           ai_usage=ai_usage)
 
 
 @app.post("/admin/settings")
@@ -4055,6 +4508,22 @@ def admin_settings_update():
 
     flash("Settings saved.", "success")
     return redirect(url_for("admin_settings"))
+
+
+@app.post("/admin/settings/ai")
+@admin_required
+def admin_settings_ai():
+    use_own = 1 if request.form.get("ai_use_own_key") == "on" else 0
+    own_key = request.form.get("openai_api_key", "").strip()
+    conn = db()
+    conn.execute("""
+        UPDATE system_settings SET ai_use_own_key=?, openai_api_key=?, updated_at=? WHERE id=1
+    """, (use_own, own_key if own_key else None, now_ts()))
+    conn.commit()
+    conn.close()
+    audit("system", 1, "update", "AI settings updated", {"use_own_key": use_own})
+    flash("AI settings saved.", "success")
+    return redirect(url_for("admin_settings") + "#ai-settings")
 
 
 # -------- Cues --------
@@ -4521,10 +4990,23 @@ def my_today():
         ORDER BY s.scheduled_for
     """, (today, user_id))
     schedules = cur.fetchall()
+
+    cur.execute("""
+        SELECT ju.id AS draft_id, ju.job_id, ju.created_at,
+               j.internal_job_number, j.client_reference, j.job_address,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name
+        FROM job_updates ju
+        JOIN jobs j ON j.id = ju.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE ju.created_by_user_id = ? AND ju.status = 'draft'
+        ORDER BY ju.updated_at DESC
+    """, (user_id,))
+    update_drafts = cur.fetchall()
     conn.close()
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
-                           today=today, today_display=today_display)
+                           today=today, today_display=today_display,
+                           update_drafts=update_drafts)
 
 
 @app.get("/my/settings")

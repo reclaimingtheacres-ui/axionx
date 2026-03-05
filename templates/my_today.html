@@ -102,7 +102,26 @@
 </div>
 {% endif %}
 
-{% if not schedules and not cues %}
+{% if update_drafts %}
+<div class="mb-4">
+  <h6 class="mb-2" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--warning,#d97706)">&#9888; Update Required (Pending Drafts)</h6>
+  <div class="list-group">
+    {% for d in update_drafts %}
+    <a href="/jobs/{{ d.job_id }}/update-builder" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+       style="border-left:3px solid #d97706">
+      <div>
+        <div class="fw-semibold">{{ d.internal_job_number }}{% if d.client_reference %} ({{ d.client_reference }}){% endif %}
+          — {{ d.customer_name or "No customer" }}</div>
+        <div class="small text-muted">Update draft not yet submitted — tap to continue</div>
+      </div>
+      <span class="badge" style="background:#d97706;color:#fff">Continue Update</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if not schedules and not cues and not update_drafts %}
   <div class="text-muted">No jobs assigned to you for today.</div>
 {% endif %}
 
