@@ -3776,15 +3776,31 @@ def _get_ai_client():
     return OpenAI(api_key=replit_key, base_url=replit_base), "replit"
 
 
-def _calc_next_business_day(from_date, days_ahead=2):
+def _calc_eta_date(from_date, poc):
     import datetime as _dt
+    days_needed = 8 if poc >= 3 else 2
     d = from_date
     added = 0
-    while added < days_ahead:
+    while added < days_needed:
         d += _dt.timedelta(days=1)
-        if d.weekday() < 5:
+        if d.weekday() != 6:
             added += 1
     return d
+
+
+def _fmt_attend_datetime(attend_date_str, attend_time_str):
+    try:
+        from datetime import datetime as _dt2
+        dt = _dt2.strptime(f"{attend_date_str} {attend_time_str}", "%Y-%m-%d %H:%M")
+        day   = dt.strftime("%d")
+        month = dt.strftime("%m")
+        year  = dt.strftime("%y")
+        hour  = str(int(dt.strftime("%I")))
+        minute = dt.strftime("%M")
+        ampm  = dt.strftime("%p").lower()
+        return f"{day}/{month}/{year} at {hour}:{minute}{ampm}"
+    except Exception:
+        return f"{attend_date_str} {attend_time_str}"
 
 
 def _build_swpi_prompt(inputs, job_ctx):
@@ -3802,73 +3818,90 @@ def _build_swpi_prompt(inputs, job_ctx):
     call_out    = inputs.get("call_outcome", "")
     voicemail   = inputs.get("voicemail_left", False)
     sms_sent    = inputs.get("sms_sent", False)
-    mobile      = (inputs.get("customer_mobile") or "").replace(" ", "")
+    phone_used  = (inputs.get("phone_number_used") or "").replace(" ", "")
     poc         = inputs.get("points_of_contact", 0)
     eta_date    = inputs.get("eta_next_date", "")
-    confirmed_skip = job_ctx.get("confirmed_skip", False)
+    address     = job_ctx.get("job_address", "")
     is_regional = job_ctx.get("is_regional", False)
 
-    prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
-Write a formal attendance update in SWPI's house style using the structured facts below.
+    formatted_dt = _fmt_attend_datetime(attend_date, attend_time)
 
-RULES:
-- Third person, "Our agent attended..." or "Our agent..."
-- British/Australian spelling throughout (e.g. "sighted" not "spotted", "endeavoured", "colour")
-- Never use acronyms in the final output. Always spell out full phrases.
-- The narrative must be a single block of continuous prose (no bullet points, no headings).
-- Security NOT sighted must include: "The security was not sighted at or in the immediate vicinity."
-- Security SIGHTED must describe what was found and where.
-- If calling card was left, include EXACTLY: "A calling card was left in a sealed envelope addressed to the customer, marked 'Private and Confidential,' and wedged in the door, requesting urgent contact."
-- If first attendance, include a brief property description naturally in the narrative.
-- If re-attendance, do NOT include any property description.
-- For phone calls, reference the outcome naturally. If voicemail was left, say a message was left.
-- For SMS, reference the customer's mobile number without spaces: {mobile if mobile else "[customer mobile]"}
-- Neighbours: use approved phrases if applicable.
-- Before the ETA line, include: "This constitutes {poc} point{'s' if poc != 1 else ''} of contact."
-- End with: "ETA next attendance: {eta_date}."
-- If confirmed skip, note this appropriately in the narrative.
-- If regional, acknowledge the travel context briefly.
+    if is_first:
+        if prop_desc:
+            opening = f"{formatted_dt} Our agent attended at {address}, finding a {prop_desc}."
+        else:
+            opening = f"{formatted_dt} Our agent attended at {address}."
+    else:
+        opening = f"{formatted_dt} Our agent re-attended at {address}."
 
-JOB CONTEXT:
-Job reference: {job_ctx.get('job_ref', '')}
-Customer: {job_ctx.get('customer_name', '')}
-Client: {job_ctx.get('client_name', '')}
-Address attended: {job_ctx.get('job_address', '')}
-Customer mobile: {mobile}
-Confirmed skip: {'Yes' if confirmed_skip else 'No'}
-Regional job: {'Yes' if is_regional else 'No'}
-
-ATTENDANCE FACTS:
-Date/time of attendance: {attend_date} {attend_time}
-First attendance: {'Yes' if is_first else 'No (re-attendance)'}"""
-
-    if is_first and prop_desc:
-        prompt += f"\nProperty description: {prop_desc}"
-
-    prompt += f"""
-Security sighted: {'Yes' if sec_sighted else 'No'}"""
     if sec_sighted:
+        sec_parts = []
         if sec_mm:
-            prompt += f"\nSecurity make/model: {sec_mm}"
+            sec_parts.append(sec_mm)
         if sec_reg:
-            prompt += f"\nSecurity registration: {sec_reg}"
-        if sec_loc:
-            prompt += f"\nSecurity location: {sec_loc}"
+            sec_parts.append(f"registration {sec_reg}")
+        loc_phrase = f", located at {sec_loc}" if sec_loc else ""
+        sec_sentence = f"The security was sighted at the premises{loc_phrase}."
+        if sec_parts:
+            sec_sentence = f"The security was sighted at the premises{loc_phrase} ({', '.join(sec_parts)})."
+    else:
+        sec_sentence = "The security was not sighted at or in the immediate vicinity."
 
-    prompt += f"""
-Calling card left: {'Yes' if cc else 'No'}
-Neighbour interaction: {neighbour if neighbour else 'None'}
-Phone call made: {'Yes' if call_made else 'No'}"""
+    if cc:
+        if is_first:
+            cc_sentence = "A calling card was left in a sealed envelope addressed to the customer, marked 'Private and Confidential,' and wedged in the door, requesting urgent contact."
+        else:
+            cc_sentence = "A further calling card was left in a sealed envelope addressed to the customer, marked 'Private and Confidential,' and wedged in the door, requesting urgent contact."
+    else:
+        cc_sentence = ""
+
     if call_made:
-        prompt += f"\nCall outcome: {call_out}"
-        if voicemail:
-            prompt += "\nVoicemail left: Yes"
-    prompt += f"""
-SMS sent: {'Yes' if sms_sent else 'No'}
-Points of contact: {poc}
-ETA next attendance: {eta_date}
+        if call_out == "answered":
+            call_sentence = f"While on site, our agent telephoned {phone_used}, the call was answered."
+        elif call_out == "diverted to voicemail":
+            vm_part = " where a message was left requesting urgent contact" if voicemail else ""
+            call_sentence = f"While on site, our agent telephoned {phone_used}, the call diverted to voicemail{vm_part}."
+        elif call_out == "no answer":
+            call_sentence = f"While on site, our agent telephoned {phone_used}, however the call went unanswered."
+        elif call_out == "disconnected":
+            call_sentence = f"While on site, our agent telephoned {phone_used}, however the call was not connected."
+        else:
+            call_sentence = f"While on site, our agent telephoned {phone_used}. {call_out}."
+    else:
+        call_sentence = ""
 
-Write the attendance update narrative now."""
+    sms_sentence = f"Our agent also forwarded an SMS to {phone_used}." if sms_sent and phone_used else (
+        "Our agent also forwarded an SMS to the customer." if sms_sent else "")
+
+    poc_sentence = f"This constitutes {poc} point{'s' if poc != 1 else ''} of contact."
+    eta_sentence = f"ETA next attendance: {eta_date}."
+
+    prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
+Your task is to write a single paragraph attendance update in SWPI's house style.
+
+MANDATORY RULES:
+1. The narrative MUST begin with EXACTLY this sentence (copy it word for word, do not alter it):
+   {opening}
+2. Continue in third person throughout. Use "our agent" (lowercase after first use) for subsequent mentions.
+3. British/Australian spelling. No acronyms.
+4. Single block of continuous prose — no line breaks, no bullet points, no headings.
+5. Include the security sentence EXACTLY as provided below.
+6. Include the calling card sentence EXACTLY as provided below (if applicable).
+7. Include the phone call sentence EXACTLY as provided below (if applicable).
+8. Include the SMS sentence EXACTLY as provided below (if applicable).
+9. Include neighbour interaction if applicable (see below).
+10. End the narrative with EXACTLY these two sentences on one continuous line:
+    {poc_sentence} {eta_sentence}
+
+FIXED SENTENCES TO INSERT (in order, after the opening):
+Security: {sec_sentence}
+{f'Calling card: {cc_sentence}' if cc_sentence else ''}
+{f'Phone call: {call_sentence}' if call_sentence else ''}
+{f'SMS: {sms_sentence}' if sms_sentence else ''}
+{f'Neighbours: {neighbour}' if neighbour else ''}
+
+Write the complete narrative now, starting with the mandatory opening sentence."""
+
     return prompt
 
 
@@ -3951,12 +3984,13 @@ def update_builder_generate(job_id: int):
     call_made   = bool(data.get("call_made"))
     voicemail   = bool(data.get("voicemail_left")) and call_made
     sms_sent    = bool(data.get("sms_sent"))
+    phone_used  = (data.get("phone_number_used") or "").strip()
     confirmed_skip = bool(job["confirmed_skip"] if "confirmed_skip" in job.keys() else False)
 
     poc = 0
     if cc:
         poc += 1
-    if voicemail:
+    if call_made:
         poc += 1
     if sms_sent:
         poc += 1
@@ -3969,8 +4003,8 @@ def update_builder_generate(job_id: int):
         attend_date_obj = _dt2.now(_melbourne).date()
 
     if not confirmed_skip:
-        eta_obj  = _calc_next_business_day(attend_date_obj, days_ahead=2)
-        eta_str  = eta_obj.strftime("%d %B %Y")
+        eta_obj = _calc_eta_date(attend_date_obj, poc)
+        eta_str = eta_obj.strftime("%d/%m/%y")
     else:
         eta_str = "TBC"
 
@@ -3998,6 +4032,7 @@ def update_builder_generate(job_id: int):
     inputs_for_prompt["points_of_contact"] = poc
     inputs_for_prompt["eta_next_date"] = eta_str
     inputs_for_prompt["voicemail_left"] = voicemail
+    inputs_for_prompt["phone_number_used"] = phone_used
 
     prompt = _build_swpi_prompt(inputs_for_prompt, job_ctx)
 
@@ -4041,7 +4076,7 @@ def update_builder_generate(job_id: int):
             data.get("neighbour_outcome", ""),
             1 if call_made else 0, data.get("call_outcome", ""),
             1 if voicemail else 0, 1 if sms_sent else 0,
-            data.get("customer_mobile", ""),
+            phone_used,
             poc, eta_str,
             narrative, model_used, tokens_used,
             structured_json, ts,
