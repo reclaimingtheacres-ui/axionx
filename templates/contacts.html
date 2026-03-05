@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Contacts{% endblock %}
+{% block page_title %}Contacts{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <div class="col-md-6">
+    <a href="/clients" class="text-decoration-none">
+      <div class="ax-card p-4 h-100" style="transition:box-shadow .15s;cursor:pointer" onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,.09)'" onmouseout="this.style.boxShadow=''">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <div style="width:42px;height:42px;border-radius:10px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2" stroke="#3b82f6" stroke-width="1.7"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke="#3b82f6" stroke-width="1.7"/><path d="M12 12v4M10 14h4" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div>
+            <div style="font-weight:650;font-size:1rem">Clients</div>
+            <div style="font-size:.8rem;color:var(--muted)">Creditors &amp; hiring companies</div>
+          </div>
+          <div class="ms-auto" style="color:var(--muted)">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+        <div style="font-size:.82rem;color:var(--muted)">{{ client_count }} client{{ 's' if client_count != 1 else '' }}</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-md-6">
+    <a href="/customers" class="text-decoration-none">
+      <div class="ax-card p-4 h-100" style="transition:box-shadow .15s;cursor:pointer" onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,.09)'" onmouseout="this.style.boxShadow=''">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <div style="width:42px;height:42px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" stroke="#22c55e" stroke-width="1.7"/><path d="M4 20c0-4 3.582-7 8-7s8 3 8 7" stroke="#22c55e" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </div>
+          <div>
+            <div style="font-weight:650;font-size:1rem">Customers</div>
+            <div style="font-size:.8rem;color:var(--muted)">Debtors &amp; subjects</div>
+          </div>
+          <div class="ms-auto" style="color:var(--muted)">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+        <div style="font-size:.82rem;color:var(--muted)">{{ customer_count }} customer{{ 's' if customer_count != 1 else '' }}</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-md-6">
+    <a href="/users" class="text-decoration-none">
+      <div class="ax-card p-4 h-100" style="transition:box-shadow .15s;cursor:pointer" onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,.09)'" onmouseout="this.style.boxShadow=''">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <div style="width:42px;height:42px;border-radius:10px;background:#faf5ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" stroke="#7c3aed" stroke-width="1.7"/><circle cx="17" cy="9" r="2.5" stroke="#7c3aed" stroke-width="1.5"/><path d="M2 20c0-3.3 3.1-6 7-6s7 2.7 7 6" stroke="#7c3aed" stroke-width="1.7" stroke-linecap="round"/><path d="M19 14c1.7.6 3 2.2 3 4" stroke="#7c3aed" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div>
+            <div style="font-weight:650;font-size:1rem">Staff</div>
+            <div style="font-size:.8rem;color:var(--muted)">Admin &amp; field agents</div>
+          </div>
+          <div class="ms-auto" style="color:var(--muted)">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+        <div style="font-size:.82rem;color:var(--muted)">{{ staff_count }} staff member{{ 's' if staff_count != 1 else '' }}</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="col-md-6">
+    <a href="/resources" class="text-decoration-none">
+      <div class="ax-card p-4 h-100" style="transition:box-shadow .15s;cursor:pointer" onmouseover="this.style.boxShadow='0 4px 18px rgba(0,0,0,.09)'" onmouseout="this.style.boxShadow=''">
+        <div class="d-flex align-items-center gap-3 mb-2">
+          <div style="width:42px;height:42px;border-radius:10px;background:#fff7ed;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" stroke="#f59e0b" stroke-width="1.7"/><path d="M7 21h10M12 17v4" stroke="#f59e0b" stroke-width="1.7" stroke-linecap="round"/><circle cx="8" cy="10" r="2" stroke="#f59e0b" stroke-width="1.5"/><path d="M13 8h4M13 12h4" stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div>
+            <div style="font-weight:650;font-size:1rem">Tow Operators &amp; Auction Yards</div>
+            <div style="font-size:.8rem;color:var(--muted)">Field resources</div>
+          </div>
+          <div class="ms-auto" style="color:var(--muted)">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+        </div>
+        <div style="font-size:.82rem;color:var(--muted)">{{ tow_count }} tow operator{{ 's' if tow_count != 1 else '' }} &middot; {{ yard_count }} auction yard{{ 's' if yard_count != 1 else '' }}</div>
+      </div>
+    </a>
+  </div>
+
+</div>
+{% endblock %}

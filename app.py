@@ -4745,6 +4745,26 @@ def form_template_delete(tmpl_id):
     return jsonify({"ok": True})
 
 
+# ──────────────────── Contacts hub ─────────────────────────────────
+
+@app.get("/contacts")
+@admin_required
+def contacts_hub():
+    conn = db()
+    client_count   = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
+    customer_count = conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
+    staff_count    = conn.execute("SELECT COUNT(*) FROM users WHERE active=1").fetchone()[0]
+    tow_count      = conn.execute("SELECT COUNT(*) FROM tow_operators WHERE active=1").fetchone()[0]
+    yard_count     = conn.execute("SELECT COUNT(*) FROM auction_yards WHERE active=1").fetchone()[0]
+    conn.close()
+    return render_template("contacts.html",
+        client_count=client_count,
+        customer_count=customer_count,
+        staff_count=staff_count,
+        tow_count=tow_count,
+        yard_count=yard_count)
+
+
 # ──────────────────── Geomap ────────────────────────────────────────
 
 @app.get("/map")
