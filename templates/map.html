@@ -1,0 +1,347 @@
+{% extends "layout.html" %}
+{% block title %}Axionx | Map{% endblock %}
+{% block page_title %}Map{% endblock %}
+
+{% block content %}
+{% if not google_maps_api_key %}
+<div class="alert alert-warning">Google Maps API key is not configured. Set the <code>GOOGLE_MAPS_API_KEY</code> environment variable to enable the map.</div>
+{% else %}
+<style>
+  .ax-map-wrap {
+    display: flex;
+    height: calc(100vh - 104px);
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  .ax-map-panel {
+    width: 250px;
+    min-width: 250px;
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+  }
+  .ax-map-panel-inner {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 12px;
+  }
+  .ax-map-panel-section { margin-bottom: 18px; }
+  .ax-map-panel-section h6 {
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .ax-filter-btns { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+  .ax-filter-btn {
+    font-size: .72rem;
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: #f4f4f6;
+    cursor: pointer;
+    color: var(--text);
+    transition: background .15s, color .15s;
+  }
+  .ax-filter-btn.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+  #ax-job-count { font-size: .75rem; color: var(--muted); margin-bottom: 2px; }
+  .ax-agent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 4px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: .83rem;
+    transition: background .1s;
+  }
+  .ax-agent-row:hover { background: #f0f0f5; }
+  .ax-agent-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ax-agent-dot.online  { background: #22c55e; }
+  .ax-agent-dot.recent  { background: #f59e0b; }
+  .ax-agent-dot.offline { background: #d1d5db; }
+  .ax-agent-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ax-agent-time { font-size: .68rem; color: var(--muted); flex-shrink: 0; }
+  #ax-gmap { flex: 1; }
+</style>
+
+<div class="ax-map-wrap">
+  <div class="ax-map-panel">
+    <div class="ax-map-panel-inner">
+      <div class="ax-map-panel-section">
+        <h6>Jobs</h6>
+        <div class="ax-filter-btns">
+          <button class="ax-filter-btn on" data-status="ALL">All</button>
+          <button class="ax-filter-btn on" data-status="Active">Active</button>
+          <button class="ax-filter-btn on" data-status="New">New</button>
+          <button class="ax-filter-btn on" data-status="Pending">Pending</button>
+        </div>
+        <div id="ax-job-count">Loading…</div>
+      </div>
+
+      <div class="ax-map-panel-section">
+        <h6>Agents</h6>
+        <div id="ax-agent-list">
+          {% for a in agents %}
+          <div class="ax-agent-row" data-agent-id="{{ a.id }}" title="{{ a.full_name }}">
+            <span class="ax-agent-dot offline" id="dot-{{ a.id }}"></span>
+            <span class="ax-agent-name">{{ a.full_name }}</span>
+            <span class="ax-agent-time" id="atime-{{ a.id }}"></span>
+          </div>
+          {% else %}
+          <div class="text-muted" style="font-size:.8rem">No agents configured.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ax-gmap"></div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if google_maps_api_key %}
+<script>
+(function() {
+  var map, geocoder, infoWindow;
+  var jobMarkers   = {};
+  var agentMarkers = {};
+  var allJobs      = [];
+  var activeFilters = new Set(['ALL','Active','New','Pending']);
+
+  var STATUS_COLORS = {
+    'Active':  '#3b82f6',
+    'New':     '#22c55e',
+    'Pending': '#f59e0b',
+    'default': '#6b7280'
+  };
+
+  function markerIcon(color, size) {
+    size = size || 10;
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: size,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#fff',
+      strokeWeight: 2
+    };
+  }
+
+  function agentSvg(initials) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36">'
+      + '<circle cx="18" cy="18" r="16" fill="#7c3aed" stroke="#fff" stroke-width="2"/>'
+      + '<text x="18" y="23" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="sans-serif">'
+      + initials + '</text></svg>';
+    return {
+      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+      scaledSize: new google.maps.Size(36, 36),
+      anchor: new google.maps.Point(18, 18)
+    };
+  }
+
+  function relativeTime(isoStr) {
+    if (!isoStr) return '';
+    var diff = (Date.now() - new Date(isoStr).getTime()) / 60000;
+    if (diff < 1)  return 'just now';
+    if (diff < 60) return Math.round(diff) + 'm ago';
+    return Math.round(diff / 60) + 'h ago';
+  }
+
+  function agentStatus(isoStr) {
+    if (!isoStr) return 'offline';
+    var diff = (Date.now() - new Date(isoStr).getTime()) / 60000;
+    if (diff < 5)  return 'online';
+    if (diff < 30) return 'recent';
+    return 'offline';
+  }
+
+  function placeJobMarker(job) {
+    var color = STATUS_COLORS[job.status] || STATUS_COLORS['default'];
+    var marker = new google.maps.Marker({
+      position: { lat: job.lat, lng: job.lng },
+      map: map,
+      icon: markerIcon(color, 10),
+      title: job.ref
+    });
+    var content = '<div style="max-width:220px;font-size:.83rem;line-height:1.6">'
+      + '<strong><a href="/jobs/' + job.id + '" style="color:inherit">' + job.ref + '</a></strong><br>'
+      + (job.customer ? '<span style="color:#555">' + job.customer + '</span><br>' : '')
+      + (job.client ? '<span style="color:#888;font-size:.75rem">' + job.client + '</span><br>' : '')
+      + '<span style="font-size:.73rem;padding:2px 7px;border-radius:10px;background:#eee;color:#333">' + job.status + '</span> '
+      + '<span style="color:#888;font-size:.75rem">' + job.address + '</span>'
+      + (job.agent ? '<br><span style="font-size:.75rem;color:#666">Agent: ' + job.agent + '</span>' : '')
+      + '</div>';
+    marker.addListener('click', function() {
+      infoWindow.setContent(content);
+      infoWindow.open(map, marker);
+    });
+    jobMarkers[job.id] = marker;
+  }
+
+  function geocodeJob(job) {
+    geocoder.geocode({ address: job.address + ', Australia' }, function(results, status) {
+      if (status !== 'OK' || !results.length) return;
+      var loc = results[0].geometry.location;
+      job.lat = loc.lat();
+      job.lng = loc.lng();
+      placeJobMarker(job);
+      filterVisible();
+      fetch('/api/jobs/' + job.id + '/geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ lat: job.lat, lng: job.lng })
+      });
+    });
+  }
+
+  function filterVisible() {
+    var shown = 0;
+    allJobs.forEach(function(job) {
+      var marker = jobMarkers[job.id];
+      if (!marker) return;
+      var visible = activeFilters.has('ALL') || activeFilters.has(job.status);
+      marker.setVisible(visible);
+      if (visible) shown++;
+    });
+    var countEl = document.getElementById('ax-job-count');
+    if (countEl) countEl.textContent = shown + ' job' + (shown !== 1 ? 's' : '') + ' shown';
+  }
+
+  function loadMapData(initial) {
+    fetch('/api/map/data', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (initial) {
+          allJobs = data.jobs;
+          data.jobs.forEach(function(job) {
+            if (job.lat && job.lng) {
+              placeJobMarker(job);
+            } else {
+              geocodeJob(job);
+            }
+          });
+          filterVisible();
+        }
+
+        data.agents.forEach(function(ag) {
+          var dot   = document.getElementById('dot-' + ag.id);
+          var atime = document.getElementById('atime-' + ag.id);
+          var st    = agentStatus(ag.updated_at);
+          if (dot)   dot.className  = 'ax-agent-dot ' + st;
+          if (atime) atime.textContent = relativeTime(ag.updated_at);
+
+          var pos = { lat: ag.lat, lng: ag.lng };
+          if (agentMarkers[ag.id]) {
+            agentMarkers[ag.id].setPosition(pos);
+            agentMarkers[ag.id].setVisible(true);
+          } else {
+            var m = new google.maps.Marker({
+              position: pos,
+              map: map,
+              icon: agentSvg(ag.initials),
+              title: ag.name,
+              zIndex: 100
+            });
+            (function(marker, agentData) {
+              marker.addListener('click', function() {
+                infoWindow.setContent('<strong>' + agentData.name + '</strong><br>'
+                  + '<span style="font-size:.75rem;color:#666">Last seen: ' + relativeTime(agentData.updated_at) + '</span>');
+                infoWindow.open(map, marker);
+              });
+            })(m, ag);
+            agentMarkers[ag.id] = m;
+          }
+        });
+
+        Object.keys(agentMarkers).forEach(function(id) {
+          var found = data.agents.some(function(a) { return a.id == id; });
+          if (!found) agentMarkers[id].setVisible(false);
+        });
+      })
+      .catch(function(e) { console.warn('Map data error', e); });
+  }
+
+  function initAxionMap() {
+    var mapEl = document.getElementById('ax-gmap');
+    if (!mapEl) return;
+    map = new google.maps.Map(mapEl, {
+      center: { lat: -25.2744, lng: 133.7751 },
+      zoom: 5,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+      styles: [
+        { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+        { featureType: 'transit', stylers: [{ visibility: 'off' }] }
+      ]
+    });
+    geocoder   = new google.maps.Geocoder();
+    infoWindow = new google.maps.InfoWindow();
+
+    loadMapData(true);
+    setInterval(function() { loadMapData(false); }, 30000);
+
+    document.querySelectorAll('.ax-filter-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var s = btn.dataset.status;
+        if (s === 'ALL') {
+          var allAreOn = ['Active','New','Pending'].every(function(x) { return activeFilters.has(x); });
+          if (allAreOn) {
+            activeFilters.clear();
+            document.querySelectorAll('.ax-filter-btn').forEach(function(b) { b.classList.remove('on'); });
+          } else {
+            activeFilters = new Set(['ALL','Active','New','Pending']);
+            document.querySelectorAll('.ax-filter-btn').forEach(function(b) { b.classList.add('on'); });
+          }
+        } else {
+          if (activeFilters.has(s)) {
+            activeFilters.delete(s);
+            btn.classList.remove('on');
+          } else {
+            activeFilters.add(s);
+            btn.classList.add('on');
+          }
+          var allOn = ['Active','New','Pending'].every(function(x) { return activeFilters.has(x); });
+          var allBtn = document.querySelector('.ax-filter-btn[data-status="ALL"]');
+          if (allOn)  { activeFilters.add('ALL');    if (allBtn) allBtn.classList.add('on'); }
+          else        { activeFilters.delete('ALL'); if (allBtn) allBtn.classList.remove('on'); }
+        }
+        filterVisible();
+      });
+    });
+
+    document.querySelectorAll('.ax-agent-row').forEach(function(row) {
+      row.addEventListener('click', function() {
+        var id = row.dataset.agentId;
+        var m  = agentMarkers[id];
+        if (m && m.getVisible()) {
+          map.panTo(m.getPosition());
+          map.setZoom(13);
+          google.maps.event.trigger(m, 'click');
+        }
+      });
+    });
+  }
+
+  var _baseInit = window.initGoogleMaps;
+  window.initGoogleMaps = function() {
+    if (typeof _baseInit === 'function') _baseInit();
+    initAxionMap();
+  };
+})();
+</script>
+{% endif %}
+{% endblock %}

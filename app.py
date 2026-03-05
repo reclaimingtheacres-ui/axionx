@@ -432,6 +432,20 @@ def init_db():
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
     add_column_if_missing(cur, "system_settings", "email_signature", "TEXT")
     add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
+    add_column_if_missing(cur, "jobs", "lat", "REAL")
+    add_column_if_missing(cur, "jobs", "lng", "REAL")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS agent_locations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL UNIQUE,
+        lat REAL NOT NULL,
+        lng REAL NOT NULL,
+        accuracy REAL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
     add_column_if_missing(cur, "jobs", "bill_to_client_id", "INTEGER")
     add_column_if_missing(cur, "jobs", "client_job_number", "TEXT")
     add_column_if_missing(cur, "customers", "role", "TEXT")
@@ -4726,6 +4740,117 @@ def form_template_add():
 def form_template_delete(tmpl_id):
     conn = db()
     conn.execute("UPDATE form_templates SET active=0 WHERE id=?", (tmpl_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ──────────────────── Geomap ────────────────────────────────────────
+
+@app.get("/map")
+@admin_required
+def geomap_page():
+    conn = db()
+    agents = conn.execute(
+        "SELECT id, full_name FROM users WHERE role='agent' AND active=1 ORDER BY full_name"
+    ).fetchall()
+    conn.close()
+    return render_template("map.html", agents=agents)
+
+
+@app.get("/api/map/data")
+@admin_required
+def api_map_data():
+    conn = db()
+    jobs = conn.execute("""
+        SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               c.name AS client_name,
+               ag.full_name AS agent_name
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients   c  ON c.id  = j.client_id
+        LEFT JOIN users     ag ON ag.id = j.assigned_user_id
+        WHERE j.status NOT IN ('Closed','Cancelled','Completed')
+          AND j.job_address IS NOT NULL AND j.job_address != ''
+        ORDER BY j.updated_at DESC
+    """).fetchall()
+
+    two_hours_ago = (datetime.now(_melbourne) - _td(hours=2)).isoformat()
+
+    agents = conn.execute("""
+        SELECT u.id, u.full_name, al.lat, al.lng, al.accuracy, al.updated_at
+        FROM users u
+        JOIN agent_locations al ON al.user_id = u.id
+        WHERE u.role = 'agent' AND u.active = 1
+          AND al.updated_at >= ?
+        ORDER BY u.full_name
+    """, (two_hours_ago,)).fetchall()
+    conn.close()
+
+    def initials(name):
+        parts = (name or "?").split()
+        return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else "")).upper()
+
+    return jsonify({
+        "jobs": [{
+            "id": r["id"],
+            "ref": r["display_ref"],
+            "address": r["job_address"],
+            "status": r["status"],
+            "lat": r["lat"],
+            "lng": r["lng"],
+            "customer": r["customer_name"] or "",
+            "client": r["client_name"] or "",
+            "agent": r["agent_name"] or ""
+        } for r in jobs],
+        "agents": [{
+            "id": r["id"],
+            "name": r["full_name"],
+            "initials": initials(r["full_name"]),
+            "lat": r["lat"],
+            "lng": r["lng"],
+            "accuracy": r["accuracy"],
+            "updated_at": r["updated_at"]
+        } for r in agents]
+    })
+
+
+@app.post("/api/agent/location")
+@login_required
+def api_agent_location():
+    data = request.get_json(silent=True) or {}
+    lat  = data.get("lat")
+    lng  = data.get("lng")
+    acc  = data.get("accuracy")
+    if lat is None or lng is None:
+        return jsonify({"ok": False, "error": "lat and lng required"}), 400
+    uid = session.get("user_id")
+    ts  = now_ts()
+    conn = db()
+    conn.execute("""
+        INSERT INTO agent_locations (user_id, lat, lng, accuracy, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            lat=excluded.lat, lng=excluded.lng,
+            accuracy=excluded.accuracy, updated_at=excluded.updated_at
+    """, (uid, float(lat), float(lng), float(acc) if acc is not None else None, ts))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/jobs/<int:job_id>/geocode")
+@login_required
+def api_job_geocode(job_id: int):
+    data = request.get_json(silent=True) or {}
+    lat  = data.get("lat")
+    lng  = data.get("lng")
+    if lat is None or lng is None:
+        return jsonify({"ok": False}), 400
+    conn = db()
+    conn.execute("UPDATE jobs SET lat=?, lng=? WHERE id=?",
+                 (float(lat), float(lng), job_id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})

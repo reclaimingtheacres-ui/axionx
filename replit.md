@@ -123,3 +123,36 @@ DB table: `form_templates` (name, field_list JSON, created_by, active)
 ## CSV Import (`/import/jobs`)
 
 Upload CSV with columns: `InternalJobNumber, ClientReference, JobType, VisitType, Status, Priority, JobAddress, Description`. Duplicate InternalJobNumbers are skipped.
+
+## Geomap (`/map`)
+
+Admin-only full-page map view combining job pins and live agent location tracking.
+
+**Left panel** (250px):
+- Job status filter toggle buttons: ALL | Active | New | Pending (multi-select, synced with map)
+- Live job count badge
+- Agents list with colour-coded status dots: green (<5 min), yellow (5–30 min), grey (no data / >30 min)
+- Clicking an agent row pans the map to their position
+
+**Map** (Google Maps, rest of screen):
+- Job pins coloured by status: Active=blue, New=green, Pending=orange
+- Jobs without cached lat/lng are geocoded client-side (Geocoder API); result cached via `POST /api/jobs/<id>/geocode`
+- Clicking a pin shows an info window with job ref (linked), customer, client, status, address, agent
+- Agent positions shown as purple initials circles; polled every 30 s via `GET /api/map/data`
+
+**Agent tracking** (`/my/today`):
+- Agents' browser silently requests GPS on page load, re-sends every 60 s via `POST /api/agent/location`
+- A subtle green "Location sharing" badge appears at the bottom-right once GPS is obtained
+- No error shown if geolocation is denied
+
+**Routes**:
+- `GET /map` (admin) — renders map.html
+- `GET /api/map/data` (admin) — JSON of active/pending/new jobs with addresses, cached lat/lng, and agent positions (2-hr window)
+- `POST /api/agent/location` (any logged-in user) — upserts agent position
+- `POST /api/jobs/<id>/geocode` (any logged-in user) — caches geocoded lat/lng
+
+**DB additions**:
+- `jobs.lat`, `jobs.lng` REAL columns (geocode cache)
+- `agent_locations` table: `user_id UNIQUE, lat, lng, accuracy, updated_at`
+
+**Template block**: `layout.html` now exposes `{% block scripts %}` between the `initGoogleMaps` definition and the Maps `<script src>` tag — child templates can safely override/wrap `window.initGoogleMaps` here.

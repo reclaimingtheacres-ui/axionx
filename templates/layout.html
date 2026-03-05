@@ -295,6 +295,7 @@
           <div class="hint">Admin</div>
           <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
           <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
+          <a href="/map" class="{% if request.path.startswith('/map') %}active{% endif %}">Map</a>
           <a href="/assign" class="{% if request.path.startswith('/assign') %}active{% endif %}">Assignment Board</a>
           <a href="/reports/monthly" class="{% if request.path.startswith('/reports') %}active{% endif %}">Reports</a>
           <a href="/users" class="{% if request.path.startswith('/users') %}active{% endif %}">Users</a>
@@ -384,6 +385,8 @@
   window.axionInitPlaces = window.initGoogleMaps;
   window.axionSetAddress = (input, value) => { if (input) input.value = value; };
   </script>
+
+  {% block scripts %}{% endblock %}
 
   {% if google_maps_api_key %}
   <script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&v=weekly&libraries=places&loading=async&callback=initGoogleMaps" defer></script>
