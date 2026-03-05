@@ -800,6 +800,18 @@ app.jinja_env.globals.update(
 )
 
 
+@app.template_filter("fmt_queue_dt")
+def fmt_queue_dt(ts_str):
+    """Format a cue_items created_at string as '05Mar26 09:07'."""
+    if not ts_str:
+        return "—"
+    try:
+        dt = datetime.strptime(ts_str[:19], "%Y-%m-%dT%H:%M:%S")
+        return dt.strftime("%d%b%y %H:%M")
+    except Exception:
+        return ts_str[:16]
+
+
 def users_count():
     conn = db()
     cur = conn.cursor()
@@ -923,6 +935,33 @@ def send_reset_email(to_addr, reset_link):
         s.starttls()
         s.login(user, pswd)
         s.sendmail(frm, to_addr, msg.as_string())
+
+
+def send_email(to_list, subject, body_txt, body_html=None):
+    """Generic SMTP helper. to_list is a list of email strings."""
+    import os as _os
+    host = _os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    port = int(_os.environ.get("SMTP_PORT", "587"))
+    user = _os.environ.get("SMTP_USER", "")
+    pswd = _os.environ.get("SMTP_PASS", "")
+    frm  = _os.environ.get("SMTP_FROM", user)
+    if not user or not pswd:
+        raise RuntimeError("SMTP credentials not configured.")
+    to_list = [e for e in to_list if e and "@" in e]
+    if not to_list:
+        raise ValueError("No valid recipient email addresses.")
+    msg = _MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = frm
+    msg["To"]      = ", ".join(to_list)
+    msg.attach(_MIMEText(body_txt, "plain"))
+    if body_html:
+        msg.attach(_MIMEText(body_html, "html"))
+    with _smtplib.SMTP(host, port, timeout=10) as s:
+        s.ehlo()
+        s.starttls()
+        s.login(user, pswd)
+        s.sendmail(frm, to_list, msg.as_string())
 
 
 @app.get("/forgot-password")
@@ -3438,6 +3477,28 @@ def add_job_note(job_id: int):
     conn.close()
 
     audit("job_note", note_id, "create", "Field note added", {"job_id": job_id})
+
+    if session.get("role") == "agent" and note_text:
+        try:
+            _today = datetime.now(_melbourne).date().isoformat()
+            _ts    = now_ts()
+            _conn  = db()
+            _cur   = _conn.cursor()
+            _cur.execute("""SELECT id FROM cue_items
+                            WHERE job_id=? AND visit_type='Agent Note Review' AND status='Pending'""",
+                         (job_id,))
+            if not _cur.fetchone():
+                _cur.execute("""
+                    INSERT INTO cue_items
+                      (job_id, visit_type, due_date, priority, status,
+                       instructions, created_by_user_id, created_at, updated_at)
+                    VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?)
+                """, (job_id, _today, note_text[:200], session.get("user_id"), _ts, _ts))
+                _conn.commit()
+            _conn.close()
+        except Exception:
+            pass
+
     flash("Field note saved.", "success")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
@@ -3960,32 +4021,69 @@ def admin_settings_update():
 
 
 # -------- Cues --------
+def _queue_row_sql():
+    return """
+        SELECT ci.*,
+               j.id AS job_id, j.internal_job_number, j.client_reference, j.display_ref,
+               j.status AS job_status, j.job_address, j.assigned_user_id AS job_assigned_uid,
+               c.name  AS client_name,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               (SELECT ji.reg FROM job_items ji
+                WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
+               ag.full_name AS agent_name,
+               ag.email     AS agent_email,
+               (SELECT ce.email FROM contact_emails ce
+                WHERE ce.entity_type='client' AND ce.entity_id=j.client_id LIMIT 1) AS client_email
+        FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        LEFT JOIN clients c  ON c.id  = j.client_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users ag  ON ag.id = j.assigned_user_id
+    """
+
+
 @app.get("/queue")
 @admin_required
 def job_queue():
-    date = request.args.get("date", datetime.now().date().isoformat())
+    import datetime as _dt
+    mel_now = datetime.now(_melbourne)
     conn = db()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT ci.*, j.internal_job_number, j.client_reference, j.status job_status,
-               j.job_address,
-               (cu.first_name || ' ' || cu.last_name) customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg,
-               u.full_name assigned_name
-        FROM cue_items ci
-        JOIN jobs j ON j.id = ci.job_id
-        LEFT JOIN customers cu ON cu.id = j.customer_id
-        LEFT JOIN users u ON u.id = ci.assigned_user_id
-        WHERE ci.due_date = ?
-        ORDER BY ci.priority DESC, ci.id DESC
-    """, (date,))
-    cues = cur.fetchall()
+    try:
+        admin_id = session.get("user_id")
+        auto_queue_schedule_alerts(cur, admin_id)
+        conn.commit()
+    except Exception:
+        pass
 
-    cur.execute("SELECT id, full_name FROM users WHERE role = 'agent' AND active = 1 ORDER BY full_name")
-    agents = cur.fetchall()
+    overdue_types = ("Urgent: Schedule Overdue", "Schedule Due Today")
+    tomorrow_type = "Schedule Due Tomorrow"
+    note_type     = "Agent Note Review"
+
+    cur.execute(_queue_row_sql() + """
+        WHERE ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')
+        ORDER BY ci.priority DESC, ci.created_at DESC
+    """, overdue_types)
+    overdue = cur.fetchall()
+
+    cur.execute(_queue_row_sql() + """
+        WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
+        ORDER BY ci.created_at DESC
+    """, (tomorrow_type,))
+    due_tomorrow = cur.fetchall()
+
+    cur.execute(_queue_row_sql() + """
+        WHERE ci.visit_type = ? AND ci.status = 'Pending'
+        ORDER BY ci.created_at DESC
+    """, (note_type,))
+    agent_notes = cur.fetchall()
 
     conn.close()
-    return render_template("queue.html", cues=cues, agents=agents, date=date)
+    return render_template("queue.html",
+                           overdue=overdue,
+                           due_tomorrow=due_tomorrow,
+                           agent_notes=agent_notes,
+                           now_melb=mel_now)
 
 
 @app.post("/queue/new")
@@ -4042,6 +4140,88 @@ def cue_complete(cue_id: int):
 
     referrer = request.referrer or url_for("my_today")
     return redirect(referrer)
+
+
+@app.post("/queue/<int:cue_id>/dismiss")
+@admin_required
+def queue_dismiss(cue_id: int):
+    ts = now_ts()
+    conn = db()
+    conn.execute("UPDATE cue_items SET status='Completed', completed_at=?, updated_at=? WHERE id=?",
+                 (ts, ts, cue_id))
+    conn.commit()
+    conn.close()
+    audit("cue", cue_id, "dismiss", f"Queue item {cue_id} dismissed.")
+    return jsonify({"ok": True})
+
+
+@app.post("/queue/send-email")
+@admin_required
+def queue_send_email():
+    job_id    = request.form.get("job_id", "").strip()
+    recipient = request.form.get("recipient", "client")
+    subject   = request.form.get("subject", "").strip()
+    body      = request.form.get("body", "").strip()
+
+    if not job_id or not body:
+        return jsonify({"ok": False, "error": "Job and message body are required."})
+
+    conn = db()
+    job = conn.execute("""
+        SELECT j.*, ag.email AS agent_email, ag.full_name AS agent_name,
+               (SELECT ce.email FROM contact_emails ce
+                WHERE ce.entity_type='client' AND ce.entity_id=j.client_id LIMIT 1) AS client_email
+        FROM jobs j
+        LEFT JOIN users ag ON ag.id = j.assigned_user_id
+        WHERE j.id = ?
+    """, (job_id,)).fetchone()
+    conn.close()
+
+    if not job:
+        return jsonify({"ok": False, "error": "Job not found."})
+
+    to_list = []
+    label_parts = []
+    if recipient in ("client", "both") and job["client_email"]:
+        to_list.append(job["client_email"])
+        label_parts.append("Client")
+    if recipient in ("agent", "both") and job["agent_email"]:
+        to_list.append(job["agent_email"])
+        label_parts.append(f"Agent ({job['agent_name']})")
+
+    if not to_list:
+        return jsonify({"ok": False, "error": "No email address found for the selected recipient(s)."})
+
+    if not subject:
+        subject = f"Job Update — {job['display_ref']}"
+
+    html_body = f"""<div style="font-family:sans-serif;max-width:600px">
+<p><strong>Job:</strong> {job['display_ref']}</p>
+<p>{body.replace(chr(10), '<br>')}</p>
+<hr style="border:none;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+</div>"""
+
+    try:
+        send_email(to_list, subject, body, html_body)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)})
+
+    recipient_label = " & ".join(label_parts)
+    mel_now = datetime.now(_melbourne)
+    ts_str  = mel_now.strftime("%d/%m/%Y %H:%M")
+    note_txt = f"Email sent to {recipient_label} — {ts_str} — {session.get('user_name', 'Admin')}"
+
+    conn2 = db()
+    conn2.execute(
+        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+        (job_id, session.get("user_id"), note_txt, now_ts())
+    )
+    conn2.commit()
+    conn2.close()
+
+    audit("job", int(job_id), "email_sent", note_txt)
+    return jsonify({"ok": True, "sent_to": recipient_label})
 
 
 # -------- Assignment board --------

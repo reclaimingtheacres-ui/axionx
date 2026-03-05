@@ -294,7 +294,7 @@
         {% if session.get('role') == 'admin' %}
           <div class="hint">Admin</div>
           <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
-          <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Job Queue</a>
+          <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
           <a href="/assign" class="{% if request.path.startswith('/assign') %}active{% endif %}">Assignment Board</a>
           <a href="/reports/monthly" class="{% if request.path.startswith('/reports') %}active{% endif %}">Reports</a>
           <a href="/users" class="{% if request.path.startswith('/users') %}active{% endif %}">Users</a>

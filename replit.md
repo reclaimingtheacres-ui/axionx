@@ -62,9 +62,27 @@ templates/
 | Import | ✓ | — |
 | My Today | — | ✓ |
 
+## Queue (`/queue`)
+
+Admin-only view, renamed from "Job Queue". Shows three live sections (no date picker):
+
+- **Overdue** — cue_items with visit_type `Urgent: Schedule Overdue` or `Schedule Due Today`, status Pending/In Progress
+- **Currently Due** — cue_items with visit_type `Schedule Due Tomorrow`, status Pending/In Progress
+- **Agent Notes — Pending Review** — cue_items with visit_type `Agent Note Review`, status Pending (auto-created when an agent saves a field note)
+
+Each row shows: × dismiss button, job number link (opens in new tab), Date/Time, Client, Borrower, Address, Action Required, and two action buttons:
+- **Email** — opens a modal to compose and send an email to Client, Agent, or Both; logs a note on the job; uses SMTP
+- **Update** — opens the job in a new tab
+
+Routes: `GET /queue`, `POST /queue/send-email`, `POST /queue/<id>/dismiss`
+
+Agent note auto-flagging: when an agent submits a field note via `POST /jobs/<id>/notes/new`, a `cue_item` with `visit_type='Agent Note Review'` is automatically created if one doesn't already exist for that job.
+
 ## Cues System
 
-Cues are scheduled work items attached to jobs — a date, visit type, priority, agent, and optional instructions. Agents see their cues on `/my/today`. Admins manage all cues at `/cues` and drag-and-drop assign them on `/assign`.
+Cues (`cue_items` table) are scheduled work items attached to jobs — a date, visit type, priority, agent, and optional instructions. Agents see their cues on `/my/today`. Admins manage all cues at `/queue` and drag-and-drop assign them on `/assign`.
+
+`auto_queue_schedule_alerts()` runs nightly (backup scheduler) and on each queue page load to create cue_items for overdue/today/tomorrow schedules.
 
 ## Audit Log
 
