@@ -3771,10 +3771,9 @@ def _get_ai_client():
         from openai import OpenAI
         return OpenAI(api_key=own_key), "own"
     from openai import OpenAI
-    return OpenAI(
-        api_key=os.getenv("REPLIT_AI_KEY", os.getenv("OPENAI_API_KEY", "")),
-        base_url="https://ai.replit.com"
-    ), "replit"
+    replit_base = os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL", "https://ai.replit.com")
+    replit_key  = os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY", "")
+    return OpenAI(api_key=replit_key, base_url=replit_base), "replit"
 
 
 def _calc_next_business_day(from_date, days_ahead=2):

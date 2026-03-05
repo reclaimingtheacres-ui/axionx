@@ -124,6 +124,41 @@ DB table: `form_templates` (name, field_list JSON, created_by, active)
 
 Upload CSV with columns: `InternalJobNumber, ClientReference, JobType, VisitType, Status, Priority, JobAddress, Description`. Duplicate InternalJobNumbers are skipped.
 
+## AI Update Builder (`/jobs/<id>/update-builder`)
+
+Agents and admins can produce compliant, SWPI-style attendance updates using a guided form + OpenAI generation.
+
+**Access**: "Create Update (AI Assist)" in the "Add to Job" dropdown (admins/both) or as a direct button (agents) on the job detail action bar. Roles `admin`, `agent`, `both` all have access.
+
+**Workflow**:
+1. Opening the builder immediately creates a `job_updates` record with `status='draft'` so nothing is lost.
+2. Auto-fills: job reference, client, customer, address, customer mobile.
+3. Agent fills minimum facts using toggles: attendance type (first/re), property description (first only), security sighted, calling card, call outcome + voicemail, SMS, neighbour outcome.
+4. "Generate Update" POSTs to `/jobs/<id>/update-builder/generate`, calls OpenAI (gpt-4o-mini), returns full SWPI-style narrative (third person, British spelling, no acronyms, required calling-card wording, points-of-contact line, ETA).
+5. Narrative appears in editable textarea; agent can adjust before saving.
+6. "Save Update to Job" POSTs to `/jobs/<id>/update-builder/save` — persists to `job_field_notes` tagged `[AI Update]`, marks draft `complete`, clears any "Update Required" cue.
+7. If agent exits without saving, the draft remains and surfaces on `/my/today` as an amber "Update Required (Pending Drafts)" alert with a link to continue.
+
+**Points of contact rule**: calling card = 1pt, voicemail left = 1pt, SMS sent = 1pt. ETA = 2 next business days.
+
+**Routes**:
+- `GET /jobs/<id>/update-builder` — open/resume draft
+- `POST /jobs/<id>/update-builder/generate` — AI narrative generation (JSON API)
+- `POST /jobs/<id>/update-builder/save` — save final update (JSON API)
+- `GET /jobs/<id>/update-builder/draft-check` — check if draft exists (JSON API)
+
+**DB additions**:
+- `job_updates` — full structured record per update (draft/complete status, all inputs, generated + final narrative, tokens used)
+- `ai_usage_log` — per-generation log: user, job, model, tokens, key source
+- `jobs.is_regional`, `jobs.confirmed_skip` — flags used in narrative context
+- `system_settings.openai_api_key`, `system_settings.ai_use_own_key` — admin-configurable AI key fallback
+
+**Admin Settings > AI Settings tab**:
+- Toggle to use own OpenAI API key instead of Replit AI credits
+- AI usage log table (last 50 uses): timestamp, user, job, feature, tokens, key source
+
+**AI Integration**: Uses Replit's built-in OpenAI access via `AI_INTEGRATIONS_OPENAI_BASE_URL` + `AI_INTEGRATIONS_OPENAI_API_KEY` env vars (no separate key required by default). Admin can switch to own key via settings.
+
 ## Geomap (`/map`)
 
 Admin-only full-page map view combining job pins and live agent location tracking.
