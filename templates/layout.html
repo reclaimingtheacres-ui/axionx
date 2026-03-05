@@ -286,11 +286,6 @@
         <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
         {% endif %}
 
-        {% if session.get('role') == 'agent' %}
-          <div class="hint">My Work</div>
-          <a href="/my/today" class="{% if request.path.startswith('/my/today') %}active{% endif %}">My Today</a>
-        {% endif %}
-
         {% if session.get('role') == 'admin' %}
           <div class="hint">Admin</div>
           <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
@@ -301,6 +296,13 @@
           <a href="/users" class="{% if request.path.startswith('/users') %}active{% endif %}">Users</a>
           <a href="/import/jobs" class="{% if request.path.startswith('/import') %}active{% endif %}">Import Jobs</a>
           <a href="/admin/settings" class="{% if request.path.startswith('/admin/settings') %}active{% endif %}">Settings & Resources</a>
+        {% endif %}
+
+        {% if session.get('role') == 'agent' %}
+          <div class="hint">Field</div>
+          <a href="/my/today" class="{% if request.path.startswith('/my') %}active{% endif %}">My Today</a>
+          <a href="/map" class="{% if request.path.startswith('/map') %}active{% endif %}">Map</a>
+          <a href="/resources" class="{% if request.path.startswith('/resources') %}active{% endif %}">Resources</a>
         {% endif %}
 
         <div class="hint">Account</div>

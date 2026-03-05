@@ -4748,44 +4748,68 @@ def form_template_delete(tmpl_id):
 # ──────────────────── Geomap ────────────────────────────────────────
 
 @app.get("/map")
-@admin_required
+@login_required
 def geomap_page():
-    conn = db()
-    agents = conn.execute(
-        "SELECT id, full_name FROM users WHERE role='agent' AND active=1 ORDER BY full_name"
-    ).fetchall()
-    conn.close()
-    return render_template("map.html", agents=agents)
+    is_admin = session.get("role") == "admin"
+    agents = []
+    if is_admin:
+        conn = db()
+        agents = conn.execute(
+            "SELECT id, full_name FROM users WHERE role='agent' AND active=1 ORDER BY full_name"
+        ).fetchall()
+        conn.close()
+    return render_template("map.html", agents=agents, is_admin=is_admin)
 
 
 @app.get("/api/map/data")
-@admin_required
+@login_required
 def api_map_data():
+    is_admin = session.get("role") == "admin"
+    uid = session.get("user_id")
     conn = db()
-    jobs = conn.execute("""
-        SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name,
-               c.name AS client_name,
-               ag.full_name AS agent_name
-        FROM jobs j
-        LEFT JOIN customers cu ON cu.id = j.customer_id
-        LEFT JOIN clients   c  ON c.id  = j.client_id
-        LEFT JOIN users     ag ON ag.id = j.assigned_user_id
-        WHERE j.status NOT IN ('Closed','Cancelled','Completed')
-          AND j.job_address IS NOT NULL AND j.job_address != ''
-        ORDER BY j.updated_at DESC
-    """).fetchall()
+
+    if is_admin:
+        jobs = conn.execute("""
+            SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
+                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   c.name AS client_name,
+                   ag.full_name AS agent_name
+            FROM jobs j
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            LEFT JOIN clients   c  ON c.id  = j.client_id
+            LEFT JOIN users     ag ON ag.id = j.assigned_user_id
+            WHERE j.status NOT IN ('Closed','Cancelled','Completed')
+              AND j.job_address IS NOT NULL AND j.job_address != ''
+            ORDER BY j.updated_at DESC
+        """).fetchall()
+    else:
+        jobs = conn.execute("""
+            SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
+                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   c.name AS client_name,
+                   ag.full_name AS agent_name
+            FROM jobs j
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            LEFT JOIN clients   c  ON c.id  = j.client_id
+            LEFT JOIN users     ag ON ag.id = j.assigned_user_id
+            WHERE j.status NOT IN ('Closed','Cancelled','Completed')
+              AND j.job_address IS NOT NULL AND j.job_address != ''
+              AND j.assigned_user_id = ?
+            ORDER BY j.updated_at DESC
+        """, (uid,)).fetchall()
 
     two_hours_ago = (datetime.now(_melbourne) - _td(hours=2)).isoformat()
 
-    agents = conn.execute("""
-        SELECT u.id, u.full_name, al.lat, al.lng, al.accuracy, al.updated_at
-        FROM users u
-        JOIN agent_locations al ON al.user_id = u.id
-        WHERE u.role = 'agent' AND u.active = 1
-          AND al.updated_at >= ?
-        ORDER BY u.full_name
-    """, (two_hours_ago,)).fetchall()
+    agents = []
+    if is_admin:
+        agents = conn.execute("""
+            SELECT u.id, u.full_name, al.lat, al.lng, al.accuracy, al.updated_at
+            FROM users u
+            JOIN agent_locations al ON al.user_id = u.id
+            WHERE u.role = 'agent' AND u.active = 1
+              AND al.updated_at >= ?
+            ORDER BY u.full_name
+        """, (two_hours_ago,)).fetchall()
     conn.close()
 
     def initials(name):
