@@ -252,59 +252,6 @@
   </table>
 </div>
 
-<!-- ── EMAIL MODAL ─────────────────────────────────────────────────── -->
-<div class="modal fade" id="emailModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content" style="border-radius:16px;border:1px solid var(--line)">
-      <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title fw-semibold">Send Email Update</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="em_job_id">
-
-        <div class="mb-3 d-flex align-items-center gap-3">
-          <div class="small fw-semibold" style="color:var(--muted);white-space:nowrap">Job:</div>
-          <div id="em_job_ref" class="fw-semibold"></div>
-        </div>
-
-        <div class="mb-2">
-          <label class="form-label small fw-semibold">Quick Fill</label>
-          <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('client')">Client</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('agent')">Agent</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('both')">Both</button>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label small fw-semibold" for="em_to_addresses">To <span style="color:#ef4444">*</span></label>
-          <input type="text" id="em_to_addresses" class="form-control form-control-sm"
-                 placeholder="email@example.com, another@example.com">
-          <div id="em_to_hint" class="form-text" style="color:var(--muted);font-size:.78rem"></div>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label small fw-semibold" for="em_subject">Subject</label>
-          <input type="text" id="em_subject" class="form-control form-control-sm">
-        </div>
-
-        <div class="mb-2">
-          <label class="form-label small fw-semibold" for="em_body">Message <span style="color:#ef4444">*</span></label>
-          <textarea id="em_body" class="form-control" rows="6" placeholder="Enter your update message..."></textarea>
-        </div>
-
-        <div id="em_error" class="alert alert-danger py-2 small mt-2" style="display:none"></div>
-        <div id="em_success" class="alert alert-success py-2 small mt-2" style="display:none"></div>
-      </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line)">
-        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" id="em_send_btn" onclick="sendQueueEmail()">Send Email</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 /* ── Dismiss ──────────────────────────────────────────────────────── */
 function dismissItem(cueId) {
@@ -431,4 +378,59 @@ function sendQueueEmail() {
   });
 }
 </script>
+{% endblock %}
+
+{% block modals %}
+<!-- ── EMAIL MODAL ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="emailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="border-radius:16px;border:1px solid var(--line)">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title fw-semibold">Send Email Update</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="em_job_id">
+
+        <div class="mb-3 d-flex align-items-center gap-3">
+          <div class="small fw-semibold" style="color:var(--muted);white-space:nowrap">Job:</div>
+          <div id="em_job_ref" class="fw-semibold"></div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Quick Fill</label>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('client')">Client</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('agent')">Agent</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('both')">Both</button>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="em_to_addresses">To <span style="color:#ef4444">*</span></label>
+          <input type="text" id="em_to_addresses" class="form-control form-control-sm"
+                 placeholder="email@example.com, another@example.com">
+          <div id="em_to_hint" class="form-text" style="color:var(--muted);font-size:.78rem"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="em_subject">Subject</label>
+          <input type="text" id="em_subject" class="form-control form-control-sm">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small fw-semibold" for="em_body">Message <span style="color:#ef4444">*</span></label>
+          <textarea id="em_body" class="form-control" rows="6" placeholder="Enter your update message..."></textarea>
+        </div>
+
+        <div id="em_error" class="alert alert-danger py-2 small mt-2" style="display:none"></div>
+        <div id="em_success" class="alert alert-success py-2 small mt-2" style="display:none"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="em_send_btn" onclick="sendQueueEmail()">Send Email</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
