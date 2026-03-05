@@ -175,7 +175,7 @@
         <tbody id="yard-body">
           {% for yard in auction_yards %}
           <tr id="yard-row-{{ yard.id }}" data-id="{{ yard.id }}"
-              data-name="{{ yard.name|e }}" data-address="{{ (yard.address or '')|tojson }}">
+              data-name="{{ yard.name|e }}" data-address="{{ (yard.address or '')|replace('\n', '\\n')|e }}">
             <td class="ps-3 fw-semibold">{{ yard.name }}</td>
             <td>{% if yard.address %}{% for addr in yard.address.split('\n') %}{% if addr.strip() %}<div>{{ addr.strip() }}</div>{% endif %}{% endfor %}{% else %}—{% endif %}</td>
             <td class="text-end pe-3">
@@ -517,7 +517,7 @@ function openYardModal(id) {
   if (id) {
     var row = document.getElementById('yard-row-' + id);
     document.getElementById('yard_name').value = row.dataset.name;
-    _setYardAddresses(JSON.parse(row.dataset.address));
+    _setYardAddresses(row.dataset.address.replace(/\\n/g, '\n'));
   } else {
     document.getElementById('yard_name').value = '';
     _setYardAddresses('');
@@ -545,7 +545,7 @@ function saveYard() {
       if (_yardEditId) {
         var row = document.getElementById('yard-row-' + _yardEditId);
         row.dataset.name = name;
-        row.dataset.address = JSON.stringify(address);
+        row.dataset.address = address.replace(/\n/g, '\\n');
         row.cells[0].innerHTML = '<span class="fw-semibold">' + esc(name) + '</span>';
         row.cells[1].innerHTML = _addressesHtml(address);
       } else {
