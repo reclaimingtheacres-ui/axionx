@@ -318,12 +318,12 @@
         <div class="hint">Workspace</div>
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
-        {% if session.get('role') == 'admin' %}
+        {% if session.get('role') in ('admin', 'both') %}
         <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
         <a href="/map" class="{% if request.path.startswith('/map') %}active{% endif %}">Map</a>
         {% endif %}
 
-        {% if session.get('role') == 'admin' %}
+        {% if session.get('role') in ('admin', 'both') %}
           <div class="hint">Admin</div>
           <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
           <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
@@ -337,17 +337,19 @@
           <a href="/admin/settings" class="{% if request.path.startswith('/admin/settings') %}active{% endif %}">Settings & Resources</a>
         {% endif %}
 
-        {% if session.get('role') == 'agent' %}
+        {% if session.get('role') in ('agent', 'both') %}
           <div class="hint">Field</div>
           <a href="/my/today" class="{% if request.path.startswith('/my') %}active{% endif %}">My Today</a>
+          {% if session.get('role') == 'agent' %}
           <a href="/map" class="{% if request.path.startswith('/map') %}active{% endif %}">Map</a>
+          {% endif %}
         {% endif %}
 
         <div class="hint">Account</div>
         {% if session.get('user_id') %}
           <div class="ax-user-chip mb-2">
             {{ session.get('user_name') }}
-            <span class="badge {% if session.get('role') == 'admin' %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ session.get('role') }}</span>
+            <span class="badge {% if session.get('role') in ('admin', 'both') %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ 'admin + agent' if session.get('role') == 'both' else session.get('role') }}</span>
           </div>
           <a href="/logout">Logout</a>
         {% else %}

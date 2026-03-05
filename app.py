@@ -767,7 +767,7 @@ _AUTO_ADVANCE_TYPES = {
 
 def maybe_auto_advance_status(cur, job_id: int, current_status: str,
                                event_type: str, role: str) -> bool:
-    if role != "admin":
+    if role not in ("admin", "both"):
         return False
     if event_type.lower() not in _AUTO_ADVANCE_TYPES:
         return False
@@ -906,7 +906,7 @@ def admin_required(f):
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
             return redirect(url_for("login"))
-        if session.get("role") != "admin":
+        if session.get("role") not in ("admin", "both"):
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
         return f(*args, **kwargs)
@@ -1331,7 +1331,7 @@ def dashboard():
     rows_by_status = {status: jrows(status) for status, _ in STATUS_LIST}
 
     # Auto-flag overdue / today / tomorrow schedules into the job queue
-    _admin_id = user_id if role == "admin" else None
+    _admin_id = user_id if role in ("admin", "both") else None
     if _admin_id:
         auto_queue_schedule_alerts(cur, _admin_id)
         conn.commit()
@@ -2107,7 +2107,7 @@ def add_schedule(job_id: int):
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
 
-    if caller_role == "admin":
+    if caller_role in ("admin", "both"):
         assigned_to = request.form.get("assigned_to_user_id", "").strip() or None
         if assigned_to:
             assigned_to = int(assigned_to)
@@ -2329,7 +2329,7 @@ def schedule_index():
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
 
-    if caller_role == "admin":
+    if caller_role in ("admin", "both"):
         cur.execute("""
             SELECT s.*, bt.name booking_type_name,
                    j.internal_job_number, j.client_reference, j.display_ref, j.id job_id,
@@ -2362,7 +2362,7 @@ def schedule_index():
     bookings = cur.fetchall()
     conn.close()
     return render_template("schedule/index.html", bookings=bookings,
-                           is_admin=(caller_role == "admin"))
+                           is_admin=(caller_role in ("admin", "both")))
 
 
 @app.post("/booking-type")
@@ -3473,7 +3473,7 @@ def add_job_note(job_id: int):
         return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
     # Admin can override staff and timestamp
-    if session.get("role") == "admin":
+    if session.get("role") in ("admin", "both"):
         staff_uid_raw = request.form.get("staff_user_id", "").strip()
         author_id = int(staff_uid_raw) if staff_uid_raw and staff_uid_raw.isdigit() else session.get("user_id")
         note_date  = request.form.get("note_date", "").strip()
@@ -3515,7 +3515,7 @@ def add_job_note(job_id: int):
 
     audit("job_note", note_id, "create", "Field note added", {"job_id": job_id})
 
-    if session.get("role") == "agent" and note_text:
+    if session.get("role") in ("agent", "both") and note_text:
         try:
             _today = datetime.now(_melbourne).date().isoformat()
             _ts    = now_ts()
@@ -3554,7 +3554,7 @@ def delete_job_note(job_id: int, note_id: int):
 
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
-    if caller_role != "admin" and note["created_by_user_id"] != caller_id:
+    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
         conn.close()
         flash("You can only delete your own notes.", "danger")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
@@ -4397,7 +4397,7 @@ def assign_board():
     conn = db()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, full_name FROM users WHERE role='agent' AND active=1 ORDER BY full_name")
+    cur.execute("SELECT id, full_name FROM users WHERE role IN ('agent', 'both') AND active=1 ORDER BY full_name")
     agents = cur.fetchall()
 
     cur.execute("""
@@ -4770,12 +4770,12 @@ def contacts_hub():
 @app.get("/map")
 @login_required
 def geomap_page():
-    is_admin = session.get("role") == "admin"
+    is_admin = session.get("role") in ("admin", "both")
     agents = []
     if is_admin:
         conn = db()
         agents = conn.execute(
-            "SELECT id, full_name FROM users WHERE role='agent' AND active=1 ORDER BY full_name"
+            "SELECT id, full_name FROM users WHERE role IN ('agent', 'both') AND active=1 ORDER BY full_name"
         ).fetchall()
         conn.close()
     return render_template("map.html", agents=agents, is_admin=is_admin)
@@ -4784,7 +4784,7 @@ def geomap_page():
 @app.get("/api/map/data")
 @login_required
 def api_map_data():
-    is_admin = session.get("role") == "admin"
+    is_admin = session.get("role") in ("admin", "both")
     uid = session.get("user_id")
     conn = db()
 
@@ -4826,7 +4826,7 @@ def api_map_data():
             SELECT u.id, u.full_name, al.lat, al.lng, al.accuracy, al.updated_at
             FROM users u
             JOIN agent_locations al ON al.user_id = u.id
-            WHERE u.role = 'agent' AND u.active = 1
+            WHERE u.role IN ('agent', 'both') AND u.active = 1
               AND al.updated_at >= ?
             ORDER BY u.full_name
         """, (two_hours_ago,)).fetchall()
