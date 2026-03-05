@@ -13,7 +13,7 @@
 <div class="row g-4">
 
   <!-- TOW OPERATORS -->
-  <div class="col-12 col-xl-6">
+  <div class="col-12 col-xl-6" id="section-tow">
     <div class="ax-card h-100">
       <div class="ax-card-h d-flex justify-content-between align-items-center">
         <span>Tow Operators</span>
@@ -53,7 +53,7 @@
   </div>
 
   <!-- AUCTION YARDS -->
-  <div class="col-12 col-xl-6">
+  <div class="col-12 col-xl-6" id="section-yards">
     <div class="ax-card h-100">
       <div class="ax-card-h d-flex justify-content-between align-items-center">
         <span>Auction Yards</span>
@@ -346,5 +346,14 @@ function deleteYard(id, btn) {
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+</script>
+<script>
+(function() {
+  var sec = new URLSearchParams(window.location.search).get('section');
+  if (sec) {
+    var el = document.getElementById('section-' + sec);
+    if (el) setTimeout(function() { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 200);
+  }
+})();
 </script>
 {% endblock %}

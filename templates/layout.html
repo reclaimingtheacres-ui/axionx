@@ -105,6 +105,44 @@
       font-size: .85rem;
       color: var(--muted);
     }
+    .ax-contacts-btn {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: none;
+      font-size: .9rem;
+      color: var(--text);
+      cursor: pointer;
+      gap: 10px;
+      text-align: left;
+    }
+    .ax-contacts-btn:hover { background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.07); }
+    .ax-contacts-btn.active { background: rgba(37,99,235,.10); border-color: rgba(37,99,235,.20); color: #2563eb; }
+    .ax-contacts-btn .ax-contacts-arrow { margin-left: auto; opacity: .45; }
+    #ax-contacts-popup {
+      position: fixed;
+      z-index: 9999;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.13);
+      min-width: 176px;
+      padding: 5px 0;
+      display: none;
+    }
+    #ax-contacts-popup a {
+      display: block;
+      padding: 9px 18px;
+      font-size: .87rem;
+      color: var(--text);
+      text-decoration: none;
+      transition: background .1s;
+    }
+    #ax-contacts-popup a:hover { background: #f0f0f6; }
+    #ax-contacts-popup a.active { color: #2563eb; font-weight: 600; }
     .ax-main{
       padding: 18px 18px 28px;
       min-width: 0;
@@ -289,7 +327,10 @@
           <div class="hint">Admin</div>
           <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
           <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
-          <a href="/contacts" class="{% if request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/resources') %}active{% endif %}">Contacts</a>
+          <button type="button" class="ax-contacts-btn{% if request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/resources') %} active{% endif %}" id="ax-contacts-btn">
+            Contacts
+            <svg class="ax-contacts-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
           <a href="/assign" class="{% if request.path.startswith('/assign') %}active{% endif %}">Assignment Board</a>
           <a href="/reports/monthly" class="{% if request.path.startswith('/reports') %}active{% endif %}">Reports</a>
           <a href="/import/jobs" class="{% if request.path.startswith('/import') %}active{% endif %}">Import Jobs</a>
@@ -406,6 +447,43 @@
   });
   ariaObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["aria-hidden"] });
   </script>
+  <div id="ax-contacts-popup" role="menu">
+    <a href="/clients"{% if request.path.startswith('/clients') %} class="active"{% endif %}>Clients</a>
+    <a href="/customers"{% if request.path.startswith('/customers') %} class="active"{% endif %}>Customers</a>
+    <a href="/users"{% if request.path.startswith('/users') %} class="active"{% endif %}>Staff</a>
+    <a href="/resources?section=tow"{% if request.path.startswith('/resources') %} class="active"{% endif %}>Tow Operators</a>
+    <a href="/resources?section=yards"{% if request.path.startswith('/resources') %} class="active"{% endif %}>Auction Yards</a>
+  </div>
+  <script>
+  (function() {
+    var btn = document.getElementById('ax-contacts-btn');
+    var popup = document.getElementById('ax-contacts-popup');
+    if (!btn || !popup) return;
+
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (popup.style.display === 'block') {
+        popup.style.display = 'none';
+        return;
+      }
+      var rect = btn.getBoundingClientRect();
+      popup.style.top  = rect.top + 'px';
+      popup.style.left = (rect.right + 6) + 'px';
+      popup.style.display = 'block';
+    });
+
+    document.addEventListener('click', function(e) {
+      if (!btn.contains(e.target) && !popup.contains(e.target)) {
+        popup.style.display = 'none';
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') popup.style.display = 'none';
+    });
+  })();
+  </script>
+
   {% block modals %}{% endblock %}
 {% if session.get('user_id') %}
 <div class="modal fade" id="idleWarningModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-hidden="true">
