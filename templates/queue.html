@@ -122,7 +122,7 @@
       {% for c in overdue %}
       <tr id="qrow-{{ c.id }}">
         <td>
-          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }}, this)">&#10005;</button>
+          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
         </td>
         <td>
           <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
@@ -134,7 +134,13 @@
         <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
         <td>
           <div class="q-actions">
-            <button class="q-email-btn" onclick="openEmailModal({{ c.job_id }}, '{{ c.display_ref|e }}', '{{ (c.client_email or '')|e }}', '{{ (c.agent_email or '')|e }}', '{{ (c.agent_name or '')|e }}')">Email</button>
+            <button class="q-email-btn"
+              data-job-id="{{ c.job_id }}"
+              data-job-ref="{{ c.display_ref|e }}"
+              data-client-email="{{ (c.client_email or '')|e }}"
+              data-agent-email="{{ (c.agent_email or '')|e }}"
+              data-agent-name="{{ (c.agent_name or '')|e }}"
+              onclick="openEmailModal(this)">Email</button>
             <a class="q-update-btn" href="/jobs/{{ c.job_id }}" target="_blank">Update</a>
           </div>
         </td>
@@ -166,7 +172,7 @@
       {% for c in due_tomorrow %}
       <tr id="qrow-{{ c.id }}">
         <td>
-          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }}, this)">&#10005;</button>
+          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
         </td>
         <td>
           <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
@@ -178,7 +184,13 @@
         <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
         <td>
           <div class="q-actions">
-            <button class="q-email-btn" onclick="openEmailModal({{ c.job_id }}, '{{ c.display_ref|e }}', '{{ (c.client_email or '')|e }}', '{{ (c.agent_email or '')|e }}', '{{ (c.agent_name or '')|e }}')">Email</button>
+            <button class="q-email-btn"
+              data-job-id="{{ c.job_id }}"
+              data-job-ref="{{ c.display_ref|e }}"
+              data-client-email="{{ (c.client_email or '')|e }}"
+              data-agent-email="{{ (c.agent_email or '')|e }}"
+              data-agent-name="{{ (c.agent_name or '')|e }}"
+              onclick="openEmailModal(this)">Email</button>
             <a class="q-update-btn" href="/jobs/{{ c.job_id }}" target="_blank">Update</a>
           </div>
         </td>
@@ -210,7 +222,7 @@
       {% for c in agent_notes %}
       <tr id="qrow-{{ c.id }}">
         <td>
-          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }}, this)">&#10005;</button>
+          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
         </td>
         <td>
           <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
@@ -222,7 +234,13 @@
         <td class="q-action-text">{{ c.instructions or '—' }}</td>
         <td>
           <div class="q-actions">
-            <button class="q-email-btn" onclick="openEmailModal({{ c.job_id }}, '{{ c.display_ref|e }}', '{{ (c.client_email or '')|e }}', '{{ (c.agent_email or '')|e }}', '{{ (c.agent_name or '')|e }}')">Email</button>
+            <button class="q-email-btn"
+              data-job-id="{{ c.job_id }}"
+              data-job-ref="{{ c.display_ref|e }}"
+              data-client-email="{{ (c.client_email or '')|e }}"
+              data-agent-email="{{ (c.agent_email or '')|e }}"
+              data-agent-name="{{ (c.agent_name or '')|e }}"
+              onclick="openEmailModal(this)">Email</button>
             <a class="q-update-btn" href="/jobs/{{ c.job_id }}" target="_blank">Update</a>
           </div>
         </td>
@@ -236,56 +254,60 @@
 
 <!-- ── EMAIL MODAL ─────────────────────────────────────────────────── -->
 <div class="modal fade" id="emailModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content" style="border-radius:16px;border:1px solid var(--line)">
       <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title fw-600">Send Email Update</h5>
+        <h5 class="modal-title fw-semibold">Send Email Update</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <input type="hidden" id="em_job_id">
-        <div class="mb-3">
-          <div class="small fw-semibold mb-1" style="color:var(--muted)">Job</div>
+
+        <div class="mb-3 d-flex align-items-center gap-3">
+          <div class="small fw-semibold" style="color:var(--muted);white-space:nowrap">Job:</div>
           <div id="em_job_ref" class="fw-semibold"></div>
         </div>
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Send To <span style="color:#ef4444">*</span></label>
-          <div class="d-flex gap-3 flex-wrap">
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="em_recipient" id="em_to_client" value="client" checked>
-              <label class="form-check-label small" for="em_to_client">Client <span id="em_client_email_hint" class="text-muted"></span></label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="em_recipient" id="em_to_agent" value="agent">
-              <label class="form-check-label small" for="em_to_agent">Agent <span id="em_agent_email_hint" class="text-muted"></span></label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="em_recipient" id="em_to_both" value="both">
-              <label class="form-check-label small" for="em_to_both">Both</label>
-            </div>
+
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Quick Fill</label>
+          <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('client')">Client</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('agent')">Agent</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="quickFill('both')">Both</button>
           </div>
         </div>
+
         <div class="mb-3">
-          <label class="form-label small fw-semibold">Subject</label>
+          <label class="form-label small fw-semibold" for="em_to_addresses">To <span style="color:#ef4444">*</span></label>
+          <input type="text" id="em_to_addresses" class="form-control form-control-sm"
+                 placeholder="email@example.com, another@example.com">
+          <div id="em_to_hint" class="form-text" style="color:var(--muted);font-size:.78rem"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="em_subject">Subject</label>
           <input type="text" id="em_subject" class="form-control form-control-sm">
         </div>
+
         <div class="mb-2">
-          <label class="form-label small fw-semibold">Message <span style="color:#ef4444">*</span></label>
-          <textarea id="em_body" class="form-control" rows="5" placeholder="Enter your update message..."></textarea>
+          <label class="form-label small fw-semibold" for="em_body">Message <span style="color:#ef4444">*</span></label>
+          <textarea id="em_body" class="form-control" rows="6" placeholder="Enter your update message..."></textarea>
         </div>
-        <div id="em_error" class="text-danger small mt-2" style="display:none"></div>
-        <div id="em_success" class="text-success small mt-2" style="display:none"></div>
+
+        <div id="em_error" class="alert alert-danger py-2 small mt-2" style="display:none"></div>
+        <div id="em_success" class="alert alert-success py-2 small mt-2" style="display:none"></div>
       </div>
       <div class="modal-footer" style="border-top:1px solid var(--line)">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" id="em_send_btn" onclick="sendEmail()">Send Email</button>
+        <button type="button" class="btn btn-primary btn-sm" id="em_send_btn" onclick="sendQueueEmail()">Send Email</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-function dismissItem(cueId, btn) {
+/* ── Dismiss ──────────────────────────────────────────────────────── */
+function dismissItem(cueId) {
   var row = document.getElementById('qrow-' + cueId);
   fetch('/queue/' + cueId + '/dismiss', {
     method: 'POST',
@@ -295,70 +317,93 @@ function dismissItem(cueId, btn) {
   .then(function(data){
     if (data.ok) {
       if (row) row.remove();
-      updateCounts();
+      updateSectionCounts();
     }
   })
-  .catch(function(){ alert('Could not dismiss item.'); });
+  .catch(function(){ alert('Could not dismiss item. Please try again.'); });
 }
 
-function updateCounts() {
-  var sections = [
-    {body: 'overdue-body', title: document.querySelector('.queue-section-title.overdue')},
-    {body: 'due-body',     title: document.querySelector('.queue-section-title.due')},
-    {body: 'notes-body',   title: document.querySelector('.queue-section-title.notes')}
-  ];
-  sections.forEach(function(s) {
+function updateSectionCounts() {
+  [
+    {body: 'overdue-body', cls: '.queue-section-title.overdue'},
+    {body: 'due-body',     cls: '.queue-section-title.due'},
+    {body: 'notes-body',   cls: '.queue-section-title.notes'}
+  ].forEach(function(s) {
     var tbody = document.getElementById(s.body);
-    if (!tbody || !s.title) return;
-    var rows = tbody.querySelectorAll('tr:not(.q-empty)').length;
-    var text = s.title.textContent.replace(/\[\d+\]/, '[' + rows + ']');
-    s.title.textContent = text;
+    var title = document.querySelector(s.cls);
+    if (!tbody || !title) return;
+    var n = tbody.querySelectorAll('tr:not(.q-empty)').length;
+    title.textContent = title.textContent.replace(/\[\d+\]/, '[' + n + ']');
   });
 }
 
-var _em_job_id = null;
+/* ── Email modal ──────────────────────────────────────────────────── */
+var _em = { jobId: null, clientEmail: '', agentEmail: '', agentName: '' };
 
-function openEmailModal(jobId, jobRef, clientEmail, agentEmail, agentName) {
-  _em_job_id = jobId;
-  document.getElementById('em_job_id').value = jobId;
-  document.getElementById('em_job_ref').textContent = jobRef;
-  document.getElementById('em_subject').value = 'Job Update \u2014 ' + jobRef;
-  document.getElementById('em_body').value = '';
-  document.getElementById('em_error').style.display = 'none';
+function openEmailModal(btn) {
+  var d = btn.dataset;
+  _em.jobId       = d.jobId;
+  _em.clientEmail = d.clientEmail  || '';
+  _em.agentEmail  = d.agentEmail   || '';
+  _em.agentName   = d.agentName    || '';
+
+  document.getElementById('em_job_id').value      = _em.jobId;
+  document.getElementById('em_job_ref').textContent = d.jobRef || _em.jobId;
+  document.getElementById('em_subject').value     = 'Job Update \u2014 ' + (d.jobRef || _em.jobId);
+  document.getElementById('em_body').value        = '';
+  document.getElementById('em_to_addresses').value = _em.clientEmail;
+  document.getElementById('em_error').style.display   = 'none';
   document.getElementById('em_success').style.display = 'none';
   document.getElementById('em_send_btn').disabled = false;
 
-  var clientHint = document.getElementById('em_client_email_hint');
-  var agentHint  = document.getElementById('em_agent_email_hint');
-  clientHint.textContent = clientEmail ? '(' + clientEmail + ')' : '(no email on file)';
-  agentHint.textContent  = agentName  ? '(' + agentName + (agentEmail ? ' \u2014 ' + agentEmail : ', no email') + ')' : '(unassigned)';
-
-  document.getElementById('em_to_client').checked = true;
+  _updateToHint();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('emailModal')).show();
 }
 
-function sendEmail() {
-  var jobId     = document.getElementById('em_job_id').value;
-  var recipient = document.querySelector('input[name="em_recipient"]:checked').value;
-  var subject   = document.getElementById('em_subject').value.trim();
-  var body      = document.getElementById('em_body').value.trim();
-  var errEl     = document.getElementById('em_error');
-  var okEl      = document.getElementById('em_success');
+function quickFill(who) {
+  var parts = [];
+  if ((who === 'client' || who === 'both') && _em.clientEmail) parts.push(_em.clientEmail);
+  if ((who === 'agent'  || who === 'both') && _em.agentEmail)  parts.push(_em.agentEmail);
+  document.getElementById('em_to_addresses').value = parts.join(', ');
+  _updateToHint();
+}
+
+function _updateToHint() {
+  var lines = [];
+  if (_em.clientEmail) lines.push('Client: ' + _em.clientEmail);
+  else                 lines.push('Client: (no email on file)');
+  if (_em.agentName)   lines.push('Agent: ' + _em.agentName + (_em.agentEmail ? ' \u2014 ' + _em.agentEmail : ' (no email)'));
+  else                 lines.push('Agent: (unassigned)');
+  document.getElementById('em_to_hint').textContent = lines.join('  |  ');
+}
+
+function sendQueueEmail() {
+  var toAddresses = document.getElementById('em_to_addresses').value.trim();
+  var subject     = document.getElementById('em_subject').value.trim();
+  var body        = document.getElementById('em_body').value.trim();
+  var errEl       = document.getElementById('em_error');
+  var okEl        = document.getElementById('em_success');
   errEl.style.display = 'none';
   okEl.style.display  = 'none';
 
-  if (!body) { errEl.textContent = 'Please enter a message.'; errEl.style.display = ''; return; }
+  if (!toAddresses) { errEl.textContent = 'Please enter at least one email address.'; errEl.style.display = ''; return; }
+  if (!body)         { errEl.textContent = 'Please enter a message.';                  errEl.style.display = ''; return; }
+
+  var who = 'custom';
+  if (toAddresses === _em.clientEmail) who = 'client';
+  else if (toAddresses === _em.agentEmail) who = 'agent';
+  else if (_em.clientEmail && _em.agentEmail && toAddresses.indexOf(_em.clientEmail) !== -1 && toAddresses.indexOf(_em.agentEmail) !== -1) who = 'both';
 
   document.getElementById('em_send_btn').disabled = true;
   var fd = new FormData();
-  fd.append('job_id', jobId);
-  fd.append('recipient', recipient);
-  fd.append('subject', subject);
-  fd.append('body', body);
+  fd.append('job_id',       _em.jobId);
+  fd.append('recipient',    who);
+  fd.append('to_addresses', toAddresses);
+  fd.append('subject',      subject);
+  fd.append('body',         body);
 
   fetch('/queue/send-email', {
-    method: 'POST',
-    body: fd,
+    method: 'POST', body: fd,
     headers: {'X-Requested-With': 'XMLHttpRequest'}
   })
   .then(function(r){ return r.json(); })
@@ -368,12 +413,15 @@ function sendEmail() {
       errEl.textContent = data.error;
       errEl.style.display = '';
     } else {
-      okEl.textContent = 'Email sent to ' + data.sent_to + '.';
+      var msg = data.smtp_skipped
+        ? 'Logged \u2014 email will be sent once SMTP is configured. (Addressed to: ' + data.sent_to + ')'
+        : 'Email sent to ' + data.sent_to;
+      okEl.textContent = msg;
       okEl.style.display = '';
       document.getElementById('em_body').value = '';
       setTimeout(function(){
         bootstrap.Modal.getOrCreateInstance(document.getElementById('emailModal')).hide();
-      }, 1800);
+      }, 2500);
     }
   })
   .catch(function(){

@@ -4158,19 +4158,20 @@ def queue_dismiss(cue_id: int):
 @app.post("/queue/send-email")
 @admin_required
 def queue_send_email():
-    job_id    = request.form.get("job_id", "").strip()
-    recipient = request.form.get("recipient", "client")
-    subject   = request.form.get("subject", "").strip()
-    body      = request.form.get("body", "").strip()
+    job_id       = request.form.get("job_id", "").strip()
+    recipient    = request.form.get("recipient", "client")
+    to_addresses = request.form.get("to_addresses", "").strip()
+    subject      = request.form.get("subject", "").strip()
+    body         = request.form.get("body", "").strip()
 
     if not job_id or not body:
         return jsonify({"ok": False, "error": "Job and message body are required."})
+    if not to_addresses:
+        return jsonify({"ok": False, "error": "Please enter at least one recipient email address."})
 
     conn = db()
     job = conn.execute("""
-        SELECT j.*, ag.email AS agent_email, ag.full_name AS agent_name,
-               (SELECT ce.email FROM contact_emails ce
-                WHERE ce.entity_type='client' AND ce.entity_id=j.client_id LIMIT 1) AS client_email
+        SELECT j.*, ag.email AS agent_email, ag.full_name AS agent_name
         FROM jobs j
         LEFT JOIN users ag ON ag.id = j.assigned_user_id
         WHERE j.id = ?
@@ -4180,20 +4181,15 @@ def queue_send_email():
     if not job:
         return jsonify({"ok": False, "error": "Job not found."})
 
-    to_list = []
-    label_parts = []
-    if recipient in ("client", "both") and job["client_email"]:
-        to_list.append(job["client_email"])
-        label_parts.append("Client")
-    if recipient in ("agent", "both") and job["agent_email"]:
-        to_list.append(job["agent_email"])
-        label_parts.append(f"Agent ({job['agent_name']})")
-
+    to_list = [e.strip() for e in to_addresses.split(",") if e.strip() and "@" in e.strip()]
     if not to_list:
-        return jsonify({"ok": False, "error": "No email address found for the selected recipient(s)."})
+        return jsonify({"ok": False, "error": "No valid email addresses provided."})
 
     if not subject:
-        subject = f"Job Update — {job['display_ref']}"
+        subject = f"Job Update \u2014 {job['display_ref']}"
+
+    recipient_label_map = {"client": "Client", "agent": "Agent", "both": "Client & Agent", "custom": "Custom"}
+    recipient_label = recipient_label_map.get(recipient, recipient)
 
     html_body = f"""<div style="font-family:sans-serif;max-width:600px">
 <p><strong>Job:</strong> {job['display_ref']}</p>
@@ -4202,15 +4198,23 @@ def queue_send_email():
 <p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
 </div>"""
 
-    try:
-        send_email(to_list, subject, body, html_body)
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)})
+    smtp_ok = bool(os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASS"))
+    smtp_skipped = False
+    if smtp_ok:
+        try:
+            send_email(to_list, subject, body, html_body)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"SMTP error: {exc}"})
+    else:
+        smtp_skipped = True
 
-    recipient_label = " & ".join(label_parts)
     mel_now = datetime.now(_melbourne)
     ts_str  = mel_now.strftime("%d/%m/%Y %H:%M")
-    note_txt = f"Email sent to {recipient_label} — {ts_str} — {session.get('user_name', 'Admin')}"
+    to_str  = ", ".join(to_list)
+    if smtp_skipped:
+        note_txt = f"Email queued (SMTP not yet configured) to {to_str} — {ts_str} — {session.get('user_name', 'Admin')}"
+    else:
+        note_txt = f"Email sent to {to_str} — {ts_str} — {session.get('user_name', 'Admin')}"
 
     conn2 = db()
     conn2.execute(
@@ -4221,7 +4225,7 @@ def queue_send_email():
     conn2.close()
 
     audit("job", int(job_id), "email_sent", note_txt)
-    return jsonify({"ok": True, "sent_to": recipient_label})
+    return jsonify({"ok": True, "sent_to": to_str, "smtp_skipped": smtp_skipped})
 
 
 # -------- Assignment board --------
