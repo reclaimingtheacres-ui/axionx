@@ -2163,6 +2163,10 @@ document.addEventListener('click', function(e) {
     setTimeout(function(){ document.getElementById('an_text').focus(); }, 350);
   };
 
+  if (new URLSearchParams(window.location.search).get('add_note') === '1') {
+    setTimeout(window.axOpenAddNote, 400);
+  }
+
   /* Save and Add: submit then reopen cleared modal */
   var saveAddBtn = document.getElementById('an_save_add');
   if (saveAddBtn) {
