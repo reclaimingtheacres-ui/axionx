@@ -84,10 +84,18 @@ No explicit user preferences were provided in the original `replit.md` file. The
     - Mobile: full-screen overlay (`#rlOverlay`) using `<details>` elements; footer has 3 buttons: Cancel, Save Draft, Submit.
     - **Save Draft**: saves fields to `repo_lock_records` with `status='Draft'`; shows amber banner, amber button; does NOT add interactions note.
     - **Submit**: validates (repo_date, agent_name, registration or description required); saves to `repo_lock_records` with `status='Submitted'`, creates `repo_lock_queue` entry (Pending), writes formatted note to `interactions` and `job_field_notes`; shows success panel with Next Steps.
-    - **Next Steps panel** (post-submit): links to VIR (`/jobs/<id>/repo-lock/<rec_id>/vir`) and Transport Instructions (`/jobs/<id>/repo-lock/<rec_id>/transport-instructions`) — placeholder templates, full implementation upcoming.
+    - **Next Steps panel** (post-submit): links to VIR (`/jobs/<id>/repo-lock/<rec_id>/vir`) and Transport Instructions (`/jobs/<id>/repo-lock/<rec_id>/transport-instructions`).
     - `_repo_lock_note(d)` helper builds a formatted plain-text summary of the entire Repo Lock record.
-    - Data: `repo_lock_records` (60+ fields, `status`, `submitted_at`), `repo_lock_queue` (tracks Pending/Reviewed/Processed, `submission_count`, reviewer fields).
-    - Routes: `GET /jobs/<job_id>/repo-lock/<item_id>` (JSON prefill + status), `POST .../save` (Draft), `POST .../submit` (Submitted + queue + note), `GET .../vir`, `GET .../transport-instructions`.
+    - Data: `repo_lock_records` (60+ fields, `status`, `submitted_at`, `agent_signature`, `customer_signature`, `tow_signature`, `agent_signed_at`, `customer_signed_at`, `tow_signed_at`), `repo_lock_queue` (tracks Pending/Reviewed/Processed, `submission_count`, reviewer fields).
+    - Routes: `GET /jobs/<job_id>/repo-lock/<item_id>` (JSON prefill + status), `POST .../save` (Draft), `POST .../submit` (Submitted + queue + note), `GET/POST .../vir`, `GET/POST .../transport-instructions`.
+
+**19b. Repo Lock PDF Workflow (VIR + Transport Instructions)**
+    - `pdf_gen.py`: ReportLab-based PDF generator for A4 documents. `generate_vir_pdf(data, agent_sig, customer_sig)` produces Vehicle Condition Report / Repossession Receipt; `generate_transport_pdf(data, agent_sig, tow_sig)` produces Transport Instructions / Tow Receipt.
+    - PDFs include: SWPI logo, company details header, blue section headers, alternating row backgrounds, full data from Repo Lock record + related tables, and signature boxes rendered from base64 canvas PNG data.
+    - `_rl_pdf_context(conn, rec, job_id)`: helper that joins `jobs`, `job_items`, `clients`, `customers`, `tow_operators`, `users` to build a complete data dict for PDF generation.
+    - **VIR page** (`templates/repo_lock_vir.html`): standalone signature capture page with data summary, agent (required) + customer (optional) canvas signature pads, clear buttons, touch support. POST generates and streams PDF as attachment.
+    - **Transport page** (`templates/repo_lock_transport.html`): standalone signature capture page with data summary, agent (required — reuses VIR sig if already captured) + tow operator (optional) canvas signature pads. POST generates and streams PDF as attachment.
+    - Signatures stored as base64 PNG in `repo_lock_records` (6 new columns). PDF filename uses registration number or SWPI ref.
 
 ## External Dependencies
 

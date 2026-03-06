@@ -751,8 +751,14 @@ def _migrate_update_builder():
     )
     """)
 
-    add_column_if_missing(cur, "repo_lock_records", "status",       "TEXT NOT NULL DEFAULT 'Draft'")
-    add_column_if_missing(cur, "repo_lock_records", "submitted_at", "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "status",           "TEXT NOT NULL DEFAULT 'Draft'")
+    add_column_if_missing(cur, "repo_lock_records", "submitted_at",     "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "agent_signature",  "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "customer_signature","TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "tow_signature",    "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "agent_signed_at",  "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "customer_signed_at","TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "tow_signed_at",    "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS repo_lock_queue (
@@ -4469,28 +4475,217 @@ def repo_lock_submit(job_id: int, item_id: int):
                     "queue_id": queue_id, "status": "Submitted"})
 
 
+def _rl_pdf_context(conn, rec, job_id):
+    """Build merged data dict for PDF generation from all related records."""
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    job = dict(job) if job else {}
+
+    item = {}
+    if rec.get("item_id"):
+        r = conn.execute("SELECT * FROM job_items WHERE id=?", (rec["item_id"],)).fetchone()
+        if r:
+            item = dict(r)
+
+    client = {}
+    if job.get("client_id"):
+        r = conn.execute("SELECT * FROM clients WHERE id=?", (job["client_id"],)).fetchone()
+        if r:
+            client = dict(r)
+
+    customer = {}
+    if job.get("customer_id"):
+        r = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone()
+        if r:
+            customer = dict(r)
+
+    tow_op = {}
+    if rec.get("tow_company_id"):
+        r = conn.execute("SELECT * FROM tow_operators WHERE id=?",
+                         (rec["tow_company_id"],)).fetchone()
+        if r:
+            tow_op = dict(r)
+
+    assigned_agent = ""
+    if job.get("assigned_user_id"):
+        r = conn.execute("SELECT full_name FROM users WHERE id=?",
+                         (job["assigned_user_id"],)).fetchone()
+        if r:
+            assigned_agent = r["full_name"]
+
+    cust_name = " ".join(filter(None, [
+        customer.get("first_name"), customer.get("last_name")
+    ])) or rec.get("customer_name") or ""
+
+    agent_name = (rec.get("agent_name") or assigned_agent
+                  or session.get("full_name") or "")
+
+    d = {}
+    d.update({k: (v if v else "") for k, v in rec.items()})
+    d.update({
+        "year":                 item.get("year") or "",
+        "make":                 item.get("make") or "",
+        "model":                item.get("model") or "",
+        "colour":               "",
+        "client_name":          rec.get("client_name") or client.get("name") or "",
+        "client_reference":     rec.get("client_reference") or job.get("client_job_number") or "",
+        "swpi_ref":             rec.get("swpi_ref") or job.get("internal_job_number") or "",
+        "finance_company":      rec.get("finance_company") or job.get("lender_name") or "",
+        "customer_name":        cust_name,
+        "account_number":       rec.get("account_number") or job.get("account_number") or "",
+        "repo_address":         rec.get("repo_address") or customer.get("address") or job.get("job_address") or "",
+        "deliver_to":           rec.get("deliver_to") or job.get("deliver_to") or "",
+        "agent_name":           agent_name,
+        "tow_company_name":     rec.get("tow_company_name") or tow_op.get("company_name") or "",
+        "tow_company_name_db":  tow_op.get("company_name") or "",
+        "tow_phone":            tow_op.get("phone") or tow_op.get("mobile") or "",
+        "client_email":         client.get("email") or "",
+        "item_make":            item.get("make") or "",
+        "item_model":           item.get("model") or "",
+        "item_year":            item.get("year") or "",
+    })
+    return d, agent_name, client, tow_op
+
+
 @app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/vir")
 @login_required
 def repo_lock_vir(job_id: int, rec_id: int):
     conn = db()
-    rec = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
-                       (rec_id, job_id)).fetchone()
-    conn.close()
-    if not rec:
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
         return "Not found", 404
-    return render_template("repo_lock_vir.html", rec=dict(rec), job_id=job_id)
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template("repo_lock_vir.html",
+                           rec=rec, job_id=job_id,
+                           agent_name=agent_name,
+                           item_year=d.get("year",""), item_make=d.get("make",""),
+                           item_model=d.get("model",""))
+
+
+@app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/vir")
+@login_required
+def repo_lock_vir_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+
+    agent_sig    = request.form.get("agent_sig", "").strip() or None
+    customer_sig = request.form.get("customer_sig", "").strip() or None
+
+    if not agent_sig:
+        flash("Agent signature is required.", "error")
+        conn.close()
+        return redirect(url_for("repo_lock_vir", job_id=job_id, rec_id=rec_id))
+
+    ts = now_ts()
+    uid = session.get("user_id")
+    conn.execute("""UPDATE repo_lock_records
+                    SET agent_signature=?, customer_signature=?,
+                        agent_signed_at=?, customer_signed_at=?, updated_at=?
+                    WHERE id=?""",
+                 (agent_sig, customer_sig or rec.get("customer_signature"),
+                  ts, (ts if customer_sig else rec.get("customer_signed_at")), ts, rec_id))
+    conn.commit()
+    rec["agent_signature"]   = agent_sig
+    rec["customer_signature"] = customer_sig or rec.get("customer_signature")
+
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    pdf_bytes = _pg.generate_vir_pdf(d, agent_sig=agent_sig,
+                                     customer_sig=rec.get("customer_signature"))
+    safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    filename  = f"VIR_{safe_ref}.pdf"
+
+    return send_file(io.BytesIO(pdf_bytes),
+                     mimetype="application/pdf",
+                     as_attachment=True,
+                     download_name=filename)
 
 
 @app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/transport-instructions")
 @login_required
 def repo_lock_transport(job_id: int, rec_id: int):
     conn = db()
-    rec = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
-                       (rec_id, job_id)).fetchone()
-    conn.close()
-    if not rec:
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
         return "Not found", 404
-    return render_template("repo_lock_transport.html", rec=dict(rec), job_id=job_id)
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template("repo_lock_transport.html",
+                           rec=rec, job_id=job_id,
+                           agent_name=agent_name,
+                           item_make=d.get("make",""), item_model=d.get("model",""),
+                           tow_company_name_db=d.get("tow_company_name_db",""),
+                           tow_phone=d.get("tow_phone",""),
+                           client_name=d.get("client_name",""),
+                           client_email=d.get("client_email",""))
+
+
+@app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/transport-instructions")
+@login_required
+def repo_lock_transport_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+
+    agent_sig = request.form.get("agent_sig", "").strip() or None
+    tow_sig   = request.form.get("tow_sig",   "").strip() or None
+
+    existing_agent_sig = rec.get("agent_signature")
+
+    if not agent_sig and not existing_agent_sig:
+        flash("Agent signature is required.", "error")
+        conn.close()
+        return redirect(url_for("repo_lock_transport", job_id=job_id, rec_id=rec_id))
+
+    effective_agent_sig = agent_sig or existing_agent_sig
+    ts  = now_ts()
+    conn.execute("""UPDATE repo_lock_records
+                    SET agent_signature=?, tow_signature=?,
+                        agent_signed_at=?, tow_signed_at=?, updated_at=?
+                    WHERE id=?""",
+                 (effective_agent_sig, tow_sig or rec.get("tow_signature"),
+                  ts if agent_sig else rec.get("agent_signed_at"),
+                  ts if tow_sig else rec.get("tow_signed_at"),
+                  ts, rec_id))
+    conn.commit()
+    rec["agent_signature"] = effective_agent_sig
+    rec["tow_signature"]   = tow_sig or rec.get("tow_signature")
+
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    pdf_bytes = _pg.generate_transport_pdf(d,
+                                           agent_sig=effective_agent_sig,
+                                           tow_sig=rec.get("tow_signature"))
+    safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    filename  = f"TransportInstructions_{safe_ref}.pdf"
+
+    return send_file(io.BytesIO(pdf_bytes),
+                     mimetype="application/pdf",
+                     as_attachment=True,
+                     download_name=filename)
 
 
 # -------- Field Notes --------

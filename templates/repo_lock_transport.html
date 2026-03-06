@@ -1,38 +1,210 @@
 {% extends "layout.html" %}
-{% block title %}Transport Instructions{% endblock %}
+{% block title %}Transport Instructions — {{ rec.registration or rec.description or ('Repo Lock #' ~ rec.id) }}{% endblock %}
+
 {% block content %}
-<div class="container py-4" style="max-width:700px;">
-  <div class="mb-3">
-    <a href="/jobs/{{ job_id }}" class="btn btn-outline-secondary btn-sm">&larr; Back to Job</a>
-  </div>
-  <div class="card">
-    <div class="card-header" style="background:#2563eb;color:#fff;font-weight:700;">
-      Transport Instructions
+<div style="max-width:860px;margin:0 auto;padding:20px 16px 40px;">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <a href="/jobs/{{ job_id }}" style="color:var(--muted,#6b7280);font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
+      <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Transport Instructions / Tow Receipt</h2>
+      <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">{{ rec.registration or rec.description or ('Repo Lock #' ~ rec.id) }} &mdash; {{ rec.repo_date or '' }}</div>
     </div>
-    <div class="card-body">
-      <p class="text-muted" style="font-size:.85rem;">
-        Transport instructions for Repo Lock record #{{ rec.id }} — asset: {{ rec.description or rec.registration or '—' }}
-      </p>
-      <div class="alert alert-info">This document will be available in a future release.</div>
-      <dl class="row" style="font-size:.88rem;">
-        {% for label, val in [
-          ("Deliver To", rec.deliver_to),
-          ("Delivery Address", rec.delivery_address),
-          ("Expected Delivery", rec.expected_delivery_date),
-          ("Tow Company", rec.tow_company_name),
-          ("Tow Costs", rec.tow_costs),
-          ("Asset", rec.description or rec.registration),
-          ("VIN", rec.vin),
-          ("Client", rec.client_name),
-          ("Finance", rec.finance_company),
-        ] %}
-        {% if val %}
-        <dt class="col-sm-4" style="color:#6b7280;font-weight:600;">{{ label }}</dt>
-        <dd class="col-sm-8">{{ val }}</dd>
-        {% endif %}
-        {% endfor %}
-      </dl>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/vir"
+         style="padding:8px 14px;border:1.5px solid #2563eb;color:#2563eb;border-radius:8px;text-decoration:none;font-size:.82rem;font-weight:600;">
+        &#x2190; VIR
+      </a>
     </div>
   </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for cat, msg in messages %}
+    <div class="alert alert-{{ 'danger' if cat == 'error' else cat }} py-2 px-3 mb-3" style="font-size:.84rem;">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  {# ── Data summary ── #}
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+    <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">TRANSPORT INSTRUCTIONS / TOW RECEIPT — DATA PREVIEW</div>
+
+    {% macro field_row(label, value) %}
+    <div style="display:flex;border-bottom:1px solid #f3f4f6;padding:6px 16px;font-size:.82rem;">
+      <span style="width:200px;flex-shrink:0;color:#6b7280;font-weight:600;">{{ label }}</span>
+      <span style="color:#111;">{{ value or '—' }}</span>
+    </div>
+    {% endmacro %}
+    {% macro section(title) %}
+    <div style="background:#f3f4f6;padding:6px 16px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">{{ title }}</div>
+    {% endmacro %}
+
+    {{ section('Job Details') }}
+    {{ field_row('SWPI Reference', rec.swpi_ref) }}
+    {{ field_row('Finance Company', rec.finance_company) }}
+    {{ field_row('Date', rec.repo_date) }}
+    {{ field_row('Customer Name', rec.customer_name) }}
+    {{ field_row('Repossession Address', rec.repo_address) }}
+
+    {{ section('Security Details') }}
+    {{ field_row('Make / Model', [item_make, item_model] | select | join(' ')) }}
+    {{ field_row('Registration', rec.registration) }}
+    {{ field_row('VIN / Chassis', rec.vin) }}
+
+    {{ section('Tow Contractor') }}
+    {{ field_row('Tow Company', rec.tow_company_name or tow_company_name_db) }}
+    {{ field_row('Phone', tow_phone) }}
+    {{ field_row('Tow Costs', rec.tow_costs or 'TBA') }}
+
+    {{ section('Delivery Instructions') }}
+    {{ field_row('Deliver To', rec.deliver_to) }}
+    {{ field_row('Delivery Address', rec.delivery_address) }}
+    {{ field_row('Send Invoice Direct To', client_name ~ (' — ' ~ client_email if client_email else '')) }}
+    {{ field_row('Reference / Job Number', (rec.client_reference ~ ' / ' ~ rec.registration) if rec.client_reference and rec.registration else (rec.client_reference or rec.registration or rec.swpi_ref)) }}
+
+    {{ section('Agent') }}
+    {{ field_row('Mercantile Agent', agent_name) }}
+  </div>
+
+  {# ── Signature form ── #}
+  <form id="transportSignForm" method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/transport-instructions">
+    <input type="hidden" name="agent_sig" id="agentSigData">
+    <input type="hidden" name="tow_sig"   id="towSigData">
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+      <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">SIGNATURES</div>
+
+      {# Agent Signature — REQUIRED #}
+      <div style="padding:16px;border-bottom:1px solid #f3f4f6;">
+        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:6px;">
+          Agent Signature: {{ agent_name }} <span style="color:#dc2626;">*</span>
+        </div>
+        <div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Required before generating PDF</div>
+        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
+          <canvas id="agentCanvas" width="480" height="120"
+                  style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+          <button type="button" onclick="clearCanvas('agentCanvas','agentSigData','agentSigned')"
+                  style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">
+            Clear
+          </button>
+        </div>
+        <div id="agentSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Agent signature is required.</div>
+        <input type="hidden" id="agentSigned" value="0">
+      </div>
+
+      {# If agent has already signed VIR, show notice #}
+      {% if rec.agent_signature %}
+      <div style="padding:10px 16px;background:#f0fdf4;border-bottom:1px solid #bbf7d0;font-size:.8rem;color:#166534;">
+        &#x2713; Agent signature already captured from VIR — draw a new one above to override, or leave blank to reuse.
+      </div>
+      {% endif %}
+
+      {# Tow Operator Signature — OPTIONAL #}
+      <div style="padding:16px;">
+        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:6px;">
+          Tow Operator Signature <span style="font-size:.75rem;font-weight:400;color:#6b7280;">(optional)</span>
+        </div>
+        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
+          <canvas id="towCanvas" width="480" height="120"
+                  style="border:2px solid #e5e7eb;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+          <button type="button" onclick="clearCanvas('towCanvas','towSigData','towSigned')"
+                  style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">
+            Clear
+          </button>
+        </div>
+        <input type="hidden" id="towSigned" value="0">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;">
+      <a href="/jobs/{{ job_id }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
+      <button type="submit" id="genTransportBtn"
+              style="padding:11px 24px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;min-width:200px;">
+        <span id="genTransportTxt">Generate &amp; Download PDF</span>
+      </button>
+    </div>
+
+  </form>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+  var _drawing = {};
+  var _hasSig  = {};
+
+  function _pos(canvas, e) {
+    var r  = canvas.getBoundingClientRect();
+    var sx = canvas.width  / r.width;
+    var sy = canvas.height / r.height;
+    var src = e.touches ? e.touches[0] : e;
+    return { x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy };
+  }
+
+  function _initCanvas(canvasId, dataId, signedId) {
+    var canvas = document.getElementById(canvasId);
+    var ctx    = canvas.getContext('2d');
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    _drawing[canvasId] = false;
+
+    function start(e) {
+      e.preventDefault();
+      _drawing[canvasId] = true;
+      var p = _pos(canvas, e);
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+    }
+    function move(e) {
+      if (!_drawing[canvasId]) return;
+      e.preventDefault();
+      var p = _pos(canvas, e);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      document.getElementById(signedId).value = '1';
+      document.getElementById(dataId).value = canvas.toDataURL('image/png');
+    }
+    function end() { _drawing[canvasId] = false; }
+
+    canvas.addEventListener('mousedown',  start);
+    canvas.addEventListener('mousemove',  move);
+    canvas.addEventListener('mouseup',    end);
+    canvas.addEventListener('mouseleave', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove',  move,  { passive: false });
+    canvas.addEventListener('touchend',   end);
+  }
+
+  window.clearCanvas = function(canvasId, dataId, signedId) {
+    var canvas = document.getElementById(canvasId);
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById(signedId).value = '0';
+    document.getElementById(dataId).value   = '';
+  };
+
+  _initCanvas('agentCanvas', 'agentSigData', 'agentSigned');
+  _initCanvas('towCanvas',   'towSigData',   'towSigned');
+
+  document.getElementById('transportSignForm').addEventListener('submit', function(e) {
+    var agentSigned  = document.getElementById('agentSigned').value;
+    var existingSig  = {{ 'true' if rec.agent_signature else 'false' }};
+
+    if (agentSigned !== '1' && !existingSig) {
+      e.preventDefault();
+      document.getElementById('agentSigPrompt').style.display = 'block';
+      document.getElementById('agentCanvas').style.borderColor = '#dc2626';
+      document.getElementById('agentCanvas').scrollIntoView({ behavior:'smooth', block:'center' });
+      return;
+    }
+    document.getElementById('agentSigPrompt').style.display = 'none';
+    var btn = document.getElementById('genTransportBtn');
+    btn.disabled = true;
+    document.getElementById('genTransportTxt').textContent = 'Generating PDF\u2026';
+  });
+})();
+</script>
 {% endblock %}

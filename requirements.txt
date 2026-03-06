@@ -11,3 +11,4 @@ Pillow
 cryptography
 httpx[http2]
 PyJWT
+reportlab
