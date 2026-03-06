@@ -1,0 +1,79 @@
+{% extends "mobile/base.html" %}
+{% block title %}Alerts — AxionX{% endblock %}
+{% block header_title %}LPR Alerts{% endblock %}
+
+{% block header_right %}
+<a href="{{ url_for('m_lpr') }}"
+   style="font-size:.72rem;font-weight:600;color:var(--accent);padding:5px 10px;
+          background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+          white-space:nowrap;text-decoration:none;">
+  ← Lookup
+</a>
+{% endblock %}
+
+{% block content %}
+
+{% if unread > 0 %}
+<div style="margin:0 0 12px 0;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;
+            border-radius:12px;font-size:.82rem;color:var(--accent);font-weight:600;">
+  {{ unread }} unread alert{{ 's' if unread != 1 else '' }} — marked as read on open
+</div>
+{% endif %}
+
+{% if not rows %}
+<div class="m-card" style="text-align:center;padding:32px 16px;color:var(--muted);">
+  <div style="font-size:2rem;margin-bottom:8px;">🔔</div>
+  <div style="font-weight:600;margin-bottom:4px;">No alerts yet</div>
+  <div style="font-size:.82rem;">Office reviews, follow-up assignments, and watchlist hits will appear here.</div>
+</div>
+{% else %}
+<div style="display:flex;flex-direction:column;gap:10px;">
+  {% for n in rows %}
+  {% set is_urgent   = n.notification_type in ('proximity_alert',) or
+                       (n.data_json and 'urgent' in n.data_json) %}
+  {% set is_followup = n.notification_type == 'followup_assigned' %}
+  {% set is_reviewed = n.notification_type == 'sighting_reviewed' %}
+  {% set was_read    = n.read_at is not none %}
+
+  <div class="m-card" style="padding:14px 16px;
+    {% if not was_read %}border-left:3px solid var(--accent);{% endif %}
+    {% if is_urgent %}border-left:3px solid var(--red);{% endif %}
+    {% if is_followup %}border-left:3px solid #7c3aed;{% endif %}
+    {% if is_reviewed %}border-left:3px solid var(--green);{% endif %}
+  ">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:.9rem;margin-bottom:3px;
+          color:{% if is_urgent %}var(--red){% elif is_followup %}#7c3aed{% elif is_reviewed %}var(--green){% else %}var(--text){% endif %};">
+          {% if n.notification_type == 'watchlist_lookup' %}⚑ {% endif %}
+          {% if n.notification_type == 'sighting_alert' %}⬆ {% endif %}
+          {% if n.notification_type == 'proximity_alert' %}📍 {% endif %}
+          {% if is_followup %}📋 {% endif %}
+          {% if is_reviewed %}✓ {% endif %}
+          {{ n.title }}
+        </div>
+        <div style="font-size:.82rem;color:var(--muted);">{{ n.body }}</div>
+      </div>
+      <div style="font-size:.7rem;color:var(--muted);white-space:nowrap;padding-top:2px;">
+        {{ n.created_at[11:16] if n.created_at else '' }}<br>
+        {{ n.created_at[:10] if n.created_at else '' }}
+      </div>
+    </div>
+
+    {% if n.notification_type == 'followup_assigned' and n.data_json %}
+    {% set d = n.data_json | tojson | safe %}
+    <div style="margin-top:8px;">
+      <a href="{{ url_for('m_lpr_history') }}"
+         style="display:inline-block;font-size:.76rem;font-weight:600;
+                color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;
+                border-radius:8px;padding:4px 10px;text-decoration:none;">
+        View History →
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

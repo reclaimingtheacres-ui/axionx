@@ -6925,6 +6925,14 @@ def m_lpr():
         search_method = (request.form.get("method") or "manual").strip()
         result        = lookup_registration_for_lpr(uid, role, username, reg_input)
         _log_lpr_search(uid, role, username, reg_input, result, search_method=search_method)
+        if result.get("watchlist_hit") and result.get("watchlist_priority") in ("urgent", "high"):
+            _notify_admins(
+                "Watchlist Plate Detected",
+                "An LPR scan matched a watchlist entry.",
+                "watchlist_lookup",
+                {"watchlist_priority": result.get("watchlist_priority")},
+                exclude_uid=uid,
+            )
         return render_template("mobile/lpr_result.html", result=result, search_method=search_method)
 
     plate_param = (request.args.get("plate") or "").strip()
@@ -6944,6 +6952,14 @@ def m_api_lpr_lookup():
 
     result = lookup_registration_for_lpr(uid, role, username, reg_input)
     _log_lpr_search(uid, role, username, reg_input, result, search_method=search_method)
+    if result.get("watchlist_hit") and result.get("watchlist_priority") in ("urgent", "high"):
+        _notify_admins(
+            "Watchlist Plate Detected",
+            "An LPR scan matched a watchlist entry.",
+            "watchlist_lookup",
+            {"watchlist_priority": result.get("watchlist_priority")},
+            exclude_uid=uid,
+        )
     return jsonify(result), 200
 
 
@@ -7026,10 +7042,36 @@ def m_api_lpr_sighting_save():
           float(lng) if lng is not None else None,
           notes, escalated, watchlist_h))
     sighting_id = cur.lastrowid
+    # proximity check before close
+    prox_hits = []
+    if lat is not None and lng is not None and watchlist_h:
+        prox_hits = _proximity_check(float(lat), float(lng), conn)
     conn.commit()
     conn.close()
 
     _log_audit(uid, "save", "lpr_sighting", sighting_id)
+
+    if watchlist_h or escalated:
+        _notify_admins(
+            "LPR Sighting Requires Review",
+            "A sighting has been flagged that requires office attention.",
+            "sighting_alert",
+            {"sighting_id": sighting_id,
+             "watchlist_hit": bool(watchlist_h),
+             "escalated": bool(escalated)},
+            exclude_uid=uid,
+        )
+    for ph in prox_hits:
+        rule = ph["rule"]
+        _notify_admins(
+            "Proximity Zone Alert",
+            f"LPR sighting inside zone \"{rule['name']}\" ({ph['distance_m']}m from centre).",
+            "proximity_alert",
+            {"sighting_id": sighting_id,
+             "rule_id": rule["id"],
+             "rule_name": rule["name"]},
+            exclude_uid=uid,
+        )
 
     return jsonify({"ok": True, "sighting_id": sighting_id}), 200
 
@@ -7112,8 +7154,19 @@ def admin_lpr_sighting_review(sighting_id: int):
         WHERE id=?
     """, (reviewer_id, now_ts(), office_note, follow_up_status, sighting_id))
     conn.commit()
+    sighting = conn.execute(
+        "SELECT user_id FROM lpr_sightings WHERE id=?", (sighting_id,)
+    ).fetchone()
     conn.close()
     _log_audit(reviewer_id, "review", "lpr_sighting", sighting_id)
+    if sighting and sighting["user_id"] != reviewer_id:
+        _notify_user(
+            sighting["user_id"],
+            "Sighting Reviewed by Office",
+            "The office has reviewed your LPR sighting.",
+            "sighting_reviewed",
+            {"sighting_id": sighting_id, "follow_up_status": follow_up_status},
+        )
     return redirect(request.referrer or url_for("admin_lpr_sightings"))
 
 
@@ -7225,6 +7278,408 @@ def admin_lpr_watchlist_toggle(entry_id: int):
         conn.commit()
     conn.close()
     return redirect(request.referrer or url_for("admin_lpr_watchlist"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 7: Push Notifications · Follow-up Dispatch · Proximity Rules
+# ─────────────────────────────────────────────────────────────────────────────
+
+import math as _math
+import time as _time
+
+
+# ── Table helpers ──────────────────────────────────────────────────────────────
+
+def _lpr_device_tokens_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_device_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            platform TEXT DEFAULT 'ios',
+            token TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, token)
+        )
+    """)
+    cur = conn.cursor()
+    add_column_if_missing(cur, "lpr_device_tokens", "platform", "TEXT DEFAULT 'ios'")
+
+
+def _lpr_notifications_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            notification_type TEXT,
+            data_json TEXT,
+            read_at TEXT
+        )
+    """)
+
+
+def _lpr_followups_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_followups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            created_by INTEGER NOT NULL,
+            sighting_id INTEGER NOT NULL,
+            matched_job_id INTEGER,
+            assigned_user_id INTEGER,
+            priority TEXT DEFAULT 'normal',
+            action_type TEXT NOT NULL,
+            status TEXT DEFAULT 'open',
+            due_at TEXT,
+            office_note TEXT
+        )
+    """)
+    cur = conn.cursor()
+    add_column_if_missing(cur, "lpr_followups", "status", "TEXT DEFAULT 'open'")
+
+
+def _lpr_proximity_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_proximity_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            radius_m REAL NOT NULL DEFAULT 500,
+            active INTEGER DEFAULT 1,
+            priority TEXT DEFAULT 'normal',
+            created_by INTEGER,
+            created_at TEXT NOT NULL
+        )
+    """)
+    cur = conn.cursor()
+    add_column_if_missing(cur, "lpr_proximity_rules", "priority", "TEXT DEFAULT 'normal'")
+
+
+# ── Haversine distance + proximity check ──────────────────────────────────────
+
+def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    R = 6_371_000.0
+    phi1, phi2 = _math.radians(lat1), _math.radians(lat2)
+    dphi = _math.radians(lat2 - lat1)
+    dlam = _math.radians(lng2 - lng1)
+    a = (_math.sin(dphi / 2) ** 2
+         + _math.cos(phi1) * _math.cos(phi2) * _math.sin(dlam / 2) ** 2)
+    return 2 * R * _math.asin(_math.sqrt(a))
+
+
+def _proximity_check(lat: float, lng: float, conn) -> list:
+    _lpr_proximity_ensure(conn)
+    rules = conn.execute(
+        "SELECT * FROM lpr_proximity_rules WHERE active=1"
+    ).fetchall()
+    triggered = []
+    for rule in rules:
+        dist = _haversine_m(lat, lng, rule["latitude"], rule["longitude"])
+        if dist <= rule["radius_m"]:
+            triggered.append({"rule": rule, "distance_m": round(dist)})
+    return triggered
+
+
+# ── APNs push delivery ─────────────────────────────────────────────────────────
+
+def _apns_send(device_token: str, title: str, body: str, data: dict = None) -> bool:
+    try:
+        import jwt as _jwt
+        import httpx as _httpx
+    except ImportError:
+        return False
+
+    key_id      = os.environ.get("APNS_KEY_ID")
+    team_id     = os.environ.get("APNS_TEAM_ID")
+    bundle_id   = os.environ.get("APNS_BUNDLE_ID", "com.axionx.ios")
+    private_key = os.environ.get("APNS_PRIVATE_KEY", "").replace("\\n", "\n")
+    is_sandbox  = os.environ.get("APNS_SANDBOX", "1") == "1"
+
+    if not all([key_id, team_id, private_key]):
+        return False
+
+    try:
+        apns_token = _jwt.encode(
+            {"iss": team_id, "iat": int(_time.time())},
+            private_key,
+            algorithm="ES256",
+            headers={"kid": key_id},
+        )
+        host    = "api.sandbox.push.apple.com" if is_sandbox else "api.push.apple.com"
+        payload = {"aps": {"alert": {"title": title, "body": body}, "sound": "default"}}
+        if data:
+            payload.update(data)
+        with _httpx.Client(http2=True, timeout=10) as client:
+            resp = client.post(
+                f"https://{host}/3/device/{device_token}",
+                json=payload,
+                headers={
+                    "authorization": f"bearer {apns_token}",
+                    "apns-topic":    bundle_id,
+                    "apns-push-type": "alert",
+                    "apns-priority":  "10",
+                },
+            )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+# ── In-app notification helpers ────────────────────────────────────────────────
+
+def _notify_user(user_id: int, title: str, body: str, notif_type: str,
+                 data: dict = None):
+    try:
+        conn = db()
+        _lpr_notifications_ensure(conn)
+        _lpr_device_tokens_ensure(conn)
+        conn.execute("""
+            INSERT INTO lpr_notifications
+                (created_at, user_id, title, body, notification_type, data_json)
+            VALUES (?,?,?,?,?,?)
+        """, (now_ts(), user_id, title, body, notif_type,
+              json.dumps(data) if data else None))
+        conn.commit()
+        tokens = conn.execute(
+            "SELECT token FROM lpr_device_tokens WHERE user_id=?", (user_id,)
+        ).fetchall()
+        conn.close()
+        for tok in tokens:
+            _apns_send(tok["token"], title, body, data)
+    except Exception:
+        pass
+
+
+def _notify_admins(title: str, body: str, notif_type: str, data: dict = None,
+                   exclude_uid: int = None):
+    try:
+        conn = db()
+        q    = "SELECT id FROM users WHERE role IN ('admin','both') AND active=1"
+        args = []
+        if exclude_uid:
+            q += " AND id != ?"
+            args.append(exclude_uid)
+        admins = conn.execute(q, args).fetchall()
+        conn.close()
+        for admin in admins:
+            _notify_user(admin["id"], title, body, notif_type, data)
+    except Exception:
+        pass
+
+
+# ── Device token registration ──────────────────────────────────────────────────
+
+@app.post("/m/api/device/register")
+@mobile_login_required
+def m_api_device_register():
+    uid      = session.get("user_id")
+    data     = request.get_json(silent=True) or {}
+    token    = (data.get("token") or "").strip()
+    platform = (data.get("platform") or "ios").strip()
+    if not token:
+        return jsonify({"ok": False, "error": "Missing token"}), 400
+    conn = db()
+    _lpr_device_tokens_ensure(conn)
+    conn.execute("""
+        INSERT INTO lpr_device_tokens (user_id, platform, token, created_at, updated_at)
+        VALUES (?,?,?,?,?)
+        ON CONFLICT(user_id, token) DO UPDATE SET updated_at=excluded.updated_at
+    """, (uid, platform, token, now_ts(), now_ts()))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+# ── Agent notification feed (mobile) ──────────────────────────────────────────
+
+@app.get("/m/lpr/notifications")
+@mobile_login_required
+def m_lpr_notifications():
+    uid  = session.get("user_id")
+    conn = db()
+    _lpr_notifications_ensure(conn)
+    rows = conn.execute("""
+        SELECT * FROM lpr_notifications
+        WHERE user_id=?
+        ORDER BY created_at DESC
+        LIMIT 60
+    """, (uid,)).fetchall()
+    unread = conn.execute("""
+        SELECT COUNT(*) AS n FROM lpr_notifications
+        WHERE user_id=? AND read_at IS NULL
+    """, (uid,)).fetchone()["n"]
+    conn.execute(
+        "UPDATE lpr_notifications SET read_at=? WHERE user_id=? AND read_at IS NULL",
+        (now_ts(), uid)
+    )
+    conn.commit()
+    conn.close()
+    return render_template("mobile/lpr_notifications.html", rows=rows, unread=unread)
+
+
+@app.post("/m/api/lpr/notifications/read")
+@mobile_login_required
+def m_api_lpr_notifications_read():
+    uid  = session.get("user_id")
+    conn = db()
+    _lpr_notifications_ensure(conn)
+    conn.execute(
+        "UPDATE lpr_notifications SET read_at=? WHERE user_id=? AND read_at IS NULL",
+        (now_ts(), uid)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+@app.get("/m/api/lpr/notifications/unread-count")
+@mobile_login_required
+def m_api_lpr_notifications_count():
+    uid  = session.get("user_id")
+    conn = db()
+    _lpr_notifications_ensure(conn)
+    n = conn.execute(
+        "SELECT COUNT(*) AS n FROM lpr_notifications WHERE user_id=? AND read_at IS NULL",
+        (uid,)
+    ).fetchone()["n"]
+    conn.close()
+    return jsonify({"count": n}), 200
+
+
+# ── Proximity rules (admin) ────────────────────────────────────────────────────
+
+@app.get("/admin/lpr-proximity")
+@admin_required
+def admin_lpr_proximity():
+    conn     = db()
+    _lpr_proximity_ensure(conn)
+    f_active = request.args.get("active", "1")
+    where    = (
+        "WHERE p.active=1" if f_active == "1"
+        else ("WHERE p.active=0" if f_active == "0" else "")
+    )
+    rows = conn.execute(f"""
+        SELECT p.*, u.full_name AS creator_name
+        FROM lpr_proximity_rules p
+        LEFT JOIN users u ON u.id = p.created_by
+        {where}
+        ORDER BY p.created_at DESC
+    """).fetchall()
+    conn.close()
+    return render_template("lpr_proximity.html", rows=rows, f_active=f_active)
+
+
+@app.post("/admin/lpr-proximity/add")
+@admin_required
+def admin_lpr_proximity_add():
+    uid  = session.get("user_id")
+    name = (request.form.get("name") or "").strip()
+    try:
+        lat = float(request.form.get("latitude", ""))
+        lng = float(request.form.get("longitude", ""))
+        rad = float(request.form.get("radius_m", "500"))
+    except (ValueError, TypeError):
+        flash("Invalid coordinates or radius.", "danger")
+        return redirect(url_for("admin_lpr_proximity"))
+    priority = (request.form.get("priority") or "normal").strip()
+    if not name:
+        flash("Zone name is required.", "danger")
+        return redirect(url_for("admin_lpr_proximity"))
+    conn = db()
+    _lpr_proximity_ensure(conn)
+    conn.execute("""
+        INSERT INTO lpr_proximity_rules
+            (name, latitude, longitude, radius_m, active, priority, created_by, created_at)
+        VALUES (?,?,?,?,1,?,?,?)
+    """, (name, lat, lng, rad, priority, uid, now_ts()))
+    conn.commit()
+    conn.close()
+    flash(f"Proximity zone \"{name}\" created.", "success")
+    return redirect(url_for("admin_lpr_proximity"))
+
+
+@app.post("/admin/lpr-proximity/<int:rule_id>/toggle")
+@admin_required
+def admin_lpr_proximity_toggle(rule_id: int):
+    conn    = db()
+    _lpr_proximity_ensure(conn)
+    current = conn.execute(
+        "SELECT active FROM lpr_proximity_rules WHERE id=?", (rule_id,)
+    ).fetchone()
+    if current:
+        conn.execute(
+            "UPDATE lpr_proximity_rules SET active=? WHERE id=?",
+            (0 if current["active"] else 1, rule_id)
+        )
+        conn.commit()
+    conn.close()
+    return redirect(request.referrer or url_for("admin_lpr_proximity"))
+
+
+# ── Follow-up dispatch (admin) ─────────────────────────────────────────────────
+
+_FOLLOWUP_LABELS = {
+    "investigate":   "Investigate Vehicle",
+    "phone_contact": "Phone Contact Required",
+    "re_attendance": "Re-Attendance Required",
+    "dispatch":      "Dispatch to Location",
+    "close":         "Close — No Action",
+}
+
+
+@app.post("/admin/lpr-sightings/<int:sighting_id>/followup")
+@admin_required
+def admin_lpr_sighting_followup(sighting_id: int):
+    creator_id       = session.get("user_id")
+    action_type      = (request.form.get("action_type") or "").strip()
+    assigned_user_id = request.form.get("assigned_user_id") or None
+    priority         = (request.form.get("priority") or "normal").strip()
+    due_at           = (request.form.get("due_at") or "").strip() or None
+    office_note      = (request.form.get("office_note") or "").strip() or None
+    if not action_type:
+        flash("Action type is required.", "danger")
+        return redirect(request.referrer or url_for("admin_lpr_sightings"))
+
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    _lpr_followups_ensure(conn)
+    sighting = conn.execute(
+        "SELECT user_id, matched_job_id FROM lpr_sightings WHERE id=?",
+        (sighting_id,)
+    ).fetchone()
+    if not sighting:
+        conn.close()
+        flash("Sighting not found.", "danger")
+        return redirect(url_for("admin_lpr_sightings"))
+
+    assigned_uid = int(assigned_user_id) if assigned_user_id else None
+    conn.execute("""
+        INSERT INTO lpr_followups
+            (created_at, created_by, sighting_id, matched_job_id,
+             assigned_user_id, priority, action_type, status, due_at, office_note)
+        VALUES (?,?,?,?,?,?,?,'open',?,?)
+    """, (now_ts(), creator_id, sighting_id, sighting["matched_job_id"],
+          assigned_uid, priority, action_type, due_at, office_note))
+    conn.commit()
+    conn.close()
+    _log_audit(creator_id, "followup_create", "lpr_sighting", sighting_id)
+
+    if assigned_uid and assigned_uid != creator_id:
+        label = _FOLLOWUP_LABELS.get(action_type, action_type.replace("_", " ").title())
+        _notify_user(
+            assigned_uid,
+            "LPR Follow-up Assigned",
+            f"Action required: {label}",
+            "followup_assigned",
+            {"sighting_id": sighting_id, "action_type": action_type, "priority": priority},
+        )
+
+    flash("Follow-up created.", "success")
+    return redirect(request.referrer or url_for("admin_lpr_sightings"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

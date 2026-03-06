@@ -4,11 +4,21 @@
 {% block header_title %}Plate Lookup{% endblock %}
 
 {% block header_right %}
-<a href="{{ url_for('m_lpr_history') }}"
-   style="font-size:.72rem;font-weight:600;color:var(--accent);padding:5px 10px;
-          background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;white-space:nowrap;text-decoration:none;">
-  History
-</a>
+<div style="display:flex;gap:6px;align-items:center;">
+  <a href="{{ url_for('m_lpr_history') }}"
+     style="font-size:.72rem;font-weight:600;color:var(--accent);padding:5px 10px;
+            background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+            white-space:nowrap;text-decoration:none;">
+    History
+  </a>
+  <a href="{{ url_for('m_lpr_notifications') }}"
+     id="notifLink"
+     style="font-size:.72rem;font-weight:600;color:#7c3aed;padding:5px 10px;
+            background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;
+            white-space:nowrap;text-decoration:none;">
+    Alerts
+  </a>
+</div>
 {% endblock %}
 
 {% block content %}

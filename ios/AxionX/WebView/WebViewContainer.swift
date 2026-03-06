@@ -107,6 +107,17 @@ struct WebViewContainer: View {
                 }
             )
         }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .axionOpenNotifications)
+        ) { _ in
+            var comps    = URLComponents()
+            comps.scheme = AppConfig.entryURL.scheme
+            comps.host   = AppConfig.entryURL.host
+            comps.path   = "/m/lpr/notifications"
+            if let url = comps.url {
+                store.webView.load(URLRequest(url: url))
+            }
+        }
     }
 
     // MARK: - Private helpers

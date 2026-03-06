@@ -246,3 +246,40 @@ Admin-only full-page map view combining job pins and live agent location trackin
 - `agent_locations` table: `user_id UNIQUE, lat, lng, accuracy, updated_at`
 
 **Template block**: `layout.html` now exposes `{% block scripts %}` between the `initGoogleMaps` definition and the Maps `<script src>` tag — child templates can safely override/wrap `window.initGoogleMaps` here.
+
+## LPR (Licence Plate Recognition) — Stages 1–7
+
+Mobile LPR system for iOS field agents. Backend in `app.py`, mobile templates under `templates/mobile/`, admin templates at root, iOS code under `ios/AxionX/`.
+
+**Stage 7 — Push Notifications, Dispatch, Proximity (current)**
+
+**New DB tables**: `lpr_device_tokens`, `lpr_notifications`, `lpr_followups`, `lpr_proximity_rules`
+
+**APNs delivery**: `_apns_send()` uses PyJWT + httpx[http2]. Requires env vars: `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` (.p8 content), `APNS_BUNDLE_ID` (default `com.axionx.ios`), `APNS_SANDBOX` (default `1`). Gracefully no-ops if not configured; in-app notifications still stored in DB.
+
+**Notification triggers**:
+- Urgent/high watchlist hit at lookup → notify all admin/both users
+- Sighting saved with watchlist_hit or escalated → notify admins + proximity check
+- Proximity zone match (watchlist sighting inside defined radius) → separate zone alert to admins
+- Sighting reviewed → notify the original agent
+- Follow-up assigned → notify the assigned agent (push + in-app)
+
+**New routes**:
+- `POST /m/api/device/register` — store/update APNs device token
+- `GET /m/lpr/notifications` — agent notification feed (marks all read on open)
+- `POST /m/api/lpr/notifications/read` — mark all read
+- `GET /m/api/lpr/notifications/unread-count` — JSON badge count
+- `GET /admin/lpr-proximity` — manage proximity zones
+- `POST /admin/lpr-proximity/add` — add zone (name, lat, lng, radius_m, priority)
+- `POST /admin/lpr-proximity/<id>/toggle` — activate/deactivate
+- `POST /admin/lpr-sightings/<id>/followup` — create follow-up dispatch record
+
+**iOS additions**:
+- `ios/AxionX/Services/PushNotificationService.swift` — permission request, token upload, badge refresh
+- `ios/AxionX/AxionX.entitlements` — `aps-environment: development` (flip to `production` for App Store)
+- `AxionXApp.swift` — activates push registration, `UNUserNotificationCenterDelegate` implemented, foreground banners enabled, notification tap navigates to `/m/lpr/notifications`
+- `WebViewContainer.swift` — `.onReceive(.axionOpenNotifications)` navigates web view to notifications screen
+
+**Helper functions**: `_haversine_m()`, `_proximity_check()`, `_notify_user()`, `_notify_admins()`
+
+**Templates**: `lpr_proximity.html` (admin zone CRUD), `mobile/lpr_notifications.html` (agent feed), `lpr_sightings.html` updated with Follow-up modal + Zones nav link, `mobile/lpr_search.html` updated with Alerts header link.

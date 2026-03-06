@@ -8,3 +8,6 @@ python-docx
 openai
 pytesseract
 Pillow
+cryptography
+httpx[http2]
+PyJWT
