@@ -318,6 +318,7 @@
         <div class="hint">Workspace</div>
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
+        <a href="/forms" class="{% if request.path.startswith('/forms') %}active{% endif %}">Forms</a>
         {% if session.get('role') in ('admin', 'both') %}
         <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
         <a href="/map" class="{% if request.path.startswith('/map') %}active{% endif %}">Map</a>

@@ -4688,6 +4688,218 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
                      download_name=filename)
 
 
+# ──────────────────────────── Forms Module ────────────────────────────
+
+_FORMS_CATALOGUE = [
+    {
+        "id":          "vir",
+        "name":        "Vehicle Condition Report / Repossession Receipt",
+        "description": "SWPI VIR — captures asset condition, recovery details, and signatures.",
+        "short":       "VIR",
+        "tags":        ["Repossession", "Asset Recovery", "SWPI"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=vir",
+    },
+    {
+        "id":          "transport",
+        "name":        "Transport Instructions / Tow Receipt",
+        "description": "SWPI tow contractor dispatch notice and delivery instructions.",
+        "short":       "Transport Instructions",
+        "tags":        ["Transport", "Tow", "SWPI"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=transport",
+    },
+    {
+        "id":          "far",
+        "name":        "Field Attendance Report",
+        "description": "Document an agent field attendance and observations.",
+        "short":       "FAR",
+        "tags":        ["Field", "Attendance"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
+        "available":   False,
+        "generate_url": "#",
+    },
+    {
+        "id":          "voluntary_surrender",
+        "name":        "Voluntary Surrender Form",
+        "description": "Customer voluntary surrender acknowledgement and declaration.",
+        "short":       "Voluntary Surrender",
+        "tags":        ["Repossession", "Surrender"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
+        "available":   False,
+        "generate_url": "#",
+    },
+]
+
+_FORMS_META = {f["id"]: f for f in _FORMS_CATALOGUE}
+
+
+def _forms_job_context(conn, job_id):
+    """Return enriched job row dict with customer_name."""
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        return None
+    j = dict(job)
+    if j.get("customer_id"):
+        c = conn.execute("SELECT first_name, last_name FROM customers WHERE id=?",
+                         (j["customer_id"],)).fetchone()
+        if c:
+            j["customer_name"] = f"{c['first_name'] or ''} {c['last_name'] or ''}".strip()
+    return j
+
+
+@app.get("/forms")
+@login_required
+def forms_dashboard():
+    job_id  = request.args.get("job_id", type=int)
+    job     = None
+    if job_id:
+        conn = db()
+        job = _forms_job_context(conn, job_id)
+        conn.close()
+    return render_template("forms.html",
+                           forms=_FORMS_CATALOGUE,
+                           job=job, job_id=job_id)
+
+
+@app.get("/forms/generate")
+@login_required
+def forms_generate():
+    form_type   = request.args.get("type", "").lower().strip()
+    job_id      = request.args.get("job_id",  type=int)
+    item_id     = request.args.get("item_id", type=int)
+
+    meta = _FORMS_META.get(form_type)
+    if not meta or not meta["available"]:
+        return redirect(url_for("forms_dashboard"))
+
+    form_title       = meta["name"]
+    form_description = meta["description"]
+    form_short       = meta["short"]
+
+    conn = db()
+
+    # ── If both job_id and item_id are specified, look for repo lock ──
+    if job_id and item_id:
+        job  = _forms_job_context(conn, job_id)
+        item = conn.execute("SELECT * FROM job_items WHERE id=? AND job_id=?",
+                            (item_id, job_id)).fetchone()
+        item = dict(item) if item else None
+
+        rl = conn.execute(
+            """SELECT * FROM repo_lock_records
+               WHERE job_id=? AND item_id=?
+               ORDER BY CASE status WHEN 'Submitted' THEN 0 WHEN 'Reviewed' THEN 0 WHEN 'Processed' THEN 0 ELSE 1 END,
+                        id DESC LIMIT 1""",
+            (job_id, item_id)).fetchone()
+
+        if rl:
+            rec_id = rl["id"]
+            proceed_url = (f"/jobs/{job_id}/repo-lock/{rec_id}/vir"
+                           if form_type == "vir"
+                           else f"/jobs/{job_id}/repo-lock/{rec_id}/transport-instructions")
+            conn.close()
+            return render_template("forms_selector.html",
+                                   form_type=form_type, form_title=form_title,
+                                   form_description=form_description, form_short=form_short,
+                                   job=job, item=item,
+                                   rl_rec=dict(rl), proceed_url=proceed_url,
+                                   no_repo_lock=False, jobs=[], items=[],
+                                   selected_job_id=job_id, selected_item_id=item_id,
+                                   recent_rl=[])
+        else:
+            conn.close()
+            return render_template("forms_selector.html",
+                                   form_type=form_type, form_title=form_title,
+                                   form_description=form_description, form_short=form_short,
+                                   job=job, item=item,
+                                   rl_rec=None, proceed_url=None,
+                                   no_repo_lock=True, jobs=[], items=[],
+                                   selected_job_id=job_id, selected_item_id=item_id,
+                                   recent_rl=[])
+
+    # ── Job selected, but no item yet — load items for that job ──
+    items = []
+    if job_id:
+        rows = conn.execute("SELECT * FROM job_items WHERE job_id=? ORDER BY id",
+                            (job_id,)).fetchall()
+        items = [dict(r) for r in rows]
+        # normalise: expose both .reg and .registration
+        for it in items:
+            it["registration"] = it.get("reg") or it.get("registration") or ""
+
+    # ── Load all jobs for the selector ──
+    job_rows = conn.execute(
+        """SELECT j.id, j.internal_job_number, j.lender_name, j.client_job_number,
+                  c.first_name, c.last_name
+           FROM jobs j
+           LEFT JOIN customers c ON c.id = j.customer_id
+           ORDER BY j.id DESC LIMIT 200""").fetchall()
+    jobs = []
+    for r in job_rows:
+        cname = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+        jobs.append({
+            "id":                  r["id"],
+            "internal_job_number": r["internal_job_number"],
+            "lender_name":         r["lender_name"],
+            "customer_name":       cname,
+        })
+
+    # ── Recent submitted repo lock records for quick access ──
+    rl_rows = conn.execute(
+        """SELECT r.id, r.job_id, r.item_id, r.status, r.registration, r.description,
+                  r.repo_date, r.agent_name, r.tow_company_name,
+                  j.internal_job_number AS job_number,
+                  i.make, i.model
+           FROM repo_lock_records r
+           LEFT JOIN jobs j ON j.id = r.job_id
+           LEFT JOIN job_items i ON i.id = r.item_id
+           WHERE r.status IN ('Submitted','Reviewed','Processed')
+           ORDER BY r.id DESC LIMIT 10""").fetchall()
+    recent_rl = [dict(r) for r in rl_rows]
+
+    job = None
+    if job_id:
+        for j in jobs:
+            if j["id"] == job_id:
+                job = j
+                break
+    conn.close()
+
+    return render_template("forms_selector.html",
+                           form_type=form_type, form_title=form_title,
+                           form_description=form_description, form_short=form_short,
+                           job=job, item=None,
+                           rl_rec=None, proceed_url=None,
+                           no_repo_lock=False,
+                           jobs=jobs, items=items,
+                           selected_job_id=job_id, selected_item_id=item_id,
+                           recent_rl=recent_rl)
+
+
+# ── Mobile Forms ──
+@app.get("/m/forms")
+@login_required
+def m_forms():
+    job_id = request.args.get("job_id", type=int)
+    job    = None
+    if job_id:
+        conn = db()
+        job = _forms_job_context(conn, job_id)
+        conn.close()
+    # Reuse same catalogue; mobile template handles display
+    forms_mobile = [
+        {**f, "generate_url": f["generate_url"].replace("/forms/generate", "/forms/generate")}
+        for f in _FORMS_CATALOGUE
+    ]
+    return render_template("mobile/forms.html",
+                           forms=forms_mobile, job=job, job_id=job_id)
+
+
+# ──────────────────────────────────────────────────────────────────────
+
 # -------- Field Notes --------
 @app.post("/jobs/<int:job_id>/notes/new")
 @login_required

@@ -89,7 +89,21 @@ No explicit user preferences were provided in the original `replit.md` file. The
     - Data: `repo_lock_records` (60+ fields, `status`, `submitted_at`, `agent_signature`, `customer_signature`, `tow_signature`, `agent_signed_at`, `customer_signed_at`, `tow_signed_at`), `repo_lock_queue` (tracks Pending/Reviewed/Processed, `submission_count`, reviewer fields).
     - Routes: `GET /jobs/<job_id>/repo-lock/<item_id>` (JSON prefill + status), `POST .../save` (Draft), `POST .../submit` (Submitted + queue + note), `GET/POST .../vir`, `GET/POST .../transport-instructions`.
 
-**19b. Repo Lock PDF Workflow (VIR + Transport Instructions)**
+**19b. Forms Module**
+    - Central hub for generating operational SWPI documents. Accessible to all authenticated users.
+    - **Desktop nav**: "Forms" link added to sidebar (between Jobs and Schedule/Map), highlights active on `/forms*`.
+    - **Mobile nav**: "Forms" tab added to bottom nav bar (between Jobs and Map), uses SVG document icon.
+    - **Routes**:
+      - `GET /forms[?job_id=X]` — forms dashboard grid (`templates/forms.html`)
+      - `GET /forms/generate?type=vir|transport[&job_id=X&item_id=Y]` — selector/resolver page (`templates/forms_selector.html`). With both job_id+item_id: checks for RL record and shows green panel with direct proceed button. With job_id only: shows asset picker dropdown. With neither: shows job dropdown + recent submitted RL records list for quick access.
+      - `GET /m/forms[?job_id=X]` — mobile forms dashboard (`templates/mobile/forms.html`)
+    - **Catalogue** (`_FORMS_CATALOGUE`): VIR (available), Transport Instructions (available), Field Attendance Report (coming soon), Voluntary Surrender Form (coming soon). Easily extended with new entries.
+    - **Pre-linking**: passing `?job_id=X` to `/forms` or `/m/forms` shows a blue info banner and threads the job_id through all "Open / Generate" links for that session.
+    - **Repo Lock guard**: if a job+asset is selected but no repo lock record exists, the selector shows an amber warning panel with a direct link to open the Repo Lock form. If repo lock exists, shows green panel and routes to the existing signature/PDF page.
+    - `_forms_job_context(conn, job_id)` helper: returns job dict enriched with `customer_name`.
+    - `_FORMS_META` dict: keyed by form type id for O(1) lookup.
+
+**19c. Repo Lock PDF Workflow (VIR + Transport Instructions)**
     - `pdf_gen.py`: ReportLab-based PDF generator for A4 documents. `generate_vir_pdf(data, agent_sig, customer_sig)` produces Vehicle Condition Report / Repossession Receipt; `generate_transport_pdf(data, agent_sig, tow_sig)` produces Transport Instructions / Tow Receipt.
     - PDFs include: SWPI logo, company details header, blue section headers, alternating row backgrounds, full data from Repo Lock record + related tables, and signature boxes rendered from base64 canvas PNG data.
     - `_rl_pdf_context(conn, rec, job_id)`: helper that joins `jobs`, `job_items`, `clients`, `customers`, `tow_operators`, `users` to build a complete data dict for PDF generation.
