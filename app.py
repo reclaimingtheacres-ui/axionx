@@ -8850,6 +8850,8 @@ def _lpr_prediction_scores_ensure(conn):
     add_column_if_missing(conn, "lpr_prediction_scores", "blend_rule_weight", "REAL")
     add_column_if_missing(conn, "lpr_prediction_scores", "blend_ml_weight",   "REAL")
     add_column_if_missing(conn, "lpr_prediction_scores", "ranking_config_id", "INTEGER")
+    add_column_if_missing(conn, "lpr_prediction_scores", "experiment_id",     "INTEGER")
+    add_column_if_missing(conn, "lpr_prediction_scores", "experiment_arm",    "TEXT")
     conn.commit()
 
 
@@ -9033,15 +9035,129 @@ def _run_recalibration(conn, min_sample=25):
     return recommendations
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 16 — Experiment / A-B evaluation helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+import hashlib as _hashlib
+
+
+def _lpr_experiments_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_experiments (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                     TEXT    NOT NULL,
+            status                   TEXT    NOT NULL DEFAULT 'active',
+            experiment_type          TEXT    NOT NULL DEFAULT 'blend',
+            champion_model_version   TEXT,
+            challenger_model_version TEXT,
+            champion_rule_weight     REAL    NOT NULL DEFAULT 0.40,
+            champion_ml_weight       REAL    NOT NULL DEFAULT 0.60,
+            challenger_rule_weight   REAL    NOT NULL DEFAULT 0.30,
+            challenger_ml_weight     REAL    NOT NULL DEFAULT 0.70,
+            champion_threshold       INTEGER NOT NULL DEFAULT 30,
+            challenger_threshold     INTEGER NOT NULL DEFAULT 35,
+            traffic_split_pct        INTEGER NOT NULL DEFAULT 20,
+            start_at                 TEXT    NOT NULL,
+            end_at                   TEXT,
+            created_by               INTEGER,
+            created_at               TEXT    NOT NULL,
+            notes_safe               TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_experiment_assignments (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            experiment_id           INTEGER NOT NULL,
+            registration_normalised TEXT    NOT NULL,
+            arm                     TEXT    NOT NULL,
+            assigned_at             TEXT    NOT NULL,
+            UNIQUE(experiment_id, registration_normalised)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_experiment_results (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            experiment_id           INTEGER NOT NULL,
+            outcome_id              INTEGER,
+            registration_normalised TEXT    NOT NULL,
+            arm                     TEXT    NOT NULL,
+            model_version           TEXT,
+            rule_weight             REAL,
+            ml_weight               REAL,
+            threshold               INTEGER,
+            combined_score_at_time  INTEGER,
+            surfaced                INTEGER NOT NULL DEFAULT 1,
+            actual_outcome          TEXT,
+            recorded_at             TEXT    NOT NULL
+        )
+    """)
+    conn.commit()
+
+
+def _get_active_experiment(conn):
+    """Return the single active experiment row, or None."""
+    return conn.execute("""
+        SELECT * FROM lpr_experiments
+        WHERE status = 'active'
+        ORDER BY start_at DESC
+        LIMIT 1
+    """).fetchone()
+
+
+def _get_or_assign_experiment_arm(conn, reg, exp):
+    """
+    Return the stable arm ('champion' or 'challenger') for this plate in this
+    experiment.  Uses a deterministic hash so the same plate always gets the
+    same arm; the first call persists the assignment.
+    """
+    existing = conn.execute("""
+        SELECT arm FROM lpr_experiment_assignments
+        WHERE experiment_id=? AND registration_normalised=?
+    """, (exp["id"], reg)).fetchone()
+    if existing:
+        return existing["arm"]
+
+    h   = int(_hashlib.md5(f"{exp['id']}:{reg}".encode()).hexdigest()[:4], 16)
+    arm = "challenger" if (h % 100) < exp["traffic_split_pct"] else "champion"
+
+    conn.execute("""
+        INSERT OR IGNORE INTO lpr_experiment_assignments
+            (experiment_id, registration_normalised, arm, assigned_at)
+        VALUES (?,?,?,?)
+    """, (exp["id"], reg, arm, now_ts()))
+    return arm
+
+
+def _record_experiment_result(conn, exp_id, outcome_id, reg, arm,
+                               model_ver, rw, mw, threshold,
+                               combined_score, actual_outcome):
+    """Insert one row into lpr_experiment_results."""
+    conn.execute("""
+        INSERT INTO lpr_experiment_results
+            (experiment_id, outcome_id, registration_normalised, arm,
+             model_version, rule_weight, ml_weight, threshold,
+             combined_score_at_time, surfaced, actual_outcome, recorded_at)
+        VALUES (?,?,?,?,?,?,?,?,?,1,?,?)
+    """, (exp_id, outcome_id, reg, arm, model_ver, rw, mw, threshold,
+          combined_score, actual_outcome, now_ts()))
+
+
 def _recompute_combined_patrol_scores(conn):
     """
-    For every plate in lpr_patrol_intelligence, look up any ML score in
-    lpr_prediction_scores.  Blend rule + ML using the adaptive config from
-    lpr_ranking_config (falls back to 40/60 if no active config exists).
-    Stamps blend_rule_weight and blend_ml_weight on each row.
+    For every plate in lpr_patrol_intelligence, blend rule + ML using:
+      1. The active experiment arm config if the plate is enrolled in an
+         experiment, or
+      2. The adaptive ranking config from lpr_ranking_config, or
+      3. A 40/60 default fallback.
+    Stamps blend weights, ranking_config_id, experiment_id, experiment_arm.
     """
     _lpr_prediction_scores_ensure(conn)
     _lpr_ranking_config_ensure(conn)
+    _lpr_experiments_ensure(conn)
+
+    active_exp = _get_active_experiment(conn)
+
     pi_rows = conn.execute("""
         SELECT p.registration_normalised, p.confidence_score, p.matched_job_id,
                p.recommended_patrol_priority
@@ -9063,9 +9179,24 @@ def _recompute_combined_patrol_scores(conn):
         model_ver = ps["model_version"]        if ps else "unscored"
         pred_win  = ps["prediction_window"]    if ps else "72h"
 
-        conf_band = _score_to_band(rule_score)
-        rw, mw, _threshold, cfg_id = _get_active_ranking_config(
-            conn, model_ver, conf_band, pri_band)
+        exp_id  = None
+        exp_arm = None
+        cfg_id  = None
+
+        if active_exp:
+            arm = _get_or_assign_experiment_arm(conn, reg, active_exp)
+            exp_id  = active_exp["id"]
+            exp_arm = arm
+            if arm == "challenger":
+                rw = active_exp["challenger_rule_weight"]
+                mw = active_exp["challenger_ml_weight"]
+            else:
+                rw = active_exp["champion_rule_weight"]
+                mw = active_exp["champion_ml_weight"]
+        else:
+            conf_band = _score_to_band(rule_score)
+            rw, mw, _threshold, cfg_id = _get_active_ranking_config(
+                conn, model_ver, conf_band, pri_band)
 
         if ml_score is not None:
             combined = round(rw * rule_score + mw * ml_score)
@@ -9078,8 +9209,9 @@ def _recompute_combined_patrol_scores(conn):
                 (registration_normalised, matched_job_id, rule_confidence_score,
                  ml_confidence_score, combined_score, prediction_window,
                  model_version, last_scored_at,
-                 blend_rule_weight, blend_ml_weight, ranking_config_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                 blend_rule_weight, blend_ml_weight, ranking_config_id,
+                 experiment_id, experiment_arm)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(registration_normalised) DO UPDATE SET
                 matched_job_id        = excluded.matched_job_id,
                 rule_confidence_score = excluded.rule_confidence_score,
@@ -9087,9 +9219,11 @@ def _recompute_combined_patrol_scores(conn):
                 last_scored_at        = excluded.last_scored_at,
                 blend_rule_weight     = excluded.blend_rule_weight,
                 blend_ml_weight       = excluded.blend_ml_weight,
-                ranking_config_id     = excluded.ranking_config_id
+                ranking_config_id     = excluded.ranking_config_id,
+                experiment_id         = excluded.experiment_id,
+                experiment_arm        = excluded.experiment_arm
         """, (reg, pi["matched_job_id"], rule_score, ml_score, combined,
-              pred_win, model_ver, now, rw, mw, cfg_id))
+              pred_win, model_ver, now, rw, mw, cfg_id, exp_id, exp_arm))
     conn.commit()
 
 
@@ -9637,10 +9771,13 @@ def admin_lpr_patrol_outcome():
     _lpr_prediction_outcomes_ensure(conn)
     _patrol_intelligence_ensure(conn)
     _lpr_prediction_scores_ensure(conn)
+    _lpr_experiments_ensure(conn)
 
     pi = conn.execute("""
         SELECT p.id, p.matched_job_id, p.confidence_score, p.recommended_action,
-               ps.ml_confidence_score, ps.combined_score, ps.model_version, ps.prediction_window
+               ps.ml_confidence_score, ps.combined_score, ps.model_version,
+               ps.prediction_window, ps.blend_rule_weight, ps.blend_ml_weight,
+               ps.experiment_id, ps.experiment_arm
         FROM lpr_patrol_intelligence p
         LEFT JOIN lpr_prediction_scores ps
                ON ps.registration_normalised = p.registration_normalised
@@ -9659,8 +9796,10 @@ def admin_lpr_patrol_outcome():
     pred_win   = (pi["prediction_window"] or "72h")  if pi else "72h"
     rec_action = (pi["recommended_action"] or "")    if pi else ""
     source_id  = pi["id"]                        if pi else None
+    exp_id     = pi["experiment_id"]             if pi else None
+    exp_arm    = pi["experiment_arm"]            if pi else None
 
-    conn.execute("""
+    cur = conn.execute("""
         INSERT INTO lpr_prediction_outcomes
             (registration_normalised, matched_job_id, source_type, source_id,
              rule_score, ml_score, combined_score, prediction_window,
@@ -9671,6 +9810,20 @@ def admin_lpr_patrol_outcome():
           rule_score, ml_score, combined, pred_win,
           model_ver, rec_action, outcome,
           outcome_conf, uid, now, notes or None))
+    outcome_row_id = cur.lastrowid
+
+    if exp_id and exp_arm:
+        rw  = pi["blend_rule_weight"]  if pi else None
+        mw  = pi["blend_ml_weight"]    if pi else None
+        exp_row = conn.execute(
+            "SELECT champion_threshold, challenger_threshold FROM lpr_experiments WHERE id=?",
+            (exp_id,)
+        ).fetchone()
+        thr = (exp_row["challenger_threshold"] if exp_arm == "challenger"
+               else exp_row["champion_threshold"]) if exp_row else None
+        _record_experiment_result(conn, exp_id, outcome_row_id, reg, exp_arm,
+                                  model_ver, rw, mw, thr, combined, outcome)
+
     conn.commit()
     conn.close()
     return jsonify({"ok": True}), 200
@@ -9693,10 +9846,13 @@ def m_api_lpr_patrol_outcome():
     _lpr_prediction_outcomes_ensure(conn)
     _patrol_intelligence_ensure(conn)
     _lpr_prediction_scores_ensure(conn)
+    _lpr_experiments_ensure(conn)
 
     pi = conn.execute("""
         SELECT p.id, p.matched_job_id, p.confidence_score, p.recommended_action,
-               ps.ml_confidence_score, ps.combined_score, ps.model_version, ps.prediction_window
+               ps.ml_confidence_score, ps.combined_score, ps.model_version,
+               ps.prediction_window, ps.blend_rule_weight, ps.blend_ml_weight,
+               ps.experiment_id, ps.experiment_arm
         FROM lpr_patrol_intelligence p
         LEFT JOIN lpr_prediction_scores ps
                ON ps.registration_normalised = p.registration_normalised
@@ -9715,8 +9871,10 @@ def m_api_lpr_patrol_outcome():
     pred_win   = (pi["prediction_window"] or "72h")  if pi else "72h"
     rec_action = (pi["recommended_action"] or "")    if pi else ""
     source_id  = pi["id"]                        if pi else None
+    exp_id     = pi["experiment_id"]             if pi else None
+    exp_arm    = pi["experiment_arm"]            if pi else None
 
-    conn.execute("""
+    cur = conn.execute("""
         INSERT INTO lpr_prediction_outcomes
             (registration_normalised, matched_job_id, source_type, source_id,
              rule_score, ml_score, combined_score, prediction_window,
@@ -9727,6 +9885,20 @@ def m_api_lpr_patrol_outcome():
           rule_score, ml_score, combined, pred_win,
           model_ver, rec_action, outcome,
           80, uid, now, notes or None))
+    outcome_row_id = cur.lastrowid
+
+    if exp_id and exp_arm:
+        rw  = pi["blend_rule_weight"] if pi else None
+        mw  = pi["blend_ml_weight"]   if pi else None
+        exp_row = conn.execute(
+            "SELECT champion_threshold, challenger_threshold FROM lpr_experiments WHERE id=?",
+            (exp_id,)
+        ).fetchone()
+        thr = (exp_row["challenger_threshold"] if exp_arm == "challenger"
+               else exp_row["champion_threshold"]) if exp_row else None
+        _record_experiment_result(conn, exp_id, outcome_row_id, reg, exp_arm,
+                                  model_ver, rw, mw, thr, combined, outcome)
+
     conn.commit()
     conn.close()
     return jsonify({"ok": True}), 200
@@ -10063,6 +10235,237 @@ def admin_lpr_ranking_rollback():
     if prev:
         conn.execute("UPDATE lpr_ranking_config SET active=1 WHERE id=?", (prev["id"],))
 
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 16 — Experiment admin routes
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _exp_arm_stats(conn, exp_id, arm):
+    POS = ("'confirmed_present','repeat_area_confirmed',"
+           "'recovery_progressed','recovery_completed','followup_required'")
+    row = conn.execute(f"""
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN actual_outcome IN ({POS})          THEN 1 ELSE 0 END) AS pos_count,
+               SUM(CASE WHEN actual_outcome = 'false_positive'  THEN 1 ELSE 0 END) AS fp_count,
+               SUM(CASE WHEN actual_outcome = 'no_locate'       THEN 1 ELSE 0 END) AS nl_count,
+               SUM(CASE WHEN actual_outcome = 'recovery_progressed'
+                            OR actual_outcome = 'recovery_completed' THEN 1 ELSE 0 END) AS rec_count
+        FROM lpr_experiment_results
+        WHERE experiment_id=? AND arm=?
+    """, (exp_id, arm)).fetchone()
+    total = row["total"] or 0
+    def pct(n): return round(100 * n / total, 1) if total else 0
+    return {
+        "arm":         arm,
+        "total":       total,
+        "pos_count":   row["pos_count"]  or 0,
+        "fp_count":    row["fp_count"]   or 0,
+        "nl_count":    row["nl_count"]   or 0,
+        "rec_count":   row["rec_count"]  or 0,
+        "pos_rate":    pct(row["pos_count"]  or 0),
+        "fp_rate":     pct(row["fp_count"]   or 0),
+        "nl_rate":     pct(row["nl_count"]   or 0),
+        "rec_rate":    pct(row["rec_count"]  or 0),
+    }
+
+
+@app.get("/admin/lpr/experiments")
+@admin_required
+def admin_lpr_experiments():
+    conn = db()
+    _lpr_experiments_ensure(conn)
+    _lpr_ranking_config_ensure(conn)
+
+    exp_rows = conn.execute("""
+        SELECT * FROM lpr_experiments
+        ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, created_at DESC
+        LIMIT 30
+    """).fetchall()
+
+    experiments = []
+    for e in exp_rows:
+        exp_dict = dict(e)
+        champion_stats    = _exp_arm_stats(conn, e["id"], "champion")
+        challenger_stats  = _exp_arm_stats(conn, e["id"], "challenger")
+        assignments_total = conn.execute(
+            "SELECT COUNT(*) FROM lpr_experiment_assignments WHERE experiment_id=?",
+            (e["id"],)
+        ).fetchone()[0]
+        exp_dict["champion_stats"]    = champion_stats
+        exp_dict["challenger_stats"]  = challenger_stats
+        exp_dict["assignments_total"] = assignments_total
+        min_n = min(champion_stats["total"], challenger_stats["total"])
+        exp_dict["has_enough_data"]   = min_n >= 30
+        exp_dict["min_arm_n"]         = min_n
+        experiments.append(exp_dict)
+
+    active_ranking = conn.execute("""
+        SELECT rule_weight, ml_weight, min_combined_threshold, model_version
+        FROM lpr_ranking_config WHERE active=1
+        ORDER BY (CASE WHEN model_version='*' THEN 1 ELSE 0 END), effective_from DESC
+        LIMIT 1
+    """).fetchone()
+    conn.close()
+
+    return render_template(
+        "lpr_experiments.html",
+        experiments=experiments,
+        active_ranking=dict(active_ranking) if active_ranking else None,
+    )
+
+
+@app.post("/admin/lpr/experiments/create")
+@admin_required
+def admin_lpr_experiments_create():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()[:200]
+    if not name:
+        return jsonify({"ok": False, "error": "Experiment name required"}), 400
+
+    try:
+        c_rw  = round(max(0.0, min(1.0, float(data.get("champion_rule_weight",   0.40)))), 2)
+        c_mw  = round(max(0.0, min(1.0, float(data.get("champion_ml_weight",     0.60)))), 2)
+        ch_rw = round(max(0.0, min(1.0, float(data.get("challenger_rule_weight", 0.30)))), 2)
+        ch_mw = round(max(0.0, min(1.0, float(data.get("challenger_ml_weight",   0.70)))), 2)
+        c_thr  = max(0, min(100, int(data.get("champion_threshold",   30))))
+        ch_thr = max(0, min(100, int(data.get("challenger_threshold", 35))))
+        split  = max(5,  min(50,  int(data.get("traffic_split_pct",   20))))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Invalid numeric values"}), 400
+
+    for rw, mw in ((c_rw, c_mw), (ch_rw, ch_mw)):
+        if abs(rw + mw - 1.0) > 0.01:
+            return jsonify({"ok": False,
+                            "error": "Each arm's rule+ML weights must sum to 1.0"}), 400
+
+    c_mv  = (data.get("champion_model_version")   or "").strip() or None
+    ch_mv = (data.get("challenger_model_version")  or "").strip() or None
+    notes = (data.get("notes_safe") or "").strip()[:300]
+    now   = now_ts()
+    uid   = session.get("user_id")
+
+    conn = db()
+    _lpr_experiments_ensure(conn)
+
+    existing_active = conn.execute(
+        "SELECT COUNT(*) FROM lpr_experiments WHERE status='active'"
+    ).fetchone()[0]
+    if existing_active:
+        conn.close()
+        return jsonify({"ok": False,
+                        "error": "An experiment is already active — stop it before creating a new one"}), 409
+
+    conn.execute("""
+        INSERT INTO lpr_experiments
+            (name, status, experiment_type,
+             champion_model_version, challenger_model_version,
+             champion_rule_weight,   champion_ml_weight,
+             challenger_rule_weight, challenger_ml_weight,
+             champion_threshold, challenger_threshold,
+             traffic_split_pct, start_at, created_by, created_at, notes_safe)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (name, "active", "blend",
+          c_mv, ch_mv, c_rw, c_mw, ch_rw, ch_mw,
+          c_thr, ch_thr, split, now, uid, now, notes or None))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+@app.post("/admin/lpr/experiments/stop")
+@admin_required
+def admin_lpr_experiments_stop():
+    data = request.get_json(silent=True) or {}
+    exp_id = data.get("experiment_id")
+    if not exp_id:
+        return jsonify({"ok": False, "error": "experiment_id required"}), 400
+
+    conn = db()
+    _lpr_experiments_ensure(conn)
+    conn.execute("""
+        UPDATE lpr_experiments SET status='stopped', end_at=?
+        WHERE id=? AND status='active'
+    """, (now_ts(), exp_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+@app.post("/admin/lpr/experiments/promote")
+@admin_required
+def admin_lpr_experiments_promote():
+    """
+    Promote challenger: create a new active ranking config using challenger
+    weights, end the experiment, leave an audit trail.
+    """
+    data = request.get_json(silent=True) or {}
+    exp_id = data.get("experiment_id")
+    if not exp_id:
+        return jsonify({"ok": False, "error": "experiment_id required"}), 400
+
+    conn = db()
+    _lpr_experiments_ensure(conn)
+    _lpr_ranking_config_ensure(conn)
+
+    exp = conn.execute("SELECT * FROM lpr_experiments WHERE id=?", (exp_id,)).fetchone()
+    if not exp:
+        conn.close()
+        return jsonify({"ok": False, "error": "Experiment not found"}), 404
+    if exp["status"] not in ("active", "stopped"):
+        conn.close()
+        return jsonify({"ok": False, "error": "Experiment already promoted or archived"}), 400
+
+    now = now_ts()
+    uid = session.get("user_id")
+
+    conn.execute("""
+        UPDATE lpr_ranking_config SET active=0
+        WHERE model_version='*' AND confidence_band='*' AND priority_band='*'
+    """)
+    conn.execute("""
+        INSERT INTO lpr_ranking_config
+            (model_version, prediction_window, confidence_band, priority_band,
+             rule_weight, ml_weight, min_combined_threshold, active, source,
+             reason, effective_from, created_by, created_at)
+        VALUES (?,?,?,?,?,?,?,1,'experiment',?,?,?,?)
+    """, (
+        exp["challenger_model_version"] or "*",
+        "72h", "*", "*",
+        exp["challenger_rule_weight"],
+        exp["challenger_ml_weight"],
+        exp["challenger_threshold"],
+        f"Promoted from experiment #{exp_id}: {exp['name']}",
+        now, uid, now,
+    ))
+
+    conn.execute("""
+        UPDATE lpr_experiments SET status='promoted', end_at=?
+        WHERE id=?
+    """, (now, exp_id))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+@app.post("/admin/lpr/experiments/archive")
+@admin_required
+def admin_lpr_experiments_archive():
+    data = request.get_json(silent=True) or {}
+    exp_id = data.get("experiment_id")
+    if not exp_id:
+        return jsonify({"ok": False, "error": "experiment_id required"}), 400
+
+    conn = db()
+    _lpr_experiments_ensure(conn)
+    conn.execute("""
+        UPDATE lpr_experiments SET status='archived'
+        WHERE id=? AND status NOT IN ('active')
+    """, (exp_id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True}), 200
