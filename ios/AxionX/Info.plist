@@ -67,13 +67,33 @@
         </dict>
     </dict>
 
-    <!-- Location permission — required for GPS/distance features -->
+    <!-- Location permissions -->
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>AxionX uses your location while the app is in use to show nearby jobs, calculate travel distance, and assist with navigation.</string>
+    <string>AxionX uses your location while the app is open to assist with nearby jobs, travel distance, and LPR dispatch decisions.</string>
+
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>AxionX uses your location in the background when you set your field status to Available or Active Job. This lets the office see your last known position for dispatch decisions. No customer or file data is included.</string>
+
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>AxionX uses your location in the background to support low-power field availability tracking when you set your status to Available or Active Job.</string>
 
     <!-- Camera permission — required for live plate scanning -->
     <key>NSCameraUsageDescription</key>
     <string>AxionX requires camera access to scan vehicle registrations for live LPR lookups.</string>
+
+    <!-- Background modes: location (significant-change + active-job), fetch (BG sync) -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>location</string>
+        <string>fetch</string>
+        <string>processing</string>
+    </array>
+
+    <!-- Background task identifiers -->
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.axionx.sync</string>
+    </array>
 
     <!-- App icon -->
     <key>CFBundleIconName</key>

@@ -1,0 +1,173 @@
+{% extends "layout.html" %}
+{% block title %}Agent Positions{% endblock %}
+
+{% block content %}
+<div style="position:relative;height:calc(100vh - 58px);overflow:hidden;">
+
+  {# ── Toolbar ── #}
+  <div style="position:absolute;top:0;left:0;right:0;z-index:800;
+              background:rgba(255,255,255,.97);backdrop-filter:blur(4px);
+              border-bottom:1px solid #e5e7eb;
+              padding:8px 14px;display:flex;align-items:center;gap:12px;">
+    <span class="fw-semibold" style="font-size:.9rem;">Agent Positions</span>
+    <span class="text-muted" style="font-size:.78rem;">
+      {{ count }} agent{{ 's' if count != 1 }} active in last 8 h
+    </span>
+    <div class="ms-auto d-flex gap-2">
+      <a href="{{ url_for('admin_lpr_sightings_map') }}"
+         class="btn btn-sm btn-outline-secondary" style="font-size:.78rem;">
+        🗺 Sightings Map
+      </a>
+      <a href="{{ url_for('admin_lpr_sightings') }}"
+         class="btn btn-sm btn-outline-secondary" style="font-size:.78rem;">
+        Table View
+      </a>
+    </div>
+  </div>
+
+  {# ── Map canvas ── #}
+  <div id="agent-map"
+       style="position:absolute;top:46px;left:0;right:0;bottom:0;"></div>
+</div>
+
+<style>
+.agent-card {
+  font-family: system-ui, sans-serif;
+  min-width: 180px;
+  font-size: .82rem;
+}
+.agent-card .name  { font-size: .95rem; font-weight: 700; margin-bottom: 4px; }
+.agent-card .meta  { color: #6b7280; font-size: .76rem; margin-bottom: 3px; }
+.agent-card .badge-src {
+  display: inline-block;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: .7rem;
+  font-weight: 600;
+  color: #374151;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WLs=" crossorigin=""></script>
+
+<script>
+(function() {
+  var agents = {{ agents_json | safe }};
+
+  var map = L.map('agent-map', {
+    center: [-25.27, 133.78], zoom: 4
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  var bounds = [];
+
+  var SOURCE_LABELS = {
+    'active_job':                   'Active Job',
+    'background_significant_change':'Available',
+    'foreground':                   'Foreground',
+    'off_duty':                     'Off Duty',
+    'unknown':                      '',
+    '':                             ''
+  };
+
+  var SOURCE_COLORS = {
+    'active_job':                   '#2563eb',
+    'background_significant_change':'#16a34a',
+    'foreground':                   '#2563eb',
+    'off_duty':                     '#6b7280',
+    'unknown':                      '#9ca3af',
+    '':                             '#9ca3af'
+  };
+
+  var BATTERY_ICONS = {
+    'full':     '🔋',
+    'charging': '⚡',
+    'unplugged':'🔋',
+    'unknown':  '',
+    '':         ''
+  };
+
+  agents.forEach(function(a) {
+    var initials = a.name.split(' ').map(function(w) { return w[0] || ''; }).join('').substring(0, 2).toUpperCase();
+    var color    = SOURCE_COLORS[a.source] || '#9ca3af';
+
+    /* Current position icon */
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="width:34px;height:34px;border-radius:50%;background:'+color
+            +';color:white;display:flex;align-items:center;justify-content:center;'
+            +'font-weight:700;font-size:12px;border:2.5px solid white;'
+            +'box-shadow:0 2px 8px rgba(0,0,0,.3);">'+initials+'</div>',
+      iconSize:   [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor:[0, -20]
+    });
+
+    var srcLabel  = SOURCE_LABELS[a.source]  || a.source;
+    var batIcon   = BATTERY_ICONS[a.battery] || '';
+
+    var popup = '<div class="agent-card">'
+      + '<div class="name">'+a.name+'</div>'
+      + '<div class="meta">Last ping: '+a.at+'</div>'
+      + (srcLabel ? '<span class="badge-src">'+srcLabel+'</span> ' : '')
+      + (batIcon  ? '<span title="Battery: '+a.battery+'">'+batIcon+'</span>' : '')
+      + '</div>';
+
+    L.marker([a.lat, a.lng], { icon: icon })
+      .bindPopup(popup, { maxWidth: 240 })
+      .addTo(map);
+    bounds.push([a.lat, a.lng]);
+
+    /* Trail dots (faded, smaller) */
+    if (a.trail && a.trail.length > 1) {
+      a.trail.slice(1).forEach(function(t, i) {
+        var opacity = Math.max(0.15, 0.6 - i * 0.08);
+        var trailIcon = L.divIcon({
+          className: '',
+          html: '<div style="width:8px;height:8px;border-radius:50%;background:'+color
+                +';opacity:'+opacity+';border:1px solid white;"></div>',
+          iconSize:   [8, 8],
+          iconAnchor: [4, 4]
+        });
+        L.marker([t.lat, t.lng], { icon: trailIcon, interactive: false })
+          .addTo(map);
+        bounds.push([t.lat, t.lng]);
+      });
+
+      /* Polyline connecting trail */
+      var trailCoords = a.trail.map(function(t) { return [t.lat, t.lng]; });
+      L.polyline(trailCoords, {
+        color:   color,
+        weight:  2,
+        opacity: 0.35,
+        dashArray: '4 4'
+      }).addTo(map);
+    }
+  });
+
+  if (bounds.length > 0) {
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+  }
+
+  /* Empty state message */
+  if (agents.length === 0) {
+    var msg = document.createElement('div');
+    msg.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);'
+      +'background:white;border:1px solid #e5e7eb;border-radius:12px;'
+      +'padding:24px 32px;text-align:center;font-size:.9rem;color:#6b7280;z-index:900;';
+    msg.innerHTML = '<div style="font-size:2rem;margin-bottom:8px;">📍</div>'
+      +'<strong>No active agents</strong><br>No pings in the last 8 hours.';
+    document.getElementById('agent-map').appendChild(msg);
+  }
+})();
+</script>
+{% endblock %}

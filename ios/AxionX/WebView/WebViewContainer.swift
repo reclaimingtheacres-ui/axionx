@@ -9,6 +9,7 @@ import WebKit
 struct WebViewContainer: View {
     @StateObject private var store = WebViewStore()
     @EnvironmentObject private var syncManager: SyncManager
+    @EnvironmentObject private var fieldStatusManager: FieldStatusManager
     @State private var isOffline         = false
     @State private var showLPRScanner    = false
     @State private var isLookingUp       = false
@@ -73,6 +74,20 @@ struct WebViewContainer: View {
                 .padding(.top, 56)
                 .padding(.trailing, 16)
                 .transition(.opacity.combined(with: .scale))
+                .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
+            }
+
+            // Field Status Control — bottom centre, shown on LPR pages
+            if isOnLPRPage && !isOffline {
+                VStack {
+                    Spacer()
+                    FieldStatusView()
+                        .padding(.bottom, syncManager.pendingCount + syncManager.failedCount > 0 ? 56 : 24)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .allowsHitTesting(true)
+                .ignoresSafeArea(edges: .bottom)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
                 .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
             }
 

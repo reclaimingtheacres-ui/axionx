@@ -97,6 +97,25 @@ final class SyncManager: ObservableObject {
         refreshCounts()
     }
 
+    /// Queue a location ping. Counts are not refreshed (pings are transparent to the badge).
+    func enqueueLocationPing(lat: Double, lng: Double, accuracy: Double,
+                              battery: String, context: String,
+                              source: String, capturedAt: String) {
+        queue.enqueue(OfflineQueueItem(
+            actionType: "location_ping",
+            payload: [
+                "lat":           "\(lat)",
+                "lng":           "\(lng)",
+                "accuracy":      "\(accuracy)",
+                "battery_state": battery,
+                "context":       context,
+                "source":        source,
+                "captured_at":   capturedAt,
+            ]
+        ))
+        // Don't show location pings in the sync badge — they are silent background items
+    }
+
     // MARK: - Sync
 
     func syncNow() async {
@@ -160,6 +179,9 @@ final class SyncManager: ObservableObject {
                                                               webView: webView)
         case "mark_notifications_read": return await syncPost(item,
                                                               path: "/m/api/lpr/notifications/read",
+                                                              webView: webView)
+        case "location_ping":           return await syncPost(item,
+                                                              path: "/m/api/location/ping",
                                                               webView: webView)
         default:                        return true  // discard unknown action types
         }

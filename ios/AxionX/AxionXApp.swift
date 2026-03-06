@@ -1,28 +1,30 @@
 import SwiftUI
 import UIKit
 import UserNotifications
+import BackgroundTasks
 
 // MARK: - App Entry Point
 
 @main
 struct AxionXApp: App {
 
-    /// Adaptor keeps an AppDelegate in scope for push notifications and
-    /// other UIApplicationDelegate callbacks that SwiftUI doesn't cover yet.
     @UIApplicationDelegateAdaptor(AxionAppDelegate.self) var appDelegate
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .preferredColorScheme(.light) // Force light mode for v1; dark mode TBD
+                .preferredColorScheme(.light)
                 .environmentObject(SyncManager.shared)
+                .environmentObject(FieldStatusManager.shared)
         }
     }
 }
 
-// MARK: - App Delegate (push notifications + lifecycle hooks)
+// MARK: - App Delegate
 
 final class AxionAppDelegate: NSObject, UIApplicationDelegate {
+
+    private static let bgSyncID = "com.axionx.sync"
 
     func application(
         _ application: UIApplication,
@@ -30,11 +32,22 @@ final class AxionAppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
 
-        // Request permission and register with APNs.
-        // Token upload happens in didRegisterForRemoteNotificationsWithDeviceToken below.
+        // Push notifications
         Task { @MainActor in
             PushNotificationService.shared.requestPermissionAndRegister()
         }
+
+        // Restore field status and start location service
+        _ = FieldStatusManager.shared
+
+        // Register background app-refresh task for queued item sync
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.bgSyncID,
+            using: nil
+        ) { [weak self] task in
+            self?.handleBGSync(task: task as! BGAppRefreshTask)
+        }
+
         return true
     }
 
@@ -52,11 +65,9 @@ final class AxionAppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
-    ) {
-        // Silently swallow — notifications are non-critical for core functionality.
-    }
+    ) {}
 
-    // MARK: - App foregrounded: refresh badge + attempt pending sync
+    // MARK: - App foregrounded
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         Task { @MainActor in
@@ -64,13 +75,34 @@ final class AxionAppDelegate: NSObject, UIApplicationDelegate {
             await SyncManager.shared.syncNow()
         }
     }
+
+    // MARK: - Background app refresh
+
+    private func handleBGSync(task: BGAppRefreshTask) {
+        scheduleNextBGSync()
+        let work = Task {
+            await SyncManager.shared.syncNow()
+            task.setTaskCompleted(success: true)
+        }
+        task.expirationHandler = {
+            work.cancel()
+            task.setTaskCompleted(success: false)
+        }
+    }
+
+    static func scheduleNextBGSync() {
+        let req = BGAppRefreshTaskRequest(identifier: bgSyncID)
+        req.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        try? BGTaskScheduler.shared.submit(req)
+    }
+
+    private func scheduleNextBGSync() { Self.scheduleNextBGSync() }
 }
 
 // MARK: - UNUserNotificationCenterDelegate
 
 extension AxionAppDelegate: UNUserNotificationCenterDelegate {
 
-    /// Show banners even when the app is in the foreground.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -79,16 +111,12 @@ extension AxionAppDelegate: UNUserNotificationCenterDelegate {
         completionHandler([.banner, .sound, .badge])
     }
 
-    /// When the user taps a notification, navigate to the Alerts screen.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        NotificationCenter.default.post(
-            name: .axionOpenNotifications,
-            object: nil
-        )
+        NotificationCenter.default.post(name: .axionOpenNotifications, object: nil)
         completionHandler()
     }
 }

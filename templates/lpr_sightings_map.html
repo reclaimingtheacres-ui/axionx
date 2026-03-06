@@ -29,8 +29,10 @@
       <input type="text" id="regSearch" placeholder="Search plate…"
              class="form-control form-control-sm" style="width:130px;font-size:.8rem;">
       <button id="agentsToggle" class="btn btn-sm btn-outline-success" style="font-size:.78rem;">
-        Agents
+        Show Agents
       </button>
+      <a href="{{ url_for('admin_lpr_agent_map') }}"
+         class="btn btn-sm btn-outline-success" style="font-size:.78rem;">👥 Agent Map</a>
       <a href="{{ url_for('admin_lpr_sightings') }}"
          class="btn btn-sm btn-outline-secondary" style="font-size:.78rem;">Table</a>
       <a href="{{ url_for('admin_lpr_watchlist') }}"

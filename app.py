@@ -6729,6 +6729,51 @@ def m_api_location_update():
     return jsonify({"ok": True})
 
 
+@app.post("/m/api/location/ping")
+@mobile_login_required
+def m_api_location_ping():
+    """
+    Richer location ping from AgentLocationService.
+    Stores into agent_movement (full history) and upserts agent_locations (latest).
+    No customer or finance data in payload — only position + operational context.
+    """
+    uid  = session.get("user_id")
+    data = request.get_json(silent=True) or {}
+    lat         = data.get("lat")
+    lng         = data.get("lng")
+    accuracy    = data.get("accuracy")
+    captured_at = (data.get("captured_at") or "").strip() or now_ts()
+    source      = (data.get("source") or "unknown").strip()
+    battery     = (data.get("battery_state") or "unknown").strip()
+    context     = (data.get("context") or "unknown").strip()
+
+    if not lat or not lng:
+        return jsonify({"ok": False, "error": "lat/lng required"}), 400
+
+    received_at = now_ts()
+    conn = db()
+    _agent_movement_ensure(conn)
+    conn.execute("""
+        INSERT INTO agent_movement
+            (user_id, latitude, longitude, captured_at, received_at,
+             source, accuracy_m, battery_state, context)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (uid, float(lat), float(lng), captured_at, received_at,
+          source, float(accuracy) if accuracy else None, battery, context))
+    # Also keep agent_locations current for backward compat
+    conn.execute("""
+        INSERT INTO agent_locations (user_id, lat, lng, accuracy, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            lat=excluded.lat, lng=excluded.lng,
+            accuracy=excluded.accuracy, updated_at=excluded.updated_at
+    """, (uid, float(lat), float(lng),
+          float(accuracy) if accuracy else None, received_at))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.get("/m/api/map/jobs")
 @mobile_login_required
 def m_api_map_jobs():
@@ -7266,19 +7311,40 @@ def admin_lpr_sightings_map():
         LIMIT 1000
     """).fetchall()
 
-    # Agent locations (last 8 hours)
+    # Agent locations — prefer agent_movement (richer), fallback to agent_locations
     agent_rows = []
     try:
+        _agent_movement_ensure(conn)
         agent_rows = conn.execute("""
-            SELECT al.user_id, u.full_name, al.lat, al.lng, al.updated_at
-            FROM agent_locations al
-            JOIN users u ON u.id = al.user_id
-            WHERE al.lat IS NOT NULL AND al.lng IS NOT NULL
-              AND al.updated_at >= datetime('now', '-8 hours')
-            ORDER BY al.updated_at DESC
+            SELECT am.user_id, u.full_name,
+                   am.latitude AS lat, am.longitude AS lng, am.received_at AS updated_at,
+                   am.source, am.battery_state
+            FROM agent_movement am
+            JOIN users u ON u.id = am.user_id
+            WHERE am.received_at >= datetime('now', '-8 hours')
+              AND am.received_at = (
+                  SELECT MAX(am2.received_at)
+                  FROM agent_movement am2
+                  WHERE am2.user_id = am.user_id
+                    AND am2.received_at >= datetime('now', '-8 hours')
+              )
+            ORDER BY am.received_at DESC
         """).fetchall()
     except Exception:
         pass
+    if not agent_rows:
+        try:
+            agent_rows = conn.execute("""
+                SELECT al.user_id, u.full_name, al.lat, al.lng, al.updated_at,
+                       NULL AS source, NULL AS battery_state
+                FROM agent_locations al
+                JOIN users u ON u.id = al.user_id
+                WHERE al.lat IS NOT NULL AND al.lng IS NOT NULL
+                  AND al.updated_at >= datetime('now', '-8 hours')
+                ORDER BY al.updated_at DESC
+            """).fetchall()
+        except Exception:
+            pass
     conn.close()
 
     features = []
@@ -7449,6 +7515,29 @@ def _lpr_followups_ensure(conn):
     add_column_if_missing(cur, "lpr_followups", "status", "TEXT DEFAULT 'open'")
 
 
+def _agent_movement_ensure(conn):
+    """Dedicated agent movement table — no customer/finance data, only position + context."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS agent_movement (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL,
+            latitude      REAL NOT NULL,
+            longitude     REAL NOT NULL,
+            captured_at   TEXT NOT NULL,
+            received_at   TEXT NOT NULL,
+            source        TEXT,
+            accuracy_m    REAL,
+            battery_state TEXT,
+            context       TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_movement_user_time
+        ON agent_movement (user_id, received_at DESC)
+    """)
+    conn.commit()
+
+
 def _lpr_proximity_ensure(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS lpr_proximity_rules (
@@ -7500,30 +7589,63 @@ def _dist_label(metres: float) -> str:
 
 def _nearest_agents(lat: float, lng: float, conn, limit: int = 3,
                     max_hours: int = 8) -> list:
-    """Return up to `limit` agents with GPS updated within `max_hours`, sorted by distance."""
+    """Return up to `limit` agents with a recent GPS ping, sorted by distance.
+    Queries agent_movement (richer data) with fallback to agent_locations."""
     from datetime import timedelta as _td2
     cutoff = (datetime.utcnow() - _td2(hours=max_hours)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    rows = []
     try:
         rows = conn.execute("""
-            SELECT al.user_id, u.full_name, al.lat, al.lng, al.updated_at
-            FROM agent_locations al
-            JOIN users u ON u.id = al.user_id
-            WHERE al.updated_at >= ? AND al.lat IS NOT NULL AND al.lng IS NOT NULL
-            ORDER BY al.updated_at DESC
-        """, (cutoff,)).fetchall()
+            SELECT am.user_id, u.full_name,
+                   am.latitude AS lat, am.longitude AS lng,
+                   am.received_at AS updated_at,
+                   am.source, am.battery_state
+            FROM agent_movement am
+            JOIN users u ON u.id = am.user_id
+            WHERE am.received_at >= ?
+              AND am.received_at = (
+                SELECT MAX(am2.received_at)
+                FROM agent_movement am2
+                WHERE am2.user_id = am.user_id
+                  AND am2.received_at >= ?
+              )
+            ORDER BY am.received_at DESC
+        """, (cutoff, cutoff)).fetchall()
     except Exception:
-        return []
+        pass
+
+    if not rows:
+        try:
+            rows = conn.execute("""
+                SELECT al.user_id, u.full_name, al.lat AS lat, al.lng AS lng,
+                       al.updated_at, NULL AS source, NULL AS battery_state
+                FROM agent_locations al
+                JOIN users u ON u.id = al.user_id
+                WHERE al.updated_at >= ? AND al.lat IS NOT NULL AND al.lng IS NOT NULL
+                ORDER BY al.updated_at DESC
+            """, (cutoff,)).fetchall()
+        except Exception:
+            return []
+
     agents = []
+    seen_ids: set = set()
     for r in rows:
+        uid = r["user_id"]
+        if uid in seen_ids:
+            continue
+        seen_ids.add(uid)
         dist = _haversine_m(lat, lng, r["lat"], r["lng"])
         agents.append({
-            "user_id":    r["user_id"],
-            "name":       r["full_name"],
-            "lat":        r["lat"],
-            "lng":        r["lng"],
-            "dist_m":     round(dist),
-            "dist_label": _dist_label(dist),
-            "updated_at": r["updated_at"],
+            "user_id":      uid,
+            "name":         r["full_name"],
+            "lat":          r["lat"],
+            "lng":          r["lng"],
+            "dist_m":       round(dist),
+            "dist_label":   _dist_label(dist),
+            "updated_at":   r["updated_at"],
+            "source":       r["source"] or "",
+            "battery":      r["battery_state"] or "",
         })
     agents.sort(key=lambda x: x["dist_m"])
     return agents[:limit]
@@ -7991,6 +8113,80 @@ def admin_lpr_sighting_intelligence(sighting_id: int):
         "proximity_hits": prox_clean,
         "dispatch_score": score,
     }), 200
+
+
+@app.get("/admin/lpr/agent-map")
+@admin_required
+def admin_lpr_agent_map():
+    """
+    Admin view: recent agent positions for dispatch support.
+    Shows last-known position and a short trail (last 10 pings, 8 h window) per agent.
+    No customer/finance data — only agent name, position, context, battery, and timestamp.
+    """
+    import json as _json
+    conn = db()
+    _agent_movement_ensure(conn)
+
+    # Latest ping per agent (last 8 h)
+    latest_rows = conn.execute("""
+        SELECT am.user_id, u.full_name,
+               am.latitude, am.longitude,
+               am.received_at, am.source, am.battery_state, am.context
+        FROM agent_movement am
+        JOIN users u ON u.id = am.user_id
+        WHERE am.received_at >= datetime('now', '-8 hours')
+          AND am.received_at = (
+              SELECT MAX(am2.received_at)
+              FROM agent_movement am2
+              WHERE am2.user_id = am.user_id
+                AND am2.received_at >= datetime('now', '-8 hours')
+          )
+        ORDER BY am.received_at DESC
+    """).fetchall()
+
+    # Trail rows (last 10 pings per agent, 8 h window)
+    trail_rows = conn.execute("""
+        SELECT am.user_id, am.latitude, am.longitude, am.received_at,
+               am.source, am.battery_state
+        FROM agent_movement am
+        WHERE am.received_at >= datetime('now', '-8 hours')
+        ORDER BY am.user_id, am.received_at DESC
+    """).fetchall()
+    conn.close()
+
+    # Build trails dict: user_id → last 10 pings
+    trails: dict = {}
+    for r in trail_rows:
+        uid = r["user_id"]
+        if uid not in trails:
+            trails[uid] = []
+        if len(trails[uid]) < 10:
+            trails[uid].append({
+                "lat":  r["latitude"],
+                "lng":  r["longitude"],
+                "at":   r["received_at"][:16].replace("T", " ") if r["received_at"] else "",
+                "src":  r["source"] or "",
+            })
+
+    agents = []
+    for r in latest_rows:
+        uid  = r["user_id"]
+        at   = r["received_at"]
+        agents.append({
+            "name":    r["full_name"],
+            "lat":     r["latitude"],
+            "lng":     r["longitude"],
+            "at":      at[:16].replace("T", " ") if at else "",
+            "source":  r["source"] or "",
+            "battery": r["battery_state"] or "unknown",
+            "context": r["context"] or "",
+            "trail":   trails.get(uid, []),
+        })
+
+    agents_json = _json.dumps(agents)
+    return render_template("lpr_agent_map.html",
+                           agents_json=agents_json,
+                           count=len(agents))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

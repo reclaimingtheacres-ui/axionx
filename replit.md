@@ -342,3 +342,59 @@ Mobile LPR system for iOS field agents. Backend in `app.py`, mobile templates un
 - Review and Follow-up modals expanded to `modal-lg` with dispatch intelligence panel
 - Intelligence panel loads via AJAX on modal open: priority badge, recommended-action alert box, nearest agents list, repeat-sightings summary
 - Follow-up modal auto-selects the nearest agent in the assignee dropdown
+
+---
+
+## LPR Stage 10 — Passive Background Location & Agent Dispatch Awareness
+
+### Backend additions
+
+**New table** `agent_movement` (`id, user_id, latitude, longitude, captured_at, received_at, source, accuracy_m, battery_state, context`) — append-only movement history; no customer/finance data.
+
+**New route** `POST /m/api/location/ping` — inserts a row into `agent_movement` and upserts `agent_locations` for backward compatibility. Accepts: `lat, lng, accuracy, captured_at, source, battery_state, context`.
+
+**New route** `GET /admin/lpr/agent-map` — renders `lpr_agent_map.html` with last-known agent positions + 10-ping trail per agent from the last 8 hours.
+
+**Updated** `_nearest_agents()` — queries `agent_movement` (latest ping per agent, last 8 h) as primary source; falls back gracefully to `agent_locations`. Returns `source` and `battery` fields alongside distance.
+
+**Updated** `admin_lpr_sightings_map` — agent pins now built from `agent_movement` (with fallback to `agent_locations`). Agent source/battery available in pin data.
+
+### iOS additions
+
+**`AgentLocationService.swift`** (Services group) — CLLocationManager wrapper with three modes:
+- `offDuty` — all location monitoring stopped
+- `available` — `startMonitoringSignificantLocationChanges()` (low-power, works in background)
+- `activeJob` — `startUpdatingLocation()` with 50 m distance filter + 30-min auto-downgrade timer
+- Captures battery state (`UIDevice.batteryState`) and app context (foreground/background) with each ping
+- Delivers via `SyncManager.shared.enqueueLocationPing(...)` — always offline-safe through queue
+
+**`FieldStatusManager.swift`** (Services group) — `@MainActor ObservableObject` singleton:
+- Persists field status in `UserDefaults` (`com.axionx.field_status_v2`)
+- Restores `available` on restart if last status was `activeJob` (activeJob never survives restart)
+- Drives `AgentLocationService.apply(_:)` on every status change
+- `downgradeActiveJob()` called by `AgentLocationService` timer after 30 min
+
+**`FieldStatusView.swift`** (Views group) — compact 3-segment pill control:
+- Segments: Off Duty (grey) / Available (green) / Active Job (blue)
+- Shown as a floating overlay at the bottom centre of all `/m/lpr*` pages inside `WebViewContainer`
+- Rises above the sync badge when pending items are present
+
+**`OfflineQueue.swift`** — added `"location_ping"` action label
+
+**`SyncManager.swift`** — added `enqueueLocationPing(lat:lng:accuracy:battery:context:source:capturedAt:)` helper; added `"location_ping"` case in `processItem` routing to `POST /m/api/location/ping`. Location pings are transparent to the badge counter.
+
+**`AxionXApp.swift`** — imports `BackgroundTasks`; registers `BGAppRefreshTask` with identifier `com.axionx.sync`; initialises `FieldStatusManager.shared` on launch; passes `.environmentObject(FieldStatusManager.shared)` to `ContentView`; background task handler calls `SyncManager.shared.syncNow()` then reschedules.
+
+**`WebViewContainer.swift`** — accepts `@EnvironmentObject var fieldStatusManager: FieldStatusManager`; shows `FieldStatusView()` as a floating bottom-centre overlay on LPR pages.
+
+**`Info.plist`** — added `NSLocationAlwaysAndWhenInUseUsageDescription`, `NSLocationAlwaysUsageDescription`, `UIBackgroundModes` (`location`, `fetch`, `processing`), `BGTaskSchedulerPermittedIdentifiers` (`com.axionx.sync`).
+
+**`project.pbxproj`** — new IDs 2E/2F (AgentLocationService), 30/31 (FieldStatusManager), 32/33 (FieldStatusView); Services and Views groups updated; Sources build phase updated.
+
+### New template `lpr_agent_map.html`
+- Leaflet map showing last-known position of each active agent (last 8 h)
+- Agent pins are colour-coded by field status source (blue=active_job, green=available, grey=unknown)
+- Faded trail dots + dashed polyline show recent movement (up to 9 prior pings)
+- Popup shows: agent name, last ping time, status source label, battery icon
+- Empty-state message when no agents active
+- Accessible from Sightings Table and Sightings Map via "👥 Agents"/"👥 Agent Map" buttons
