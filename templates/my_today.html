@@ -7,6 +7,42 @@
   <span class="text-muted small">{{ today_display }}</span>
 </div>
 
+{% if update_drafts %}
+<div class="d-flex align-items-center justify-content-between px-3 py-2 mb-4"
+     style="background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.35);border-radius:8px">
+  <div class="d-flex align-items-center gap-2">
+    <span style="font-size:1.2rem">&#9888;</span>
+    <div>
+      <div class="fw-semibold" style="color:#92400e;font-size:.9rem">
+        {{ update_drafts|length }} unfinished attendance update{{ 's' if update_drafts|length != 1 else '' }}
+      </div>
+      <div class="small" style="color:#b45309">Tap a job below to continue where you left off.</div>
+    </div>
+  </div>
+  <a href="/my/drafts" class="btn btn-sm" style="background:#d97706;color:#fff;white-space:nowrap">View All</a>
+</div>
+
+<div class="list-group mb-4">
+  {% for d in update_drafts %}
+  <a href="/jobs/{{ d.job_id }}/update-builder"
+     class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+     style="border-left:3px solid #d97706">
+    <div>
+      <div class="fw-semibold">
+        {{ d.internal_job_number }}{% if d.client_reference %} ({{ d.client_reference }}){% endif %}
+        — {{ d.customer_name or "No customer" }}
+      </div>
+      <div class="small text-muted">
+        Update draft not applied — tap to complete
+        {% if d.created_at %}&nbsp;&middot;&nbsp;Started {{ d.created_at[:16]|replace('T',' ') }}{% endif %}
+      </div>
+    </div>
+    <span class="badge ms-2" style="background:#d97706;color:#fff;white-space:nowrap">Resume &rsaquo;</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if schedules %}
 <h6 class="text-muted mb-2" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em">Scheduled Visits</h6>
 <div class="list-group mb-4">
@@ -99,25 +135,6 @@
     </div>
   </div>
   {% endfor %}
-</div>
-{% endif %}
-
-{% if update_drafts %}
-<div class="mb-4">
-  <h6 class="mb-2" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--warning,#d97706)">&#9888; Update Required (Pending Drafts)</h6>
-  <div class="list-group">
-    {% for d in update_drafts %}
-    <a href="/jobs/{{ d.job_id }}/update-builder" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-       style="border-left:3px solid #d97706">
-      <div>
-        <div class="fw-semibold">{{ d.internal_job_number }}{% if d.client_reference %} ({{ d.client_reference }}){% endif %}
-          — {{ d.customer_name or "No customer" }}</div>
-        <div class="small text-muted">Update draft not yet submitted — tap to continue</div>
-      </div>
-      <span class="badge" style="background:#d97706;color:#fff">Continue Update</span>
-    </a>
-    {% endfor %}
-  </div>
 </div>
 {% endif %}
 

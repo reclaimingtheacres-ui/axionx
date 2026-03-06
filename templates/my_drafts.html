@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Unfinished Updates{% endblock %}
+{% block page_title %}Unfinished Attendance Updates{% endblock %}
+{% block content %}
+
+<div class="mb-3">
+  <a href="/my/today" class="btn btn-outline-secondary btn-sm">&larr; Back to My Today</a>
+</div>
+
+{% if drafts %}
+<div class="mb-3 px-3 py-2"
+     style="background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:8px">
+  <span style="color:#92400e;font-size:.875rem">
+    &#9888; You have <strong>{{ drafts|length }}</strong> attendance update{{ 's' if drafts|length != 1 else '' }} that
+    {{ 'have' if drafts|length != 1 else 'has' }} not been applied to job notes.
+    Open each one to review and complete it.
+  </span>
+</div>
+
+<div class="list-group">
+  {% for d in drafts %}
+  <a href="/jobs/{{ d.job_id }}/update-builder"
+     class="list-group-item list-group-item-action"
+     style="border-left:3px solid #d97706">
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        <div class="fw-semibold">
+          {{ d.display_ref or d.internal_job_number or ('Job #' ~ d.job_id) }}
+          {% if d.client_reference %}&nbsp;<span class="text-muted fw-normal">({{ d.client_reference }})</span>{% endif %}
+        </div>
+        <div class="small mt-1">
+          {{ d.customer_name or 'No customer' }}
+          {% if d.job_address %}
+            &nbsp;&middot;&nbsp;<span class="text-muted">{{ d.job_address }}</span>
+          {% endif %}
+        </div>
+        <div class="small text-muted mt-1">
+          {% if d.attend_date %}Attendance date: {{ d.attend_date }}&nbsp;&middot;&nbsp;{% endif %}
+          {% if d.attend_time %}{{ d.attend_time }}&nbsp;&middot;&nbsp;{% endif %}
+          Last saved: {{ (d.updated_at or d.created_at or '')[:16]|replace('T', ' ') }}
+        </div>
+      </div>
+      <span class="badge ms-3 mt-1" style="background:#d97706;color:#fff;white-space:nowrap">Resume &rsaquo;</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="text-muted text-center py-5">
+  <div style="font-size:2rem;margin-bottom:.5rem">&#10003;</div>
+  <div>No unfinished updates. You're all caught up.</div>
+</div>
+{% endif %}
+
+{% endblock %}

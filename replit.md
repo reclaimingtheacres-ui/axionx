@@ -133,25 +133,34 @@ Agents and admins can produce compliant, SWPI-style attendance updates using a g
 **Workflow**:
 1. Opening the builder immediately creates a `job_updates` record with `status='draft'` so nothing is lost.
 2. Auto-fills: job reference, client, customer, address, customer mobile.
-3. Agent fills minimum facts using toggles: attendance type (first/re), property description (first only), security sighted, calling card, call outcome + voicemail, SMS, neighbour outcome.
+3. Agent fills minimum facts using toggles: attendance type (first/re), property description (first only), security sighted, calling card, call outcome + voicemail, SMS, neighbour outcome. **Phone number used** field appears when call or SMS is toggled on (auto-fills from customer mobile, editable).
 4. "Generate Update" POSTs to `/jobs/<id>/update-builder/generate`, calls OpenAI (gpt-4o-mini), returns full SWPI-style narrative (third person, British spelling, no acronyms, required calling-card wording, points-of-contact line, ETA).
 5. Narrative appears in editable textarea; agent can adjust before saving.
-6. "Save Update to Job" POSTs to `/jobs/<id>/update-builder/save` — persists to `job_field_notes` tagged `[AI Update]`, marks draft `complete`, clears any "Update Required" cue.
-7. If agent exits without saving, the draft remains and surfaces on `/my/today` as an amber "Update Required (Pending Drafts)" alert with a link to continue.
+6. "Save Update to Job" POSTs to `/jobs/<id>/update-builder/save` — persists to `job_field_notes` tagged `[AI Update]`, marks draft `complete`, clears both "Update Required" and "Complete Attendance Update" cues.
+7. **Address validation**: if job has no address, Generate button is disabled and an alert is shown.
+8. **Auto-save on exit**: JS sends `sendBeacon` to `/autosave?leaving=1` on `beforeunload`, plus periodic 30s autosave. On exit (leaving=1), a High-priority `cue_item` ("Complete Attendance Update") is created for the agent.
+9. **Draft banner**: agents (role=agent/both) see an amber banner on every page when they have pending drafts. Clicking it goes to `/my/drafts`.
+10. **My Today**: pending drafts surfaced at the top with resume links.
+11. **My Drafts** (`/my/drafts`): dedicated page listing all open drafts.
 
-**Points of contact rule**: calling card = 1pt, voicemail left = 1pt, SMS sent = 1pt. ETA = 2 next business days.
+**Points of contact rule (updated)**: calling card = 1pt, telephone call made = 1pt (any outcome), SMS sent = 1pt. Max 3pts. ETA = 2 days excl. Sundays for 1-2 POC; 8 days excl. Sundays for 3 POC.
+
+**Narrative format**: Opening sentence is constructed server-side: `dd/mm/yy at h:mma Our agent [re-]attended at [address][, finding a {prop_desc}].` AI assembles the prose paragraph around fixed-wording sentences (calling card, security, phone, SMS).
 
 **Routes**:
 - `GET /jobs/<id>/update-builder` — open/resume draft
 - `POST /jobs/<id>/update-builder/generate` — AI narrative generation (JSON API)
 - `POST /jobs/<id>/update-builder/save` — save final update (JSON API)
+- `POST /jobs/<id>/update-builder/autosave` — background form-state save; `?leaving=1` also creates cue
 - `GET /jobs/<id>/update-builder/draft-check` — check if draft exists (JSON API)
+- `GET /my/drafts` — agent's list of all pending drafts
 
 **DB additions**:
 - `job_updates` — full structured record per update (draft/complete status, all inputs, generated + final narrative, tokens used)
 - `ai_usage_log` — per-generation log: user, job, model, tokens, key source
 - `jobs.is_regional`, `jobs.confirmed_skip` — flags used in narrative context
 - `system_settings.openai_api_key`, `system_settings.ai_use_own_key` — admin-configurable AI key fallback
+- `cue_items.cue_link` — direct URL stored on cue (used for draft resume links)
 
 **Admin Settings > AI Settings tab**:
 - Toggle to use own OpenAI API key instead of Replit AI credits

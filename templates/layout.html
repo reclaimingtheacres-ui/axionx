@@ -391,6 +391,20 @@
         {% endif %}
       {% endwith %}
 
+      {% if pending_draft_count and session.get('role') in ('agent', 'both') %}
+      <div id="ax-draft-banner" class="d-flex align-items-center justify-content-between mb-3 px-3 py-2"
+           style="background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.35);border-radius:8px;cursor:pointer"
+           onclick="window.location.href='/my/drafts'">
+        <div class="d-flex align-items-center gap-2">
+          <span style="font-size:1.1rem">&#9888;</span>
+          <span style="font-size:.875rem;color:#92400e;font-weight:500">
+            You have {{ pending_draft_count }} unfinished attendance update{{ 's' if pending_draft_count != 1 else '' }} requiring completion.
+          </span>
+        </div>
+        <span class="badge" style="background:#d97706;color:#fff;font-size:.75rem">View Drafts</span>
+      </div>
+      {% endif %}
+
       {% block content %}{% endblock %}
     </main>
   </div>

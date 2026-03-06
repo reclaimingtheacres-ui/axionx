@@ -368,6 +368,33 @@
     }
   });
 
+  const AUTOSAVE_URL = window.location.pathname + '/autosave';
+
+  function doAutosave(leaving) {
+    const payload = buildPayload();
+    const url = leaving ? AUTOSAVE_URL + '?leaving=1' : AUTOSAVE_URL;
+    const blob = new Blob([JSON.stringify(payload)], {type: 'application/json'});
+    if (leaving && navigator.sendBeacon) {
+      navigator.sendBeacon(url, blob);
+    } else {
+      fetch(url, {method: 'POST', body: blob, headers: {'Content-Type': 'application/json'}})
+        .catch(() => {});
+    }
+  }
+
+  let _applied = false;
+
+  const _autosaveTimer = setInterval(() => {
+    if (!_applied) doAutosave(false);
+  }, 30000);
+
+  window.addEventListener('beforeunload', function() {
+    if (!_applied) {
+      clearInterval(_autosaveTimer);
+      doAutosave(true);
+    }
+  });
+
   $('btn_save').addEventListener('click', async function() {
     const narrative = $('final_narrative').value.trim();
     if (!narrative) {
@@ -394,6 +421,8 @@
         this.disabled = false;
         this.textContent = 'Save Update to Job';
       } else {
+        _applied = true;
+        clearInterval(_autosaveTimer);
         $('save_success').style.display = 'block';
         setTimeout(() => { window.location.href = data.redirect; }, 800);
       }

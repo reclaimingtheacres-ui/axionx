@@ -568,6 +568,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "jobs", "confirmed_skip", "INTEGER")
     add_column_if_missing(cur, "system_settings", "openai_api_key", "TEXT")
     add_column_if_missing(cur, "system_settings", "ai_use_own_key", "INTEGER")
+    add_column_if_missing(cur, "cue_items", "cue_link", "TEXT")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_updates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -623,9 +624,23 @@ def _migrate_update_builder():
 
 @app.context_processor
 def inject_globals():
+    pending_drafts = 0
+    uid = session.get("user_id")
+    if uid:
+        try:
+            conn = db()
+            row = conn.execute(
+                "SELECT COUNT(*) c FROM job_updates WHERE created_by_user_id=? AND status='draft'",
+                (uid,)
+            ).fetchone()
+            pending_drafts = row["c"] if row else 0
+            conn.close()
+        except Exception:
+            pending_drafts = 0
     return {
         "GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
-        "google_maps_api_key": os.getenv("GOOGLE_MAPS_API_KEY", "")
+        "google_maps_api_key": os.getenv("GOOGLE_MAPS_API_KEY", ""),
+        "pending_draft_count": pending_drafts,
     }
 
 
@@ -3761,6 +3776,38 @@ def job_document_upload(job_id: int):
 
 # -------- Update Builder (AI Assist) --------
 
+def _ensure_draft_cue(conn, job_id, agent_id, draft_id, job_ref):
+    ts = now_ts()
+    melb = pytz.timezone("Australia/Melbourne")
+    now_local = datetime.now(melb)
+    five_pm_today = now_local.replace(hour=17, minute=0, second=0, microsecond=0)
+    two_hours_later = now_local + _td(hours=2)
+    due_time = min(five_pm_today, two_hours_later)
+    due_date_str = due_time.strftime("%Y-%m-%d")
+    cue_link = f"/jobs/{job_id}/update-builder"
+    instructions = (
+        f"An AI-generated attendance update was started but not applied to job {job_ref}. "
+        "Please review and complete the update."
+    )
+    existing = conn.execute(
+        """SELECT id FROM cue_items
+           WHERE job_id=? AND assigned_user_id=?
+             AND visit_type='Complete Attendance Update'
+             AND status IN ('Pending','In Progress')""",
+        (job_id, agent_id)
+    ).fetchone()
+    if not existing:
+        conn.execute(
+            """INSERT INTO cue_items
+               (job_id, visit_type, due_date, priority, status, assigned_user_id,
+                instructions, cue_link, created_by_user_id, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (job_id, "Complete Attendance Update", due_date_str, "High", "Pending",
+             agent_id, instructions, cue_link, agent_id, ts, ts)
+        )
+        conn.commit()
+
+
 def _get_ai_client():
     conn = db()
     settings = conn.execute("SELECT * FROM system_settings WHERE id=1").fetchone()
@@ -4144,14 +4191,15 @@ def update_builder_save(job_id: int):
     """, (job_id, uid, f"[AI Update]\n{final_text}", ts))
     conn.commit()
 
-    cue_today = conn.execute(
-        "SELECT id FROM cue_items WHERE job_id=? AND assigned_user_id=? AND visit_type='Update Required' AND status IN ('Pending','In Progress')",
-        (job_id, uid)
-    ).fetchone()
-    if cue_today:
-        conn.execute("UPDATE cue_items SET status='Completed', completed_at=?, updated_at=? WHERE id=?",
-                     (ts, ts, cue_today["id"]))
-        conn.commit()
+    for cue_type in ("Update Required", "Complete Attendance Update"):
+        cue_today = conn.execute(
+            "SELECT id FROM cue_items WHERE job_id=? AND assigned_user_id=? AND visit_type=? AND status IN ('Pending','In Progress')",
+            (job_id, uid, cue_type)
+        ).fetchone()
+        if cue_today:
+            conn.execute("UPDATE cue_items SET status='Completed', completed_at=?, updated_at=? WHERE id=?",
+                         (ts, ts, cue_today["id"]))
+            conn.commit()
 
     conn.close()
     audit("job_update", draft_id or 0, "save",
@@ -4171,6 +4219,82 @@ def update_builder_draft_check(job_id: int):
     ).fetchone()
     conn.close()
     return jsonify({"has_draft": bool(draft), "draft_id": draft["id"] if draft else None})
+
+
+@app.post("/jobs/<int:job_id>/update-builder/autosave")
+@login_required
+def update_builder_autosave(job_id: int):
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False}), 404
+
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+        conn.close()
+        return jsonify({"ok": False}), 403
+
+    data = request.get_json(force=True)
+    draft_id = data.get("draft_id")
+    ts = now_ts()
+    structured_json = json.dumps({k: v for k, v in data.items() if k != "draft_id"})
+
+    if draft_id:
+        conn.execute("""
+            UPDATE job_updates SET
+                attend_date=?, attend_time=?, is_first_attendance=?,
+                property_description=?, security_sighted=?, security_make_model=?,
+                security_reg=?, security_location=?, calling_card=?,
+                neighbour_outcome=?, call_made=?, call_outcome=?,
+                voicemail_left=?, sms_sent=?, customer_mobile=?,
+                structured_inputs_json=?, updated_at=?
+            WHERE id=? AND created_by_user_id=? AND status='draft'
+        """, (
+            data.get("attend_date"), data.get("attend_time"),
+            1 if data.get("is_first_attendance") else 0,
+            data.get("property_description", ""),
+            1 if data.get("security_sighted") else 0,
+            data.get("security_make_model", ""), data.get("security_reg", ""),
+            data.get("security_location", ""),
+            1 if data.get("calling_card") else 0,
+            data.get("neighbour_outcome", ""),
+            1 if data.get("call_made") else 0, data.get("call_outcome", ""),
+            1 if data.get("voicemail_left") else 0,
+            1 if data.get("sms_sent") else 0,
+            data.get("phone_number_used", ""),
+            structured_json, ts,
+            draft_id, uid
+        ))
+        conn.commit()
+
+    leaving = request.args.get("leaving") == "1"
+    if leaving:
+        job_ref = job["display_ref"] or job["internal_job_number"] or str(job_id)
+        _ensure_draft_cue(conn, job_id, uid, draft_id, job_ref)
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.get("/my/drafts")
+@login_required
+def my_drafts():
+    uid = session.get("user_id")
+    conn = db()
+    drafts = conn.execute("""
+        SELECT ju.id AS draft_id, ju.job_id, ju.attend_date, ju.attend_time,
+               ju.created_at, ju.updated_at,
+               j.display_ref, j.internal_job_number, j.client_reference, j.job_address,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name
+        FROM job_updates ju
+        JOIN jobs j ON j.id = ju.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE ju.created_by_user_id = ? AND ju.status = 'draft'
+        ORDER BY ju.updated_at DESC
+    """, (uid,)).fetchall()
+    conn.close()
+    return render_template("my_drafts.html", drafts=drafts)
 
 
 # -------- Users (admin only) --------
