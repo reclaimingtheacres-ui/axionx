@@ -21,7 +21,15 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
 
-    <!-- Device support: iPhone only, portrait -->
+    <!-- SwiftUI App lifecycle — no UISceneDelegate class name required -->
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+
+    <!-- Launch screen storyboard (shown before SwiftUI tree starts) -->
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+
+    <!-- iPhone only, portrait orientation -->
     <key>UIDeviceFamily</key>
     <array>
         <integer>1</integer>
@@ -31,43 +39,24 @@
         <string>UIInterfaceOrientationPortrait</string>
     </array>
 
-    <!-- Scene lifecycle (no storyboard entry point) -->
-    <key>UIApplicationSceneManifest</key>
-    <dict>
-        <key>UIApplicationSupportsMultipleScenes</key>
-        <false/>
-        <key>UISceneConfigurations</key>
-        <dict>
-            <key>UIWindowSceneSessionRoleApplication</key>
-            <array>
-                <dict>
-                    <key>UISceneConfigurationName</key>
-                    <string>Default Configuration</string>
-                    <key>UISceneDelegateClassName</key>
-                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
-                </dict>
-            </array>
-        </dict>
-    </dict>
-
-    <!-- Launch screen -->
-    <key>UILaunchStoryboardName</key>
-    <string>LaunchScreen</string>
-
-    <!-- Status bar: white theme -->
+    <!-- Status bar: white / light theme -->
     <key>UIStatusBarStyle</key>
     <string>UIStatusBarStyleDarkContent</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <true/>
 
-    <!-- App Transport Security: HTTPS only in production -->
+    <!-- Appearance: force light mode for v1 -->
+    <key>UIUserInterfaceStyle</key>
+    <string>Light</string>
+
+    <!-- App Transport Security -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
         <false/>
         <key>NSExceptionDomains</key>
         <dict>
-            <!-- Allow HTTP for local dev only; remove before App Store submission -->
+            <!-- Allow HTTP on localhost for simulator dev builds only -->
             <key>localhost</key>
             <dict>
                 <key>NSExceptionAllowsInsecureHTTPLoads</key>
@@ -78,13 +67,9 @@
         </dict>
     </dict>
 
-    <!-- Location permission — required for GPS + distance features -->
+    <!-- Location permission — required for GPS/distance features -->
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>AxionX uses your location while the app is in use to show nearby jobs, calculate travel distance, and assist with navigation.</string>
-
-    <!-- Camera / photo (deferred to future release — listed here for TestFlight reviewers) -->
-    <!-- <key>NSCameraUsageDescription</key> -->
-    <!-- <string>AxionX uses the camera to attach photos to job updates.</string> -->
 
     <!-- App icon -->
     <key>CFBundleIconName</key>

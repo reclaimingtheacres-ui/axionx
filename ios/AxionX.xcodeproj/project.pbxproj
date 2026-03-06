@@ -7,31 +7,41 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0000000000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000001 /* AppDelegate.swift */; };
-		AA0000000000000000000004 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000003 /* SceneDelegate.swift */; };
-		AA0000000000000000000006 /* WebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* WebViewController.swift */; };
-		AA0000000000000000000008 /* OfflineViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000007 /* OfflineViewController.swift */; };
-		AA000000000000000000000A /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000009 /* Config.swift */; };
-		AA000000000000000000000C /* LocationPermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000B /* LocationPermissionManager.swift */; };
-		AA000000000000000000000E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000D /* Assets.xcassets */; };
-		AA0000000000000000000010 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000000F /* LaunchScreen.storyboard */; };
+		F100000000000000000002 /* AxionXApp.swift in Sources */             = {isa = PBXBuildFile; fileRef = F100000000000000000001; };
+		F100000000000000000004 /* ContentView.swift in Sources */           = {isa = PBXBuildFile; fileRef = F100000000000000000003; };
+		F100000000000000000006 /* AxionWebView.swift in Sources */          = {isa = PBXBuildFile; fileRef = F100000000000000000005; };
+		F100000000000000000008 /* WebViewContainer.swift in Sources */      = {isa = PBXBuildFile; fileRef = F100000000000000000007; };
+		F10000000000000000000A /* WebViewNavigationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000009; };
+		F10000000000000000000C /* AppConfig.swift in Sources */             = {isa = PBXBuildFile; fileRef = F10000000000000000000B; };
+		F10000000000000000000E /* AllowedDomains.swift in Sources */        = {isa = PBXBuildFile; fileRef = F10000000000000000000D; };
+		F100000000000000000010 /* SplashView.swift in Sources */            = {isa = PBXBuildFile; fileRef = F10000000000000000000F; };
+		F100000000000000000012 /* OfflineView.swift in Sources */           = {isa = PBXBuildFile; fileRef = F100000000000000000011; };
+		F100000000000000000014 /* ConnectivityMonitor.swift in Sources */   = {isa = PBXBuildFile; fileRef = F100000000000000000013; };
+		F100000000000000000016 /* LocationPermissionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000015; };
+		F100000000000000000018 /* Assets.xcassets in Resources */           = {isa = PBXBuildFile; fileRef = F100000000000000000017; };
+		F10000000000000000001A /* LaunchScreen.storyboard in Resources */   = {isa = PBXBuildFile; fileRef = F100000000000000000019; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		AA0000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		AA0000000000000000000003 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
-		AA0000000000000000000005 /* WebViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewController.swift; sourceTree = "<group>"; };
-		AA0000000000000000000007 /* OfflineViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineViewController.swift; sourceTree = "<group>"; };
-		AA0000000000000000000009 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
-		AA000000000000000000000B /* LocationPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionManager.swift; sourceTree = "<group>"; };
-		AA000000000000000000000D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		AA000000000000000000000F /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-		AA0000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AA0000000000000000000012 /* AxionX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AxionX.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F100000000000000000001 /* AxionXApp.swift */                = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxionXApp.swift; sourceTree = "<group>"; };
+		F100000000000000000003 /* ContentView.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F100000000000000000005 /* AxionWebView.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxionWebView.swift; sourceTree = "<group>"; };
+		F100000000000000000007 /* WebViewContainer.swift */         = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewContainer.swift; sourceTree = "<group>"; };
+		F100000000000000000009 /* WebViewNavigationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewNavigationDelegate.swift; sourceTree = "<group>"; };
+		F10000000000000000000B /* AppConfig.swift */                = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		F10000000000000000000D /* AllowedDomains.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllowedDomains.swift; sourceTree = "<group>"; };
+		F10000000000000000000F /* SplashView.swift */               = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
+		F100000000000000000011 /* OfflineView.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineView.swift; sourceTree = "<group>"; };
+		F100000000000000000013 /* ConnectivityMonitor.swift */      = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
+		F100000000000000000015 /* LocationPermissionHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionHelper.swift; sourceTree = "<group>"; };
+		F100000000000000000017 /* Assets.xcassets */                = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F100000000000000000019 /* LaunchScreen.storyboard */        = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		F10000000000000000001B /* Info.plist */                     = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		F10000000000000000001C /* AxionX.app */                     = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AxionX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		CC0000000000000000000003 /* Frameworks */ = {
+		H100000000000000000003 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -41,34 +51,71 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		BB0000000000000000000001 /* MainGroup */ = {
+		G100000000000000000001 /* MainGroup */ = {
 			isa = PBXGroup;
 			children = (
-				BB0000000000000000000002 /* AxionX */,
-				BB0000000000000000000003 /* Products */,
+				G100000000000000000002 /* AxionX */,
+				G100000000000000000007 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		BB0000000000000000000002 /* AxionX */ = {
+		G100000000000000000002 /* AxionX */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000000000000000000001 /* AppDelegate.swift */,
-				AA0000000000000000000003 /* SceneDelegate.swift */,
-				AA0000000000000000000005 /* WebViewController.swift */,
-				AA0000000000000000000007 /* OfflineViewController.swift */,
-				AA0000000000000000000009 /* Config.swift */,
-				AA000000000000000000000B /* LocationPermissionManager.swift */,
-				AA000000000000000000000D /* Assets.xcassets */,
-				AA000000000000000000000F /* LaunchScreen.storyboard */,
-				AA0000000000000000000011 /* Info.plist */,
+				F100000000000000000001 /* AxionXApp.swift */,
+				F100000000000000000003 /* ContentView.swift */,
+				G100000000000000000003 /* WebView */,
+				G100000000000000000004 /* Config */,
+				G100000000000000000005 /* Views */,
+				G100000000000000000006 /* Services */,
+				F100000000000000000017 /* Assets.xcassets */,
+				F100000000000000000019 /* LaunchScreen.storyboard */,
+				F10000000000000000001B /* Info.plist */,
 			);
 			path = AxionX;
 			sourceTree = "<group>";
 		};
-		BB0000000000000000000003 /* Products */ = {
+		G100000000000000000003 /* WebView */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000000000000000000012 /* AxionX.app */,
+				F100000000000000000005 /* AxionWebView.swift */,
+				F100000000000000000007 /* WebViewContainer.swift */,
+				F100000000000000000009 /* WebViewNavigationDelegate.swift */,
+			);
+			path = WebView;
+			sourceTree = "<group>";
+		};
+		G100000000000000000004 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000B /* AppConfig.swift */,
+				F10000000000000000000D /* AllowedDomains.swift */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		G100000000000000000005 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000000F /* SplashView.swift */,
+				F100000000000000000011 /* OfflineView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		G100000000000000000006 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				F100000000000000000013 /* ConnectivityMonitor.swift */,
+				F100000000000000000015 /* LocationPermissionHelper.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		G100000000000000000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				F10000000000000000001C /* AxionX.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,13 +123,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		DD0000000000000000000001 /* AxionX */ = {
+		I100000000000000000001 /* AxionX */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = EE0000000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */;
+			buildConfigurationList = J100000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */;
 			buildPhases = (
-				CC0000000000000000000001 /* Sources */,
-				CC0000000000000000000002 /* Resources */,
-				CC0000000000000000000003 /* Frameworks */,
+				H100000000000000000001 /* Sources */,
+				H100000000000000000002 /* Resources */,
+				H100000000000000000003 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -90,25 +137,25 @@
 			);
 			name = AxionX;
 			productName = AxionX;
-			productReference = AA0000000000000000000012 /* AxionX.app */;
+			productReference = F10000000000000000001C /* AxionX.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		DD0000000000000000000002 /* Project object */ = {
+		I100000000000000000002 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
-					DD0000000000000000000001 = {
+					I100000000000000000001 = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
-			buildConfigurationList = EE0000000000000000000003 /* Build configuration list for PBXProject "AxionX" */;
+			buildConfigurationList = J100000000000000000003 /* Build configuration list for PBXProject "AxionX" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -116,46 +163,51 @@
 				en,
 				Base,
 			);
-			mainGroup = BB0000000000000000000001;
-			productRefGroup = BB0000000000000000000003 /* Products */;
+			mainGroup = G100000000000000000001;
+			productRefGroup = G100000000000000000007 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				DD0000000000000000000001 /* AxionX */,
+				I100000000000000000001 /* AxionX */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		CC0000000000000000000002 /* Resources */ = {
+		H100000000000000000002 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA000000000000000000000E /* Assets.xcassets in Resources */,
-				AA0000000000000000000010 /* LaunchScreen.storyboard in Resources */,
+				F100000000000000000018 /* Assets.xcassets in Resources */,
+				F10000000000000000001A /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		CC0000000000000000000001 /* Sources */ = {
+		H100000000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA0000000000000000000002 /* AppDelegate.swift in Sources */,
-				AA0000000000000000000004 /* SceneDelegate.swift in Sources */,
-				AA0000000000000000000006 /* WebViewController.swift in Sources */,
-				AA0000000000000000000008 /* OfflineViewController.swift in Sources */,
-				AA000000000000000000000A /* Config.swift in Sources */,
-				AA000000000000000000000C /* LocationPermissionManager.swift in Sources */,
+				F100000000000000000002 /* AxionXApp.swift in Sources */,
+				F100000000000000000004 /* ContentView.swift in Sources */,
+				F100000000000000000006 /* AxionWebView.swift in Sources */,
+				F100000000000000000008 /* WebViewContainer.swift in Sources */,
+				F10000000000000000000A /* WebViewNavigationDelegate.swift in Sources */,
+				F10000000000000000000C /* AppConfig.swift in Sources */,
+				F10000000000000000000E /* AllowedDomains.swift in Sources */,
+				F100000000000000000010 /* SplashView.swift in Sources */,
+				F100000000000000000012 /* OfflineView.swift in Sources */,
+				F100000000000000000014 /* ConnectivityMonitor.swift in Sources */,
+				F100000000000000000016 /* LocationPermissionHelper.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		EE0000000000000000000001 /* Debug */ = {
+		J100000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -217,7 +269,7 @@
 			};
 			name = Debug;
 		};
-		EE0000000000000000000002 /* Release */ = {
+		J100000000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -272,7 +324,7 @@
 			};
 			name = Release;
 		};
-		EE0000000000000000000004 /* Debug */ = {
+		J100000000000000000004 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -288,7 +340,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "au.com.axionx.app";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.axionx.ios";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -299,7 +351,7 @@
 			};
 			name = Debug;
 		};
-		EE0000000000000000000005 /* Release */ = {
+		J100000000000000000005 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -315,7 +367,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "au.com.axionx.app";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.axionx.ios";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
@@ -329,20 +381,20 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		EE0000000000000000000003 /* Build configuration list for PBXProject "AxionX" */ = {
+		J100000000000000000003 /* Build configuration list for PBXProject "AxionX" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				EE0000000000000000000001 /* Debug */,
-				EE0000000000000000000002 /* Release */,
+				J100000000000000000001 /* Debug */,
+				J100000000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		EE0000000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */ = {
+		J100000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				EE0000000000000000000004 /* Debug */,
-				EE0000000000000000000005 /* Release */,
+				J100000000000000000004 /* Debug */,
+				J100000000000000000005 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -350,5 +402,5 @@
 /* End XCConfigurationList section */
 
 	};
-	rootObject = DD0000000000000000000002 /* Project object */;
+	rootObject = I100000000000000000002 /* Project object */;
 }
