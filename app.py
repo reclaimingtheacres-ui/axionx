@@ -13,6 +13,8 @@ import io
 import uuid
 import mimetypes
 import traceback
+import pytesseract
+from PIL import Image, ImageFilter, ImageEnhance
 from datetime import date, datetime
 import pytz
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -723,6 +725,24 @@ def normalise_registration(reg_text: str) -> str:
     if not reg_text:
         return ""
     return re.sub(r"[^A-Za-z0-9]", "", reg_text).upper()
+
+
+_LPR_TMP = "/tmp/axionx_lpr"
+os.makedirs(_LPR_TMP, exist_ok=True)
+
+
+def extract_plate_from_image(image_path: str) -> str:
+    """Run OCR on an uploaded plate image and return the normalised plate text."""
+    try:
+        img = Image.open(image_path).convert("L")
+        img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
+        img = ImageEnhance.Contrast(img).enhance(2.5)
+        img = img.filter(ImageFilter.SHARPEN)
+        custom_config = r"--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        raw = pytesseract.image_to_string(img, config=custom_config)
+        return normalise_registration(raw.strip())
+    except Exception:
+        return ""
 
 
 # ── Document auto-fill helpers ────────────────────────────────────────────────
@@ -6746,6 +6766,30 @@ def m_map():
 # ─────────────────────────────────────────────────────────────────────────────
 # Mobile LPR — Stage 1: manual plate lookup
 # ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/m/lpr/capture", methods=["GET", "POST"])
+@mobile_login_required
+def m_lpr_capture():
+    if request.method == "POST":
+        file = request.files.get("image")
+        if not file or not file.filename:
+            return render_template("mobile/lpr_capture.html", error="No image uploaded. Please select a photo.")
+
+        safe_name = secure_filename(file.filename) or "plate.jpg"
+        tmp_path = os.path.join(_LPR_TMP, f"{uuid.uuid4().hex}_{safe_name}")
+        file.save(tmp_path)
+
+        detected_plate = extract_plate_from_image(tmp_path)
+
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+        return render_template("mobile/lpr_confirm.html", detected_plate=detected_plate)
+
+    return render_template("mobile/lpr_capture.html", error=None)
+
 
 @app.route("/m/lpr", methods=["GET", "POST"])
 @mobile_login_required

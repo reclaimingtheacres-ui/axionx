@@ -1,0 +1,112 @@
+{% extends "mobile/base.html" %}
+{% block title %}LPR Scan — AxionX{% endblock %}
+
+{% block header_title %}
+<a href="{{ url_for('m_lpr') }}" style="color:var(--muted);margin-right:8px;" aria-label="Back">
+  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.5" style="vertical-align:middle;"><polyline points="15 18 9 12 15 6"/></svg>
+</a>
+LPR Scan
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div style="display:flex;align-items:center;gap:10px;
+            background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;
+            padding:13px 16px;margin-bottom:14px;">
+  <svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--red)" fill="none" stroke-width="2.5" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+  <span style="font-size:.88rem;color:#991b1b;">{{ error }}</span>
+</div>
+{% endif %}
+
+<div class="m-card">
+  <div class="m-card-header">Take or Upload a Plate Photo</div>
+  <div class="m-card-body">
+    <form method="POST" action="{{ url_for('m_lpr_capture') }}" enctype="multipart/form-data">
+
+      <div style="margin-bottom:18px;">
+        <label for="image_cam" style="display:block;">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+                      border:2px dashed #bfdbfe;border-radius:12px;padding:30px 16px;
+                      background:#eff6ff;cursor:pointer;text-align:center;">
+            <svg viewBox="0 0 24 24" width="40" height="40" stroke="#2563eb" fill="none" stroke-width="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <div>
+              <div style="font-size:.9rem;font-weight:700;color:#1d4ed8;">Take Photo</div>
+              <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">Opens rear camera</div>
+            </div>
+          </div>
+          <input
+            id="image_cam"
+            type="file"
+            name="image"
+            accept="image/*"
+            capture="environment"
+            required
+            style="display:none;"
+            onchange="showFilename(this,'cam-label')"
+          >
+        </label>
+        <div id="cam-label" style="font-size:.8rem;color:var(--muted);text-align:center;margin-top:6px;"></div>
+      </div>
+
+      <button type="submit" class="m-btn m-btn-primary">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Scan Plate
+      </button>
+
+    </form>
+  </div>
+</div>
+
+<div class="m-card" style="background:#f9fafb;">
+  <div class="m-card-header" style="background:#f9fafb;">Upload from Library</div>
+  <div class="m-card-body">
+    <form method="POST" action="{{ url_for('m_lpr_capture') }}" enctype="multipart/form-data">
+      <div style="margin-bottom:14px;">
+        <label for="image_lib" style="display:block;">
+          <div style="display:flex;align-items:center;justify-content:space-between;
+                      border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;
+                      background:#fff;cursor:pointer;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <svg viewBox="0 0 24 24" width="22" height="22" stroke="var(--muted)" fill="none" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span style="font-size:.88rem;color:var(--text);">Choose from library</span>
+            </div>
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--muted)" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
+          <input
+            id="image_lib"
+            type="file"
+            name="image"
+            accept="image/*"
+            required
+            style="display:none;"
+            onchange="showFilename(this,'lib-label')"
+          >
+        </label>
+        <div id="lib-label" style="font-size:.8rem;color:var(--muted);margin-top:4px;padding-left:2px;"></div>
+      </div>
+      <button type="submit" class="m-btn m-btn-secondary">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+        Upload and Scan
+      </button>
+    </form>
+  </div>
+</div>
+
+<div style="margin-top:4px;">
+  <a href="{{ url_for('m_lpr') }}" class="m-btn m-btn-secondary">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="4 9 4 4 20 4 20 9"/><line x1="12" y1="4" x2="12" y2="21"/></svg>
+    Manual Entry Instead
+  </a>
+</div>
+
+<script>
+function showFilename(input, labelId) {
+  const el = document.getElementById(labelId);
+  if (input.files && input.files[0]) {
+    el.textContent = input.files[0].name;
+    el.style.color = 'var(--accent)';
+  }
+}
+</script>
+{% endblock %}

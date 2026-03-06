@@ -6,3 +6,5 @@ azure-storage-blob==12.22.0
 pypdf
 python-docx
 openai
+pytesseract
+Pillow
