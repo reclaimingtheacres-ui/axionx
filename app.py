@@ -6497,13 +6497,9 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
           AND ji.reg IS NOT NULL AND ji.reg != ''
     """).fetchall()
 
-    matched = None
-    for row in rows:
-        if normalise_registration(row["reg"]) == reg_norm:
-            matched = row
-            break
+    matches = [row for row in rows if normalise_registration(row["reg"]) == reg_norm]
 
-    if not matched:
+    if not matches:
         conn.close()
         return {
             "result_type": "no_match",
@@ -6511,6 +6507,16 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
             "message": "No active registration found.",
         }
 
+    if len(matches) > 1:
+        conn.close()
+        return {
+            "result_type": "conflict",
+            "searched_registration": reg_norm,
+            "match_count": len(matches),
+            "message": f"{len(matches)} active files share this registration. Contact the office for instructions.",
+        }
+
+    matched     = matches[0]
     job_id      = matched["job_id"]
     job_number  = matched["display_ref"] or matched["internal_job_number"]
     allocated   = matched["assigned_user_id"] == uid
@@ -6769,6 +6775,57 @@ def m_map():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LPR Admin Audit Screen
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/lpr-audit")
+@admin_required
+def admin_lpr_audit():
+    conn   = db()
+    _lpr_ensure_table(conn)
+
+    f_from   = request.args.get("from_date", "")
+    f_to     = request.args.get("to_date", "")
+    f_user   = request.args.get("user_id", "")
+    f_reg    = (request.args.get("registration") or "").strip().upper()
+    f_result = request.args.get("result_type", "")
+    f_method = request.args.get("search_method", "")
+
+    where, params = [], []
+    if f_from:
+        where.append("l.created_at >= ?"); params.append(f_from)
+    if f_to:
+        where.append("l.created_at <= ?"); params.append(f_to + "T23:59:59")
+    if f_user:
+        where.append("l.user_id = ?"); params.append(int(f_user))
+    if f_reg:
+        where.append("l.normalised_registration = ?"); params.append(normalise_registration(f_reg))
+    if f_result:
+        where.append("l.result_type = ?"); params.append(f_result)
+    if f_method:
+        where.append("l.search_method = ?"); params.append(f_method)
+
+    sql = """
+        SELECT l.*, u.full_name AS agent_name
+        FROM lpr_audit_logs l
+        LEFT JOIN users u ON u.id = l.user_id
+        {}
+        ORDER BY l.created_at DESC
+        LIMIT 500
+    """.format("WHERE " + " AND ".join(where) if where else "")
+
+    rows  = conn.execute(sql, params).fetchall()
+    users = conn.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
+    conn.close()
+
+    return render_template("lpr_audit.html",
+                           rows=rows, users=users,
+                           f_from=f_from, f_to=f_to,
+                           f_user=f_user, f_reg=f_reg,
+                           f_result=f_result, f_method=f_method)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Mobile LPR — Stage 1: manual plate lookup
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -6810,7 +6867,7 @@ def m_lpr():
         search_method = (request.form.get("method") or "manual").strip()
         result        = lookup_registration_for_lpr(uid, role, username, reg_input)
         _log_lpr_search(uid, role, username, reg_input, result, search_method=search_method)
-        return render_template("mobile/lpr_result.html", result=result)
+        return render_template("mobile/lpr_result.html", result=result, search_method=search_method)
 
     plate_param = (request.args.get("plate") or "").strip()
     return render_template("mobile/lpr_search.html", plate_param=plate_param)

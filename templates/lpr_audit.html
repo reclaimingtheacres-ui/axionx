@@ -1,0 +1,150 @@
+{% extends "layout.html" %}
+{% block title %}LPR Audit Log{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h2 class="mb-0">LPR Audit Log</h2>
+      <p class="text-muted small mb-0">All plate lookup activity by field agents</p>
+    </div>
+    <a href="{{ url_for('admin_lpr_audit') }}" class="btn btn-sm btn-outline-secondary">Clear Filters</a>
+  </div>
+
+  {# ── Filter bar ── #}
+  <form method="GET" action="{{ url_for('admin_lpr_audit') }}" class="card mb-4">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">From</label>
+          <input type="date" name="from_date" value="{{ f_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">To</label>
+          <input type="date" name="to_date" value="{{ f_to }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Agent</label>
+          <select name="user_id" class="form-select form-select-sm">
+            <option value="">All agents</option>
+            {% for u in users %}
+            <option value="{{ u.id }}" {% if f_user|string == u.id|string %}selected{% endif %}>{{ u.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Registration</label>
+          <input type="text" name="registration" value="{{ f_reg }}" placeholder="ABC123"
+                 class="form-control form-control-sm text-uppercase" autocomplete="off">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Result</label>
+          <select name="result_type" class="form-select form-select-sm">
+            <option value="">All results</option>
+            <option value="allocated_match"   {% if f_result == 'allocated_match'   %}selected{% endif %}>Allocated Match</option>
+            <option value="restricted_match"  {% if f_result == 'restricted_match'  %}selected{% endif %}>Restricted Match</option>
+            <option value="no_match"          {% if f_result == 'no_match'          %}selected{% endif %}>No Match</option>
+            <option value="conflict"          {% if f_result == 'conflict'          %}selected{% endif %}>Conflict</option>
+            <option value="invalid"           {% if f_result == 'invalid'           %}selected{% endif %}>Invalid</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Method</label>
+          <select name="search_method" class="form-select form-select-sm">
+            <option value="">All methods</option>
+            <option value="manual"     {% if f_method == 'manual'     %}selected{% endif %}>Manual Entry</option>
+            <option value="photo_ocr"  {% if f_method == 'photo_ocr'  %}selected{% endif %}>Photo OCR</option>
+            <option value="live_scan"  {% if f_method == 'live_scan'  %}selected{% endif %}>Live Scan</option>
+          </select>
+        </div>
+      </div>
+      <div class="mt-3">
+        <button type="submit" class="btn btn-sm btn-primary">Apply Filters</button>
+      </div>
+    </div>
+  </form>
+
+  {# ── Results table ── #}
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+      <span class="fw-semibold">Results</span>
+      <span class="badge bg-secondary">{{ rows | length }} rows (max 500)</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Date / Time</th>
+            <th>Agent</th>
+            <th>Registration</th>
+            <th>Result</th>
+            <th>Method</th>
+            <th>Job</th>
+            <th>Allocated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not rows %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">No matching records</td>
+          </tr>
+          {% endif %}
+          {% for r in rows %}
+          <tr>
+            <td class="ps-3 text-nowrap">
+              <span class="small">{{ r.created_at[:10] }}</span>
+              <span class="text-muted small"> {{ r.created_at[11:16] }}</span>
+            </td>
+            <td class="small">{{ r.agent_name or r.username }}</td>
+            <td>
+              <span class="fw-bold font-monospace">{{ r.normalised_registration }}</span>
+              {% if r.searched_registration != r.normalised_registration %}
+              <span class="text-muted small d-block">raw: {{ r.searched_registration }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.result_type == 'allocated_match' %}
+                <span class="badge bg-success">Allocated Match</span>
+              {% elif r.result_type == 'restricted_match' %}
+                <span class="badge bg-warning text-dark">Restricted</span>
+              {% elif r.result_type == 'no_match' %}
+                <span class="badge bg-secondary">No Match</span>
+              {% elif r.result_type == 'conflict' %}
+                <span class="badge bg-danger">Conflict</span>
+              {% elif r.result_type == 'invalid' %}
+                <span class="badge bg-light text-muted border">Invalid</span>
+              {% else %}
+                <span class="badge bg-light text-muted border">{{ r.result_type }}</span>
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if r.search_method == 'manual' %}
+                <span class="text-muted">&#9998; Manual</span>
+              {% elif r.search_method == 'photo_ocr' %}
+                <span style="color:#0284c7;">&#128247; Photo OCR</span>
+              {% elif r.search_method == 'live_scan' %}
+                <span style="color:#7c3aed;">&#9632; Live Scan</span>
+              {% else %}
+                {{ r.search_method or '—' }}
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if r.matched_job_number %}
+              <a href="{{ url_for('job_detail', job_id=r.matched_job_id) }}">{{ r.matched_job_number }}</a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if r.is_allocated_to_user %}
+                <span class="text-success">&#10003;</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

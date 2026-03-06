@@ -10,6 +10,20 @@ Plate Result
 
 {% block content %}
 
+{# ── Search method badge ── #}
+{% if search_method %}
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+  <span style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Searched via</span>
+  {% if search_method == 'manual' %}
+  <span style="font-size:.78rem;font-weight:600;color:var(--muted);padding:3px 10px;background:#f3f4f6;border:1px solid var(--line);border-radius:8px;">✎ Manual Entry</span>
+  {% elif search_method == 'photo_ocr' %}
+  <span style="font-size:.78rem;font-weight:600;color:#0284c7;padding:3px 10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">📷 Photo OCR</span>
+  {% elif search_method == 'live_scan' %}
+  <span style="font-size:.78rem;font-weight:600;color:#7c3aed;padding:3px 10px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;">▣ Live Scan</span>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if result.result_type == "allocated_match" %}
 
 <div style="display:flex;align-items:center;gap:10px;
@@ -74,23 +88,45 @@ Plate Result
     <div style="font-size:1.6rem;font-weight:800;letter-spacing:.1em;margin-bottom:12px;color:var(--text);">
       {{ result.asset.registration }}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      {% if result.asset.year or result.asset.make or result.asset.model %}
-      <div style="grid-column:1/-1;">
-        <div class="m-label">Vehicle</div>
-        <div style="font-weight:600;">{{ [result.asset.year, result.asset.make, result.asset.model] | select | join(' ') }}</div>
-      </div>
-      {% endif %}
+    {% if result.asset.year or result.asset.make or result.asset.model %}
+    <div style="margin-bottom:8px;">
+      <div class="m-label">Vehicle</div>
+      <div style="font-weight:600;">{{ [result.asset.year, result.asset.make, result.asset.model] | select | join(' ') }}</div>
     </div>
+    {% endif %}
     {% if result.client_name %}
-    <div style="margin-top:10px;">
+    <div style="margin-bottom:8px;">
       <div class="m-label">Client</div>
       <div style="font-weight:500;">{{ result.client_name }}</div>
     </div>
     {% endif %}
-    <div style="margin-top:10px;">
+    <div>
       <div class="m-label">Job Ref</div>
       <div style="font-weight:500;">{{ result.matched_job_number }}</div>
+    </div>
+  </div>
+</div>
+
+{% elif result.result_type == "conflict" %}
+
+<div style="display:flex;align-items:flex-start;gap:10px;
+            background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;
+            padding:13px 16px;margin-bottom:14px;">
+  <svg viewBox="0 0 24 24" width="22" height="22" stroke="var(--red)" fill="none" stroke-width="2.5" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <div>
+    <div style="font-size:.78rem;font-weight:700;color:#b91c1c;letter-spacing:.06em;text-transform:uppercase;">Multiple active matches</div>
+    <div style="font-size:.83rem;color:#991b1b;margin-top:2px;">{{ result.message }}</div>
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-body">
+    <div class="m-label">Searched Registration</div>
+    <div style="font-size:1.4rem;font-weight:700;letter-spacing:.1em;color:var(--text);margin-bottom:8px;">
+      {{ result.searched_registration }}
+    </div>
+    <div style="font-size:.85rem;color:var(--muted);">
+      {{ result.match_count }} active file{{ 's' if result.match_count != 1 }} share this registration. An administrator must resolve the conflict before this plate can be opened.
     </div>
   </div>
 </div>

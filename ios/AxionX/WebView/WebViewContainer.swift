@@ -4,7 +4,8 @@ import WebKit
 /// The main container that hosts the WKWebView.
 /// Wires up the navigation delegate callbacks so connectivity state
 /// is reflected back into SwiftUI without any polling.
-/// Also surfaces a native Live Scan button when the agent is on an LPR page.
+/// Surfaces a native Live Scan button when the agent is on an LPR page,
+/// and uses the JS bridge to pass confirmed plates seamlessly.
 struct WebViewContainer: View {
     @StateObject private var store = WebViewStore()
     @State private var isOffline = false
@@ -18,12 +19,10 @@ struct WebViewContainer: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            // WebView — always in the tree so session is never destroyed
             AxionWebView(store: store)
                 .ignoresSafeArea()
                 .opacity(isOffline ? 0 : 1)
 
-            // Offline overlay
             if isOffline {
                 OfflineView {
                     isOffline = false
@@ -32,7 +31,7 @@ struct WebViewContainer: View {
                 .transition(.opacity)
             }
 
-            // Native Live Scan button — visible only on /m/lpr pages
+            // Native Live Scan button — only visible on /m/lpr* pages
             if isOnLPRPage && !isOffline {
                 Button(action: { showLPRScanner = true }) {
                     HStack(spacing: 6) {
@@ -62,7 +61,7 @@ struct WebViewContainer: View {
             LiveLPRScannerView(
                 onPlateConfirmed: { plate in
                     showLPRScanner = false
-                    navigateToLPRResult(plate: plate)
+                    submitPlateToWebLayer(plate: plate)
                 },
                 onCancel: {
                     showLPRScanner = false
@@ -81,7 +80,6 @@ struct WebViewContainer: View {
             withAnimation { isOffline = false }
             currentURL = store.webView.url
         }
-        // Observe URL changes so the Live Scan button shows/hides correctly
         store.webView.addObserver(
             URLObserver { url in
                 DispatchQueue.main.async { currentURL = url }
@@ -92,13 +90,38 @@ struct WebViewContainer: View {
         )
     }
 
-    /// Navigate the web view to the LPR search page with the confirmed plate
-    /// pre-filled as a URL parameter — the page auto-submits via JavaScript.
-    private func navigateToLPRResult(plate: String) {
-        var components = URLComponents()
-        components.scheme = AppConfig.entryURL.scheme
-        components.host   = AppConfig.entryURL.host
-        components.path   = "/m/lpr"
+    /// Send the confirmed plate to the web layer.
+    ///
+    /// Preferred path: if the webview is already on /m/lpr, call the JS bridge
+    /// so the form is populated and submitted without a visible reload — this
+    /// makes the handoff feel native.
+    ///
+    /// Fallback: if the webview is on a different page, navigate to /m/lpr
+    /// with URL parameters so the page auto-submits on load.
+    private func submitPlateToWebLayer(plate: String) {
+        let safePlate = plate.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? plate
+
+        // Try the JS bridge first (no reload, seamless UX)
+        if isOnLPRPage {
+            let js = "window.handleNativePlateScan('\(safePlate)', 'live_scan');"
+            store.webView.evaluateJavaScript(js) { _, error in
+                if error != nil {
+                    // Bridge call failed — fall back to URL navigation
+                    DispatchQueue.main.async { self.navigateToLPR(plate: safePlate) }
+                }
+            }
+        } else {
+            navigateToLPR(plate: safePlate)
+        }
+    }
+
+    /// URL-param fallback: loads /m/lpr?plate=…&method=live_scan.
+    /// The page's JavaScript auto-submits when it sees the `plate` param.
+    private func navigateToLPR(plate: String) {
+        var components        = URLComponents()
+        components.scheme     = AppConfig.entryURL.scheme
+        components.host       = AppConfig.entryURL.host
+        components.path       = "/m/lpr"
         components.queryItems = [
             URLQueryItem(name: "plate",  value: plate),
             URLQueryItem(name: "method", value: "live_scan"),
@@ -117,8 +140,7 @@ private final class URLObserver: NSObject {
                                of object: Any?,
                                change: [NSKeyValueChangeKey: Any]?,
                                context: UnsafeMutableRawPointer?) {
-        if keyPath == #keyPath(WKWebView.url),
-           let wv = object as? WKWebView {
+        if keyPath == #keyPath(WKWebView.url), let wv = object as? WKWebView {
             handler(wv.url)
         }
     }

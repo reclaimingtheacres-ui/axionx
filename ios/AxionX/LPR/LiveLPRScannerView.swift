@@ -18,7 +18,6 @@ struct LiveLPRScannerView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            // Camera preview
             CameraPreviewWrapper(isTorchOn: $isTorchOn, cameraVC: $cameraVC) { plate in
                 guard !showConfirmation else { return }
                 detectedPlate = plate
@@ -40,7 +39,6 @@ struct LiveLPRScannerView: View {
     // MARK: Scanning overlay
     private var scanningOverlay: some View {
         VStack(spacing: 0) {
-            // Top instruction bar
             HStack {
                 Spacer()
                 Text("Align registration plate in frame")
@@ -54,14 +52,12 @@ struct LiveLPRScannerView: View {
             }
             .padding(.top, 56)
 
-            // Plate guide frame
             Spacer()
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.white.opacity(0.75), lineWidth: 2)
                 .frame(width: 280, height: 90)
             Spacer()
 
-            // Bottom controls
             HStack(spacing: 0) {
                 Button(action: { onCancel() }) {
                     controlLabel(icon: "xmark", label: "Cancel")
@@ -116,6 +112,8 @@ struct LiveLPRScannerView: View {
                 Button(action: {
                     let plate = PlateCandidateExtractor.normalisePlate(editedPlate)
                     guard !plate.isEmpty else { return }
+                    // Apply cooldown before allowing another scan
+                    cameraVC?.applyCooldown()
                     onPlateConfirmed(plate)
                 }) {
                     HStack(spacing: 8) {
@@ -134,7 +132,7 @@ struct LiveLPRScannerView: View {
                     showConfirmation = false
                     detectedPlate = ""
                     editedPlate   = ""
-                    cameraVC?.startCapture()
+                    cameraVC?.resetAndResume()
                 }) {
                     HStack(spacing: 8) {
                         Image(systemName: "camera.viewfinder")
@@ -196,11 +194,22 @@ private struct CameraPreviewWrapper: UIViewControllerRepresentable {
 final class LPRCameraViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     var onPlateDetected: (String) -> Void
-    private let session = AVCaptureSession()
+    private let session     = AVCaptureSession()
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private let outputQueue = DispatchQueue(label: "com.axionx.lpr.output", qos: .userInteractive)
-    private var lastDetection = Date.distantPast
-    private let detectionInterval: TimeInterval = 0.5
+
+    // Stability: require same candidate twice in a row
+    private var lastCandidate:      String = ""
+    private var consecutiveCount:   Int    = 0
+    private let requiredConsecutive: Int   = 2
+
+    // Frame rate limiting
+    private var lastFrameTime  = Date.distantPast
+    private let frameInterval: TimeInterval = 0.6
+
+    // Post-detection cooldown
+    private var cooldownUntil = Date.distantPast
+    private let cooldownSeconds: TimeInterval = 4.0
 
     init(onPlateDetected: @escaping (String) -> Void) {
         self.onPlateDetected = onPlateDetected
@@ -232,8 +241,7 @@ final class LPRCameraViewController: UIViewController, AVCaptureVideoDataOutputS
     private func setupSession() {
         session.sessionPreset = .hd1280x720
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
-              let input = try? AVCaptureDeviceInput(device: device) else { return }
-
+              let input  = try? AVCaptureDeviceInput(device: device) else { return }
         if session.canAddInput(input) { session.addInput(input) }
 
         let output = AVCaptureVideoDataOutput()
@@ -257,9 +265,23 @@ final class LPRCameraViewController: UIViewController, AVCaptureVideoDataOutputS
         outputQueue.async { self.session.stopRunning() }
     }
 
+    /// Apply a post-submission cooldown and reset the stability counter.
+    func applyCooldown() {
+        cooldownUntil = Date().addingTimeInterval(cooldownSeconds)
+        lastCandidate    = ""
+        consecutiveCount = 0
+    }
+
+    /// Reset stability state and restart capture for a deliberate rescan.
+    func resetAndResume() {
+        lastCandidate    = ""
+        consecutiveCount = 0
+        cooldownUntil    = Date.distantPast
+        startCapture()
+    }
+
     func setTorch(_ on: Bool) {
-        guard let device = AVCaptureDevice.default(for: .video),
-              device.hasTorch else { return }
+        guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else { return }
         try? device.lockForConfiguration()
         device.torchMode = on ? .on : .off
         device.unlockForConfiguration()
@@ -270,22 +292,52 @@ final class LPRCameraViewController: UIViewController, AVCaptureVideoDataOutputS
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         let now = Date()
-        guard now.timeIntervalSince(lastDetection) >= detectionInterval else { return }
-        lastDetection = now
+
+        // Respect cooldown
+        guard now >= cooldownUntil else { return }
+        // Respect frame rate limit
+        guard now.timeIntervalSince(lastFrameTime) >= frameInterval else { return }
+        lastFrameTime = now
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
         let request = VNRecognizeTextRequest { [weak self] req, _ in
+            guard let self = self else { return }
             let observations = req.results as? [VNRecognizedTextObservation] ?? []
-            if let plate = PlateCandidateExtractor.bestCandidate(from: observations) {
-                DispatchQueue.main.async {
-                    self?.onPlateDetected(plate)
-                }
+
+            // Centre-of-frame preference: filter observations whose midX is within the centre third
+            let centred = observations.filter { obs in
+                let midX = (obs.boundingBox.minX + obs.boundingBox.maxX) / 2
+                return midX >= 0.2 && midX <= 0.8
+            }
+            let source = centred.isEmpty ? observations : centred
+
+            guard let plate = PlateCandidateExtractor.bestCandidate(from: source) else {
+                // Different or no candidate — reset streak
+                self.lastCandidate    = ""
+                self.consecutiveCount = 0
+                return
+            }
+
+            if plate == self.lastCandidate {
+                self.consecutiveCount += 1
+            } else {
+                self.lastCandidate    = plate
+                self.consecutiveCount = 1
+            }
+
+            // Only fire when the same candidate has been seen consecutively enough times
+            guard self.consecutiveCount >= self.requiredConsecutive else { return }
+            self.lastCandidate    = ""
+            self.consecutiveCount = 0
+
+            DispatchQueue.main.async {
+                self.onPlateDetected(plate)
             }
         }
-        request.recognitionLevel = .fast
+        request.recognitionLevel      = .fast
         request.usesLanguageCorrection = false
-        request.minimumTextHeight = 0.05
+        request.minimumTextHeight      = 0.05
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right)
         try? handler.perform([request])
