@@ -196,12 +196,13 @@
       <div style="font-weight:600;font-size:.95rem;">
         {{ asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}
       </div>
+      {% set _rl = repo_lock_map.get(asset.id) %}
       <button type="button"
               style="flex-shrink:0;padding:5px 10px;border:0;border-radius:8px;font-size:.75rem;font-weight:600;cursor:pointer;
-                     background:{% if asset.id in repo_lock_map %}#16a34a{% else %}#dc2626{% endif %};color:#fff;"
+                     background:{% if _rl == 'Submitted' or _rl == 'Reviewed' or _rl == 'Processed' %}#16a34a{% elif _rl == 'Draft' %}#d97706{% else %}#dc2626{% endif %};color:#fff;"
               data-rl-item="{{ asset.id }}"
               onclick="openRepoLock({{ job.id }}, {{ asset.id }})">
-        Repo Lock{% if asset.id in repo_lock_map %} ✓{% endif %}
+        {% if _rl == 'Submitted' or _rl == 'Reviewed' or _rl == 'Processed' %}&#x2713; Submitted{% elif _rl == 'Draft' %}Draft Saved{% else %}Repo Lock{% endif %}
       </button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:.83rem;">
@@ -254,8 +255,28 @@
     </div>
     <button onclick="rlmClose()" style="background:transparent;border:0;color:#fff;font-size:1.4rem;line-height:1;padding:4px 8px;cursor:pointer;">&#x2715;</button>
   </div>
-  <div id="rlmBanner" style="display:none;background:#d1fae5;border-bottom:1px solid #6ee7b7;color:#065f46;padding:10px 16px;font-size:.82rem;font-weight:600;flex-shrink:0;"></div>
-  <div style="flex:1;overflow-y:auto;padding:14px 16px 80px;-webkit-overflow-scrolling:touch;">
+  <div id="rlmBanner" style="display:none;background:#f3f4f6;border-bottom:1px solid #d1d5db;color:#374151;padding:10px 16px;font-size:.82rem;font-weight:600;flex-shrink:0;"></div>
+  <div id="rlmErrBanner" style="display:none;background:#fee2e2;border-bottom:1px solid #fca5a5;color:#991b1b;padding:10px 16px;font-size:.82rem;flex-shrink:0;"></div>
+  <div id="rlmScrollWrap" style="flex:1;overflow-y:auto;padding:14px 16px 80px;-webkit-overflow-scrolling:touch;">
+    <div id="rlmSuccessPanel" style="display:none;text-align:center;padding:40px 16px 24px;">
+      <div style="font-size:2.2rem;margin-bottom:10px;">&#x2705;</div>
+      <div style="font-size:1.1rem;font-weight:700;color:#16a34a;margin-bottom:6px;">Repo Lock Submitted</div>
+      <div style="font-size:.84rem;color:#6b7280;margin-bottom:24px;">The record has been saved and sent to the admin queue for processing.</div>
+      <div style="font-size:.88rem;font-weight:600;color:#111;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em;">Next Steps</div>
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:320px;margin:0 auto;">
+        <a id="rlmVirLink" href="#" style="display:block;padding:14px 16px;background:#2563eb;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:.88rem;">
+          &#x1F4CB; Vehicle Inspection Report (VIR)
+        </a>
+        <a id="rlmTransportLink" href="#" style="display:block;padding:14px 16px;background:#fff;color:#2563eb;border:1.5px solid #2563eb;border-radius:10px;text-decoration:none;font-weight:600;font-size:.88rem;">
+          &#x1F69A; Transport Instructions
+        </a>
+      </div>
+      <button onclick="document.getElementById('rlmSuccessPanel').style.display='none';document.getElementById('rlmFormWrap').style.display='';"
+              style="margin-top:16px;background:transparent;border:0;color:#6b7280;font-size:.8rem;cursor:pointer;">
+        &#x2190; Edit Repo Lock
+      </button>
+    </div>
+    <div id="rlmFormWrap">
     <form id="rlmForm" novalidate>
       <input type="hidden" id="rlmJobId">
       <input type="hidden" id="rlmItemId">
@@ -367,11 +388,15 @@
       </details>
 
     </form>
-  </div>
-  <div style="position:absolute;bottom:0;left:0;right:0;padding:12px 16px;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:10px;">
-    <button onclick="rlmClose()" style="flex:1;padding:12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;font-size:.88rem;font-weight:600;cursor:pointer;">Cancel</button>
-    <button id="rlmSaveBtn" onclick="rlmSubmit()" style="flex:2;padding:12px;border:0;border-radius:10px;background:#dc2626;color:#fff;font-size:.88rem;font-weight:700;cursor:pointer;">
-      <span id="rlmSaveTxt">Save Repo Lock</span>
+    </div>{# /rlmFormWrap #}
+  </div>{# /rlmScrollWrap #}
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:10px 12px;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:8px;">
+    <button onclick="rlmClose()" style="flex:0 0 auto;padding:12px 14px;border:1px solid #d1d5db;border-radius:10px;background:#fff;font-size:.82rem;font-weight:600;cursor:pointer;">Cancel</button>
+    <button id="rlmDraftBtn" onclick="rlmSave()" style="flex:1;padding:12px;border:0;border-radius:10px;background:#6b7280;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;">
+      <span id="rlmDraftTxt">Save Draft</span>
+    </button>
+    <button id="rlmSubmitBtn" onclick="rlmDoSubmit()" style="flex:1;padding:12px;border:0;border-radius:10px;background:#dc2626;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;">
+      <span id="rlmSubmitTxt">Submit</span>
     </button>
   </div>
 </div>
@@ -393,19 +418,52 @@
     "agent_user_id"
   ];
 
+  function _gid(id) { return document.getElementById(id); }
+
+  function _rlmCollect() {
+    var fd = new FormData();
+    _rlmFields.forEach(function(f) {
+      var el = _gid("rlm_" + f);
+      if (el) fd.append(f, el.value || "");
+    });
+    return fd;
+  }
+
+  function _rlmUpdateBtns(status) {
+    var draftTxt  = _gid("rlmDraftTxt");
+    var submitBtn = _gid("rlmSubmitBtn");
+    var submitTxt = _gid("rlmSubmitTxt");
+    if (status === "Submitted") {
+      draftTxt.textContent  = "Re-draft";
+      submitBtn.style.background = "#2563eb";
+      submitTxt.textContent = "Update Submission";
+    } else if (status === "Draft") {
+      draftTxt.textContent  = "Save Draft";
+      submitBtn.style.background = "#dc2626";
+      submitTxt.textContent = "Submit";
+    } else {
+      draftTxt.textContent  = "Save Draft";
+      submitBtn.style.background = "#dc2626";
+      submitTxt.textContent = "Submit";
+    }
+  }
+
   window.openRepoLock = function(jobId, itemId) {
-    document.getElementById("rlmJobId").value  = jobId;
-    document.getElementById("rlmItemId").value = itemId;
-    document.getElementById("rlmBanner").style.display = "none";
+    _gid("rlmJobId").value  = jobId;
+    _gid("rlmItemId").value = itemId;
+    _gid("rlmBanner").style.display    = "none";
+    _gid("rlmErrBanner").style.display = "none";
+    _gid("rlmSuccessPanel").style.display = "none";
+    _gid("rlmFormWrap").style.display = "";
 
     fetch("/jobs/" + jobId + "/repo-lock/" + itemId)
       .then(r => r.json())
       .then(function(data) {
         if (!data.ok) { alert("Could not load repo lock data."); return; }
 
-        document.getElementById("rlmItemLabel").textContent = data.item_label || "";
+        _gid("rlmItemLabel").textContent = data.item_label || "";
 
-        var sel = document.getElementById("rlm_tow_company_id");
+        var sel = _gid("rlm_tow_company_id");
         sel.innerHTML = '<option value="">— Select or enter manually —</option>';
         (data.tow_ops || []).forEach(function(t) {
           var o = document.createElement("option");
@@ -417,88 +475,140 @@
                     ? data.existing : data.prefill;
 
         _rlmFields.forEach(function(f) {
-          var el = document.getElementById("rlm_" + f);
+          var el = _gid("rlm_" + f);
           if (!el) return;
           el.value = (src[f] != null) ? src[f] : "";
         });
 
-        rlmToggle("rlm_keys_count_wrap",    document.getElementById("rlm_keys_obtained").value === "Yes");
-        rlmToggle("rlm_form13_signed_wrap",  document.getElementById("rlm_form_13").value === "Yes");
-        rlmToggle("rlm_station_wrap",        document.getElementById("rlm_police_notified").value === "Yes");
-        rlmToggleEffects(document.getElementById("rlm_personal_effects_removed").value);
-        rlmToggle("rlm_damage_list_wrap",    document.getElementById("rlm_any_damage").value === "Yes");
+        rlmToggle("rlm_keys_count_wrap",   _gid("rlm_keys_obtained").value === "Yes");
+        rlmToggle("rlm_form13_signed_wrap", _gid("rlm_form_13").value === "Yes");
+        rlmToggle("rlm_station_wrap",       _gid("rlm_police_notified").value === "Yes");
+        rlmToggleEffects(_gid("rlm_personal_effects_removed").value);
+        rlmToggle("rlm_damage_list_wrap",   _gid("rlm_any_damage").value === "Yes");
 
-        var btn = document.getElementById("rlmSaveBtn");
-        var txt = document.getElementById("rlmSaveTxt");
-        if (data.has_rec) {
-          btn.style.background = "#2563eb";
-          txt.textContent = "Update Repo Lock";
-        } else {
-          btn.style.background = "#dc2626";
-          txt.textContent = "Save Repo Lock";
-        }
+        _rlmUpdateBtns(data.status);
 
-        var overlay = document.getElementById("rlOverlay");
-        overlay.style.display = "flex";
+        _gid("rlOverlay").style.display = "flex";
       })
       .catch(function(e) { console.error(e); alert("Error loading form."); });
   };
 
   window.rlmClose = function() {
-    document.getElementById("rlOverlay").style.display = "none";
+    _gid("rlOverlay").style.display = "none";
   };
 
-  window.rlmSubmit = function() {
-    var jobId  = document.getElementById("rlmJobId").value;
-    var itemId = document.getElementById("rlmItemId").value;
-    var btn    = document.getElementById("rlmSaveBtn");
-    var txt    = document.getElementById("rlmSaveTxt");
+  window.rlmSave = function() {
+    var jobId  = _gid("rlmJobId").value;
+    var itemId = _gid("rlmItemId").value;
+    var btn    = _gid("rlmDraftBtn");
+    var txt    = _gid("rlmDraftTxt");
     btn.disabled = true;
-    var origTxt = txt.textContent;
+    var orig = txt.textContent;
     txt.textContent = "Saving\u2026";
-
-    var fd = new FormData();
-    _rlmFields.forEach(function(f) {
-      var el = document.getElementById("rlm_" + f);
-      if (el) fd.append(f, el.value || "");
-    });
+    _gid("rlmErrBanner").style.display = "none";
 
     fetch("/jobs/" + jobId + "/repo-lock/" + itemId + "/save", {
-      method: "POST",
-      body: fd
+      method: "POST", body: _rlmCollect()
     })
     .then(r => r.json())
     .then(function(res) {
       btn.disabled = false;
-      if (!res.ok) { txt.textContent = origTxt; alert("Save failed."); return; }
+      txt.textContent = orig;
+      if (!res.ok) { alert("Save failed."); return; }
 
-      var banner = document.getElementById("rlmBanner");
-      banner.textContent = res.is_new ? "Repo Lock saved." : "Repo Lock updated.";
+      var banner = _gid("rlmBanner");
+      banner.textContent = "Draft saved — not yet submitted.";
       banner.style.display = "block";
-
-      btn.style.background = "#2563eb";
-      txt.textContent = "Update Repo Lock";
+      _rlmUpdateBtns("Draft");
 
       var trigger = document.querySelector('[data-rl-item="' + itemId + '"]');
       if (trigger) {
-        trigger.textContent = "Repo Lock \u2713";
-        trigger.style.background = "#16a34a";
+        trigger.textContent = "Draft Saved";
+        trigger.style.background = "#d97706";
       }
     })
     .catch(function(e) {
       btn.disabled = false;
-      txt.textContent = origTxt;
+      txt.textContent = orig;
       console.error(e);
       alert("Save error.");
     });
   };
 
+  window.rlmDoSubmit = function() {
+    var errors = [];
+    var repoDate  = (_gid("rlm_repo_date").value || "").trim();
+    var agentName = (_gid("rlm_agent_name").value || "").trim();
+    var reg       = (_gid("rlm_registration").value || "").trim();
+    var desc      = (_gid("rlm_description").value || "").trim();
+
+    if (!repoDate)              errors.push("Repo Date is required.");
+    if (!agentName)             errors.push("Agent name is required.");
+    if (!reg && !desc)          errors.push("Asset Registration or Description is required.");
+
+    if (errors.length) {
+      var errEl = _gid("rlmErrBanner");
+      errEl.innerHTML = "<strong>Please fix the following:</strong> " + errors.join(" ");
+      errEl.style.display = "block";
+      _gid("rlmScrollWrap").scrollTo({top:0,behavior:"smooth"});
+      return;
+    }
+    _gid("rlmErrBanner").style.display = "none";
+    _gid("rlmBanner").style.display    = "none";
+
+    var jobId  = _gid("rlmJobId").value;
+    var itemId = _gid("rlmItemId").value;
+    var btn    = _gid("rlmSubmitBtn");
+    var txt    = _gid("rlmSubmitTxt");
+    btn.disabled = true;
+    _gid("rlmDraftBtn").disabled = true;
+    txt.textContent = "Submitting\u2026";
+
+    fetch("/jobs/" + jobId + "/repo-lock/" + itemId + "/submit", {
+      method: "POST", body: _rlmCollect()
+    })
+    .then(r => r.json())
+    .then(function(res) {
+      btn.disabled = false;
+      _gid("rlmDraftBtn").disabled = false;
+      txt.textContent = "Submit";
+
+      if (!res.ok) {
+        var serverErrors = res.errors || ["Submission failed."];
+        var errEl = _gid("rlmErrBanner");
+        errEl.innerHTML = "<strong>Error:</strong> " + serverErrors.join(" ");
+        errEl.style.display = "block";
+        return;
+      }
+
+      var trigger = document.querySelector('[data-rl-item="' + itemId + '"]');
+      if (trigger) {
+        trigger.innerHTML = "&#x2713; Submitted";
+        trigger.style.background = "#16a34a";
+      }
+
+      _gid("rlmVirLink").href       = "/jobs/" + jobId + "/repo-lock/" + res.id + "/vir";
+      _gid("rlmTransportLink").href = "/jobs/" + jobId + "/repo-lock/" + res.id + "/transport-instructions";
+
+      _gid("rlmFormWrap").style.display     = "none";
+      _gid("rlmSuccessPanel").style.display = "";
+      _rlmUpdateBtns("Submitted");
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      _gid("rlmDraftBtn").disabled = false;
+      txt.textContent = "Submit";
+      console.error(e);
+      alert("Submission error.");
+    });
+  };
+
   window.rlmToggle = function(id, show) {
-    document.getElementById(id).style.display = show ? "" : "none";
+    _gid(id).style.display = show ? "" : "none";
   };
   window.rlmToggleEffects = function(v) {
-    rlmToggle("rlm_removed_by_wrap",    v === "Yes");
-    rlmToggle("rlm_effects_list_wrap",  v === "Yes");
+    rlmToggle("rlm_removed_by_wrap",   v === "Yes");
+    rlmToggle("rlm_effects_list_wrap", v === "Yes");
   };
 })();
 </script>

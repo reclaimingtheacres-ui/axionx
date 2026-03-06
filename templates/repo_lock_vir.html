@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block title %}Vehicle Inspection Report{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:700px;">
+  <div class="mb-3">
+    <a href="/jobs/{{ job_id }}" class="btn btn-outline-secondary btn-sm">&larr; Back to Job</a>
+  </div>
+  <div class="card">
+    <div class="card-header" style="background:#2563eb;color:#fff;font-weight:700;">
+      Vehicle Inspection Report (VIR)
+    </div>
+    <div class="card-body">
+      <p class="text-muted" style="font-size:.85rem;">
+        VIR form for Repo Lock record #{{ rec.id }} — asset: {{ rec.description or rec.registration or '—' }}
+      </p>
+      <div class="alert alert-info">This document will be available in a future release.</div>
+      <dl class="row" style="font-size:.88rem;">
+        {% for k, v in rec.items() %}
+        {% if v %}
+        <dt class="col-sm-4" style="color:#6b7280;font-weight:600;text-transform:capitalize;">{{ k.replace('_',' ') }}</dt>
+        <dd class="col-sm-8">{{ v }}</dd>
+        {% endif %}
+        {% endfor %}
+      </dl>
+    </div>
+  </div>
+</div>
+{% endblock %}

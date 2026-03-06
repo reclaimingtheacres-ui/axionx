@@ -77,15 +77,17 @@ No explicit user preferences were provided in the original `replit.md` file. The
     - **Controlled Automation:** Implements automated actions based on policy decisions, with guardrails, cooldowns, and post-change monitoring to prevent regressions.
     - **Document Upload / Import Workflow (Web Only):** Supports `.docx`, `.pdf`, `.doc` extraction for autofilling job creation forms. Intelligent parsing identifies key fields and performs client/customer lookups.
 
-**12. Repo Lock:**
+**12. Repo Lock (v2):**
     - Per-security-item repossession record accessible from both desktop and mobile job detail pages.
-    - Each security item in the Security/s card has a "Repo Lock" button (red = unsaved, green ✓ = saved).
-    - Desktop: opens a Bootstrap 5 accordion modal (`repoLockModal`) with 7 sections: Header Details, Customer Details, Asset Details, Recovery Details, Condition Report, Tow & Delivery, Final Notes.
-    - Mobile: opens a full-screen native overlay (`#rlOverlay`) using `<details>` elements, no Bootstrap dependency.
-    - Auto-prefills from job/customer/item data (client name, SWPI ref, finance company, registration, VIN, address, customer name, deliver-to, agent name, today's date).
-    - Conditional fields: "How Many Keys?" (when keys obtained = Yes), "Form 13 Signed By" (when Form 13 = Yes), "Police Station/Officer" (when police notified = Yes), effects fields (when personal effects = Yes), damage list (when any damage = Yes).
-    - Data stored in `repo_lock_records` table. Multiple saves update the existing record. Returns JSON {ok, is_new, id}.
-    - Routes: `GET /jobs/<job_id>/repo-lock/<item_id>` (prefill JSON), `POST /jobs/<job_id>/repo-lock/<item_id>/save`.
+    - Button states: red `#dc2626` = no record, amber `#d97706` = Draft, green `#16a34a` = Submitted/Reviewed.
+    - Desktop: Bootstrap 5 accordion modal (`repoLockModal`) with 7 sections; footer has 3 buttons: Cancel, Save Draft, Submit.
+    - Mobile: full-screen overlay (`#rlOverlay`) using `<details>` elements; footer has 3 buttons: Cancel, Save Draft, Submit.
+    - **Save Draft**: saves fields to `repo_lock_records` with `status='Draft'`; shows amber banner, amber button; does NOT add interactions note.
+    - **Submit**: validates (repo_date, agent_name, registration or description required); saves to `repo_lock_records` with `status='Submitted'`, creates `repo_lock_queue` entry (Pending), writes formatted note to `interactions` and `job_field_notes`; shows success panel with Next Steps.
+    - **Next Steps panel** (post-submit): links to VIR (`/jobs/<id>/repo-lock/<rec_id>/vir`) and Transport Instructions (`/jobs/<id>/repo-lock/<rec_id>/transport-instructions`) — placeholder templates, full implementation upcoming.
+    - `_repo_lock_note(d)` helper builds a formatted plain-text summary of the entire Repo Lock record.
+    - Data: `repo_lock_records` (60+ fields, `status`, `submitted_at`), `repo_lock_queue` (tracks Pending/Reviewed/Processed, `submission_count`, reviewer fields).
+    - Routes: `GET /jobs/<job_id>/repo-lock/<item_id>` (JSON prefill + status), `POST .../save` (Draft), `POST .../submit` (Submitted + queue + note), `GET .../vir`, `GET .../transport-instructions`.
 
 ## External Dependencies
 

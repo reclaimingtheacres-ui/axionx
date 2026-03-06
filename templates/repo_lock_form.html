@@ -8,12 +8,43 @@
           <div class="fw-bold" id="repoLockModalLabel" style="font-size:1rem;">Repo Lock</div>
           <div id="rlItemLabel" style="font-size:.78rem;opacity:.8;margin-top:2px;"></div>
         </div>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="rlStatusBadge" style="display:none;font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.25);"></span>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
       </div>
 
       <div class="modal-body" style="padding:16px;background:#f9fafb;">
-        <div id="rlSaveBanner" class="alert alert-success py-2 px-3 mb-3 d-none" style="font-size:.85rem;"></div>
 
+        {# Validation errors #}
+        <div id="rlValidationErrors" class="alert alert-danger py-2 px-3 mb-3 d-none" style="font-size:.84rem;"></div>
+        {# Save draft confirmation #}
+        <div id="rlDraftBanner" class="alert alert-secondary py-2 px-3 mb-3 d-none" style="font-size:.84rem;background:#f3f4f6;border-color:#d1d5db;color:#374151;"></div>
+
+        {# Success panel (shown after Submit) #}
+        <div id="rlSuccessPanel" class="d-none" style="text-align:center;padding:32px 16px 24px;">
+          <div style="font-size:2.2rem;margin-bottom:10px;">&#x2705;</div>
+          <div style="font-size:1.1rem;font-weight:700;color:#16a34a;margin-bottom:6px;">Repo Lock Submitted</div>
+          <div style="font-size:.84rem;color:#6b7280;margin-bottom:24px;">The record has been saved and sent to the admin queue for processing.</div>
+          <div style="font-size:.88rem;font-weight:600;color:#111;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em;">Next Steps</div>
+          <div style="display:flex;flex-direction:column;gap:10px;max-width:320px;margin:0 auto;">
+            <a id="rlVirLink" href="#"
+               style="display:block;padding:12px 16px;background:#2563eb;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:.88rem;">
+              &#x1F4CB; Vehicle Inspection Report (VIR)
+            </a>
+            <a id="rlTransportLink" href="#"
+               style="display:block;padding:12px 16px;background:#fff;color:#2563eb;border:1.5px solid #2563eb;border-radius:10px;text-decoration:none;font-weight:600;font-size:.88rem;">
+              &#x1F69A; Transport Instructions
+            </a>
+          </div>
+          <button type="button" class="btn btn-link btn-sm mt-3" style="color:#6b7280;font-size:.8rem;"
+                  onclick="document.getElementById('rlSuccessPanel').classList.add('d-none');document.getElementById('rlFormWrap').classList.remove('d-none');">
+            &#x2190; Edit Repo Lock
+          </button>
+        </div>
+
+        {# Main form #}
+        <div id="rlFormWrap">
         <form id="repoLockForm" novalidate>
           <input type="hidden" id="rlJobId" name="_job_id">
           <input type="hidden" id="rlItemId" name="_item_id">
@@ -47,7 +78,7 @@
                       <input class="form-control form-control-sm" name="finance_company" id="rl_finance_company">
                     </div>
                     <div class="col-12 col-md-4">
-                      <label class="form-label">Repo Date</label>
+                      <label class="form-label">Repo Date <span style="color:#dc2626;">*</span></label>
                       <input class="form-control form-control-sm" type="date" name="repo_date" id="rl_repo_date">
                     </div>
                     <div class="col-6 col-md-2">
@@ -105,11 +136,11 @@
                 <div class="accordion-body">
                   <div class="row g-2">
                     <div class="col-12 col-md-6">
-                      <label class="form-label">Description</label>
+                      <label class="form-label">Description <span style="color:#dc2626;">*</span><span style="color:#6b7280;font-size:.75rem;"> (or Reg)</span></label>
                       <input class="form-control form-control-sm" name="description" id="rl_description">
                     </div>
                     <div class="col-6 col-md-3">
-                      <label class="form-label">Registration</label>
+                      <label class="form-label">Registration <span style="color:#dc2626;">*</span><span style="color:#6b7280;font-size:.75rem;"> (or Desc)</span></label>
                       <input class="form-control form-control-sm" name="registration" id="rl_registration">
                     </div>
                     <div class="col-6 col-md-3">
@@ -132,18 +163,14 @@
                       <label class="form-label">Registered?</label>
                       <select class="form-select form-select-sm" name="registered" id="rl_registered">
                         <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
-                        <option>Expired</option>
+                        <option>Yes</option><option>No</option><option>Expired</option>
                       </select>
                     </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Security Insured?</label>
                       <select class="form-select form-select-sm" name="insured" id="rl_insured">
                         <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
-                        <option>Unknown</option>
+                        <option>Yes</option><option>No</option><option>Unknown</option>
                       </select>
                     </div>
                     <div class="col-12 col-md-6">
@@ -172,9 +199,7 @@
                     <div class="col-6 col-md-3">
                       <label class="form-label">Keys Obtained?</label>
                       <select class="form-select form-select-sm" name="keys_obtained" id="rl_keys_obtained" onchange="rlToggleKeys(this.value)">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option>
                       </select>
                     </div>
                     <div class="col-6 col-md-3" id="rl_keys_count_wrap" style="display:none;">
@@ -184,18 +209,13 @@
                     <div class="col-6 col-md-3">
                       <label class="form-label">Vol. Surrender?</label>
                       <select class="form-select form-select-sm" name="vol_surrender" id="rl_vol_surrender">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option>
                       </select>
                     </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Form 13 Issued?</label>
                       <select class="form-select form-select-sm" name="form_13" id="rl_form_13" onchange="rlToggleForm13(this.value)">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
-                        <option>N/A</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option>
                       </select>
                     </div>
                     <div class="col-12 col-md-6" id="rl_form13_signed_wrap" style="display:none;">
@@ -209,26 +229,19 @@
                     <div class="col-6 col-md-3">
                       <label class="form-label">Lien Paid?</label>
                       <select class="form-select form-select-sm" name="lien_paid" id="rl_lien_paid">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
-                        <option>N/A</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option>
                       </select>
                     </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Security Drivable?</label>
                       <select class="form-select form-select-sm" name="security_drivable" id="rl_security_drivable">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option>
                       </select>
                     </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Police Notified?</label>
                       <select class="form-select form-select-sm" name="police_notified" id="rl_police_notified" onchange="rlTogglePolice(this.value)">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option>
                       </select>
                     </div>
                     <div class="col-12 col-md-9" id="rl_station_wrap" style="display:none;">
@@ -238,10 +251,7 @@
                     <div class="col-6 col-md-3">
                       <label class="form-label">Personal Effects Removed?</label>
                       <select class="form-select form-select-sm" name="personal_effects_removed" id="rl_personal_effects_removed" onchange="rlToggleEffects(this.value)">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
-                        <option>N/A</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option>
                       </select>
                     </div>
                     <div class="col-12 col-md-5" id="rl_removed_by_wrap" style="display:none;">
@@ -276,15 +286,9 @@
                       <label class="form-label">{{ lbl }}</label>
                       <select class="form-select form-select-sm" name="{{ fname }}" id="rl_{{ fname }}">
                         <option value="">— Select —</option>
-                        <option>Good</option>
-                        <option>Fair</option>
-                        <option>Poor</option>
+                        <option>Good</option><option>Fair</option><option>Poor</option>
                         {% if fname == "fuel_level" %}
-                        <option>Empty</option>
-                        <option>1/4</option>
-                        <option>1/2</option>
-                        <option>3/4</option>
-                        <option>Full</option>
+                        <option>Empty</option><option>1/4</option><option>1/2</option><option>3/4</option><option>Full</option>
                         {% endif %}
                       </select>
                     </div>
@@ -292,9 +296,7 @@
                     <div class="col-6 col-md-3">
                       <label class="form-label">Any Damage?</label>
                       <select class="form-select form-select-sm" name="any_damage" id="rl_any_damage" onchange="rlToggleDamage(this.value)">
-                        <option value="">— Select —</option>
-                        <option>Yes</option>
-                        <option>No</option>
+                        <option value="">— Select —</option><option>Yes</option><option>No</option>
                       </select>
                     </div>
                     <div class="col-12" id="rl_damage_list_wrap" style="display:none;">
@@ -366,7 +368,7 @@
                       <textarea class="form-control form-control-sm" name="other_info" id="rl_other_info" rows="2"></textarea>
                     </div>
                     <div class="col-12 col-md-6">
-                      <label class="form-label">Agent</label>
+                      <label class="form-label">Agent <span style="color:#dc2626;">*</span></label>
                       <input class="form-control form-control-sm" name="agent_name" id="rl_agent_name">
                       <input type="hidden" name="agent_user_id" id="rl_agent_user_id">
                     </div>
@@ -377,15 +379,22 @@
 
           </div>{# /accordion #}
         </form>
+        </div>{# /rlFormWrap #}
       </div>
 
       <div class="modal-footer" style="padding:12px 16px;gap:8px;">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-sm" id="rlSaveBtn"
-                style="background:#dc2626;color:#fff;border:0;min-width:120px;"
-                onclick="rlSubmit()">
-          <span id="rlSaveBtnText">Save Repo Lock</span>
-          <span id="rlSaveBtnSpinner" class="spinner-border spinner-border-sm ms-1 d-none" role="status"></span>
+        <button type="button" class="btn btn-sm" id="rlDraftBtn"
+                style="background:#6b7280;color:#fff;border:0;"
+                onclick="rlSave()">
+          <span id="rlDraftBtnText">Save Draft</span>
+          <span id="rlDraftBtnSpinner" class="spinner-border spinner-border-sm ms-1 d-none" role="status"></span>
+        </button>
+        <button type="button" class="btn btn-sm" id="rlSubmitBtn"
+                style="background:#dc2626;color:#fff;border:0;min-width:110px;"
+                onclick="rlDoSubmit()">
+          <span id="rlSubmitBtnText">Submit</span>
+          <span id="rlSubmitBtnSpinner" class="spinner-border spinner-border-sm ms-1 d-none" role="status"></span>
         </button>
       </div>
 
@@ -396,20 +405,50 @@
 <script>
 (function(){
   var _rlTowOps = [];
+  var _rlJobId  = 0;
+  var _rlItemId = 0;
+
+  var _rlFields = [
+    "client_name","client_reference","swpi_ref","finance_company","repo_date",
+    "start_time","end_time","customer_name","account_number","repo_address",
+    "contact_number","description","registration","rego_expiry","registered",
+    "insured","insured_with","vin","engine_number","speedometer","person_present",
+    "keys_obtained","how_many_keys","vol_surrender","form_13","form_13_signed_by",
+    "repossessed_from","lien_paid","security_drivable","police_notified",
+    "station_officer","personal_effects_removed","removed_by_who",
+    "personal_effects_list","tyres","body","duco","interior","engine_condition",
+    "transmission","fuel_level","any_damage","damage_list","tow_company_id",
+    "tow_company_name","tow_costs","deliver_to","delivery_address",
+    "expected_delivery_date","customers_intention","other_info","agent_name",
+    "agent_user_id"
+  ];
+
+  function _gid(id) { return document.getElementById(id); }
+
+  function _rlSetBtnState(btn, spinner, disabled) {
+    btn.disabled = disabled;
+    spinner.classList.toggle("d-none", !disabled);
+  }
 
   window.openRepoLock = function(jobId, itemId) {
-    document.getElementById("rlJobId").value  = jobId;
-    document.getElementById("rlItemId").value = itemId;
-    document.getElementById("rlSaveBanner").classList.add("d-none");
+    _rlJobId  = jobId;
+    _rlItemId = itemId;
+    _gid("rlJobId").value  = jobId;
+    _gid("rlItemId").value = itemId;
+
+    _gid("rlValidationErrors").classList.add("d-none");
+    _gid("rlDraftBanner").classList.add("d-none");
+    _gid("rlSuccessPanel").classList.add("d-none");
+    _gid("rlFormWrap").classList.remove("d-none");
 
     fetch("/jobs/" + jobId + "/repo-lock/" + itemId)
       .then(r => r.json())
       .then(function(data) {
         if (!data.ok) { alert("Could not load repo lock data."); return; }
 
-        document.getElementById("rlItemLabel").textContent = data.item_label || "";
+        _gid("rlItemLabel").textContent = data.item_label || "";
 
-        var sel = document.getElementById("rl_tow_company_id");
+        var sel = _gid("rl_tow_company_id");
         sel.innerHTML = '<option value="">— Select or enter manually —</option>';
         _rlTowOps = data.tow_ops || [];
         _rlTowOps.forEach(function(t) {
@@ -421,111 +460,198 @@
         var src = (data.has_rec && data.existing && Object.keys(data.existing).length)
                     ? data.existing : data.prefill;
 
-        var fields = [
-          "client_name","client_reference","swpi_ref","finance_company","repo_date",
-          "start_time","end_time","customer_name","account_number","repo_address",
-          "contact_number","description","registration","rego_expiry","registered",
-          "insured","insured_with","vin","engine_number","speedometer","person_present",
-          "keys_obtained","how_many_keys","vol_surrender","form_13","form_13_signed_by",
-          "repossessed_from","lien_paid","security_drivable","police_notified",
-          "station_officer","personal_effects_removed","removed_by_who",
-          "personal_effects_list","tyres","body","duco","interior","engine_condition",
-          "transmission","fuel_level","any_damage","damage_list","tow_company_id",
-          "tow_company_name","tow_costs","deliver_to","delivery_address",
-          "expected_delivery_date","customers_intention","other_info","agent_name",
-          "agent_user_id"
-        ];
-        fields.forEach(function(f) {
-          var el = document.getElementById("rl_" + f);
+        _rlFields.forEach(function(f) {
+          var el = _gid("rl_" + f);
           if (!el) return;
-          var v = src[f];
-          if (v == null) v = "";
-          el.value = v;
+          el.value = (src[f] != null) ? src[f] : "";
         });
 
-        rlToggleKeys(document.getElementById("rl_keys_obtained").value);
-        rlToggleForm13(document.getElementById("rl_form_13").value);
-        rlTogglePolice(document.getElementById("rl_police_notified").value);
-        rlToggleEffects(document.getElementById("rl_personal_effects_removed").value);
-        rlToggleDamage(document.getElementById("rl_any_damage").value);
+        rlToggleKeys(_gid("rl_keys_obtained").value);
+        rlToggleForm13(_gid("rl_form_13").value);
+        rlTogglePolice(_gid("rl_police_notified").value);
+        rlToggleEffects(_gid("rl_personal_effects_removed").value);
+        rlToggleDamage(_gid("rl_any_damage").value);
 
-        var saveBtn = document.getElementById("rlSaveBtn");
-        var btnTxt  = document.getElementById("rlSaveBtnText");
-        if (data.has_rec) {
-          saveBtn.style.background = "#2563eb";
-          btnTxt.textContent = "Update Repo Lock";
-        } else {
-          saveBtn.style.background = "#dc2626";
-          btnTxt.textContent = "Save Repo Lock";
-        }
+        _rlUpdateButtonState(data.status);
 
-        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("repoLockModal"));
+        var modal = bootstrap.Modal.getOrCreateInstance(_gid("repoLockModal"));
         modal.show();
       })
       .catch(function(e) { console.error(e); alert("Error loading form."); });
   };
 
-  window.rlSubmit = function() {
-    var jobId  = document.getElementById("rlJobId").value;
-    var itemId = document.getElementById("rlItemId").value;
-    var form   = document.getElementById("repoLockForm");
-    var data   = new FormData(form);
+  function _rlUpdateButtonState(status) {
+    var badge      = _gid("rlStatusBadge");
+    var submitBtn  = _gid("rlSubmitBtn");
+    var submitTxt  = _gid("rlSubmitBtnText");
+    var draftTxt   = _gid("rlDraftBtnText");
 
-    var btn = document.getElementById("rlSaveBtn");
-    var spinner = document.getElementById("rlSaveBtnSpinner");
-    btn.disabled = true;
-    spinner.classList.remove("d-none");
+    if (status === "Submitted") {
+      badge.textContent = "Submitted";
+      badge.style.display = "inline";
+      badge.style.background = "rgba(22,163,74,.35)";
+      submitBtn.style.background = "#2563eb";
+      submitTxt.textContent = "Update Submission";
+      draftTxt.textContent  = "Re-draft";
+    } else if (status === "Draft") {
+      badge.textContent = "Draft";
+      badge.style.display = "inline";
+      badge.style.background = "rgba(217,119,6,.35)";
+      submitBtn.style.background = "#dc2626";
+      submitTxt.textContent = "Submit";
+      draftTxt.textContent  = "Save Draft";
+    } else {
+      badge.style.display = "none";
+      submitBtn.style.background = "#dc2626";
+      submitTxt.textContent = "Submit";
+      draftTxt.textContent  = "Save Draft";
+    }
+  }
 
-    fetch("/jobs/" + jobId + "/repo-lock/" + itemId + "/save", {
+  function _rlCollectForm() {
+    var fd = new FormData(_gid("repoLockForm"));
+    return fd;
+  }
+
+  function _rlValidate() {
+    var errors = [];
+    var repoDate = (_gid("rl_repo_date").value || "").trim();
+    var agentName = (_gid("rl_agent_name").value || "").trim();
+    var reg = (_gid("rl_registration").value || "").trim();
+    var desc = (_gid("rl_description").value || "").trim();
+
+    _gid("rl_repo_date").classList.remove("is-invalid");
+    _gid("rl_agent_name").classList.remove("is-invalid");
+    _gid("rl_registration").classList.remove("is-invalid");
+    _gid("rl_description").classList.remove("is-invalid");
+
+    if (!repoDate) {
+      errors.push("Repo Date is required.");
+      _gid("rl_repo_date").classList.add("is-invalid");
+    }
+    if (!agentName) {
+      errors.push("Agent name is required.");
+      _gid("rl_agent_name").classList.add("is-invalid");
+    }
+    if (!reg && !desc) {
+      errors.push("Asset Registration or Description is required.");
+      _gid("rl_registration").classList.add("is-invalid");
+      _gid("rl_description").classList.add("is-invalid");
+    }
+    return errors;
+  }
+
+  window.rlSave = function() {
+    var btn     = _gid("rlDraftBtn");
+    var spinner = _gid("rlDraftBtnSpinner");
+    _rlSetBtnState(btn, spinner, true);
+    _gid("rlValidationErrors").classList.add("d-none");
+
+    fetch("/jobs/" + _rlJobId + "/repo-lock/" + _rlItemId + "/save", {
       method: "POST",
-      body: data
+      body: _rlCollectForm()
     })
     .then(r => r.json())
     .then(function(res) {
-      btn.disabled = false;
-      spinner.classList.add("d-none");
+      _rlSetBtnState(btn, spinner, false);
       if (!res.ok) { alert("Save failed."); return; }
 
-      var banner = document.getElementById("rlSaveBanner");
-      banner.textContent = res.is_new ? "Repo Lock saved." : "Repo Lock updated.";
+      var banner = _gid("rlDraftBanner");
+      banner.textContent = "Draft saved — not yet submitted.";
       banner.classList.remove("d-none");
+      _rlUpdateButtonState("Draft");
 
-      document.getElementById("rlSaveBtnText").textContent = "Update Repo Lock";
-      document.getElementById("rlSaveBtn").style.background = "#2563eb";
-
-      var btn2 = document.querySelector('[data-rl-item="' + itemId + '"]');
-      if (btn2) {
-        btn2.textContent = "Repo Lock \u2713";
-        btn2.style.background = "#16a34a";
+      var trigger = document.querySelector('[data-rl-item="' + _rlItemId + '"]');
+      if (trigger) {
+        trigger.textContent = "Draft Saved";
+        trigger.style.background = "#d97706";
       }
     })
     .catch(function(e) {
-      btn.disabled = false;
-      spinner.classList.add("d-none");
+      _rlSetBtnState(btn, spinner, false);
       console.error(e);
       alert("Save error.");
     });
   };
 
+  window.rlDoSubmit = function() {
+    var errors = _rlValidate();
+    if (errors.length) {
+      var errEl = _gid("rlValidationErrors");
+      errEl.innerHTML = "<strong>Please fix the following:</strong><ul class='mb-0 mt-1'>"
+        + errors.map(function(e){ return "<li>" + e + "</li>"; }).join("") + "</ul>";
+      errEl.classList.remove("d-none");
+      errEl.scrollIntoView({behavior:"smooth",block:"nearest"});
+      return;
+    }
+    _gid("rlValidationErrors").classList.add("d-none");
+    _gid("rlDraftBanner").classList.add("d-none");
+
+    var btn     = _gid("rlSubmitBtn");
+    var spinner = _gid("rlSubmitBtnSpinner");
+    _rlSetBtnState(btn, spinner, true);
+    _gid("rlDraftBtn").disabled = true;
+
+    fetch("/jobs/" + _rlJobId + "/repo-lock/" + _rlItemId + "/submit", {
+      method: "POST",
+      body: _rlCollectForm()
+    })
+    .then(r => r.json())
+    .then(function(res) {
+      _rlSetBtnState(btn, spinner, false);
+      _gid("rlDraftBtn").disabled = false;
+
+      if (!res.ok) {
+        var serverErrors = res.errors || ["Submission failed."];
+        var errEl = _gid("rlValidationErrors");
+        errEl.innerHTML = "<strong>Submission error:</strong><ul class='mb-0 mt-1'>"
+          + serverErrors.map(function(e){ return "<li>" + e + "</li>"; }).join("") + "</ul>";
+        errEl.classList.remove("d-none");
+        return;
+      }
+
+      var trigger = document.querySelector('[data-rl-item="' + _rlItemId + '"]');
+      if (trigger) {
+        trigger.textContent = "\u2713 Submitted";
+        trigger.style.background = "#16a34a";
+      }
+
+      var virHref   = "/jobs/" + _rlJobId + "/repo-lock/" + res.id + "/vir";
+      var transHref = "/jobs/" + _rlJobId + "/repo-lock/" + res.id + "/transport-instructions";
+      _gid("rlVirLink").href   = virHref;
+      _gid("rlTransportLink").href = transHref;
+
+      _gid("rlFormWrap").classList.add("d-none");
+      _gid("rlSuccessPanel").classList.remove("d-none");
+      _rlUpdateButtonState("Submitted");
+    })
+    .catch(function(e) {
+      _rlSetBtnState(btn, spinner, false);
+      _gid("rlDraftBtn").disabled = false;
+      console.error(e);
+      alert("Submission error.");
+    });
+  };
+
   window.rlToggleKeys = function(v) {
-    document.getElementById("rl_keys_count_wrap").style.display = (v === "Yes") ? "" : "none";
+    _gid("rl_keys_count_wrap").style.display = (v === "Yes") ? "" : "none";
   };
   window.rlToggleForm13 = function(v) {
-    document.getElementById("rl_form13_signed_wrap").style.display = (v === "Yes") ? "" : "none";
+    _gid("rl_form13_signed_wrap").style.display = (v === "Yes") ? "" : "none";
   };
   window.rlTogglePolice = function(v) {
-    document.getElementById("rl_station_wrap").style.display = (v === "Yes") ? "" : "none";
+    _gid("rl_station_wrap").style.display = (v === "Yes") ? "" : "none";
   };
   window.rlToggleEffects = function(v) {
     var show = (v === "Yes");
-    document.getElementById("rl_removed_by_wrap").style.display = show ? "" : "none";
-    document.getElementById("rl_effects_list_wrap").style.display = show ? "" : "none";
+    _gid("rl_removed_by_wrap").style.display = show ? "" : "none";
+    _gid("rl_effects_list_wrap").style.display = show ? "" : "none";
   };
   window.rlToggleDamage = function(v) {
-    document.getElementById("rl_damage_list_wrap").style.display = (v === "Yes") ? "" : "none";
+    _gid("rl_damage_list_wrap").style.display = (v === "Yes") ? "" : "none";
   };
   window.rlTowChanged = function(sel) {
-    if (sel.value) document.getElementById("rl_tow_company_name").value = "";
+    if (sel.value) _gid("rl_tow_company_name").value = "";
   };
 })();
 </script>

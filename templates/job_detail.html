@@ -410,11 +410,14 @@
                               data-rego="{{ item.reg or '' }}"
                               data-vin="{{ item.vin or '' }}">VicRoads</button>
                     {% endif %}
+                    {% set _rls = repo_lock_map.get(item.id) %}
                     <button type="button" class="btn btn-sm"
-                            style="background:{% if item.id in repo_lock_map %}#16a34a{% else %}#dc2626{% endif %};color:#fff;border:0;white-space:nowrap"
+                            style="background:{% if _rls == 'Submitted' or _rls == 'Reviewed' or _rls == 'Processed' %}#16a34a{% elif _rls == 'Draft' %}#d97706{% else %}#dc2626{% endif %};color:#fff;border:0;white-space:nowrap"
                             data-rl-item="{{ item.id }}"
                             onclick="openRepoLock({{ job.id }}, {{ item.id }})">
-                      Repo Lock{% if item.id in repo_lock_map %} ✓{% endif %}
+                      {% if _rls == 'Submitted' or _rls == 'Reviewed' or _rls == 'Processed' %}&#x2713; Submitted
+                      {% elif _rls == 'Draft' %}Draft Saved
+                      {% else %}Repo Lock{% endif %}
                     </button>
                     {% if session.get('role') == 'admin' %}
                     <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">

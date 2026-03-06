@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+{% block title %}Transport Instructions{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:700px;">
+  <div class="mb-3">
+    <a href="/jobs/{{ job_id }}" class="btn btn-outline-secondary btn-sm">&larr; Back to Job</a>
+  </div>
+  <div class="card">
+    <div class="card-header" style="background:#2563eb;color:#fff;font-weight:700;">
+      Transport Instructions
+    </div>
+    <div class="card-body">
+      <p class="text-muted" style="font-size:.85rem;">
+        Transport instructions for Repo Lock record #{{ rec.id }} — asset: {{ rec.description or rec.registration or '—' }}
+      </p>
+      <div class="alert alert-info">This document will be available in a future release.</div>
+      <dl class="row" style="font-size:.88rem;">
+        {% for label, val in [
+          ("Deliver To", rec.deliver_to),
+          ("Delivery Address", rec.delivery_address),
+          ("Expected Delivery", rec.expected_delivery_date),
+          ("Tow Company", rec.tow_company_name),
+          ("Tow Costs", rec.tow_costs),
+          ("Asset", rec.description or rec.registration),
+          ("VIN", rec.vin),
+          ("Client", rec.client_name),
+          ("Finance", rec.finance_company),
+        ] %}
+        {% if val %}
+        <dt class="col-sm-4" style="color:#6b7280;font-weight:600;">{{ label }}</dt>
+        <dd class="col-sm-8">{{ val }}</dd>
+        {% endif %}
+        {% endfor %}
+      </dl>
+    </div>
+  </div>
+</div>
+{% endblock %}
