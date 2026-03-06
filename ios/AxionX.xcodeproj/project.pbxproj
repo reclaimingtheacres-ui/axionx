@@ -31,6 +31,8 @@
                 F10000000000000000002F /* AgentLocationService.swift in Sources */   = {isa = PBXBuildFile; fileRef = F10000000000000000002E; };
                 F100000000000000000031 /* FieldStatusManager.swift in Sources */     = {isa = PBXBuildFile; fileRef = F100000000000000000030; };
                 F100000000000000000033 /* FieldStatusView.swift in Sources */        = {isa = PBXBuildFile; fileRef = F100000000000000000032; };
+                F100000000000000000035 /* DispatchManager.swift in Sources */        = {isa = PBXBuildFile; fileRef = F100000000000000000034; };
+                F100000000000000000037 /* DispatchSheet.swift in Sources */          = {isa = PBXBuildFile; fileRef = F100000000000000000036; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -61,6 +63,8 @@
                 F10000000000000000002E /* AgentLocationService.swift */    = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLocationService.swift; sourceTree = "<group>"; };
                 F100000000000000000030 /* FieldStatusManager.swift */      = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldStatusManager.swift; sourceTree = "<group>"; };
                 F100000000000000000032 /* FieldStatusView.swift */         = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldStatusView.swift; sourceTree = "<group>"; };
+                F100000000000000000034 /* DispatchManager.swift */         = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchManager.swift; sourceTree = "<group>"; };
+                F100000000000000000036 /* DispatchSheet.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSheet.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,6 +131,7 @@
                                 F100000000000000000011 /* OfflineView.swift */,
                                 F10000000000000000002C /* SyncStatusView.swift */,
                                 F100000000000000000032 /* FieldStatusView.swift */,
+                                F100000000000000000036 /* DispatchSheet.swift */,
                         );
                         path = Views;
                         sourceTree = "<group>";
@@ -140,6 +145,7 @@
                                 F100000000000000000025 /* PushNotificationService.swift */,
                                 F10000000000000000002E /* AgentLocationService.swift */,
                                 F100000000000000000030 /* FieldStatusManager.swift */,
+                                F100000000000000000034 /* DispatchManager.swift */,
                         );
                         path = Services;
                         sourceTree = "<group>";
@@ -263,6 +269,8 @@
                                 F10000000000000000002F /* AgentLocationService.swift in Sources */,
                                 F100000000000000000031 /* FieldStatusManager.swift in Sources */,
                                 F100000000000000000033 /* FieldStatusView.swift in Sources */,
+                                F100000000000000000035 /* DispatchManager.swift in Sources */,
+                                F100000000000000000037 /* DispatchSheet.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };

@@ -97,6 +97,18 @@ final class SyncManager: ObservableObject {
         refreshCounts()
     }
 
+    /// Queue a follow-up status update. Transparent to the pending badge.
+    func enqueueFollowupStatusUpdate(followupId: Int, status: String) {
+        queue.enqueue(OfflineQueueItem(
+            actionType: "followup_status",
+            payload: [
+                "followup_id": "\(followupId)",
+                "status":      status,
+            ]
+        ))
+        // Don't bump the badge — this is a background operational update
+    }
+
     /// Queue a location ping. Counts are not refreshed (pings are transparent to the badge).
     func enqueueLocationPing(lat: Double, lng: Double, accuracy: Double,
                               battery: String, context: String,
@@ -158,14 +170,37 @@ final class SyncManager: ObservableObject {
         await syncNow()
     }
 
+    // MARK: - Last assigned follow-up (for dispatch banner tap)
+
+    /// The most recently assigned, non-completed follow-up from the last remote refresh.
+    /// Stored as a lightweight summary — no customer data.
+    private(set) var assignedFollowupItems: [AssignedFollowupItem] = []
+
+    var lastAssignedFollowup: AssignedFollowupItem? { assignedFollowupItems.first }
+
     // MARK: - Remote state refresh (badge + follow-up count)
 
     private func refreshRemoteState(webView: WKWebView) async {
         PushNotificationService.shared.refreshUnreadBadge()
         do {
-            let n = try await fetchCount(path: "/m/api/lpr/assigned-followups",
-                                         key: "count", webView: webView)
-            assignedFollowupCount = n
+            let json = try await fetchJSON(path: "/m/api/lpr/assigned-followups",
+                                           webView: webView)
+            assignedFollowupCount = json["count"] as? Int ?? 0
+            if let items = json["items"] as? [[String: Any]] {
+                assignedFollowupItems = items.compactMap { d in
+                    guard let id = d["id"] as? Int,
+                          let at = d["action_type"] as? String,
+                          let pri = d["priority"] as? String else { return nil }
+                    return AssignedFollowupItem(
+                        id:         id,
+                        actionType: at,
+                        priority:   pri,
+                        status:     d["status"] as? String ?? "assigned",
+                        lat:        d["latitude"] as? Double,
+                        lng:        d["longitude"] as? Double
+                    )
+                }
+            }
         } catch {}
     }
 
@@ -183,6 +218,12 @@ final class SyncManager: ObservableObject {
         case "location_ping":           return await syncPost(item,
                                                               path: "/m/api/location/ping",
                                                               webView: webView)
+        case "followup_status":
+            guard let idStr = item.payload["followup_id"],
+                  let followupId = Int(idStr) else { return true }
+            return await syncPost(item,
+                                  path: "/m/api/lpr/followup/\(followupId)/status",
+                                  webView: webView)
         default:                        return true  // discard unknown action types
         }
     }
@@ -210,15 +251,26 @@ final class SyncManager: ObservableObject {
         return await LPRAPIClient.postAction(path: path, body: body, webView: webView)
     }
 
-    private func fetchCount(path: String, key: String, webView: WKWebView) async throws -> Int {
+    private func fetchJSON(path: String, webView: WKWebView) async throws -> [String: Any] {
         return try await withCheckedThrowingContinuation { cont in
             LPRAPIClient.getJSON(path: path, webView: webView) { json in
-                if let n = json?[key] as? Int {
-                    cont.resume(returning: n)
+                if let json {
+                    cont.resume(returning: json)
                 } else {
-                    cont.resume(returning: 0)
+                    cont.resume(throwing: URLError(.badServerResponse))
                 }
             }
         }
     }
+}
+
+// MARK: - Assigned follow-up lightweight summary
+
+struct AssignedFollowupItem {
+    let id:         Int
+    let actionType: String
+    let priority:   String
+    let status:     String
+    let lat:        Double?
+    let lng:        Double?
 }

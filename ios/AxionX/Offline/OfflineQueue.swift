@@ -44,6 +44,7 @@ struct OfflineQueueItem: Codable, Identifiable {
         case "register_device":          return "Device Registration"
         case "mark_notifications_read":  return "Mark Alerts Read"
         case "location_ping":            return "Location Ping"
+        case "followup_status":          return "Follow-up Status Update"
         default:                         return actionType.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }

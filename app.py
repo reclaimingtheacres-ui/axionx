@@ -7165,19 +7165,158 @@ def m_api_lpr_assigned_followups():
     conn = db()
     _lpr_followups_ensure(conn)
     rows = conn.execute("""
-        SELECT f.*, s.registration_normalised
+        SELECT f.id, f.action_type, f.priority, f.status, f.due_at,
+               s.registration_normalised, s.latitude, s.longitude
         FROM lpr_followups f
         LEFT JOIN lpr_sightings s ON s.id = f.sighting_id
-        WHERE f.assigned_user_id=? AND f.status='open'
+        WHERE f.assigned_user_id=?
+          AND f.status NOT IN ('completed', 'cancelled')
         ORDER BY f.created_at DESC
         LIMIT 20
     """, (uid,)).fetchall()
     count = len(rows)
     conn.close()
     items = [{"id": r["id"], "action_type": r["action_type"],
-              "priority": r["priority"], "due_at": r["due_at"],
-              "registration": r["registration_normalised"]} for r in rows]
+              "priority": r["priority"], "status": r["status"],
+              "due_at": r["due_at"],
+              "registration": r["registration_normalised"],
+              "latitude": r["latitude"], "longitude": r["longitude"]} for r in rows]
     return jsonify({"count": count, "items": items}), 200
+
+
+@app.get("/m/api/lpr/followup/<int:followup_id>")
+@mobile_login_required
+def m_api_lpr_followup_detail(followup_id: int):
+    """
+    Return dispatch detail for one follow-up assigned to the current agent.
+    Returns only operational fields — no customer name, address, arrears, or file data.
+    """
+    uid  = session.get("user_id")
+    conn = db()
+    _lpr_followups_ensure(conn)
+    _lpr_sightings_ensure_table(conn)
+    f = conn.execute("""
+        SELECT f.id, f.action_type, f.priority, f.status,
+               f.due_at, f.office_note, f.assigned_user_id,
+               f.sighting_id,
+               s.registration_normalised, s.result_type,
+               s.latitude, s.longitude, s.created_at AS sighting_at
+        FROM lpr_followups f
+        LEFT JOIN lpr_sightings s ON s.id = f.sighting_id
+        WHERE f.id = ? AND f.assigned_user_id = ?
+    """, (followup_id, uid)).fetchone()
+    conn.close()
+    if not f:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify({
+        "id":          f["id"],
+        "action_type": f["action_type"],
+        "priority":    f["priority"],
+        "status":      f["status"],
+        "due_at":      f["due_at"] or "",
+        "office_note": f["office_note"] or "",
+        "sighting": {
+            "id":           f["sighting_id"],
+            "registration": f["registration_normalised"] or "",
+            "result_type":  f["result_type"] or "",
+            "latitude":     f["latitude"],
+            "longitude":    f["longitude"],
+            "sighting_at":  (f["sighting_at"] or "")[:16].replace("T", " "),
+        },
+    }), 200
+
+
+@app.route("/m/api/lpr/followup/<int:followup_id>/status", methods=["PATCH", "POST"])
+@mobile_login_required
+def m_api_lpr_followup_status(followup_id: int):
+    """
+    Agent-side status transition for an assigned follow-up.
+    Valid statuses: assigned → en_route → near_target → arrived → completed (or cancelled).
+    Logs the transition timestamp in the appropriate column.
+    """
+    uid  = session.get("user_id")
+    data = request.get_json(silent=True) or {}
+    new_status = (data.get("status") or "").strip().lower()
+    ts   = now_ts()
+    conn = db()
+    _lpr_followups_ensure(conn)
+    row = conn.execute(
+        "SELECT status, assigned_user_id FROM lpr_followups WHERE id=?",
+        (followup_id,)
+    ).fetchone()
+    if not row or row["assigned_user_id"] != uid:
+        conn.close()
+        return jsonify({"ok": False, "error": "Not found or not assigned to you"}), 403
+    current = row["status"] or "open"
+    allowed = _FOLLOWUP_VALID_TRANSITIONS.get(current, set())
+    if new_status not in allowed:
+        conn.close()
+        return jsonify({"ok": False,
+                        "error": f"Cannot transition from '{current}' to '{new_status}'"}), 422
+    ts_col_map = {
+        "assigned":    "assigned_at",
+        "en_route":    "en_route_at",
+        "arrived":     "arrived_at",
+        "completed":   "completed_at",
+    }
+    ts_col     = ts_col_map.get(new_status)
+    set_parts  = ["status=?"]
+    params     = [new_status]
+    if ts_col:
+        set_parts.append(f"{ts_col}=?")
+        params.append(ts)
+    params.append(followup_id)
+    try:
+        conn.execute(f"UPDATE lpr_followups SET {', '.join(set_parts)} WHERE id=?", params)
+    except Exception:
+        cur = conn.cursor()
+        if ts_col:
+            add_column_if_missing(cur, "lpr_followups", ts_col, "TEXT")
+        conn.execute(f"UPDATE lpr_followups SET {', '.join(set_parts)} WHERE id=?", params)
+    if new_status == "near_target":
+        try:
+            _dispatch_geofences_ensure(conn)
+            conn.execute("""
+                UPDATE dispatch_geofences
+                SET triggered=1, triggered_at=?
+                WHERE followup_id=? AND triggered=0
+            """, (ts, followup_id))
+        except Exception:
+            pass
+    conn.commit()
+    conn.close()
+    _log_audit(uid, f"followup_{new_status}", "lpr_followup", followup_id)
+    return jsonify({"ok": True, "status": new_status}), 200
+
+
+@app.post("/m/api/lpr/dispatch/sequence")
+@mobile_login_required
+def m_api_lpr_dispatch_sequence():
+    """
+    Return an optimised attendance sequence for a list of sighting IDs.
+    Greedy nearest-neighbour from their centroid — no customer/finance data.
+    """
+    data = request.get_json(silent=True) or {}
+    raw_ids = data.get("sighting_ids", [])
+    ids = []
+    for x in raw_ids:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    if not ids:
+        return jsonify({"ok": False, "error": "sighting_ids required"}), 400
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    _lpr_followups_ensure(conn)
+    ordered = _dispatch_sequence(ids, conn)
+    conn.close()
+    clean = [{"id":       r["id"],
+              "sequence": r["sequence"],
+              "lat":      r["latitude"],
+              "lng":      r["longitude"],
+              "priority": r["priority"]} for r in ordered]
+    return jsonify({"ok": True, "sequence": clean}), 200
 
 
 @app.get("/m/lpr/history")
@@ -7512,7 +7651,11 @@ def _lpr_followups_ensure(conn):
         )
     """)
     cur = conn.cursor()
-    add_column_if_missing(cur, "lpr_followups", "status", "TEXT DEFAULT 'open'")
+    add_column_if_missing(cur, "lpr_followups", "status",       "TEXT DEFAULT 'open'")
+    add_column_if_missing(cur, "lpr_followups", "assigned_at",  "TEXT")
+    add_column_if_missing(cur, "lpr_followups", "en_route_at",  "TEXT")
+    add_column_if_missing(cur, "lpr_followups", "arrived_at",   "TEXT")
+    add_column_if_missing(cur, "lpr_followups", "completed_at", "TEXT")
 
 
 def _agent_movement_ensure(conn):
@@ -7768,6 +7911,132 @@ def _lpr_dispatch_score(result_type: str, watchlist_h: int, escalated: int,
         action = "Monitor — no immediate dispatch required"
 
     return {"score": score, "priority": priority, "color": color, "action": action}
+
+
+# ── Route / ETA / Dispatch intelligence ────────────────────────────────────────
+
+def _eta_minutes(dist_m: float, source: str = "") -> float:
+    """Rough road ETA in minutes from straight-line distance.
+    Uses a 1.35× road-factor and assumes different speeds based on movement source."""
+    speed_kph = 52.0 if source == "active_job" else 42.0
+    speed_mps = speed_kph * 1000.0 / 3600.0
+    return (dist_m * 1.35) / speed_mps / 60.0
+
+
+def _eta_label(minutes: float) -> str:
+    if minutes < 2:
+        return "< 2 min"
+    if minutes < 60:
+        return f"~{round(minutes)} min"
+    h = int(minutes // 60)
+    m = int(minutes % 60)
+    return f"~{h}h {m}m" if m else f"~{h}h"
+
+
+def _agent_route_recommendation(lat: float, lng: float, conn,
+                                 limit: int = 5) -> list:
+    """Like _nearest_agents but sorted by estimated drive ETA, not straight-line distance.
+    Returns source and battery alongside each agent — no customer data."""
+    agents = _nearest_agents(lat, lng, conn, limit=limit * 2)
+    for a in agents:
+        eta = _eta_minutes(a["dist_m"], a.get("source", ""))
+        a["eta_min"]   = round(eta, 1)
+        a["eta_label"] = _eta_label(eta)
+    agents.sort(key=lambda x: x["eta_min"])
+    return agents[:limit]
+
+
+def _diversion_score(agent_lat: float, agent_lng: float,
+                     dest_lat: float, dest_lng: float,
+                     sighting_lat: float, sighting_lng: float) -> dict:
+    """Score the cost of diverting from an agent's current trajectory to a new sighting.
+    Inputs and outputs contain no customer or finance data — only coordinates and labels."""
+    direct_m  = _haversine_m(agent_lat, agent_lng, dest_lat, dest_lng)
+    via_m     = (_haversine_m(agent_lat, agent_lng, sighting_lat, sighting_lng)
+                 + _haversine_m(sighting_lat, sighting_lng, dest_lat, dest_lng))
+    extra_m   = max(0.0, via_m - direct_m)
+    extra_min = _eta_minutes(extra_m)
+    worthwhile = extra_min <= 8.0
+
+    if extra_min < 1.0:
+        label = "On the way — no meaningful detour"
+    elif extra_min <= 8.0:
+        label = f"+{round(extra_min)} min detour — worth diverting"
+    elif extra_min <= 20.0:
+        label = f"+{round(extra_min)} min detour — consider a closer agent"
+    else:
+        label = f"+{round(extra_min)} min detour — not recommended"
+
+    return {
+        "extra_dist_m":  round(extra_m),
+        "extra_eta_min": round(extra_min, 1),
+        "worthwhile":    worthwhile,
+        "label":         label,
+    }
+
+
+def _dispatch_sequence(sighting_ids: list, conn) -> list:
+    """Greedy nearest-neighbour sequencing for attending multiple open sightings.
+    No customer or finance data — only sighting IDs, coordinates, and priority."""
+    if not sighting_ids:
+        return []
+    placeholders = ",".join("?" * len(sighting_ids))
+    rows = conn.execute(f"""
+        SELECT s.id, s.latitude, s.longitude,
+               COALESCE(f.priority, 'normal') AS priority
+        FROM lpr_sightings s
+        LEFT JOIN lpr_followups f ON f.sighting_id = s.id
+        WHERE s.id IN ({placeholders})
+          AND s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+    """, sighting_ids).fetchall()
+    if not rows:
+        return []
+    remaining = [dict(r) for r in rows]
+    mean_lat  = sum(r["latitude"]  for r in remaining) / len(remaining)
+    mean_lng  = sum(r["longitude"] for r in remaining) / len(remaining)
+    ordered   = []
+    cur_lat, cur_lng = mean_lat, mean_lng
+    while remaining:
+        closest = min(
+            remaining,
+            key=lambda r: _haversine_m(cur_lat, cur_lng, r["latitude"], r["longitude"])
+        )
+        remaining.remove(closest)
+        ordered.append(closest)
+        cur_lat, cur_lng = closest["latitude"], closest["longitude"]
+    for i, item in enumerate(ordered):
+        item["sequence"] = i + 1
+    return ordered
+
+
+def _dispatch_geofences_ensure(conn):
+    """Temporary geofence records for high-priority dispatch assignments.
+    Triggered when the agent's device enters the monitored region (near_target)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS dispatch_geofences (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            followup_id  INTEGER NOT NULL,
+            latitude     REAL NOT NULL,
+            longitude    REAL NOT NULL,
+            radius_m     REAL NOT NULL DEFAULT 150,
+            created_at   TEXT NOT NULL,
+            expires_at   TEXT,
+            triggered    INTEGER DEFAULT 0,
+            triggered_at TEXT
+        )
+    """)
+    conn.commit()
+
+
+_FOLLOWUP_VALID_TRANSITIONS: dict = {
+    "open":        {"assigned", "en_route", "cancelled"},
+    "assigned":    {"en_route", "cancelled"},
+    "en_route":    {"near_target", "arrived", "completed", "cancelled"},
+    "near_target": {"arrived", "completed", "cancelled"},
+    "arrived":     {"completed", "cancelled"},
+    "completed":   set(),
+    "cancelled":   set(),
+}
 
 
 # ── APNs push delivery ─────────────────────────────────────────────────────────
@@ -8034,7 +8303,7 @@ def admin_lpr_sighting_followup(sighting_id: int):
     _lpr_sightings_ensure_table(conn)
     _lpr_followups_ensure(conn)
     sighting = conn.execute(
-        "SELECT user_id, matched_job_id FROM lpr_sightings WHERE id=?",
+        "SELECT user_id, matched_job_id, latitude, longitude FROM lpr_sightings WHERE id=?",
         (sighting_id,)
     ).fetchone()
     if not sighting:
@@ -8043,13 +8312,34 @@ def admin_lpr_sighting_followup(sighting_id: int):
         return redirect(url_for("admin_lpr_sightings"))
 
     assigned_uid = int(assigned_user_id) if assigned_user_id else None
+    status       = "assigned" if assigned_uid else "open"
+    assigned_at  = now_ts() if assigned_uid else None
+    ts           = now_ts()
     conn.execute("""
         INSERT INTO lpr_followups
             (created_at, created_by, sighting_id, matched_job_id,
-             assigned_user_id, priority, action_type, status, due_at, office_note)
-        VALUES (?,?,?,?,?,?,?,'open',?,?)
-    """, (now_ts(), creator_id, sighting_id, sighting["matched_job_id"],
-          assigned_uid, priority, action_type, due_at, office_note))
+             assigned_user_id, priority, action_type, status, due_at, office_note,
+             assigned_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    """, (ts, creator_id, sighting_id, sighting["matched_job_id"],
+          assigned_uid, priority, action_type, status, due_at, office_note, assigned_at))
+    followup_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    # Create a temporary dispatch geofence for urgent/high priority dispatches with GPS
+    if (assigned_uid and priority in ("urgent", "high")
+            and sighting["latitude"] and sighting["longitude"]):
+        try:
+            _dispatch_geofences_ensure(conn)
+            from datetime import timedelta as _td3
+            expires = (datetime.utcnow() + _td3(hours=12)).strftime("%Y-%m-%dT%H:%M:%S")
+            conn.execute("""
+                INSERT INTO dispatch_geofences
+                    (followup_id, latitude, longitude, radius_m, created_at, expires_at)
+                VALUES (?,?,?,150,?,?)
+            """, (followup_id, sighting["latitude"], sighting["longitude"], ts, expires))
+        except Exception:
+            pass
+
     conn.commit()
     conn.close()
     _log_audit(creator_id, "followup_create", "lpr_sighting", sighting_id)
@@ -8061,7 +8351,8 @@ def admin_lpr_sighting_followup(sighting_id: int):
             "LPR Follow-up Assigned",
             f"Action required: {label}",
             "followup_assigned",
-            {"sighting_id": sighting_id, "action_type": action_type, "priority": priority},
+            {"followup_id": followup_id, "sighting_id": sighting_id,
+             "action_type": action_type, "priority": priority},
         )
 
     flash("Follow-up created.", "success")
@@ -8105,14 +8396,76 @@ def admin_lpr_sighting_intelligence(sighting_id: int):
     prox_clean = [{"zone": p["rule"]["zone_name"], "dist_label": _dist_label(p["distance_m"])}
                   for p in prox_hits]
 
+    route_rec = _agent_route_recommendation(lat, lng, conn) if (lat and lng) else []
+
     conn.close()
     return jsonify({
-        "sighting_id":    sighting_id,
-        "nearest_agents": nearest,
-        "repeat_info":    repeat,
-        "proximity_hits": prox_clean,
-        "dispatch_score": score,
+        "sighting_id":          sighting_id,
+        "nearest_agents":       nearest,
+        "route_recommendation": route_rec,
+        "repeat_info":          repeat,
+        "proximity_hits":       prox_clean,
+        "dispatch_score":       score,
     }), 200
+
+
+@app.get("/admin/lpr-sightings/<int:sighting_id>/diversion")
+@admin_required
+def admin_lpr_sighting_diversion(sighting_id: int):
+    """
+    Compute the detour cost for diverting an en-route agent to a new sighting.
+    Requires: agent_id (int), dest_sighting_id (int — their current destination).
+    Returns no customer or finance data — only coordinates, ETA labels, and the score.
+    """
+    agent_id        = request.args.get("agent_id", type=int)
+    dest_sighting_id = request.args.get("dest_sighting_id", type=int)
+
+    if not agent_id or not dest_sighting_id:
+        return jsonify({"error": "agent_id and dest_sighting_id required"}), 400
+
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    _agent_movement_ensure(conn)
+
+    # Agent's last known position
+    agent_pos = conn.execute("""
+        SELECT latitude, longitude, source
+        FROM agent_movement
+        WHERE user_id = ?
+        ORDER BY received_at DESC
+        LIMIT 1
+    """, (agent_id,)).fetchone()
+    if not agent_pos:
+        conn.close()
+        return jsonify({"error": "No recent position for this agent"}), 404
+
+    # Agent's current destination
+    dest = conn.execute(
+        "SELECT latitude, longitude FROM lpr_sightings WHERE id=?",
+        (dest_sighting_id,)
+    ).fetchone()
+
+    # New sighting
+    new_s = conn.execute(
+        "SELECT latitude, longitude FROM lpr_sightings WHERE id=?",
+        (sighting_id,)
+    ).fetchone()
+    conn.close()
+
+    if not dest or not dest["latitude"]:
+        return jsonify({"error": "Current destination sighting has no GPS"}), 404
+    if not new_s or not new_s["latitude"]:
+        return jsonify({"error": "New sighting has no GPS"}), 404
+
+    result = _diversion_score(
+        agent_lat=agent_pos["latitude"],  agent_lng=agent_pos["longitude"],
+        dest_lat=dest["latitude"],        dest_lng=dest["longitude"],
+        sighting_lat=new_s["latitude"],   sighting_lng=new_s["longitude"],
+    )
+    result["agent_id"]         = agent_id
+    result["dest_sighting_id"] = dest_sighting_id
+    result["new_sighting_id"]  = sighting_id
+    return jsonify(result), 200
 
 
 @app.get("/admin/lpr/agent-map")

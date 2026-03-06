@@ -394,24 +394,35 @@ function renderIntelPanel(prefix, data) {
     box.parentNode.insertBefore(proxNote, box.nextSibling);
   }
 
-  /* Nearest agents */
+  /* Route recommendation (ETA-sorted) — use if available, else fall back to nearest_agents */
   var agentsCol  = document.getElementById(prefix+'-agents-col');
   var agentsList = document.getElementById(prefix+'-agents-list');
-  if (agents && agents.length) {
+  var recs = (data.route_recommendation && data.route_recommendation.length)
+             ? data.route_recommendation : agents;
+  if (recs && recs.length) {
     agentsCol.style.display = '';
-    agentsList.innerHTML = agents.map(function(a, i) {
+    agentsList.innerHTML = recs.map(function(a, i) {
+      var etaHtml = a.eta_label
+        ? '<span class="text-muted ms-auto" title="Estimated drive time">🕐 ' + a.eta_label + '</span>'
+        : '<span class="text-muted ms-auto">' + (a.dist_label || '') + '</span>';
+      var srcPill = '';
+      if (a.source === 'active_job')
+        srcPill = '<span class="badge" style="background:#2563eb;font-size:.68rem;padding:2px 6px;">En Route</span>';
+      else if (a.source === 'background_significant_change')
+        srcPill = '<span class="badge" style="background:#16a34a;font-size:.68rem;padding:2px 6px;">Available</span>';
       return '<div class="d-flex align-items-center gap-2 mb-1">'
-        + '<span class="badge bg-'+(i===0?'success':'secondary')+'">'+( i===0 ? 'Nearest' : '#'+(i+1))+'</span>'
+        + '<span class="badge bg-'+(i===0?'success':'secondary')+'">'+( i===0 ? 'Best ETA' : '#'+(i+1))+'</span>'
         + '<span>'+a.name+'</span>'
-        + '<span class="text-muted ms-auto">'+a.dist_label+'</span>'
+        + srcPill
+        + etaHtml
         + '</div>';
     }).join('');
 
-    /* Pre-select nearest agent in the followup assign dropdown */
+    /* Pre-select best-ETA agent in the followup assign dropdown */
     if (prefix === 'fu') {
       var sel = document.getElementById('followupAssignee');
-      if (sel && agents[0]) {
-        var opt = Array.from(sel.options).find(o => o.textContent.trim() === agents[0].name);
+      if (sel && recs[0]) {
+        var opt = Array.from(sel.options).find(o => o.textContent.trim() === recs[0].name);
         if (opt) opt.selected = true;
       }
     }

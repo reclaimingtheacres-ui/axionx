@@ -398,3 +398,73 @@ Mobile LPR system for iOS field agents. Backend in `app.py`, mobile templates un
 - Popup shows: agent name, last ping time, status source label, battery icon
 - Empty-state message when no agents active
 - Accessible from Sightings Table and Sightings Map via "👥 Agents"/"👥 Agent Map" buttons
+
+---
+
+## LPR Stage 11 — Route/ETA Intelligence, Dispatch Sequencing, and Native Dispatch Mode
+
+### Backend additions (app.py)
+
+**New helpers (all no-customer-data):**
+
+`_eta_minutes(dist_m, source)` — converts straight-line distance to road ETA (minutes) using a 1.35× road factor and speed assumptions (52 km/h if `active_job`, else 42 km/h).
+
+`_eta_label(minutes)` — human-readable ETA label ("~8 min", "~1h 20m", etc.).
+
+`_agent_route_recommendation(lat, lng, conn, limit=5)` — ETA-ranked agent list (calls `_nearest_agents` then sorts by `eta_min` instead of distance). Used in intelligence endpoint.
+
+`_diversion_score(agent_lat, agent_lng, dest_lat, dest_lng, sighting_lat, sighting_lng)` — returns `extra_dist_m`, `extra_eta_min`, `worthwhile` (bool), `label` for detouring an en-route agent.
+
+`_dispatch_sequence(sighting_ids, conn)` — greedy nearest-neighbour ordering of multiple sightings from their centroid. Returns `sequence` field per item.
+
+`_dispatch_geofences_ensure(conn)` — creates `dispatch_geofences` table (`id, followup_id, latitude, longitude, radius_m, created_at, expires_at, triggered, triggered_at`). Geofences are created for urgent/high-priority assigned follow-ups.
+
+`_FOLLOWUP_VALID_TRANSITIONS` — dict mapping current status → set of valid next statuses.
+
+**Schema additions (`lpr_followups`):** `assigned_at`, `en_route_at`, `arrived_at`, `completed_at` TEXT columns added via `add_column_if_missing`.
+
+**Status lifecycle:** `open → assigned → en_route → near_target → arrived → completed` (or `cancelled` from any active state).
+
+**New routes:**
+
+- `GET /m/api/lpr/followup/<id>` — fetch dispatch detail (action_type, priority, status, office_note, sighting coordinates + registration). No customer/finance data.
+- `PATCH /m/api/lpr/followup/<id>/status` — agent status transition with validation against `_FOLLOWUP_VALID_TRANSITIONS`. Logs timestamp per stage. Marks dispatch geofence triggered on `near_target`.
+- `POST /m/api/lpr/dispatch/sequence` — sequence planner for a list of sighting IDs; returns greedy-optimal order.
+- `GET /admin/lpr-sightings/<id>/diversion?agent_id=X&dest_sighting_id=Y` — diversion score for redirecting an en-route agent to a new sighting.
+
+**Updated routes:**
+- `POST /admin/lpr/followup/create` — now sets `status='assigned'` (not `'open'`) when an agent is assigned; creates a dispatch geofence for urgent/high priority with GPS; passes `followup_id` in the notification payload.
+- `GET /admin/lpr-sightings/<id>/intelligence` — now returns `route_recommendation` (ETA-ranked agents) alongside `nearest_agents`.
+- `GET /m/api/lpr/assigned-followups` — now returns all non-completed/non-cancelled follow-ups (not just `open`) and includes `status`, `latitude`, `longitude` per item.
+- `GET /m/api/lpr/sync` — unchanged (returns assigned_followup_count).
+
+**Admin intelligence panel (lpr_sightings.html):** "Nearest agents" section now renders ETA-sorted `route_recommendation` data. Best ETA agent is highlighted with "Best ETA" badge. Source pill shown (En Route = blue, Available = green). First agent auto-selected in follow-up assignee dropdown.
+
+### iOS additions
+
+**`DispatchManager.swift`** (Services) — `@MainActor ObservableObject` singleton:
+- `fetchAndActivate(followupId:webView:)` — fetches dispatch detail, stores in `@Published var activeDispatch: DispatchSummary?`, starts region monitoring for urgent/high priority.
+- `updateStatus(_:)` — mutates `activeDispatch.status` locally + enqueues `followup_status` in offline queue. Auto-dismisses on `completed`/`cancelled` after 1.5 s.
+- `openInMaps()` — deep-links to Apple Maps with raw coordinates (`maps://?daddr=lat,lng&dirflg=d`). No customer address passed.
+- Region monitoring via `CLLocationManager`: 150 m circular geofence at sighting location; triggers `near_target` status transition on entry when agent is `en_route`.
+
+**`DispatchSummary` / `SightingLocation` (in DispatchManager.swift):** lightweight Codable models — only `action_type`, `priority`, `status`, `office_note`, `registration`, `result_type`, `latitude`, `longitude`. No customer/file data.
+
+**`DispatchSheet.swift`** (Views) — `View` presented as a `.sheet` from `WebViewContainer`:
+- Priority badge (colour-coded), action label, status badge, plate (registration), sighted-at time.
+- ETA row using `ETAViewModel` (MapKit `MKDirections.calculate()`); shows drive time + distance.
+- Navigate button deep-links to Apple Maps.
+- Action buttons: En Route (sets status + opens Maps), Mark Arrived, Complete, Dismiss.
+- Detents: `.medium`, `.large`.
+
+**`SyncManager.swift`** — added `enqueueFollowupStatusUpdate(followupId:status:)` helper; added `AssignedFollowupItem` struct; `refreshRemoteState` now fetches full JSON from `/m/api/lpr/assigned-followups` and populates `assignedFollowupItems`; `lastAssignedFollowup` computed var for dispatch banner tap.
+
+**`OfflineQueue.swift`** — `"followup_status"` case added to `actionLabel`.
+
+**`WebViewContainer.swift`** — two new UI overlays (above FieldStatusView):
+1. **Dispatch banner** (blue, when `assignedFollowupCount > 0` and no active dispatch): tapping fetches + activates the most recent assigned follow-up and presents `DispatchSheet`.
+2. **Active dispatch banner** (dark pill, while a dispatch is in progress and sheet is dismissed): shows action label + plate, tapping reopens `DispatchSheet`.
+- `DispatchSheet` presented as a `.sheet` with `.medium`/`.large` detents.
+- `.onChange(of:)` auto-dismisses sheet when `activeDispatch` is cleared.
+
+**`project.pbxproj`** — new IDs `34`/`35` (DispatchManager), `36`/`37` (DispatchSheet). Next IDs start at `38`.

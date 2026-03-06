@@ -10,12 +10,15 @@ struct WebViewContainer: View {
     @StateObject private var store = WebViewStore()
     @EnvironmentObject private var syncManager: SyncManager
     @EnvironmentObject private var fieldStatusManager: FieldStatusManager
-    @State private var isOffline         = false
-    @State private var showLPRScanner    = false
-    @State private var isLookingUp       = false
+    @ObservedObject  private var dispatchManager = DispatchManager.shared
+    @State private var isOffline          = false
+    @State private var showLPRScanner     = false
+    @State private var isLookingUp        = false
     @State private var lprNativeResult: LPRResult? = nil
-    @State private var currentURL: URL?  = nil
-    @State private var showSyncStatus    = false
+    @State private var currentURL: URL?   = nil
+    @State private var showSyncStatus     = false
+    @State private var showDispatchSheet  = false
+    @State private var pendingDispatchId: Int? = nil
 
     private var isOnLPRPage: Bool {
         guard let url = currentURL else { return false }
@@ -91,6 +94,92 @@ struct WebViewContainer: View {
                 .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
             }
 
+            // Dispatch banner — shown on LPR pages when a follow-up is assigned and not yet accepted
+            if isOnLPRPage && !isOffline && dispatchManager.activeDispatch == nil
+                && syncManager.assignedFollowupCount > 0 {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 0) {
+                        Spacer()
+                        Button(action: {
+                            // Open the most recent assigned follow-up
+                            if let item = syncManager.lastAssignedFollowup {
+                                pendingDispatchId = item.id
+                                Task {
+                                    await dispatchManager.fetchAndActivate(
+                                        followupId: item.id,
+                                        webView: store.webView
+                                    )
+                                    showDispatchSheet = true
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bell.badge.fill")
+                                    .font(.system(size: 12, weight: .semibold))
+                                let n = syncManager.assignedFollowupCount
+                                Text(n == 1 ? "1 Follow-up Assigned" : "\(n) Follow-ups Assigned")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Image(systemName: "chevron.up")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Color(red: 0.15, green: 0.50, blue: 0.95))
+                            .cornerRadius(20)
+                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                        }
+                        Spacer()
+                    }
+                    .padding(.bottom, 82)  // above FieldStatusView
+                }
+                .ignoresSafeArea(edges: .bottom)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .animation(.easeInOut(duration: 0.25), value: syncManager.assignedFollowupCount)
+                .allowsHitTesting(true)
+            }
+
+            // Active dispatch banner — shown when a dispatch is in progress
+            if let dispatch = dispatchManager.activeDispatch, !showDispatchSheet {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 0) {
+                        Spacer()
+                        Button(action: { showDispatchSheet = true }) {
+                            HStack(spacing: 6) {
+                                let c = dispatch.priorityColor
+                                Circle()
+                                    .fill(Color(red: c.red, green: c.green, blue: c.blue))
+                                    .frame(width: 8, height: 8)
+                                Text(dispatch.actionLabel)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("·")
+                                    .foregroundStyle(.secondary)
+                                Text(dispatch.sighting.registration.isEmpty
+                                     ? "Plate unknown"
+                                     : dispatch.sighting.registration)
+                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                Image(systemName: "chevron.up")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Color(red: 0.10, green: 0.10, blue: 0.12))
+                            .cornerRadius(20)
+                            .shadow(color: .black.opacity(0.25), radius: 5, x: 0, y: 2)
+                        }
+                        Spacer()
+                    }
+                    .padding(.bottom, 82)
+                }
+                .ignoresSafeArea(edges: .bottom)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .animation(.easeInOut(duration: 0.2), value: dispatch.status)
+                .allowsHitTesting(true)
+            }
+
             // Sync badge — bottom-left, shown when there are pending or failed items
             if syncManager.pendingCount > 0 || syncManager.failedCount > 0 {
                 VStack {
@@ -159,6 +248,16 @@ struct WebViewContainer: View {
         .sheet(isPresented: $showSyncStatus) {
             SyncStatusView()
                 .environmentObject(syncManager)
+        }
+        .sheet(isPresented: $showDispatchSheet) {
+            if let dispatch = dispatchManager.activeDispatch {
+                DispatchSheet(dispatch: dispatch)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.hidden)
+            }
+        }
+        .onChange(of: dispatchManager.activeDispatch == nil) { isNil in
+            if isNil { showDispatchSheet = false }
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .axionOpenNotifications)
