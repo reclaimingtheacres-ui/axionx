@@ -1,0 +1,512 @@
+{% extends "mobile/base.html" %}
+{% block title %}Map — AxionX{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Override default content padding for full-width map layout */
+.m-content { padding: 0; background: #f7f8fa; }
+
+/* ── Filter bar ── */
+#filter-bar {
+  position: sticky; top: 52px; z-index: 50;
+  background: #ffffff; border-bottom: 1px solid #e5e7eb;
+  padding: 8px 12px;
+  display: flex; align-items: center; gap: 8px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+#filter-bar::-webkit-scrollbar { display: none; }
+
+.date-pill {
+  flex-shrink: 0; border: 1px solid #e5e7eb; border-radius: 20px;
+  padding: 5px 14px; font-size: .78rem; font-weight: 600; cursor: pointer;
+  background: #f7f8fa; color: #6b7280; transition: all .15s; white-space: nowrap;
+}
+.date-pill.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+.map-type-select {
+  flex-shrink: 0; margin-left: auto;
+  border: 1px solid #e5e7eb; border-radius: 8px; padding: 5px 10px;
+  font-size: .78rem; font-weight: 600; cursor: pointer;
+  background: #f7f8fa; color: #374151;
+  -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; padding-right: 22px;
+}
+
+/* ── Location banner ── */
+#loc-denied-banner {
+  display: none; background: #fffbeb; border-bottom: 1px solid #fde68a;
+  padding: 8px 14px; font-size: .8rem; color: #d97706; text-align: center;
+}
+
+/* ── Map container ── */
+#map-wrap {
+  width: 100%; height: 52vw; min-height: 220px; max-height: 340px;
+  position: relative;
+}
+#gmap { width: 100%; height: 100%; }
+
+/* ── Job count bar ── */
+#count-bar {
+  background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;
+  padding: 7px 14px; font-size: .78rem; color: #6b7280; font-weight: 500;
+  display: flex; align-items: center; justify-content: space-between;
+}
+#count-bar strong { color: #111; }
+
+/* ── Job list ── */
+#job-list { background: #f7f8fa; overflow-y: auto; }
+
+.jl-card {
+  background: #ffffff; margin: 8px 12px; border-radius: 12px;
+  border: 1px solid #e5e7eb; overflow: hidden;
+}
+.jl-card:active { background: #f7f8fa; }
+.jl-top {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px 8px;
+}
+.jl-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+}
+.jl-main { flex: 1; min-width: 0; }
+.jl-ref { font-size: .88rem; font-weight: 700; color: #111; }
+.jl-customer { font-size: .78rem; color: #374151; margin-top: 1px; }
+.jl-addr { font-size: .75rem; color: #6b7280; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jl-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.jl-dist { font-size: .72rem; font-weight: 600; color: #2563eb; }
+.jl-date { font-size: .72rem; color: #9ca3af; }
+.jl-draft { font-size: .62rem; font-weight: 700; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 4px; padding: 1px 6px; letter-spacing: .04em; text-transform: uppercase; }
+.jl-actions {
+  display: flex; border-top: 1px solid #e5e7eb;
+}
+.jl-actions a {
+  flex: 1; text-align: center; padding: 9px 6px; font-size: .78rem; font-weight: 600;
+  color: #2563eb; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+.jl-actions a + a { border-left: 1px solid #e5e7eb; }
+.jl-actions a.navigate { color: #16a34a; }
+
+/* ── No maps banner ── */
+#no-maps-banner {
+  background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px;
+  margin: 16px; padding: 14px 16px; font-size: .88rem; color: #dc2626; text-align: center;
+}
+</style>
+{% endblock %}
+
+{% block header_title %}Map{% endblock %}
+{% block header_right %}
+<span id="hdr-count" style="font-size:.75rem;color:#6b7280;font-weight:500;"></span>
+{% endblock %}
+
+{% block content %}
+
+{# ── Location denied banner ── #}
+<div id="loc-denied-banner">
+  Location access is off. Distance sorting and live position are unavailable.
+</div>
+
+{# ── Date filter bar ── #}
+<div id="filter-bar">
+  <button class="date-pill active" data-filter="today">Today</button>
+  <button class="date-pill"        data-filter="tomorrow">Tomorrow</button>
+  <button class="date-pill"        data-filter="week">Week</button>
+  <button class="date-pill"        data-filter="month">Month</button>
+  <button class="date-pill"        data-filter="all">All</button>
+  <select class="map-type-select" id="map-type-select">
+    <option value="roadmap">Map</option>
+    <option value="satellite">Satellite</option>
+    <option value="hybrid">Hybrid</option>
+  </select>
+</div>
+
+{# ── Map ── #}
+<div id="map-wrap">
+  {% if google_maps_api_key %}
+  <div id="gmap"></div>
+  {% else %}
+  <div id="no-maps-banner">
+    Google Maps API key is not configured. Job list is still available below.
+  </div>
+  {% endif %}
+</div>
+
+{# ── Job count ── #}
+<div id="count-bar">
+  <span><strong id="job-count">—</strong> jobs</span>
+  <span id="loc-status" style="font-size:.72rem;color:#9ca3af;"></span>
+</div>
+
+{# ── Scrollable job list ── #}
+<div id="job-list">
+  <div id="job-list-inner" style="padding-bottom:8px;"></div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+'use strict';
+
+const MAPS_KEY      = {{ google_maps_api_key | tojson }};
+const DIST_UNIT     = {{ distance_unit | tojson }};
+const GPS_ENABLED   = {{ gps_foreground | tojson }};
+const GPS_INTERVAL  = {{ gps_interval_mins | tojson }} * 60 * 1000;
+
+const STATUS_COLORS = {
+  'active':       '#2563eb',
+  'new':          '#2563eb',
+  'in progress':  '#16a34a',
+  'pending':      '#d97706',
+  'instructed':   '#7c3aed',
+  'suspended':    '#dc2626',
+};
+function colorFor(s){ return STATUS_COLORS[(s||'').toLowerCase()] || '#6b7280'; }
+
+/* ── State ── */
+let map, infoWindow, geocoder;
+let agentMarker = null;
+let jobMarkers  = {};
+let allJobs     = [];
+let agentPos    = null;
+let currentFilter = 'today';
+
+/* ── Distance (Haversine) ── */
+function haversineKm(lat1, lng1, lat2, lng2){
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLng = (lng2-lng1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2
+          + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function fmtDist(km){
+  if(DIST_UNIT==='mi'){
+    const mi = km*0.621371;
+    return mi < 10 ? mi.toFixed(1)+' mi' : Math.round(mi)+' mi';
+  }
+  return km < 10 ? km.toFixed(1)+' km' : Math.round(km)+' km';
+}
+
+/* ── Navigate URL ── */
+function navigateUrl(job){
+  if(job.lat && job.lng){
+    const coords = job.lat+','+job.lng;
+    // Apple Maps preferred for iOS; falls back gracefully on Android
+    return 'http://maps.apple.com/?daddr='+coords+'&dirflg=d';
+  }
+  if(job.address){
+    return 'http://maps.apple.com/?daddr='+encodeURIComponent(job.address);
+  }
+  return '#';
+}
+
+/* ── Geocode + cache ── */
+function geocodeJob(job, cb){
+  if(!geocoder || !job.address){ cb && cb(); return; }
+  geocoder.geocode({address: job.address+', Australia'}, function(results, status){
+    if(status !== 'OK' || !results.length){ cb && cb(); return; }
+    const loc = results[0].geometry.location;
+    job.lat = loc.lat();
+    job.lng = loc.lng();
+    // Persist coords back to server
+    fetch('/api/jobs/'+job.id+'/geocode', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+      body: JSON.stringify({lat:job.lat, lng:job.lng})
+    });
+    cb && cb();
+  });
+}
+
+/* ── Build popup content ── */
+function popupHtml(job){
+  const dist = (agentPos && job.lat && job.lng)
+    ? '<br><span style="font-size:.72rem;font-weight:600;color:#2563eb;">'
+      +fmtDist(haversineKm(agentPos.lat,agentPos.lng,job.lat,job.lng))+'</span>'
+    : '';
+  const navUrl = navigateUrl(job);
+  return `<div style="max-width:240px;font-family:-apple-system,sans-serif;font-size:.82rem;line-height:1.5;">
+    <div style="font-weight:700;font-size:.9rem;margin-bottom:2px;">${job.ref}</div>
+    ${job.customer ? `<div style="color:#374151;">${job.customer}</div>` : ''}
+    ${job.lender   ? `<div style="color:#6b7280;font-size:.75rem;">${job.lender}</div>` : ''}
+    <div style="color:#6b7280;font-size:.75rem;margin-top:2px;">${job.address||''}${dist}</div>
+    ${job.due_date ? `<div style="color:#9ca3af;font-size:.72rem;margin-top:2px;">${job.due_date}</div>` : ''}
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <a href="/m/job/${job.id}"
+         style="flex:1;text-align:center;background:#2563eb;color:#fff;border-radius:8px;
+                padding:6px 8px;font-size:.75rem;font-weight:600;text-decoration:none;">
+        Open Job
+      </a>
+      <a href="${navUrl}" target="_blank"
+         style="flex:1;text-align:center;background:#16a34a;color:#fff;border-radius:8px;
+                padding:6px 8px;font-size:.75rem;font-weight:600;text-decoration:none;">
+        Navigate
+      </a>
+    </div>
+  </div>`;
+}
+
+/* ── Place / update job marker ── */
+function placeJobMarker(job){
+  if(!map || !job.lat || !job.lng) return;
+  const color = colorFor(job.status);
+  if(jobMarkers[job.id]){
+    jobMarkers[job.id].setPosition({lat:job.lat, lng:job.lng});
+    return;
+  }
+  const marker = new google.maps.Marker({
+    position:{lat:job.lat, lng:job.lng}, map,
+    icon:{
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 9,
+      fillColor: color, fillOpacity: 1,
+      strokeColor: '#fff', strokeWeight: 2.5
+    },
+    title: job.ref
+  });
+  marker.addListener('click', function(){
+    infoWindow.setContent(popupHtml(job));
+    infoWindow.open(map, marker);
+  });
+  jobMarkers[job.id] = marker;
+}
+
+/* ── Render job list ── */
+function renderList(){
+  const inner = document.getElementById('job-list-inner');
+  if(!inner) return;
+  const jobs = [...allJobs];
+
+  // Sort by distance if we have agent position
+  if(agentPos){
+    jobs.sort((a,b)=>{
+      const da = (a.lat && a.lng) ? haversineKm(agentPos.lat,agentPos.lng,a.lat,a.lng) : Infinity;
+      const db = (b.lat && b.lng) ? haversineKm(agentPos.lat,agentPos.lng,b.lat,b.lng) : Infinity;
+      return da-db;
+    });
+  }
+
+  const countEl = document.getElementById('job-count');
+  if(countEl) countEl.textContent = jobs.length;
+  const hdrCount = document.getElementById('hdr-count');
+  if(hdrCount) hdrCount.textContent = jobs.length + ' jobs';
+
+  inner.innerHTML = '';
+  if(!jobs.length){
+    inner.innerHTML = '<div style="text-align:center;padding:32px 20px;color:#6b7280;font-size:.88rem;">No jobs for this period</div>';
+    return;
+  }
+
+  jobs.forEach(job=>{
+    const dist = (agentPos && job.lat && job.lng)
+      ? fmtDist(haversineKm(agentPos.lat,agentPos.lng,job.lat,job.lng))
+      : null;
+    const navUrl = navigateUrl(job);
+    const color = colorFor(job.status);
+    const card = document.createElement('div');
+    card.className = 'jl-card';
+    card.innerHTML = `
+      <div class="jl-top">
+        <div class="jl-dot" style="background:${color};"></div>
+        <div class="jl-main">
+          <div class="jl-ref">${job.ref}${job.has_draft ? ' <span class="jl-draft">Draft</span>' : ''}</div>
+          ${job.customer ? `<div class="jl-customer">${job.customer}</div>` : ''}
+          ${job.address  ? `<div class="jl-addr">${job.address}</div>` : ''}
+          <div class="jl-meta" style="margin-top:4px;">
+            ${dist ? `<span class="jl-dist">${dist}</span>` : ''}
+            ${job.due_date ? `<span class="jl-date">${job.due_date}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="jl-actions">
+        <a href="/m/job/${job.id}">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Open Job
+        </a>
+        <a href="${navUrl}" target="_blank" class="navigate">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+          Navigate
+        </a>
+      </div>`;
+    inner.appendChild(card);
+  });
+}
+
+/* ── Load jobs from API ── */
+function loadJobs(filter){
+  fetch('/m/api/map/jobs?date_filter='+filter, {
+    headers:{'X-Requested-With':'XMLHttpRequest'}
+  })
+  .then(r=>r.json())
+  .then(data=>{
+    // Clear old markers
+    Object.values(jobMarkers).forEach(m=>m.setMap(null));
+    jobMarkers = {};
+    allJobs = data.jobs || [];
+
+    // Place markers for jobs with coords; geocode the rest
+    const bounds = new google.maps.LatLngBounds();
+    let hasCoords = false;
+    allJobs.forEach(job=>{
+      if(job.lat && job.lng){
+        placeJobMarker(job);
+        bounds.extend({lat:job.lat, lng:job.lng});
+        hasCoords = true;
+      } else {
+        geocodeJob(job, ()=>{
+          if(job.lat && job.lng){
+            placeJobMarker(job);
+            renderList();
+          }
+        });
+      }
+    });
+
+    if(map && hasCoords){
+      if(agentPos) bounds.extend(agentPos);
+      if(!bounds.isEmpty()) map.fitBounds(bounds, {padding:40});
+    }
+    renderList();
+  })
+  .catch(()=>{ renderList(); });
+}
+
+/* ── GPS tracking ── */
+function sendLocation(pos){
+  const {latitude:lat, longitude:lng, accuracy} = pos.coords;
+  agentPos = {lat, lng};
+
+  // Update agent marker on map
+  if(map){
+    if(agentMarker){
+      agentMarker.setPosition({lat, lng});
+    } else {
+      agentMarker = new google.maps.Marker({
+        position:{lat,lng}, map,
+        icon:{
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: '#2563eb', fillOpacity: 1,
+          strokeColor: '#fff', strokeWeight: 3
+        },
+        title: 'Your location',
+        zIndex: 999
+      });
+    }
+  }
+
+  // Update distance in list
+  renderList();
+
+  // Update location status indicator
+  const locSt = document.getElementById('loc-status');
+  if(locSt) locSt.textContent = 'Updated ' + new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
+
+  // Post to backend
+  fetch('/m/api/location/update', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body: JSON.stringify({lat, lng, accuracy, timestamp: new Date().toISOString()})
+  });
+}
+
+function startGPS(){
+  if(!GPS_ENABLED){ return; }
+  if(!navigator.geolocation){
+    document.getElementById('loc-denied-banner').style.display='block';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(sendLocation, ()=>{
+    document.getElementById('loc-denied-banner').style.display='block';
+  }, {enableHighAccuracy:true, timeout:10000});
+  // Repeated updates
+  setInterval(()=>{
+    navigator.geolocation.getCurrentPosition(sendLocation, null,
+      {enableHighAccuracy:true, timeout:10000});
+  }, GPS_INTERVAL);
+  // Refresh when page becomes visible again
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState==='visible'){
+      navigator.geolocation.getCurrentPosition(sendLocation, null,
+        {enableHighAccuracy:true, timeout:10000});
+    }
+  });
+}
+
+/* ── Init Google Maps ── */
+function initGoogleMapsMobile(){
+  const mapEl = document.getElementById('gmap');
+  if(!mapEl) return;
+
+  map = new google.maps.Map(mapEl, {
+    center:{lat:-33.8688, lng:151.2093}, // Sydney default
+    zoom:11,
+    mapTypeId:'roadmap',
+    disableDefaultUI: false,
+    fullscreenControl: false,
+    streetViewControl: false,
+    mapTypeControl: false,
+    zoomControl: true,
+    zoomControlOptions:{position: google.maps.ControlPosition.RIGHT_CENTER}
+  });
+
+  infoWindow = new google.maps.InfoWindow();
+  geocoder   = new google.maps.Geocoder();
+
+  // Map type toggle
+  const sel = document.getElementById('map-type-select');
+  if(sel){
+    sel.addEventListener('change', ()=>{ map.setMapTypeId(sel.value); });
+  }
+
+  // Date filter pills
+  document.querySelectorAll('.date-pill').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.date-pill').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      loadJobs(currentFilter);
+    });
+  });
+
+  // Load initial jobs
+  loadJobs(currentFilter);
+
+  // Start GPS
+  startGPS();
+}
+
+/* ── Bootstrap ── */
+if(MAPS_KEY){
+  const s = document.createElement('script');
+  s.src = 'https://maps.googleapis.com/maps/api/js?key='+MAPS_KEY+'&v=weekly&callback=initGoogleMapsMobile&loading=async';
+  s.async = true; s.defer = true;
+  window.initGoogleMapsMobile = initGoogleMapsMobile;
+  document.head.appendChild(s);
+} else {
+  // No maps key — still show filter + list
+  document.querySelectorAll('.date-pill').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.date-pill').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      // Load jobs without map
+      fetch('/m/api/map/jobs?date_filter='+currentFilter,
+        {headers:{'X-Requested-With':'XMLHttpRequest'}})
+        .then(r=>r.json())
+        .then(d=>{ allJobs = d.jobs||[]; renderList(); });
+    });
+  });
+  fetch('/m/api/map/jobs?date_filter=today',
+    {headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json())
+    .then(d=>{ allJobs = d.jobs||[]; renderList(); });
+  startGPS();
+}
+
+})();
+</script>
+{% endblock %}

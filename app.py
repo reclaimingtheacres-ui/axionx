@@ -6164,39 +6164,131 @@ def m_settings_post():
     return redirect(url_for("m_settings"))
 
 
+@app.post("/m/api/location/update")
+@mobile_login_required
+def m_api_location_update():
+    uid  = session.get("user_id")
+    data = request.get_json(silent=True) or {}
+    lat  = data.get("lat")
+    lng  = data.get("lng")
+    acc  = data.get("accuracy")
+    if not lat or not lng:
+        return jsonify({"ok": False, "error": "lat/lng required"}), 400
+    ts = now_ts()
+    conn = db()
+    conn.execute("""
+        INSERT INTO agent_locations (user_id, lat, lng, accuracy, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            lat=excluded.lat, lng=excluded.lng,
+            accuracy=excluded.accuracy, updated_at=excluded.updated_at
+    """, (uid, float(lat), float(lng), float(acc) if acc else None, ts))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.get("/m/api/map/jobs")
+@mobile_login_required
+def m_api_map_jobs():
+    """Reusable mobile job-map JSON endpoint with date-range filter.
+    date_filter: today | tomorrow | week | month | all (default: today for agents, all for admins)
+    """
+    uid         = session.get("user_id")
+    role        = session.get("role", "")
+    is_admin    = role in ("admin", "both")
+    date_filter = request.args.get("date_filter", "today" if not is_admin else "all")
+
+    date_clauses = {
+        "today":    "date(j.job_due_date) = date('now','localtime')",
+        "tomorrow": "date(j.job_due_date) = date('now','+1 day','localtime')",
+        "week":     "date(j.job_due_date) BETWEEN date('now','localtime') AND date('now','+6 days','localtime')",
+        "month":    "date(j.job_due_date) BETWEEN date('now','localtime') AND date('now','+29 days','localtime')",
+    }
+    date_sql = f"AND {date_clauses[date_filter]}" if date_filter in date_clauses else ""
+
+    base_where = f"j.status NOT IN ('Closed','Cancelled','Completed') {date_sql}"
+
+    conn = db()
+    if is_admin:
+        rows = conn.execute(f"""
+            SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
+                   j.job_due_date, j.lender_name, j.client_job_number,
+                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   c.name  AS client_name,
+                   ag.full_name AS agent_name,
+                   ag.id        AS agent_id,
+                   (SELECT 1 FROM job_updates ju
+                    WHERE ju.job_id = j.id AND ju.status = 'draft'
+                    LIMIT 1) AS has_draft
+            FROM jobs j
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            LEFT JOIN clients   c  ON c.id  = j.client_id
+            LEFT JOIN users     ag ON ag.id = j.assigned_user_id
+            WHERE {base_where}
+            ORDER BY j.job_due_date ASC
+            LIMIT 500
+        """).fetchall()
+    else:
+        rows = conn.execute(f"""
+            SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
+                   j.job_due_date, j.lender_name, j.client_job_number,
+                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   c.name  AS client_name,
+                   ag.full_name AS agent_name,
+                   ag.id        AS agent_id,
+                   (SELECT 1 FROM job_updates ju
+                    WHERE ju.job_id = j.id AND ju.status = 'draft'
+                    LIMIT 1) AS has_draft
+            FROM jobs j
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            LEFT JOIN clients   c  ON c.id  = j.client_id
+            LEFT JOIN users     ag ON ag.id = j.assigned_user_id
+            WHERE j.assigned_user_id = ? AND {base_where}
+            ORDER BY j.job_due_date ASC
+            LIMIT 200
+        """, (uid,)).fetchall()
+
+    conn.close()
+    jobs_out = []
+    for r in rows:
+        jobs_out.append({
+            "id":           r["id"],
+            "ref":          r["display_ref"],
+            "address":      r["job_address"] or "",
+            "status":       r["status"] or "",
+            "lat":          r["lat"],
+            "lng":          r["lng"],
+            "due_date":     r["job_due_date"] or "",
+            "lender":       r["lender_name"] or "",
+            "client_ref":   r["client_job_number"] or "",
+            "customer":     r["customer_name"] or "",
+            "client":       r["client_name"] or "",
+            "agent":        r["agent_name"] or "",
+            "agent_id":     r["agent_id"],
+            "has_draft":    bool(r["has_draft"]),
+        })
+    return jsonify({"jobs": jobs_out, "filter": date_filter})
+
+
 @app.get("/m/map")
 @mobile_login_required
 def m_map():
     uid  = session.get("user_id")
-    role = session.get("role", "")
     conn = db()
-    if role in ("admin", "both"):
-        jobs = conn.execute("""
-            SELECT j.id, j.display_ref, j.status, j.job_address AS address,
-                   j.lat, j.lng, u.full_name AS agent_name,
-                   c.name AS client_name
-            FROM jobs j
-            LEFT JOIN users u ON u.id = j.assigned_user_id
-            LEFT JOIN clients c ON c.id = j.client_id
-            WHERE j.status NOT IN ('completed','cancelled')
-            ORDER BY j.job_due_date ASC
-            LIMIT 200
-        """).fetchall()
-    else:
-        jobs = conn.execute("""
-            SELECT j.id, j.display_ref, j.status, j.job_address AS address,
-                   j.lat, j.lng, u.full_name AS agent_name,
-                   c.name AS client_name
-            FROM jobs j
-            LEFT JOIN users u ON u.id = j.assigned_user_id
-            LEFT JOIN clients c ON c.id = j.client_id
-            WHERE j.assigned_user_id=? AND j.status NOT IN ('completed','cancelled')
-            ORDER BY j.job_due_date ASC
-            LIMIT 200
-        """, (uid,)).fetchall()
+    prefs = conn.execute(
+        "SELECT distance_unit, gps_foreground, gps_interval_mins FROM user_mobile_settings WHERE user_id=?",
+        (uid,)
+    ).fetchone()
     conn.close()
-    jobs_json = json.dumps([dict(r) for r in jobs])
-    return render_template("m/map.html", jobs_json=jobs_json)
+    distance_unit   = prefs["distance_unit"]    if prefs else "km"
+    gps_foreground  = prefs["gps_foreground"]   if prefs else 1
+    gps_interval    = prefs["gps_interval_mins"] if prefs and prefs["gps_interval_mins"] else 5
+    return render_template("mobile/map.html",
+                           google_maps_api_key=os.getenv("GOOGLE_MAPS_API_KEY", ""),
+                           distance_unit=distance_unit,
+                           gps_foreground=gps_foreground,
+                           gps_interval_mins=gps_interval)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
