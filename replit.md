@@ -41,9 +41,10 @@ templates/
     login.html          Standalone login (no nav, iOS safe-area)
     job_detail.html     Read-only job detail (Call/SMS tap buttons, assets, draft banner)
     map.html            Google Maps + date filters + GPS tracking + job list
+    jobs.html           Full-featured jobs list: search, filter sheet, client-side sort + distance
   m/                    Mobile page templates (all extend mobile/base.html)
     today.html          Today's schedule (cues + schedules, draft alerts)
-    jobs.html           Jobs list with filter/sort bottom sheet
+    jobs.html           OLD — superseded by mobile/jobs.html
     update_builder.html Mobile AI update builder (shares backend generate/save endpoints)
     settings.html       Display prefs + GPS toggles + resource creation links
     tow_operator_new.html   Create tow operator

@@ -627,9 +627,15 @@ def _migrate_update_builder():
         gps_foreground INTEGER NOT NULL DEFAULT 1,
         gps_bg INTEGER NOT NULL DEFAULT 0,
         gps_interval_mins INTEGER NOT NULL DEFAULT 5,
-        updated_at TEXT
+        updated_at TEXT,
+        job_scope TEXT NOT NULL DEFAULT 'mine',
+        show_completed TEXT NOT NULL DEFAULT 'week',
+        quick_status TEXT NOT NULL DEFAULT ''
     )
     """)
+    add_column_if_missing(cur, "user_mobile_settings", "job_scope",       "TEXT NOT NULL DEFAULT 'mine'")
+    add_column_if_missing(cur, "user_mobile_settings", "show_completed",  "TEXT NOT NULL DEFAULT 'week'")
+    add_column_if_missing(cur, "user_mobile_settings", "quick_status",    "TEXT NOT NULL DEFAULT ''")
     conn.commit()
     conn.close()
 
@@ -5892,59 +5898,207 @@ def m_today():
                            drafts=drafts_raw, draft_job_ids=draft_job_ids)
 
 
-@app.get("/m/jobs")
-@mobile_login_required
-def m_jobs():
-    uid = session.get("user_id")
-    sort = request.args.get("sort", "visit_date")
-    direction = request.args.get("dir", "asc")
-    status_filter = request.args.get("status_filter", "")
+def _mobile_jobs_query(uid, role, params_in):
+    """Shared jobs-list query engine for mobile. Returns (jobs, draft_job_ids, prefs_used).
+    params_in: dict with optional keys sort, dir, scope, status_filter, show_completed, q
+    This function is intentionally decoupled so it can be reused by future desktop dispatcher views.
+    """
+    is_admin = role in ("admin", "both")
+    conn = db()
+
+    # Load saved prefs as baseline
+    prefs = conn.execute(
+        "SELECT * FROM user_mobile_settings WHERE user_id=?", (uid,)
+    ).fetchone()
+
+    def pref(key, default):
+        v = params_in.get(key)
+        if v is not None:
+            return v
+        return (prefs[key] if prefs and key in prefs.keys() else None) or default
+
+    def pref_col(param_key, col_key, default):
+        v = params_in.get(param_key)
+        if v is not None:
+            return v
+        try:
+            cv = prefs[col_key] if prefs else None
+        except (IndexError, KeyError):
+            cv = None
+        return cv or default
+
+    sort           = pref_col("sort",       "list_sort",  "visit_date")
+    direction      = pref_col("dir",        "list_dir",   "asc")
+    scope          = pref_col("scope",     "job_scope",      "all" if is_admin else "mine")
+    status_filter  = pref("status_filter", "")
+    show_completed = pref_col("show_completed", "show_completed", "week")
+    q              = params_in.get("q", "").strip()
+    distance_unit  = (prefs["distance_unit"] if prefs else None) or "km"
+
+    # Validate
+    if sort not in ("visit_date", "status", "created", "distance"):
+        sort = "visit_date"
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    if show_completed not in ("day", "week", "month", "all", "none"):
+        show_completed = "week"
+
     dir_sql = "ASC" if direction == "asc" else "DESC"
 
-    role = session.get("role", "")
-    if role in ("admin", "both"):
-        where_clauses = ["1=1"]
-        params = []
-    else:
-        where_clauses = [
-            "(j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.assigned_to_user_id=? AND s.status NOT IN ('Cancelled','Completed')))"
-        ]
-        params = [uid, uid]
+    # ── Ownership scope ──
+    where_clauses = []
+    params = []
 
-    if status_filter:
+    if is_admin and scope != "mine":
+        where_clauses.append("1=1")
+    else:
+        where_clauses.append(
+            "(j.assigned_user_id = ? OR EXISTS ("
+            "  SELECT 1 FROM schedules s"
+            "  WHERE s.job_id=j.id AND s.assigned_to_user_id=?"
+            "  AND s.status NOT IN ('Cancelled','Completed')"
+            "))"
+        )
+        params += [uid, uid]
+
+    # ── Scheduled / Unscheduled scope ──
+    if scope == "scheduled":
+        where_clauses.append(
+            "EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
+        )
+    elif scope == "unscheduled":
+        where_clauses.append(
+            "NOT EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
+        )
+
+    # ── Status filter ──
+    completed_statuses = ("Completed", "Invoiced")
+    if status_filter and status_filter not in ("", "all"):
         where_clauses.append("j.status = ?")
         params.append(status_filter)
     else:
-        where_clauses.append("j.status NOT IN ('Invoiced')")
+        # Exclude completed unless show_completed is set
+        if show_completed == "none":
+            where_clauses.append(f"j.status NOT IN {completed_statuses!r}")
+        elif show_completed == "day":
+            where_clauses.append(
+                f"(j.status NOT IN {completed_statuses!r} OR"
+                " date(j.updated_at) >= date('now','localtime'))"
+            )
+        elif show_completed == "week":
+            where_clauses.append(
+                f"(j.status NOT IN {completed_statuses!r} OR"
+                " date(j.updated_at) >= date('now','-6 days','localtime'))"
+            )
+        elif show_completed == "month":
+            where_clauses.append(
+                f"(j.status NOT IN {completed_statuses!r} OR"
+                " date(j.updated_at) >= date('now','-29 days','localtime'))"
+            )
+        # show_completed == "all" → no extra filter
 
-    where_sql = " AND ".join(where_clauses)
+    # ── Search ──
+    if q:
+        where_clauses.append(
+            "(j.display_ref LIKE ? OR j.internal_job_number LIKE ? OR"
+            " j.client_reference LIKE ? OR j.job_address LIKE ? OR"
+            " j.lender_name LIKE ? OR j.client_job_number LIKE ? OR"
+            " (cu.first_name || ' ' || cu.last_name) LIKE ? OR"
+            " EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id"
+            "   AND (ji.reg LIKE ? OR ji.vin LIKE ?)))"
+        )
+        like = f"%{q}%"
+        params += [like]*9
 
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+    # ── Sort ──
     if sort == "status":
-        order_sql = f"j.status {dir_sql}, j.updated_at DESC"
+        order_sql = f"j.status {dir_sql}, next_scheduled ASC NULLS LAST"
     elif sort == "created":
         order_sql = f"j.created_at {dir_sql}"
-    else:
-        order_sql = f"next_scheduled {dir_sql} NULLS LAST, j.updated_at DESC"
+    elif sort == "distance":
+        # Client-side distance sort; server sorts by due date as secondary
+        order_sql = f"next_scheduled ASC NULLS LAST, j.job_due_date ASC NULLS LAST"
+    else:  # visit_date
+        order_sql = f"next_scheduled {dir_sql} NULLS LAST, j.job_due_date {dir_sql} NULLS LAST, j.updated_at DESC"
 
-    conn = db()
     jobs = conn.execute(f"""
         SELECT j.*,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' LIMIT 1) AS asset_reg,
-               (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled
+               (cu.first_name || ' ' || cu.last_name)  AS customer_name,
+               (SELECT ji.reg  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_reg,
+               (SELECT ji.vin  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_vin,
+               (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
+                AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE {where_sql}
         ORDER BY {order_sql}
+        LIMIT 300
     """, params).fetchall()
 
+    # Draft job IDs for this user
     draft_job_ids = {r["job_id"] for r in conn.execute(
-        "SELECT job_id FROM job_updates WHERE created_by_user_id=? AND status='draft'", (uid,)
+        "SELECT DISTINCT job_id FROM job_updates WHERE created_by_user_id=? AND status='draft'",
+        (uid,)
     ).fetchall()}
+
     conn.close()
 
-    return render_template("m/jobs.html", jobs=jobs, draft_job_ids=draft_job_ids,
-                           sort=sort, dir=direction, status_filter=status_filter)
+    prefs_used = {
+        "sort": sort, "dir": direction, "scope": scope,
+        "status_filter": status_filter, "show_completed": show_completed,
+        "distance_unit": distance_unit, "q": q,
+    }
+    return jobs, draft_job_ids, prefs_used
+
+
+@app.get("/m/jobs")
+@mobile_login_required
+def m_jobs():
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    params_in = {
+        k: request.args.get(k)
+        for k in ("sort", "dir", "scope", "status_filter", "show_completed", "q")
+        if request.args.get(k) is not None
+    }
+    jobs, draft_job_ids, prefs = _mobile_jobs_query(uid, role, params_in)
+    # Prepare for client-side distance calc: pass lat/lng as JSON
+    import json as _json
+    jobs_geo = _json.dumps([
+        {"id": j["id"], "lat": j["lat"], "lng": j["lng"]}
+        for j in jobs if j["lat"] and j["lng"]
+    ])
+    is_admin = role in ("admin", "both")
+    return render_template("mobile/jobs.html",
+                           jobs=jobs, draft_job_ids=draft_job_ids, prefs=prefs,
+                           jobs_geo=jobs_geo, is_admin=is_admin)
+
+
+@app.post("/m/jobs/prefs/save")
+@mobile_login_required
+def m_jobs_prefs_save():
+    uid = session.get("user_id")
+    sort           = request.form.get("sort", "visit_date")
+    direction      = request.form.get("dir", "asc")
+    scope          = request.form.get("scope", "mine")
+    show_completed = request.form.get("show_completed", "week")
+    dist_unit      = request.form.get("distance_unit", "km")
+    ts = now_ts()
+    conn = db()
+    conn.execute("""
+        INSERT INTO user_mobile_settings
+            (user_id, list_sort, list_dir, job_scope, show_completed, distance_unit, updated_at)
+        VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            list_sort=excluded.list_sort, list_dir=excluded.list_dir,
+            job_scope=excluded.job_scope, show_completed=excluded.show_completed,
+            distance_unit=excluded.distance_unit, updated_at=excluded.updated_at
+    """, (uid, sort, direction, scope, show_completed, dist_unit, ts))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.get("/m/job/<int:job_id>")

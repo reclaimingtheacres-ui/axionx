@@ -1,0 +1,459 @@
+{% extends "mobile/base.html" %}
+{% block title %}Jobs — AxionX{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Search + filter bar */
+.jobs-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: #fff;
+  border-bottom: 1px solid #e5e7eb; position: sticky; top: 52px; z-index: 60;
+}
+.jobs-search {
+  flex: 1; background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 9px 12px 9px 34px; font-size: .9rem; color: #111;
+  outline: none; -webkit-appearance: none;
+}
+.jobs-search:focus { border-color: #2563eb; background: #fff; }
+.search-icon {
+  position: absolute; left: 26px; top: 50%; transform: translateY(-50%);
+  pointer-events: none; color: #9ca3af;
+}
+.search-wrap { position: relative; flex: 1; }
+.filter-btn {
+  flex-shrink: 0; background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 9px 13px; font-size: .82rem; font-weight: 600; color: #374151; cursor: pointer;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.filter-btn.has-filters { background: #eff6ff; border-color: #bfdbfe; color: #2563eb; }
+
+/* Sort / scope info bar */
+.sort-bar {
+  padding: 6px 14px; background: #f7f8fa; border-bottom: 1px solid #e5e7eb;
+  font-size: .74rem; color: #6b7280; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px;
+}
+.sort-bar strong { color: #374151; }
+
+/* Distance warning */
+#dist-warn {
+  display: none; background: #fffbeb; border-bottom: 1px solid #fde68a;
+  padding: 8px 14px; font-size: .78rem; color: #d97706; text-align: center;
+}
+
+/* Job cards */
+.job-card {
+  display: block; background: #fff; margin: 8px 12px; border-radius: 12px;
+  border: 1px solid #e5e7eb; text-decoration: none; color: #111;
+  overflow: hidden; transition: background .1s;
+}
+.job-card:active { background: #f7f8fa; }
+.job-card-inner { padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; }
+.job-status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.job-main { flex: 1; min-width: 0; }
+.job-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+.job-ref { font-weight: 700; font-size: .9rem; }
+.job-customer { font-size: .8rem; color: #374151; margin-bottom: 2px; }
+.job-addr { font-size: .78rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.job-date { font-size: .72rem; color: #9ca3af; }
+.job-dist { font-size: .72rem; font-weight: 600; color: #2563eb; }
+.job-chev { flex-shrink: 0; margin-top: 2px; }
+
+/* Filter bottom sheet */
+.filter-sheet {
+  position: fixed; inset: 0; z-index: 500; display: none; flex-direction: column; justify-content: flex-end;
+}
+.filter-sheet.open { display: flex; }
+.filter-backdrop { flex: 1; background: rgba(0,0,0,.45); }
+.filter-body {
+  background: #fff; border-radius: 20px 20px 0 0; border-top: 1px solid #e5e7eb;
+  padding: 0 18px calc(env(safe-area-inset-bottom,0px) + 20px);
+  max-height: 82dvh; overflow-y: auto;
+}
+.filter-handle-row { padding: 12px 0 6px; display: flex; justify-content: center; }
+.filter-handle { width: 36px; height: 4px; background: #d1d5db; border-radius: 2px; }
+.filter-section-label { font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #9ca3af; margin: 14px 0 8px; }
+
+.seg-btns { display: flex; border: 1px solid #e5e7eb; border-radius: 9px; overflow: hidden; }
+.seg-btn { flex: 1; text-align: center; padding: 9px 6px; font-size: .78rem; font-weight: 600; cursor: pointer; color: #6b7280; background: #f9fafb; border: none; transition: all .15s; }
+.seg-btn.sel { background: #2563eb; color: #fff; }
+
+/* Quick-status chips */
+.qs-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.qs-chip { border: 1px solid #e5e7eb; border-radius: 20px; padding: 5px 12px; font-size: .76rem; font-weight: 600; cursor: pointer; color: #6b7280; background: #f9fafb; transition: all .15s; }
+.qs-chip.sel { background: #2563eb; color: #fff; border-color: #2563eb; }
+</style>
+{% endblock %}
+
+{% block header_title %}Jobs{% endblock %}
+{% block header_right %}
+<span id="job-count" style="font-size:.75rem;color:#6b7280;font-weight:500;"></span>
+{% endblock %}
+
+{% block content %}
+
+{# ── Distance warning banner ── #}
+<div id="dist-warn">
+  Location access is off. Distance-based ordering is unavailable — sorted by visit date instead.
+</div>
+
+{# ── Search + filter bar ── #}
+<div class="jobs-bar">
+  <div class="search-wrap">
+    <svg class="search-icon" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="search" class="jobs-search" id="search-box"
+           placeholder="Search jobs, names, rego…"
+           value="{{ prefs.q or '' }}"
+           autocomplete="off" autocorrect="off" spellcheck="false">
+  </div>
+  <button type="button" class="filter-btn" id="filter-btn"
+          onclick="document.getElementById('filterSheet').classList.add('open')">
+    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2.5"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+    Filter
+  </button>
+</div>
+
+{# ── Sort info bar ── #}
+<div class="sort-bar">
+  <span>
+    <strong id="sort-label">{{ {'visit_date':'Visit Date','status':'Status','created':'Date Added','distance':'Distance'}.get(prefs.sort,'Visit Date') }}</strong>
+    · {{ 'Ascending' if prefs.dir == 'asc' else 'Descending' }}
+    {% if prefs.scope != 'all' %}· {{ prefs.scope | title }}{% endif %}
+  </span>
+  <span id="results-count" style="color:#9ca3af;"></span>
+</div>
+
+{# ── Job list ── #}
+<div id="job-list" style="padding-bottom:8px;">
+  {% if not jobs %}
+  <div class="m-empty">
+    <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    <p>No jobs found for the current filters</p>
+  </div>
+  {% else %}
+  {% for j in jobs %}
+  {% set has_draft = j.id in draft_job_ids %}
+  {% set status_lc = (j.status or '') | lower %}
+  {% set dot_color = '#2563eb' if status_lc in ('active','new') else ('#16a34a' if status_lc == 'in progress' else ('#d97706' if status_lc == 'pending' else ('#dc2626' if status_lc == 'suspended' else '#9ca3af'))) %}
+  <a class="job-card"
+     href="{{ url_for('m_job_detail', job_id=j.id) }}"
+     data-id="{{ j.id }}"
+     data-lat="{{ j.lat or '' }}"
+     data-lng="{{ j.lng or '' }}"
+     data-ref="{{ (j.display_ref or j.internal_job_number or '') | lower }}"
+     data-customer="{{ (j.customer_name or '') | lower }}"
+     data-address="{{ (j.job_address or '') | lower }}"
+     data-reg="{{ (j.asset_reg or '') | lower }}"
+     data-vin="{{ (j.asset_vin or '') | lower }}"
+     data-draft="{{ 'true' if has_draft else 'false' }}"
+     data-scheduled="{{ j.next_scheduled or '' }}">
+    <div class="job-card-inner">
+      <div class="job-status-dot" style="background:{{ dot_color }};"></div>
+      <div class="job-main">
+        <div class="job-top">
+          <span class="job-ref">{{ j.display_ref or j.internal_job_number }}</span>
+          {% if has_draft %}<span class="m-badge m-badge-red">URGENT UPDATE</span>{% endif %}
+          {% if j.priority == 'Urgent' %}<span class="m-badge m-badge-red">{{ j.priority }}</span>
+          {% elif j.priority == 'High'   %}<span class="m-badge m-badge-amber">{{ j.priority }}</span>{% endif %}
+          <span class="m-badge m-badge-gray">{{ j.status }}</span>
+        </div>
+        {% if j.customer_name and j.customer_name.strip() %}
+        <div class="job-customer">{{ j.customer_name }}</div>
+        {% endif %}
+        {% if j.job_address %}
+        <div class="job-addr">{{ j.job_address }}</div>
+        {% endif %}
+        <div class="job-meta">
+          <span class="job-dist hidden" id="dist-{{ j.id }}"></span>
+          {% if j.next_scheduled %}<span class="job-date">{{ j.next_scheduled[:10] }}</span>
+          {% elif j.job_due_date  %}<span class="job-date">Due {{ j.job_due_date }}</span>{% endif %}
+          {% if j.asset_reg %}<span class="job-date">{{ j.asset_reg }}</span>{% endif %}
+        </div>
+      </div>
+      <svg class="job-chev" viewBox="0 0 24 24" width="16" height="16" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+  </a>
+  {% endfor %}
+  {% endif %}
+</div>
+
+{# ── Filter bottom sheet ── #}
+<div class="filter-sheet" id="filterSheet">
+  <div class="filter-backdrop" onclick="document.getElementById('filterSheet').classList.remove('open')"></div>
+  <div class="filter-body">
+    <div class="filter-handle-row"><div class="filter-handle"></div></div>
+
+    {# Scope #}
+    <div class="filter-section-label">Scope</div>
+    <div class="seg-btns" id="seg-scope">
+      {% for val, label in [('all','All'),('mine','Mine'),('scheduled','Scheduled'),('unscheduled','Unscheduled')] %}
+      <button type="button" class="seg-btn {{ 'sel' if prefs.scope == val }}" data-val="{{ val }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    {% if not is_admin %}
+    <div style="font-size:.72rem;color:#9ca3af;margin-top:5px;">Agents are restricted to their own jobs.</div>
+    {% endif %}
+
+    {# Completed window #}
+    <div class="filter-section-label">Show Completed</div>
+    <div class="seg-btns" id="seg-completed">
+      {% for val, label in [('none','None'),('day','Today'),('week','Week'),('month','Month'),('all','All')] %}
+      <button type="button" class="seg-btn {{ 'sel' if prefs.show_completed == val }}" data-val="{{ val }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+
+    {# Sort #}
+    <div class="filter-section-label">Sort By</div>
+    <div class="seg-btns" id="seg-sort">
+      {% for val, label in [('visit_date','Visit Date'),('status','Status'),('distance','Distance'),('created','Date Added')] %}
+      <button type="button" class="seg-btn {{ 'sel' if prefs.sort == val }}" data-val="{{ val }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+
+    {# Direction #}
+    <div class="filter-section-label">Direction</div>
+    <div class="seg-btns" id="seg-dir">
+      <button type="button" class="seg-btn {{ 'sel' if prefs.dir == 'asc' }}"  data-val="asc">Ascending</button>
+      <button type="button" class="seg-btn {{ 'sel' if prefs.dir == 'desc' }}" data-val="desc">Descending</button>
+    </div>
+
+    {# Distance unit #}
+    <div class="filter-section-label">Distance Unit</div>
+    <div class="seg-btns" id="seg-distunit">
+      <button type="button" class="seg-btn {{ 'sel' if prefs.distance_unit == 'km' }}"  data-val="km">Kilometres</button>
+      <button type="button" class="seg-btn {{ 'sel' if prefs.distance_unit == 'mi' }}"  data-val="mi">Miles</button>
+    </div>
+
+    {# Quick status chips #}
+    <div class="filter-section-label">Quick Filter</div>
+    <div class="qs-row" id="qs-row">
+      {% for s in ['Active','New','Pending','In Progress','Suspended','Hold Action','Awaiting Advice','Completed'] %}
+      <button type="button" class="qs-chip" data-status="{{ s }}">{{ s }}</button>
+      {% endfor %}
+    </div>
+
+    {# Apply / Reset #}
+    <div class="m-row" style="margin-top:20px;gap:10px;">
+      <button type="button" class="m-btn m-btn-secondary" id="reset-btn" style="font-size:.88rem;">Reset</button>
+      <button type="button" class="m-btn m-btn-primary"   id="apply-btn" style="font-size:.88rem;">Apply &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+'use strict';
+
+const DIST_UNIT = {{ prefs.distance_unit | tojson }};
+const IS_ADMIN  = {{ is_admin | tojson }};
+const SORT_PREF = {{ prefs.sort | tojson }};
+
+// All job cards as array with parsed data
+const cards = Array.from(document.querySelectorAll('.job-card'));
+
+// ── Distance ──
+let agentPos = null;
+
+function haversineKm(lat1,lng1,lat2,lng2){
+  const R=6371, dL=(lat2-lat1)*Math.PI/180, dl=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dL/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dl/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function fmtDist(km){
+  if(DIST_UNIT==='mi'){ const mi=km*0.621371; return (mi<10?mi.toFixed(1):Math.round(mi))+' mi'; }
+  return (km<10?km.toFixed(1):Math.round(km))+' km';
+}
+
+function applyDistances(){
+  if(!agentPos){ return; }
+  cards.forEach(c=>{
+    const lat=parseFloat(c.dataset.lat), lng=parseFloat(c.dataset.lng);
+    const el=document.getElementById('dist-'+c.dataset.id);
+    if(el && lat && lng){
+      const km=haversineKm(agentPos.lat,agentPos.lng,lat,lng);
+      el.textContent=fmtDist(km);
+      el.classList.remove('hidden');
+      c.dataset.dist = km;
+    }
+  });
+  updateCount();
+  if(currentSort==='distance') applySortAndFilter();
+}
+
+// Request GPS immediately
+if(navigator.geolocation){
+  navigator.geolocation.getCurrentPosition(pos=>{
+    agentPos={lat:pos.coords.latitude,lng:pos.coords.longitude};
+    applyDistances();
+    // If user wanted distance sort but we had no location, now we do
+    if(SORT_PREF==='distance') applySortAndFilter();
+  }, ()=>{
+    if(SORT_PREF==='distance'){
+      document.getElementById('dist-warn').style.display='block';
+    }
+  }, {enableHighAccuracy:true,timeout:8000});
+} else if(SORT_PREF==='distance'){
+  document.getElementById('dist-warn').style.display='block';
+}
+
+// ── Search ──
+const searchBox = document.getElementById('search-box');
+let searchQ = (searchBox.value||'').toLowerCase().trim();
+searchBox.addEventListener('input', function(){
+  searchQ = this.value.toLowerCase().trim();
+  applySortAndFilter();
+});
+
+// ── Filter state ──
+let currentSort   = SORT_PREF;
+let currentDir    = {{ prefs.dir | tojson }};
+let currentScope  = {{ prefs.scope | tojson }};
+let currentCompleted = {{ prefs.show_completed | tojson }};
+let currentDistUnit  = DIST_UNIT;
+let activeStatuses = new Set();
+
+// ── Segmented control helper ──
+function setupSeg(id, onChange){
+  const wrap = document.getElementById(id);
+  if(!wrap) return;
+  wrap.querySelectorAll('.seg-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      // For scope — agents locked to mine
+      if(id==='seg-scope' && !IS_ADMIN && btn.dataset.val!=='mine') return;
+      wrap.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('sel'));
+      btn.classList.add('sel');
+      onChange(btn.dataset.val);
+    });
+  });
+}
+
+setupSeg('seg-scope',    v=>{ currentScope=v; });
+setupSeg('seg-completed',v=>{ currentCompleted=v; });
+setupSeg('seg-sort',     v=>{
+  currentSort=v;
+  document.getElementById('sort-label').textContent =
+    {visit_date:'Visit Date',status:'Status',created:'Date Added',distance:'Distance'}[v]||v;
+  if(v==='distance' && !agentPos){
+    document.getElementById('dist-warn').style.display='block';
+  }
+});
+setupSeg('seg-dir',      v=>{ currentDir=v; });
+setupSeg('seg-distunit', v=>{ currentDistUnit=v; });
+
+// ── Quick status chips ──
+document.querySelectorAll('.qs-chip').forEach(chip=>{
+  chip.addEventListener('click',()=>{
+    chip.classList.toggle('sel');
+    const s=chip.dataset.status;
+    activeStatuses.has(s) ? activeStatuses.delete(s) : activeStatuses.add(s);
+    applySortAndFilter();
+  });
+});
+
+// ── Sort & filter ──
+function applySortAndFilter(){
+  let visible = [...cards];
+
+  // Quick-status chip filter
+  if(activeStatuses.size>0){
+    visible = visible.filter(c=>{
+      const st = c.querySelector('.m-badge-gray');
+      return st && activeStatuses.has(st.textContent.trim());
+    });
+  }
+
+  // Search filter
+  if(searchQ){
+    visible = visible.filter(c=>{
+      return c.dataset.ref.includes(searchQ)
+          || c.dataset.customer.includes(searchQ)
+          || c.dataset.address.includes(searchQ)
+          || c.dataset.reg.includes(searchQ)
+          || c.dataset.vin.includes(searchQ);
+    });
+  }
+
+  // Sort
+  visible.sort((a,b)=>{
+    // Drafts always first
+    const da = a.dataset.draft==='true', db = b.dataset.draft==='true';
+    if(da && !db) return -1;
+    if(!da && db) return 1;
+
+    let cmp = 0;
+    if(currentSort==='distance'){
+      const distA = parseFloat(a.dataset.dist)||Infinity;
+      const distB = parseFloat(b.dataset.dist)||Infinity;
+      cmp = distA-distB;
+    } else if(currentSort==='status'){
+      cmp = (a.querySelector('.m-badge-gray')?.textContent||'').localeCompare(b.querySelector('.m-badge-gray')?.textContent||'');
+    } else if(currentSort==='created'){
+      cmp = 0; // server-sorted
+    } else { // visit_date
+      const sa=a.dataset.scheduled||'9999', sb=b.dataset.scheduled||'9999';
+      cmp = sa.localeCompare(sb);
+    }
+    return currentDir==='desc' ? -cmp : cmp;
+  });
+
+  // Re-render: hide all, show sorted
+  cards.forEach(c=>{ c.style.display='none'; c.parentNode.appendChild(c); });
+  visible.forEach(c=>{ c.style.display=''; });
+  updateCount(visible.length);
+}
+
+function updateCount(n){
+  if(n===undefined) n=cards.filter(c=>c.style.display!=='none').length;
+  const el=document.getElementById('results-count');
+  if(el) el.textContent=n+' result'+(n!==1?'s':'');
+  const hdr=document.getElementById('job-count');
+  if(hdr) hdr.textContent=n;
+}
+
+// ── Apply / Reset buttons ──
+document.getElementById('apply-btn').addEventListener('click',()=>{
+  applySortAndFilter();
+  document.getElementById('filterSheet').classList.remove('open');
+  // Persist to backend
+  fetch('/m/jobs/prefs/save',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'XMLHttpRequest'},
+    body: new URLSearchParams({
+      sort: currentSort, dir: currentDir, scope: currentScope,
+      show_completed: currentCompleted, distance_unit: currentDistUnit
+    })
+  });
+});
+
+document.getElementById('reset-btn').addEventListener('click',()=>{
+  currentSort='visit_date'; currentDir='asc'; currentScope=IS_ADMIN?'all':'mine';
+  currentCompleted='week'; activeStatuses.clear();
+  // Reset UI
+  ['seg-scope','seg-completed','seg-sort','seg-dir','seg-distunit'].forEach(id=>{
+    const wrap=document.getElementById(id);
+    if(!wrap) return;
+    wrap.querySelectorAll('.seg-btn').forEach(b=>{
+      b.classList.toggle('sel',
+        (id==='seg-scope' && b.dataset.val===(IS_ADMIN?'all':'mine')) ||
+        (id==='seg-completed' && b.dataset.val==='week') ||
+        (id==='seg-sort' && b.dataset.val==='visit_date') ||
+        (id==='seg-dir'  && b.dataset.val==='asc') ||
+        (id==='seg-distunit' && b.dataset.val==='km')
+      );
+    });
+  });
+  document.querySelectorAll('.qs-chip').forEach(c=>c.classList.remove('sel'));
+  searchBox.value=''; searchQ='';
+  applySortAndFilter();
+});
+
+// ── Initial render ──
+applySortAndFilter();
+
+})();
+</script>
+{% endblock %}
