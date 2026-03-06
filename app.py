@@ -2358,6 +2358,47 @@ def job_detail(job_id: int):
         ORDER BY s.created_at DESC
         LIMIT 30
     """, (job_id,)).fetchall()
+
+    job_patrol_intel = None
+    if job_lpr_sightings:
+        reg = job_lpr_sightings[0]["registration_normalised"]
+        if reg:
+            try:
+                _patrol_intelligence_ensure(conn4)
+                pi_row = conn4.execute(
+                    "SELECT * FROM lpr_patrol_intelligence WHERE registration_normalised=?",
+                    (reg,)
+                ).fetchone()
+                if pi_row:
+                    zone = None
+                    if pi_row["likely_zone"]:
+                        try:
+                            zone = json.loads(pi_row["likely_zone"])
+                        except Exception:
+                            pass
+                    factors = []
+                    if pi_row["explanation"]:
+                        try:
+                            factors = json.loads(pi_row["explanation"])
+                        except Exception:
+                            pass
+                    job_patrol_intel = {
+                        "reg":         pi_row["registration_normalised"],
+                        "repeat":      pi_row["repeat_count_30d"],
+                        "agents":      pi_row["distinct_agent_count"],
+                        "zone":        zone,
+                        "day_bucket":  pi_row["likely_day_bucket"] or "unknown",
+                        "time_window": pi_row["likely_time_window"] or "mixed",
+                        "confidence":  pi_row["confidence_score"],
+                        "priority":    pi_row["recommended_patrol_priority"] or "low",
+                        "action":      pi_row["recommended_action"] or "",
+                        "factors":     factors,
+                        "watchlist":   bool(pi_row["watchlist_hit"]),
+                        "result_type": pi_row["result_type"] or "no_match",
+                        "computed_at": pi_row["last_computed_at"],
+                    }
+            except Exception:
+                pass
     conn4.close()
 
     return render_template("job_detail.html", job=job, interactions=interactions,
@@ -2375,7 +2416,8 @@ def job_detail(job_id: int):
                            tow_operators=tow_operators,
                            auction_yards=auction_yards,
                            form_templates=form_templates,
-                           job_lpr_sightings=job_lpr_sightings)
+                           job_lpr_sightings=job_lpr_sightings,
+                           job_patrol_intel=job_patrol_intel)
 
 
 @app.post("/jobs/<int:job_id>/customers/add")
@@ -8540,6 +8582,458 @@ def admin_lpr_agent_map():
     return render_template("lpr_agent_map.html",
                            agents_json=agents_json,
                            count=len(agents))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 12 — Patrol Intelligence
+# ─────────────────────────────────────────────────────────────────────────────
+
+import math as _math_pi
+from collections import defaultdict as _defaultdict
+
+def _patrol_intelligence_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_patrol_intelligence (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            registration_normalised     TEXT    NOT NULL UNIQUE,
+            matched_job_id              INTEGER,
+            repeat_count_30d            INTEGER NOT NULL DEFAULT 0,
+            distinct_agent_count        INTEGER NOT NULL DEFAULT 0,
+            likely_zone                 TEXT,
+            likely_day_bucket           TEXT,
+            likely_time_window          TEXT,
+            confidence_score            INTEGER NOT NULL DEFAULT 0,
+            recommended_patrol_priority TEXT    DEFAULT 'low',
+            recommended_action          TEXT,
+            explanation                 TEXT,
+            watchlist_hit               INTEGER DEFAULT 0,
+            result_type                 TEXT,
+            last_computed_at            TEXT    NOT NULL
+        )
+    """)
+    conn.commit()
+
+
+def _recompute_patrol_intelligence(conn, registration_filter=None):
+    """
+    Scan lpr_sightings for the last 30 days and build/update patrol
+    intelligence records.  No customer or finance data is emitted —
+    only plate, coordinates, time-pattern signals, and recommended action.
+    """
+    from datetime import timedelta as _td_pi
+    cutoff = (datetime.utcnow() - _td_pi(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    q = """
+        SELECT s.registration_normalised,
+               s.latitude, s.longitude,
+               s.created_at, s.result_type,
+               s.user_id, s.watchlist_hit,
+               s.matched_job_id
+        FROM lpr_sightings s
+        WHERE s.created_at >= ?
+          AND s.registration_normalised IS NOT NULL
+          AND s.registration_normalised != ''
+    """
+    params = [cutoff]
+    if registration_filter:
+        q += " AND s.registration_normalised = ?"
+        params.append(registration_filter)
+    q += " ORDER BY s.registration_normalised, s.created_at DESC"
+
+    rows = conn.execute(q, params).fetchall()
+
+    groups = _defaultdict(list)
+    for r in rows:
+        groups[r["registration_normalised"]].append(dict(r))
+
+    now = now_ts()
+
+    for reg, sightings in groups.items():
+        if len(sightings) < 2:
+            continue
+
+        repeat_count     = len(sightings)
+        agent_ids        = {s["user_id"] for s in sightings if s["user_id"]}
+        distinct_agents  = len(agent_ids)
+        watchlist_hit    = any(s["watchlist_hit"] for s in sightings)
+        result_type      = sightings[0]["result_type"] or "no_match"
+
+        matched_job_id = None
+        for s in sightings:
+            if s.get("matched_job_id"):
+                matched_job_id = s["matched_job_id"]
+                break
+
+        gps = [s for s in sightings if s["latitude"] and s["longitude"]]
+        likely_zone_json = None
+        best_count       = 0
+
+        if gps:
+            best_center = None
+            for s in gps:
+                cnt = sum(
+                    1 for t in gps
+                    if _haversine_m(s["latitude"], s["longitude"],
+                                    t["latitude"], t["longitude"]) <= 2000
+                )
+                if cnt > best_count:
+                    best_count  = cnt
+                    best_center = s
+            zone_lat = best_center["latitude"]  if best_center else gps[0]["latitude"]
+            zone_lng = best_center["longitude"] if best_center else gps[0]["longitude"]
+            likely_zone_json = json.dumps({
+                "lat":           zone_lat,
+                "lng":           zone_lng,
+                "cluster_count": best_count,
+                "total_gps":     len(gps),
+            })
+
+        day_counts = {"weekday": 0, "weekend": 0}
+        for s in sightings:
+            try:
+                dt = datetime.fromisoformat(s["created_at"][:19])
+                key = "weekday" if dt.weekday() < 5 else "weekend"
+                day_counts[key] += 1
+            except Exception:
+                pass
+
+        total_days = day_counts["weekday"] + day_counts["weekend"]
+        if total_days == 0:
+            day_bucket = "unknown"
+        elif day_counts["weekday"] / total_days >= 0.75:
+            day_bucket = "weekday"
+        elif day_counts["weekend"] / total_days >= 0.75:
+            day_bucket = "weekend"
+        else:
+            day_bucket = "both"
+
+        time_buckets = {"morning": 0, "afternoon": 0, "evening": 0, "night": 0}
+        for s in sightings:
+            try:
+                dt = datetime.fromisoformat(s["created_at"][:19])
+                h  = dt.hour
+                if   6 <= h < 12: time_buckets["morning"]   += 1
+                elif 12 <= h < 18: time_buckets["afternoon"] += 1
+                elif 18 <= h < 22: time_buckets["evening"]   += 1
+                else:              time_buckets["night"]      += 1
+            except Exception:
+                pass
+
+        total_time = sum(time_buckets.values())
+        dominant   = max(time_buckets, key=lambda k: time_buckets[k])
+        if total_time > 0 and time_buckets[dominant] / total_time >= 0.55:
+            time_window = dominant
+        else:
+            time_window = "mixed"
+
+        conf    = 0
+        factors = []
+
+        if repeat_count >= 10:
+            conf += 55; factors.append(f"Seen {repeat_count} times in 30 days")
+        elif repeat_count >= 5:
+            conf += 40; factors.append(f"Seen {repeat_count} times in 30 days")
+        elif repeat_count >= 3:
+            conf += 25; factors.append(f"Seen {repeat_count} times in 30 days")
+        else:
+            conf += 15; factors.append(f"Seen {repeat_count} times in 30 days")
+
+        if watchlist_hit:
+            conf += 20; factors.append("On the watchlist")
+
+        if distinct_agents >= 2:
+            conf += 10; factors.append(f"Confirmed by {distinct_agents} different agents")
+
+        if gps and best_count and len(gps) > 0:
+            zone_pct = best_count / len(gps)
+            if zone_pct >= 0.6:
+                conf += 15
+                factors.append(f"Consistent area — {round(zone_pct * 100)}% of sightings cluster together")
+
+        if time_window != "mixed" and total_time > 0:
+            tw_pct = time_buckets[time_window] / total_time
+            if tw_pct >= 0.55:
+                conf += 15
+                factors.append(f"Typically seen in the {time_window}")
+
+        if result_type == "allocated_match":
+            conf += 10; factors.append("Linked to an active job")
+        elif result_type == "conflict":
+            conf += 15; factors.append("Multiple file conflict")
+        elif result_type == "restricted_match":
+            conf += 5; factors.append("Restricted plate")
+
+        conf = min(conf, 100)
+
+        if conf >= 75 or (watchlist_hit and repeat_count >= 3):
+            priority = "urgent"
+        elif conf >= 50 or (watchlist_hit and repeat_count >= 2):
+            priority = "high"
+        elif conf >= 30:
+            priority = "medium"
+        else:
+            priority = "low"
+
+        day_label  = {"weekday": "weekdays", "weekend": "weekends",
+                      "both": "all days", "unknown": "various days"}.get(day_bucket, "")
+        time_label = {"morning":   "mornings (6 am – noon)",
+                      "afternoon": "afternoons (noon – 6 pm)",
+                      "evening":   "evenings (6 – 10 pm)",
+                      "night":     "nights (10 pm – 6 am)",
+                      "mixed":     "at varying times"}.get(time_window, "")
+
+        if priority == "urgent" and watchlist_hit:
+            action = (f"Patrol area — watchlist plate seen {repeat_count}\u00d7 recently, "
+                      f"typically on {day_label} {time_label}").strip()
+        elif priority == "urgent":
+            action = (f"High-frequency plate — deploy patrol {day_label} {time_label} "
+                      "in cluster area").strip()
+        elif priority == "high" and watchlist_hit:
+            action = f"Target patrol — watchlist plate seen {repeat_count}\u00d7 on {day_label}".strip()
+        elif priority == "high":
+            action = (f"Patrol opportunity — plate seen {repeat_count}\u00d7 "
+                      f"on {day_label} {time_label}").strip()
+        elif priority == "medium":
+            action = (f"Monitor area — plate seen {repeat_count} times; "
+                      f"patrol recommended on {day_label}").strip()
+        else:
+            action = "Low confidence — include in general patrol coverage"
+
+        conn.execute("""
+            INSERT INTO lpr_patrol_intelligence
+                (registration_normalised, matched_job_id, repeat_count_30d,
+                 distinct_agent_count, likely_zone, likely_day_bucket,
+                 likely_time_window, confidence_score,
+                 recommended_patrol_priority, recommended_action,
+                 explanation, watchlist_hit, result_type, last_computed_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(registration_normalised) DO UPDATE SET
+                matched_job_id              = excluded.matched_job_id,
+                repeat_count_30d            = excluded.repeat_count_30d,
+                distinct_agent_count        = excluded.distinct_agent_count,
+                likely_zone                 = excluded.likely_zone,
+                likely_day_bucket           = excluded.likely_day_bucket,
+                likely_time_window          = excluded.likely_time_window,
+                confidence_score            = excluded.confidence_score,
+                recommended_patrol_priority = excluded.recommended_patrol_priority,
+                recommended_action          = excluded.recommended_action,
+                explanation                 = excluded.explanation,
+                watchlist_hit               = excluded.watchlist_hit,
+                result_type                 = excluded.result_type,
+                last_computed_at            = excluded.last_computed_at
+        """, (reg, matched_job_id, repeat_count, distinct_agents,
+              likely_zone_json, day_bucket, time_window,
+              conf, priority, action,
+              json.dumps(factors), 1 if watchlist_hit else 0,
+              result_type, now))
+    conn.commit()
+
+
+# ── Admin: patrol opportunities ────────────────────────────────────────────────
+
+@app.get("/admin/lpr/patrol")
+@admin_required
+def admin_lpr_patrol():
+    conn = db()
+    _patrol_intelligence_ensure(conn)
+
+    f_priority   = request.args.get("priority",   "")
+    f_watchlist  = request.args.get("watchlist",  "")
+    f_min_conf   = request.args.get("min_conf",   "")
+    f_result     = request.args.get("result",     "")
+    f_day_bucket = request.args.get("day_bucket", "")
+
+    conditions = []
+    params     = []
+
+    if f_priority:
+        conditions.append("p.recommended_patrol_priority = ?")
+        params.append(f_priority)
+    if f_watchlist == "1":
+        conditions.append("p.watchlist_hit = 1")
+    if f_min_conf:
+        try:
+            conditions.append("p.confidence_score >= ?")
+            params.append(int(f_min_conf))
+        except ValueError:
+            pass
+    if f_result:
+        conditions.append("p.result_type = ?")
+        params.append(f_result)
+    if f_day_bucket:
+        conditions.append("p.likely_day_bucket = ?")
+        params.append(f_day_bucket)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    rows = conn.execute(f"""
+        SELECT p.*
+        FROM lpr_patrol_intelligence p
+        {where}
+        ORDER BY
+            CASE p.recommended_patrol_priority
+                WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
+                WHEN 'medium' THEN 3 ELSE 4 END,
+            p.confidence_score DESC
+        LIMIT 200
+    """, params).fetchall()
+
+    total = conn.execute("SELECT COUNT(*) AS n FROM lpr_patrol_intelligence").fetchone()["n"]
+    last_run = conn.execute(
+        "SELECT MAX(last_computed_at) AS t FROM lpr_patrol_intelligence"
+    ).fetchone()["t"]
+    conn.close()
+
+    intel = []
+    for r in rows:
+        zone = None
+        if r["likely_zone"]:
+            try:
+                zone = json.loads(r["likely_zone"])
+            except Exception:
+                pass
+        factors = []
+        if r["explanation"]:
+            try:
+                factors = json.loads(r["explanation"])
+            except Exception:
+                pass
+        intel.append({
+            "id":           r["id"],
+            "reg":          r["registration_normalised"],
+            "job_id":       r["matched_job_id"],
+            "repeat":       r["repeat_count_30d"],
+            "agents":       r["distinct_agent_count"],
+            "zone":         zone,
+            "day_bucket":   r["likely_day_bucket"] or "unknown",
+            "time_window":  r["likely_time_window"] or "mixed",
+            "confidence":   r["confidence_score"],
+            "priority":     r["recommended_patrol_priority"] or "low",
+            "action":       r["recommended_action"] or "",
+            "factors":      factors,
+            "watchlist":    bool(r["watchlist_hit"]),
+            "result_type":  r["result_type"] or "no_match",
+            "computed_at":  r["last_computed_at"],
+        })
+
+    return render_template(
+        "lpr_patrol.html",
+        intel=intel, total=total, last_run=last_run,
+        f_priority=f_priority, f_watchlist=f_watchlist,
+        f_min_conf=f_min_conf, f_result=f_result, f_day_bucket=f_day_bucket,
+    )
+
+
+@app.post("/admin/lpr/patrol/recompute")
+@admin_required
+def admin_lpr_patrol_recompute():
+    conn = db()
+    _patrol_intelligence_ensure(conn)
+    _lpr_sightings_ensure_table(conn)
+    _recompute_patrol_intelligence(conn)
+    conn.close()
+    flash("Patrol intelligence recomputed from the last 30 days of sightings.", "success")
+    return redirect(url_for("admin_lpr_patrol"))
+
+
+# ── Mobile: patrol list ────────────────────────────────────────────────────────
+
+@app.get("/m/lpr/patrol")
+@mobile_login_required
+def m_lpr_patrol():
+    conn = db()
+    _patrol_intelligence_ensure(conn)
+    rows = conn.execute("""
+        SELECT registration_normalised, repeat_count_30d, distinct_agent_count,
+               likely_zone, likely_day_bucket, likely_time_window,
+               confidence_score, recommended_patrol_priority,
+               recommended_action, explanation, watchlist_hit, result_type,
+               last_computed_at
+        FROM lpr_patrol_intelligence
+        ORDER BY
+            CASE recommended_patrol_priority
+                WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
+                WHEN 'medium' THEN 3 ELSE 4 END,
+            confidence_score DESC
+        LIMIT 100
+    """).fetchall()
+    conn.close()
+
+    items = []
+    for r in rows:
+        zone = None
+        if r["likely_zone"]:
+            try:
+                zone = json.loads(r["likely_zone"])
+            except Exception:
+                pass
+        factors = []
+        if r["explanation"]:
+            try:
+                factors = json.loads(r["explanation"])
+            except Exception:
+                pass
+        items.append({
+            "reg":         r["registration_normalised"],
+            "repeat":      r["repeat_count_30d"],
+            "agents":      r["distinct_agent_count"],
+            "zone":        zone,
+            "day_bucket":  r["likely_day_bucket"] or "unknown",
+            "time_window": r["likely_time_window"] or "mixed",
+            "confidence":  r["confidence_score"],
+            "priority":    r["recommended_patrol_priority"] or "low",
+            "action":      r["recommended_action"] or "",
+            "factors":     factors,
+            "watchlist":   bool(r["watchlist_hit"]),
+            "result_type": r["result_type"] or "no_match",
+        })
+    return render_template("mobile/lpr_patrol.html", items=items)
+
+
+@app.get("/m/api/lpr/patrol")
+@mobile_login_required
+def m_api_lpr_patrol():
+    conn = db()
+    _patrol_intelligence_ensure(conn)
+    rows = conn.execute("""
+        SELECT registration_normalised, repeat_count_30d, distinct_agent_count,
+               likely_zone, likely_day_bucket, likely_time_window,
+               confidence_score, recommended_patrol_priority,
+               recommended_action, watchlist_hit, result_type,
+               last_computed_at
+        FROM lpr_patrol_intelligence
+        ORDER BY
+            CASE recommended_patrol_priority
+                WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
+                WHEN 'medium' THEN 3 ELSE 4 END,
+            confidence_score DESC
+        LIMIT 100
+    """).fetchall()
+    conn.close()
+
+    items = []
+    for r in rows:
+        zone = None
+        if r["likely_zone"]:
+            try:
+                zone = json.loads(r["likely_zone"])
+            except Exception:
+                pass
+        items.append({
+            "registration":  r["registration_normalised"],
+            "repeat_count":  r["repeat_count_30d"],
+            "agent_count":   r["distinct_agent_count"],
+            "zone":          zone,
+            "day_bucket":    r["likely_day_bucket"],
+            "time_window":   r["likely_time_window"],
+            "confidence":    r["confidence_score"],
+            "priority":      r["recommended_patrol_priority"],
+            "action":        r["recommended_action"],
+            "watchlist_hit": bool(r["watchlist_hit"]),
+            "result_type":   r["result_type"],
+            "computed_at":   r["last_computed_at"],
+        })
+    return jsonify({"count": len(items), "items": items}), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────

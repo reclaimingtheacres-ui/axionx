@@ -1,0 +1,217 @@
+{% extends "layout.html" %}
+{% block title %}Patrol Intelligence{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">Patrol Intelligence</h2>
+      <p class="text-muted small mb-0">
+        Plates seen 2+ times in the last 30 days — ranked by patrol opportunity confidence
+        {% if last_run %}<span class="ms-2 text-muted" style="font-size:.78rem;">Last computed: {{ last_run[:16].replace('T',' ') }}</span>{% endif %}
+      </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <a href="{{ url_for('admin_lpr_sightings') }}" class="btn btn-sm btn-outline-secondary">← Sightings</a>
+      <a href="{{ url_for('admin_lpr_watchlist') }}"  class="btn btn-sm btn-outline-secondary">⚑ Watchlist</a>
+      <a href="{{ url_for('admin_lpr_agent_map') }}"  class="btn btn-sm btn-outline-success">👥 Agents</a>
+      <form method="POST" action="{{ url_for('admin_lpr_patrol_recompute') }}" style="margin:0;">
+        <button type="submit" class="btn btn-sm btn-primary">↺ Recompute</button>
+      </form>
+    </div>
+  </div>
+
+  {# ── Filter bar ── #}
+  <form method="GET" class="card mb-4">
+    <div class="card-body py-3">
+      <div class="row g-3 align-items-end">
+
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Priority</label>
+          <select name="priority" class="form-select form-select-sm">
+            <option value=""       {% if not f_priority %}selected{% endif %}>All</option>
+            <option value="urgent" {% if f_priority=='urgent' %}selected{% endif %}>Urgent</option>
+            <option value="high"   {% if f_priority=='high'   %}selected{% endif %}>High</option>
+            <option value="medium" {% if f_priority=='medium' %}selected{% endif %}>Medium</option>
+            <option value="low"    {% if f_priority=='low'    %}selected{% endif %}>Low</option>
+          </select>
+        </div>
+
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Result type</label>
+          <select name="result" class="form-select form-select-sm">
+            <option value=""                  {% if not f_result %}selected{% endif %}>All</option>
+            <option value="allocated_match"   {% if f_result=='allocated_match'   %}selected{% endif %}>Allocated</option>
+            <option value="restricted_match"  {% if f_result=='restricted_match'  %}selected{% endif %}>Restricted</option>
+            <option value="conflict"          {% if f_result=='conflict'          %}selected{% endif %}>Conflict</option>
+            <option value="no_match"          {% if f_result=='no_match'          %}selected{% endif %}>No match</option>
+          </select>
+        </div>
+
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Day pattern</label>
+          <select name="day_bucket" class="form-select form-select-sm">
+            <option value=""        {% if not f_day_bucket %}selected{% endif %}>All</option>
+            <option value="weekday" {% if f_day_bucket=='weekday' %}selected{% endif %}>Weekdays</option>
+            <option value="weekend" {% if f_day_bucket=='weekend' %}selected{% endif %}>Weekends</option>
+            <option value="both"    {% if f_day_bucket=='both'    %}selected{% endif %}>Both</option>
+          </select>
+        </div>
+
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Watchlist only</label>
+          <select name="watchlist" class="form-select form-select-sm">
+            <option value=""  {% if not f_watchlist %}selected{% endif %}>All</option>
+            <option value="1" {% if f_watchlist=='1' %}selected{% endif %}>Watchlist hits</option>
+          </select>
+        </div>
+
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Min confidence</label>
+          <input type="number" name="min_conf" value="{{ f_min_conf }}" min="0" max="100"
+                 class="form-control form-control-sm" placeholder="0–100">
+        </div>
+
+        <div class="col-6 col-md-2 d-flex gap-2 align-items-end">
+          <button type="submit" class="btn btn-sm btn-primary flex-grow-1">Filter</button>
+          <a href="{{ url_for('admin_lpr_patrol') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+        </div>
+
+      </div>
+    </div>
+  </form>
+
+  {# ── Results count ── #}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <span class="text-muted small">
+      Showing <strong>{{ intel | length }}</strong> of <strong>{{ total }}</strong> records
+    </span>
+  </div>
+
+  {% if not intel %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <div style="font-size:2rem;margin-bottom:12px;">📡</div>
+      <div class="fw-semibold mb-1">No patrol opportunities found</div>
+      <div class="small">Click <strong>Recompute</strong> to analyse recent sightings, or adjust your filters.</div>
+    </div>
+  </div>
+  {% else %}
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle" style="font-size:.83rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3" style="width:110px;">Plate</th>
+            <th style="width:80px;">Priority</th>
+            <th style="width:60px;">Conf.</th>
+            <th style="width:55px;">Seen</th>
+            <th style="width:55px;">Agents</th>
+            <th>Day pattern</th>
+            <th>Time window</th>
+            <th>Signals</th>
+            <th>Recommended action</th>
+            <th style="width:60px;">Job</th>
+            <th class="text-end pe-3" style="width:80px;">Computed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in intel %}
+          <tr>
+            <td class="ps-3">
+              <div style="display:flex;align-items:center;gap:6px;">
+                {% if p.watchlist %}
+                <span title="On watchlist" style="color:#7c3aed;font-size:.8rem;">⚑</span>
+                {% endif %}
+                <span style="font-family:monospace;font-weight:800;font-size:.95rem;">{{ p.reg }}</span>
+              </div>
+            </td>
+
+            <td>
+              {% if p.priority == 'urgent' %}
+                <span class="badge bg-danger">Urgent</span>
+              {% elif p.priority == 'high' %}
+                <span class="badge bg-warning text-dark">High</span>
+              {% elif p.priority == 'medium' %}
+                <span class="badge bg-info text-dark">Medium</span>
+              {% else %}
+                <span class="badge bg-secondary">Low</span>
+              {% endif %}
+            </td>
+
+            <td>
+              <div class="d-flex align-items-center gap-1">
+                <div style="width:36px;height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
+                  <div style="height:100%;width:{{ p.confidence }}%;
+                    background:{% if p.confidence>=75 %}#dc2626{% elif p.confidence>=50 %}#d97706{% elif p.confidence>=30 %}#2563eb{% else %}#9ca3af{% endif %};
+                    border-radius:4px;"></div>
+                </div>
+                <span style="font-size:.75rem;color:var(--muted);">{{ p.confidence }}</span>
+              </div>
+            </td>
+
+            <td class="text-center">
+              <span class="badge bg-secondary" style="font-size:.72rem;">{{ p.repeat }}</span>
+            </td>
+
+            <td class="text-center">
+              <span style="font-size:.82rem;color:var(--muted);">{{ p.agents }}</span>
+            </td>
+
+            <td>
+              <span style="font-size:.82rem;">
+                {% if p.day_bucket == 'weekday' %}📅 Weekdays
+                {% elif p.day_bucket == 'weekend' %}🗓 Weekends
+                {% elif p.day_bucket == 'both' %}📆 All days
+                {% else %}—{% endif %}
+              </span>
+            </td>
+
+            <td>
+              <span style="font-size:.82rem;">
+                {% if p.time_window == 'morning' %}🌅 Morning
+                {% elif p.time_window == 'afternoon' %}☀️ Afternoon
+                {% elif p.time_window == 'evening' %}🌆 Evening
+                {% elif p.time_window == 'night' %}🌙 Night
+                {% else %}⏱ Mixed{% endif %}
+              </span>
+            </td>
+
+            <td>
+              {% if p.factors %}
+              <ul class="mb-0 ps-3" style="font-size:.78rem;color:var(--muted);">
+                {% for f in p.factors %}<li>{{ f }}</li>{% endfor %}
+              </ul>
+              {% else %}
+              <span class="text-muted" style="font-size:.78rem;">—</span>
+              {% endif %}
+            </td>
+
+            <td style="font-size:.82rem;max-width:240px;">{{ p.action or '—' }}</td>
+
+            <td>
+              {% if p.job_id %}
+              <a href="{{ url_for('job_detail', job_id=p.job_id) }}"
+                 class="btn btn-outline-secondary btn-sm py-0" style="font-size:.72rem;">
+                #{{ p.job_id }}
+              </a>
+              {% else %}
+              <span class="text-muted" style="font-size:.78rem;">—</span>
+              {% endif %}
+            </td>
+
+            <td class="text-end pe-3 text-muted" style="font-size:.75rem;white-space:nowrap;">
+              {{ p.computed_at[:10] if p.computed_at else '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

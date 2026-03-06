@@ -25,6 +25,11 @@ struct WebViewContainer: View {
         return url.path.hasPrefix("/m/lpr")
     }
 
+    private var isOnPatrolPage: Bool {
+        guard let url = currentURL else { return false }
+        return url.path.hasPrefix("/m/lpr/patrol")
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             AxionWebView(store: store)
@@ -60,19 +65,42 @@ struct WebViewContainer: View {
 
             // Floating Live Scan button — visible on /m/lpr* pages
             if isOnLPRPage && !isOffline && !isLookingUp {
-                Button(action: { showLPRScanner = true }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text("Live Scan")
-                            .font(.system(size: 14, weight: .semibold))
+                VStack(spacing: 8) {
+                    Button(action: { showLPRScanner = true }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "camera.viewfinder")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("Live Scan")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(Color(red: 0.15, green: 0.5, blue: 0.95))
+                        .cornerRadius(20)
+                        .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Color(red: 0.15, green: 0.5, blue: 0.95))
-                    .cornerRadius(20)
-                    .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 3)
+
+                    if !isOnPatrolPage {
+                        Button(action: { navigateToPatrol() }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "map")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Patrol")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundColor(Color(red: 0.09, green: 0.36, blue: 0.67))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Color(red: 0.94, green: 0.97, blue: 1.0))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color(red: 0.75, green: 0.86, blue: 0.99), lineWidth: 1)
+                            )
+                            .cornerRadius(16)
+                            .shadow(color: .black.opacity(0.10), radius: 4, x: 0, y: 2)
+                        }
+                    }
                 }
                 .padding(.top, 56)
                 .padding(.trailing, 16)
@@ -324,6 +352,15 @@ struct WebViewContainer: View {
             URLQueryItem(name: "plate",  value: safe),
             URLQueryItem(name: "method", value: "live_scan"),
         ]
+        guard let url = comps.url else { return }
+        store.webView.load(URLRequest(url: url))
+    }
+
+    private func navigateToPatrol() {
+        var comps    = URLComponents()
+        comps.scheme = AppConfig.entryURL.scheme
+        comps.host   = AppConfig.entryURL.host
+        comps.path   = "/m/lpr/patrol"
         guard let url = comps.url else { return }
         store.webView.load(URLRequest(url: url))
     }

@@ -468,3 +468,77 @@ Mobile LPR system for iOS field agents. Backend in `app.py`, mobile templates un
 - `.onChange(of:)` auto-dismisses sheet when `activeDispatch` is cleared.
 
 **`project.pbxproj`** — new IDs `34`/`35` (DispatchManager), `36`/`37` (DispatchSheet). Next IDs start at `38`.
+
+## LPR Stage 12 — Patrol Intelligence
+
+### Overview
+
+Automated patrol pattern engine that analyses 30 days of sightings to rank plates by patrol opportunity confidence. No customer or finance data is surfaced — only plate, coordinates, time-pattern signals, and recommended action.
+
+### New DB table: `lpr_patrol_intelligence`
+
+| Column | Type | Notes |
+|---|---|---|
+| `registration_normalised` | TEXT UNIQUE | Primary key for upsert |
+| `matched_job_id` | INTEGER | Most recent allocated_match job (operational link only) |
+| `repeat_count_30d` | INTEGER | Sightings in last 30 days |
+| `distinct_agent_count` | INTEGER | Number of different agents who sighted the plate |
+| `likely_zone` | TEXT | JSON `{lat, lng, cluster_count, total_gps}` — tightest 2 km cluster |
+| `likely_day_bucket` | TEXT | `weekday` / `weekend` / `both` / `unknown` |
+| `likely_time_window` | TEXT | `morning` / `afternoon` / `evening` / `night` / `mixed` |
+| `confidence_score` | INTEGER | 0–100; see scoring formula below |
+| `recommended_patrol_priority` | TEXT | `urgent` / `high` / `medium` / `low` |
+| `recommended_action` | TEXT | Plain-English patrol directive |
+| `explanation` | TEXT | JSON array of human-readable signal labels |
+| `watchlist_hit` | INTEGER | 1 if any sighting matched watchlist |
+| `result_type` | TEXT | Most recent sighting result type |
+| `last_computed_at` | TEXT | ISO timestamp |
+
+### Confidence score formula
+
+| Signal | Points |
+|---|---|
+| 10+ sightings | +55 |
+| 5–9 sightings | +40 |
+| 3–4 sightings | +25 |
+| 2 sightings | +15 |
+| Watchlist hit | +20 |
+| 2+ distinct agents | +10 |
+| ≥60% GPS sightings in 2 km cluster | +15 |
+| ≥55% sightings in same 6 h time window | +15 |
+| Allocated match | +10 |
+| Conflict result type | +15 |
+| Restricted result type | +5 |
+
+**Priority bands:** ≥75 or (watchlist + repeat≥3) = urgent; ≥50 or (watchlist + repeat≥2) = high; ≥30 = medium; else low.
+
+### Backend additions (app.py)
+
+**New helpers:**
+- `_patrol_intelligence_ensure(conn)` — creates the table on first use
+- `_recompute_patrol_intelligence(conn, registration_filter=None)` — full pattern engine; groups sightings by plate, computes all metrics, upserts via `ON CONFLICT`
+
+**New routes:**
+- `GET /admin/lpr/patrol` — patrol opportunities list with filters (priority, watchlist, result type, day bucket, min confidence). Ordered by priority then confidence.
+- `POST /admin/lpr/patrol/recompute` — triggers a full recompute from the last 30 days. Flash message on completion.
+- `GET /m/lpr/patrol` — mobile patrol list HTML page (extends `mobile/base.html`)
+- `GET /m/api/lpr/patrol` — JSON patrol list for native iOS use; no customer/file data
+
+**Updated route:**
+- `GET /jobs/<job_id>` — now also queries `lpr_patrol_intelligence` for the job's plate (via the first LPR sighting's `registration_normalised`) and passes `job_patrol_intel` dict to the template.
+
+### New templates
+
+- `templates/lpr_patrol.html` — admin patrol opportunities table with filterable columns, confidence progress bars, signals list, Apple Maps link, and manual recompute button
+- `templates/mobile/lpr_patrol.html` — mobile card-based patrol list with priority colour strips, confidence bars, day/time badges, signal list, and Apple Maps deep-link for cluster zone
+
+### Template updates
+
+- `templates/lpr_sightings.html` — "📡 Patrol Intel" nav button added to the action bar
+- `templates/job_detail.html` — patrol intelligence widget added after the LPR sightings table; shows priority badge, confidence score, recommended action, day/time badges, signal list, and a link to the full patrol page. Only rendered when `job_patrol_intel` is non-null.
+
+### iOS additions (`WebViewContainer.swift`)
+
+- `isOnPatrolPage` computed var — `true` when current URL path starts with `/m/lpr/patrol`
+- `navigateToPatrol()` private method — loads `/m/lpr/patrol` using `AppConfig.entryURL` scheme + host
+- **Patrol floating button** — secondary pill button below the Live Scan button, visible on all LPR pages except the patrol page itself. Tapping calls `navigateToPatrol()`. Styled in light-blue to differentiate from the primary scan button.

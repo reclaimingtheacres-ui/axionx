@@ -560,6 +560,88 @@
   </div>
   {% endif %}
 
+  {# ── Patrol Intelligence Widget ── #}
+  {% if job_patrol_intel %}
+  {% set pi = job_patrol_intel %}
+  {% set pi_color =
+    'var(--danger)' if pi.priority == 'urgent' else
+    '#d97706'       if pi.priority == 'high'   else
+    'var(--accent)' if pi.priority == 'medium' else
+    'var(--muted)' %}
+  <div class="ax-card mb-3" style="margin-top:16px;border-left:3px solid {{ pi_color }};">
+    <div class="ax-card-h d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <span>📡 Patrol Intelligence</span>
+        <span class="badge
+          {% if pi.priority == 'urgent' %}bg-danger
+          {% elif pi.priority == 'high' %}bg-warning text-dark
+          {% elif pi.priority == 'medium' %}bg-primary
+          {% else %}bg-secondary{% endif %}"
+          style="font-size:.68rem;">
+          {{ pi.priority | capitalize }}
+        </span>
+        <span class="badge bg-secondary" style="font-size:.68rem;">{{ pi.confidence }}% confidence</span>
+      </div>
+      <a href="{{ url_for('admin_lpr_patrol') }}" class="btn btn-sm btn-outline-primary" style="font-size:.72rem;">
+        All patrol →
+      </a>
+    </div>
+    <div class="ax-card-b">
+      <div class="row g-3 align-items-start">
+
+        <div class="col-md-8">
+          <div class="small fw-semibold text-muted mb-1">Recommended action</div>
+          <div style="font-size:.9rem;">{{ pi.action or '—' }}</div>
+
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            <span class="badge bg-light text-dark border" style="font-size:.73rem;font-weight:500;">
+              {% if pi.day_bucket == 'weekday' %}📅 Weekdays
+              {% elif pi.day_bucket == 'weekend' %}🗓 Weekends
+              {% elif pi.day_bucket == 'both' %}📆 All days
+              {% else %}📆 Day unknown{% endif %}
+            </span>
+            <span class="badge bg-light text-dark border" style="font-size:.73rem;font-weight:500;">
+              {% if pi.time_window == 'morning' %}🌅 Mornings
+              {% elif pi.time_window == 'afternoon' %}☀️ Afternoons
+              {% elif pi.time_window == 'evening' %}🌆 Evenings
+              {% elif pi.time_window == 'night' %}🌙 Nights
+              {% else %}⏱ Mixed times{% endif %}
+            </span>
+            <span class="badge bg-light text-dark border" style="font-size:.73rem;font-weight:500;">
+              Seen {{ pi.repeat }}× in 30 days
+            </span>
+            {% if pi.agents >= 2 %}
+            <span class="badge bg-light text-dark border" style="font-size:.73rem;font-weight:500;">
+              {{ pi.agents }} agents
+            </span>
+            {% endif %}
+            {% if pi.watchlist %}
+            <span class="badge" style="font-size:.73rem;font-weight:600;background:#ede9fe;color:#7c3aed;border:1px solid #c4b5fd;">
+              ⚑ Watchlist
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          {% if pi.factors %}
+          <div class="small fw-semibold text-muted mb-1">Signals</div>
+          <ul class="small text-muted mb-0 ps-3">
+            {% for f in pi.factors %}<li>{{ f }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+          {% if pi.computed_at %}
+          <div class="small text-muted mt-2" style="font-size:.73rem;">
+            Computed {{ pi.computed_at[:10] }}
+          </div>
+          {% endif %}
+        </div>
+
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
 </div><!-- /tab-job inner -->
 </div><!-- /tab-job pane -->
 
