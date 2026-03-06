@@ -10869,6 +10869,493 @@ def admin_lpr_experiments_archive():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Stage 18 — Controlled Automation
+# ─────────────────────────────────────────────────────────────────────────────
+
+from datetime import datetime as _dt, timedelta as _td
+
+
+def _lpr_automation_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_automation_settings (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope                       TEXT    NOT NULL DEFAULT 'global',
+            active                      INTEGER NOT NULL DEFAULT 0,
+            allow_auto_tighten          INTEGER NOT NULL DEFAULT 1,
+            allow_auto_band_suppression INTEGER NOT NULL DEFAULT 0,
+            require_manual_for_promote  INTEGER NOT NULL DEFAULT 1,
+            require_manual_for_stop     INTEGER NOT NULL DEFAULT 1,
+            cooldown_days               INTEGER NOT NULL DEFAULT 7,
+            max_threshold_step          INTEGER NOT NULL DEFAULT 5,
+            min_sample_per_arm          INTEGER NOT NULL DEFAULT 50,
+            created_by                  INTEGER,
+            created_at                  TEXT    NOT NULL,
+            updated_at                  TEXT    NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_automation_actions (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            policy_decision_id    INTEGER,
+            experiment_id         INTEGER,
+            action_type           TEXT    NOT NULL,
+            scope                 TEXT    NOT NULL DEFAULT 'global',
+            before_config_id      INTEGER,
+            after_config_id       INTEGER,
+            before_values_json    TEXT,
+            after_values_json     TEXT,
+            trigger_rule_id       INTEGER,
+            sample_size_json      TEXT,
+            status                TEXT    NOT NULL DEFAULT 'applied',
+            applied_at            TEXT    NOT NULL,
+            applied_by            TEXT    NOT NULL DEFAULT 'auto',
+            rollback_of_action_id INTEGER,
+            notes_safe            TEXT
+        )
+    """)
+    n = conn.execute("SELECT COUNT(*) FROM lpr_automation_settings").fetchone()[0]
+    if n == 0:
+        now = now_ts()
+        conn.execute("""
+            INSERT INTO lpr_automation_settings
+                (scope, active, allow_auto_tighten, allow_auto_band_suppression,
+                 require_manual_for_promote, require_manual_for_stop,
+                 cooldown_days, max_threshold_step, min_sample_per_arm,
+                 created_at, updated_at)
+            VALUES ('global', 0, 1, 0, 1, 1, 7, 5, 50, ?, ?)
+        """, (now, now))
+    conn.commit()
+
+
+def _get_automation_settings(conn):
+    row = conn.execute(
+        "SELECT * FROM lpr_automation_settings ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _automation_cooldown_ok(conn, scope, cooldown_days):
+    """
+    Return (ok: bool, last_applied_at: str|None).
+    ok=True means no non-rollback auto-action has been applied within cooldown_days.
+    """
+    cutoff = (_dt.utcnow() - _td(days=int(cooldown_days))).strftime('%Y-%m-%dT%H:%M:%S')
+    row = conn.execute("""
+        SELECT applied_at FROM lpr_automation_actions
+        WHERE scope=? AND status IN ('applied','monitoring','review_required')
+          AND action_type != 'rollback'
+          AND applied_at > ?
+        ORDER BY applied_at DESC LIMIT 1
+    """, (scope, cutoff)).fetchone()
+    return (row is None), (row["applied_at"] if row else None)
+
+
+def _dry_run_check(settings, policy_eval):
+    """
+    Return True if this evaluation WOULD trigger auto-apply if automation were active.
+    Used to show "would have acted" dry-run indicators on the automation screen.
+    """
+    rec = policy_eval.get("recommendation")
+    m   = policy_eval.get("metrics", {})
+    if rec == "tighten" and settings.get("allow_auto_tighten"):
+        return m.get("min_n", 0) >= settings.get("min_sample_per_arm", 50)
+    return False
+
+
+def _try_auto_apply(conn, exp, policy_eval, actor="auto"):
+    """
+    Evaluate whether the policy recommendation for exp is eligible for automation.
+    If automation is active and all guardrails pass, apply the change and log it.
+    Returns a result dict (never raises).
+    """
+    settings = _get_automation_settings(conn)
+    if not settings:
+        return {"applied": False, "reason": "No automation settings found"}
+
+    dry_eligible = _dry_run_check(settings, policy_eval)
+
+    if not settings["active"]:
+        return {"applied": False, "reason": "Automation disabled",
+                "dry_run_eligible": dry_eligible}
+
+    rec = policy_eval.get("recommendation")
+    m   = policy_eval.get("metrics", {})
+
+    # ── Auto-tighten path ────────────────────────────────────────────────────
+    if rec == "tighten" and settings["allow_auto_tighten"]:
+        min_n = settings["min_sample_per_arm"]
+        if m.get("min_n", 0) < min_n:
+            return {"applied": False,
+                    "reason": f"Insufficient sample ({m.get('min_n',0)} < {min_n})",
+                    "dry_run_eligible": dry_eligible}
+
+        cooldown_ok, last_at = _automation_cooldown_ok(conn, "global", settings["cooldown_days"])
+        if not cooldown_ok:
+            return {"applied": False,
+                    "reason": f"Cooldown active — last auto-change on {last_at[:10]}",
+                    "dry_run_eligible": dry_eligible}
+
+        pc = m.get("protected_champion", {})
+        ph = m.get("protected_challenger", {})
+        if pc.get("total", 0) >= 10 and ph.get("total", 0) >= 5:
+            prot_fp = ph.get("fp_rate", 0) - pc.get("fp_rate", 0)
+            if prot_fp > 5.0:
+                return {"applied": False,
+                        "reason": f"Urgent/watchlist FP Δ {prot_fp:+.1f}pp — blocked",
+                        "dry_run_eligible": False}
+
+        active_cfg = conn.execute("""
+            SELECT * FROM lpr_ranking_config WHERE active=1
+            ORDER BY effective_from DESC LIMIT 1
+        """).fetchone()
+        if not active_cfg:
+            return {"applied": False, "reason": "No active ranking config",
+                    "dry_run_eligible": dry_eligible}
+
+        old_thr = active_cfg["min_combined_threshold"]
+        new_thr = min(old_thr + settings["max_threshold_step"], 100)
+        if new_thr <= old_thr:
+            return {"applied": False, "reason": "Already at maximum threshold",
+                    "dry_run_eligible": False}
+
+        now         = now_ts()
+        before_json = _json.dumps({
+            "min_combined_threshold": old_thr,
+            "rule_weight":            active_cfg["rule_weight"],
+            "ml_weight":              active_cfg["ml_weight"],
+        })
+        after_json  = _json.dumps({
+            "min_combined_threshold": new_thr,
+            "rule_weight":            active_cfg["rule_weight"],
+            "ml_weight":              active_cfg["ml_weight"],
+        })
+        sample_json = _json.dumps({
+            "champion":   m.get("champion",   {}).get("total", 0),
+            "challenger": m.get("challenger", {}).get("total", 0),
+            "min_n":      m.get("min_n", 0),
+        })
+
+        conn.execute("UPDATE lpr_ranking_config SET active=0 WHERE id=?", (active_cfg["id"],))
+        cfg_cur = conn.execute("""
+            INSERT INTO lpr_ranking_config
+                (model_version, prediction_window, confidence_band, priority_band,
+                 rule_weight, ml_weight, min_combined_threshold, active, source,
+                 reason, effective_from, created_by, created_at)
+            VALUES (?,?,?,?,?,?,?,1,'auto_tighten',?,?,NULL,?)
+        """, (
+            active_cfg["model_version"] or "*",
+            active_cfg["prediction_window"] or "72h",
+            active_cfg["confidence_band"]   or "*",
+            active_cfg["priority_band"]     or "*",
+            active_cfg["rule_weight"],
+            active_cfg["ml_weight"],
+            new_thr,
+            f"Auto-tighten from exp #{exp['id']}: threshold {old_thr} → {new_thr}",
+            now, now,
+        ))
+        new_cfg_id = cfg_cur.lastrowid
+
+        fired_rule = next((r for r in policy_eval.get("rules_fired", []) if r["passed"]), None)
+        rule_id    = fired_rule["rule"]["id"] if fired_rule else None
+
+        act_cur = conn.execute("""
+            INSERT INTO lpr_automation_actions
+                (policy_decision_id, experiment_id, action_type, scope,
+                 before_config_id, after_config_id, before_values_json, after_values_json,
+                 trigger_rule_id, sample_size_json, status, applied_at, applied_by, notes_safe)
+            VALUES (NULL,?,?,?,?,?,?,?,?,?,'monitoring',?,?,'')
+        """, (
+            exp["id"], "tighten_threshold", "global",
+            active_cfg["id"], new_cfg_id,
+            before_json, after_json,
+            rule_id, sample_json, now, actor,
+        ))
+        action_id = act_cur.lastrowid
+        conn.commit()
+
+        return {
+            "applied":       True,
+            "action_type":   "tighten_threshold",
+            "action_id":     action_id,
+            "old_threshold": old_thr,
+            "new_threshold": new_thr,
+            "before_cfg_id": active_cfg["id"],
+            "after_cfg_id":  new_cfg_id,
+        }
+
+    # ── Manual-only paths ────────────────────────────────────────────────────
+    if rec == "promote":
+        return {"applied": False, "reason": "Promotion requires manual approval",
+                "dry_run_eligible": False}
+    if rec == "stop":
+        return {"applied": False, "reason": "Stop requires manual approval",
+                "dry_run_eligible": False}
+
+    return {"applied": False, "reason": f"No automation action for '{rec}'",
+            "dry_run_eligible": False}
+
+
+def _check_automation_monitoring(conn):
+    """
+    For all 'monitoring' tighten_threshold actions, check whether post-action
+    outcomes show degraded performance.  Flag as 'review_required' if:
+      - positive rate dropped > 3pp vs champion arm baseline, or
+      - FP rate rose > 5pp vs champion arm baseline.
+    Returns list of action IDs that were newly flagged.
+    """
+    actions = conn.execute("""
+        SELECT * FROM lpr_automation_actions
+        WHERE status='monitoring' AND action_type='tighten_threshold'
+    """).fetchall()
+
+    flagged = []
+    POS = ("'confirmed_present','repeat_area_confirmed',"
+           "'recovery_progressed','recovery_completed','followup_required'")
+
+    for a in actions:
+        if not a["experiment_id"]:
+            continue
+        post = conn.execute(f"""
+            SELECT COUNT(*) AS n,
+                   SUM(CASE WHEN actual_outcome IN ({POS}) THEN 1 ELSE 0 END) AS pos,
+                   SUM(CASE WHEN actual_outcome='false_positive' THEN 1 ELSE 0 END) AS fp
+            FROM lpr_prediction_outcomes
+            WHERE created_at > ?
+        """, (a["applied_at"],)).fetchone()
+
+        n_post = post["n"] or 0
+        if n_post < 10:
+            continue
+
+        pos_rate_post = round(100 * (post["pos"] or 0) / n_post, 1)
+        fp_rate_post  = round(100 * (post["fp"]  or 0) / n_post, 1)
+
+        baseline = _exp_arm_stats(conn, a["experiment_id"], "champion")
+        pos_drop = baseline["pos_rate"] - pos_rate_post
+        fp_rise  = fp_rate_post - baseline["fp_rate"]
+
+        if pos_drop > 3.0 or fp_rise > 5.0:
+            note = (f"Post-change: pos {pos_rate_post}% (Δ{-pos_drop:+.1f}pp), "
+                    f"FP {fp_rate_post}% (Δ{fp_rise:+.1f}pp), n={n_post}")
+            conn.execute(
+                "UPDATE lpr_automation_actions SET status='review_required', notes_safe=? WHERE id=?",
+                (note, a["id"])
+            )
+            flagged.append(a["id"])
+
+    if flagged:
+        conn.commit()
+    return flagged
+
+
+# ── Automation admin routes ──────────────────────────────────────────────────
+
+@app.get("/admin/lpr/automation")
+@admin_required
+def admin_lpr_automation():
+    conn = db()
+    _lpr_automation_ensure(conn)
+    _lpr_experiments_ensure(conn)
+    _lpr_policy_ensure(conn)
+    _lpr_ranking_config_ensure(conn)
+
+    _check_automation_monitoring(conn)
+
+    settings = _get_automation_settings(conn)
+    cooldown_ok, last_at = _automation_cooldown_ok(conn, "global", settings["cooldown_days"])
+
+    recent_actions = [dict(r) for r in conn.execute("""
+        SELECT a.*, e.name AS exp_name
+        FROM lpr_automation_actions a
+        LEFT JOIN lpr_experiments e ON e.id = a.experiment_id
+        ORDER BY a.id DESC LIMIT 20
+    """).fetchall()]
+
+    for aa in recent_actions:
+        try:
+            aa["before_values"] = _json.loads(aa["before_values_json"] or "{}")
+            aa["after_values"]  = _json.loads(aa["after_values_json"]  or "{}")
+            aa["sample_size"]   = _json.loads(aa["sample_size_json"]   or "{}")
+        except Exception:
+            aa["before_values"] = {}
+            aa["after_values"]  = {}
+            aa["sample_size"]   = {}
+
+    active_exp = conn.execute(
+        "SELECT * FROM lpr_experiments WHERE status='active' LIMIT 1"
+    ).fetchone()
+    dry_run_result = None
+    if active_exp:
+        exp_dict    = dict(active_exp)
+        policy_eval = _evaluate_experiment_policy(conn, exp_dict)
+        dry_run_result = {
+            "exp_name":       active_exp["name"],
+            "exp_id":         active_exp["id"],
+            "recommendation": policy_eval["recommendation"],
+            "would_act":      _dry_run_check(settings, policy_eval),
+            "metrics":        policy_eval["metrics"],
+        }
+
+    active_ranking = conn.execute("""
+        SELECT id, rule_weight, ml_weight, min_combined_threshold, source, effective_from
+        FROM lpr_ranking_config WHERE active=1
+        ORDER BY effective_from DESC LIMIT 1
+    """).fetchone()
+
+    conn.close()
+    return render_template(
+        "lpr_automation.html",
+        settings=settings,
+        cooldown_ok=cooldown_ok,
+        last_auto_at=last_at,
+        recent_actions=recent_actions,
+        dry_run_result=dry_run_result,
+        active_ranking=dict(active_ranking) if active_ranking else None,
+    )
+
+
+@app.post("/admin/lpr/automation/settings")
+@admin_required
+def admin_lpr_automation_settings():
+    data = request.get_json(silent=True) or {}
+    conn = db()
+    _lpr_automation_ensure(conn)
+
+    try:
+        active           = 1 if data.get("active")           else 0
+        auto_tighten     = 1 if data.get("allow_auto_tighten") else 0
+        band_suppress    = 1 if data.get("allow_auto_band_suppression") else 0
+        manual_promote   = 1 if data.get("require_manual_for_promote", True) else 0
+        manual_stop      = 1 if data.get("require_manual_for_stop",    True) else 0
+        cooldown_days    = max(1, min(90, int(data.get("cooldown_days",   7))))
+        max_step         = max(1, min(20, int(data.get("max_threshold_step", 5))))
+        min_sample       = max(10, min(500, int(data.get("min_sample_per_arm", 50))))
+    except (ValueError, TypeError):
+        conn.close()
+        return jsonify({"ok": False, "error": "Invalid numeric values"}), 400
+
+    if not manual_promote:
+        conn.close()
+        return jsonify({"ok": False,
+                        "error": "require_manual_for_promote cannot be disabled"}), 400
+    if not manual_stop:
+        conn.close()
+        return jsonify({"ok": False,
+                        "error": "require_manual_for_stop cannot be disabled"}), 400
+
+    now = now_ts()
+    uid = session.get("user_id")
+    conn.execute("""
+        UPDATE lpr_automation_settings
+        SET active=?, allow_auto_tighten=?, allow_auto_band_suppression=?,
+            require_manual_for_promote=?, require_manual_for_stop=?,
+            cooldown_days=?, max_threshold_step=?, min_sample_per_arm=?,
+            created_by=?, updated_at=?
+        WHERE id=(SELECT MAX(id) FROM lpr_automation_settings)
+    """, (active, auto_tighten, band_suppress,
+          manual_promote, manual_stop,
+          cooldown_days, max_step, min_sample,
+          uid, now))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+@app.post("/admin/lpr/automation/run")
+@admin_required
+def admin_lpr_automation_run():
+    """
+    Trigger the automation engine against the current active experiment.
+    If automation is enabled and guardrails pass, applies the eligible change.
+    """
+    conn = db()
+    _lpr_automation_ensure(conn)
+    _lpr_experiments_ensure(conn)
+    _lpr_policy_ensure(conn)
+    _lpr_ranking_config_ensure(conn)
+
+    active_exp = conn.execute(
+        "SELECT * FROM lpr_experiments WHERE status='active' LIMIT 1"
+    ).fetchone()
+    if not active_exp:
+        conn.close()
+        return jsonify({"ok": False, "error": "No active experiment to evaluate"}), 400
+
+    exp_dict    = dict(active_exp)
+    policy_eval = _evaluate_experiment_policy(conn, exp_dict)
+    result      = _try_auto_apply(conn, exp_dict, policy_eval,
+                                  actor=str(session.get("user_id") or "auto"))
+    conn.close()
+    return jsonify({"ok": True, "result": result}), 200
+
+
+@app.post("/admin/lpr/automation/rollback")
+@admin_required
+def admin_lpr_automation_rollback():
+    """
+    Roll back an automation action by re-activating the before_config_id.
+    Writes a new action row with action_type='rollback'.
+    """
+    data      = request.get_json(silent=True) or {}
+    action_id = data.get("action_id")
+    notes     = (data.get("notes") or "").strip()[:300]
+    if not action_id:
+        return jsonify({"ok": False, "error": "action_id required"}), 400
+
+    conn = db()
+    _lpr_automation_ensure(conn)
+    _lpr_ranking_config_ensure(conn)
+
+    original = conn.execute(
+        "SELECT * FROM lpr_automation_actions WHERE id=?", (action_id,)
+    ).fetchone()
+    if not original:
+        conn.close()
+        return jsonify({"ok": False, "error": "Action not found"}), 404
+    if original["status"] == "rolled_back":
+        conn.close()
+        return jsonify({"ok": False, "error": "Action already rolled back"}), 400
+    if not original["before_config_id"]:
+        conn.close()
+        return jsonify({"ok": False, "error": "No before_config_id to restore"}), 400
+
+    # Restore the before config
+    before_cfg = conn.execute(
+        "SELECT * FROM lpr_ranking_config WHERE id=?", (original["before_config_id"],)
+    ).fetchone()
+    if not before_cfg:
+        conn.close()
+        return jsonify({"ok": False, "error": "Before config no longer exists"}), 400
+
+    now = now_ts()
+    uid = session.get("user_id")
+
+    conn.execute("UPDATE lpr_ranking_config SET active=0 WHERE active=1")
+    conn.execute("UPDATE lpr_ranking_config SET active=1 WHERE id=?",
+                 (original["before_config_id"],))
+    conn.execute("UPDATE lpr_automation_actions SET status='rolled_back' WHERE id=?",
+                 (action_id,))
+
+    conn.execute("""
+        INSERT INTO lpr_automation_actions
+            (policy_decision_id, experiment_id, action_type, scope,
+             before_config_id, after_config_id, before_values_json, after_values_json,
+             trigger_rule_id, sample_size_json, status, applied_at, applied_by,
+             rollback_of_action_id, notes_safe)
+        VALUES (NULL, ?, 'rollback', 'global', ?, ?, ?, ?, NULL, NULL, 'applied', ?, ?, ?, ?)
+    """, (
+        original["experiment_id"],
+        original["after_config_id"], original["before_config_id"],
+        original["after_values_json"], original["before_values_json"],
+        now, str(uid or "manual"), action_id, notes or None,
+    ))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)

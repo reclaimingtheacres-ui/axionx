@@ -706,3 +706,15 @@ Adds structured outcome capture for patrol opportunities, stores prediction-vers
 - **Admin routes**: GET `/admin/lpr/experiments` now includes policy evaluation per active/stopped experiment; POST `/admin/lpr/experiments/policy/decide` (decision: approved_promote | approved_stop | rejected | deferred — executes action if approved, always writes audit record)
 - **Promotion flow**: policy-approved promotions recorded with `source='policy_approved'` in `lpr_ranking_config`; direct "Promote (bypass)" button retained for manual overrides
 - **Template**: `lpr_experiments.html` updated with policy banner, per-experiment policy analysis panel (recommendation, fired rules, metric deltas, urgent/watchlist subset, approve/reject/defer controls), decision history list
+
+## Stage 18 — Controlled Automation
+
+- **Tables**: `lpr_automation_settings` (scope, active, allow_auto_tighten, allow_auto_band_suppression, require_manual_for_promote, require_manual_for_stop, cooldown_days, max_threshold_step, min_sample_per_arm); `lpr_automation_actions` (policy_decision_id, experiment_id, action_type, scope, before_config_id, after_config_id, before/after_values_json, trigger_rule_id, sample_size_json, status, applied_at, applied_by, rollback_of_action_id, notes_safe)
+- **Default settings**: automation disabled by default (`active=0`), auto-tighten enabled, cooldown 7 days, max step 5 points, min sample 50/arm; promotions/stops always require manual approval (non-configurable)
+- **Helpers**: `_lpr_automation_ensure`, `_get_automation_settings`, `_automation_cooldown_ok` (returns bool + last_applied_at), `_dry_run_check` (would action fire if enabled?), `_try_auto_apply` (full guardrail check + apply + log), `_check_automation_monitoring` (flags review_required if post-change outcomes degrade)
+- **Auto-tighten guardrails**: sample ≥ min_sample_per_arm, cooldown clear, urgent/watchlist FP Δ ≤ 5pp, threshold not already at max; writes new `lpr_ranking_config` row with `source='auto_tighten'`, marks action as `monitoring`
+- **Rollback**: restores `before_config_id` ranking config, marks original action `rolled_back`, writes rollback action row
+- **Post-change monitoring**: checks `lpr_prediction_outcomes` after `applied_at`; flags `review_required` if pos rate drops >3pp or FP rises >5pp vs champion baseline (runs on every automation page load)
+- **Admin routes**: `GET /admin/lpr/automation`, `POST /admin/lpr/automation/settings`, `POST /admin/lpr/automation/run`, `POST /admin/lpr/automation/rollback`
+- **Template**: `lpr_automation.html` — settings panel (enable/disable, cooldown, max step, min sample), cooldown status badge, active ranking config summary, dry-run card, recent actions table with status badges and per-row rollback buttons
+- **Nav**: ⚡ Automation link added to Patrol Intel, Ranking, Evaluation, and Experiments pages
