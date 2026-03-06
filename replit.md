@@ -719,6 +719,33 @@ Adds structured outcome capture for patrol opportunities, stores prediction-vers
 - **Template**: `lpr_automation.html` — settings panel (enable/disable, cooldown, max step, min sample), cooldown status badge, active ranking config summary, dry-run card, recent actions table with status badges and per-row rollback buttons
 - **Nav**: ⚡ Automation link added to Patrol Intel, Ranking, Evaluation, and Experiments pages
 
+## Document Upload / Import Workflow (Web Only)
+
+- **Scope**: Web-based New Job form only. No mobile code touched.
+- **Supported formats**: `.docx` (python-docx), `.pdf` (pypdf), `.doc` (antiword — installed at `/nix/store/.../antiword`)
+- **Upload route**: `POST /jobs/new/autofill-upload` — saves file to `pending_uploads`, runs extraction + parser, saves to `document_extractions`, redirects to `/jobs/new?autofill_id=N`
+- **Parser** (`_parse_instruction_text`): Extracts → `from_name` (FROM: line), `contract_number`, `account_number` (A/C or Account), `client_ref` (Authority Ref), `our_ref` (Job No), `regulated_type` (REGULATED/UNREGULATED), `lender_name`, `deliver_to`, `security_type` (Vehicle/Property/Equipment/Other), `customer.full_name`, `customer.company`, `customer.mobile`, `job_address_full` (Home Address), `asset_address` (Last Known Location), `rego`, `vin` (V.I.N. format supported), `engine_number`, `year`/`make`/`model`/`colour`, `costs`, `arrears`, `instructions_raw`. Returns `_confidence` dict + `_filled_count`.
+- **Client lookup**: Multi-word matching in `clients` table using extracted `lender_name` or `from_name`. Sets `autofill_client_id` and marks confidence `matched` if found.
+- **Customer lookup**: Searches `customers` table by last name and company name. Sets `autofill_customer_id` if matched (pre-selects in typeahead), otherwise populates search box text with `autofill_customer_display`.
+- **Template** (`job_new.html`): Import summary banner (field count badge, filename, Review Lender & Security button). Confidence badges — green "Matched" (DB record), blue "Extracted" (from doc) — beside populated field labels: Contract Number, Client Job Number, Client, Customer, Customer Address, Lender, Account Number, Regulation, Deliver To, Description & Instructions. Security type auto-selected. Asset address prefilled. Auto-opens Lender & Security modal tab on page load when autofill is present.
+- **Field mapping summary**:
+  - Job No / Instruction No → Client Job Number (our_ref)
+  - Authority Ref / Client Reference → Contract Number (client_reference)
+  - A/C Number / Account Number → Account Number
+  - FROM: / Lender: → Lender name + client DB lookup
+  - Contract Type / REGULATED/UNREGULATED → Regulation
+  - Home Address → Customer Address (prefill_customer_address)
+  - Last Known Location → Asset Address
+  - Deliver To / Release To / Yard → Deliver To
+  - Year/Make/Model/Colour → Security description (auto-built)
+  - V.I.N. / VIN / Chassis → VIN
+  - Engine # / Engine Number → Engine Number
+  - Rego / Reg / Registration → Registration
+  - Instructions / Background / Notes → Description & Instructions textarea
+- **No auto-save**: User must review all pre-filled fields and click Save manually
+- **Document attachment**: `autofill_id` hidden field on the form causes the source document (from `pending_uploads`) to be linked to the job on save
+- **.DOC fallback**: Uses antiword (installed); if antiword unavailable, displays user-facing error message prompting user to re-save as .docx
+
 ## Stage 19 — Notification and Control Automation
 
 - **Tables**: `lpr_automation_reviews` (action_id, scope_key, review_reason, status, assigned_to, created_at, resolved_at, resolution_notes); `lpr_control_state` (scope_key, control_type, active, effective_from, effective_to, trigger_action_id, reason_text, created_by)

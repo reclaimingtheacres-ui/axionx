@@ -7,14 +7,47 @@
   <div class="ax-card-h">Create Job</div>
   <div class="ax-card-b">
 
+    {# ── Confidence badge macro ────────────────────────────────────────── #}
+    {%- macro conf_badge(field) -%}
+      {%- set c = autofill_confidence.get(field) if autofill_confidence else None -%}
+      {%- if c == 'matched' -%}
+        <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#16a34a;color:#fff;vertical-align:middle;" title="Matched to database record">Matched</span>
+      {%- elif c == 'extracted' -%}
+        <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#2563eb;color:#fff;vertical-align:middle;" title="Extracted from document">Extracted</span>
+      {%- endif -%}
+    {%- endmacro -%}
+
     <!-- Auto-fill upload zone -->
     {% if autofill_notice %}
-    <div class="alert mb-3 d-flex align-items-start gap-2"
-         style="background:rgba(96,165,250,.12);border:1.5px solid rgba(96,165,250,.4);border-radius:12px;color:var(--text)">
-      <span style="font-size:1.2rem;line-height:1.2">&#128196;</span>
-      <div>
-        <strong>Auto-filled from document</strong> &mdash; {{ autofill_notice.split('—',1)[1].strip() if '—' in autofill_notice else autofill_notice }}
-        <div class="small mt-1" style="color:var(--muted)">Review every field below before saving. The source document will be attached to the job automatically.</div>
+    {%- set _needs_review_fields = [] -%}
+    {%- if autofill_confidence -%}
+      {%- for k, v in autofill_confidence.items() if not v -%}
+        {%- if _needs_review_fields.append(k) -%}{%- endif -%}
+      {%- endfor -%}
+    {%- endif -%}
+    <div class="mb-3 p-3 d-flex align-items-start gap-3"
+         style="background:rgba(96,165,250,.08);border:1.5px solid rgba(96,165,250,.35);border-radius:14px;">
+      <span style="font-size:1.4rem;line-height:1;flex-shrink:0;">&#128196;</span>
+      <div class="flex-grow-1">
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+          <strong style="color:var(--text)">Auto-filled from document</strong>
+          {% if autofill_filename %}<span class="text-muted" style="font-size:.82rem;">— {{ autofill_filename }}</span>{% endif %}
+        </div>
+        <div style="font-size:.83rem;color:var(--muted);line-height:1.5;">
+          {% if autofill_filled_count %}
+            <span class="badge me-1" style="background:#16a34a;color:#fff;font-weight:600;">{{ autofill_filled_count }} field{{ 's' if autofill_filled_count != 1 }} populated</span>
+          {% endif %}
+          Review every field below before saving &mdash; all fields are editable.
+          The <em>Schedule</em> tab is the only tab that normally requires manual entry.
+          The source document will be attached automatically when you save.
+        </div>
+        <div class="mt-2 d-flex gap-2 flex-wrap">
+          <button type="button" class="btn btn-sm btn-primary py-0 px-3"
+                  onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('detailsModal')).show()"
+                  style="font-size:.82rem;">
+            Review Lender &amp; Security &rarr;
+          </button>
+        </div>
       </div>
     </div>
     {% else %}
@@ -47,7 +80,7 @@
           <div class="form-text" style="color:var(--muted)">Auto-generated &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit;vertical-align:baseline" onclick="openEntityModal('settings', '/admin/settings/popup')">change</button></div>
         </div>
         <div class="col-12 col-lg-5">
-          <label class="form-label">Contract Number</label>
+          <label class="form-label">Contract Number {{ conf_badge('client_reference') }}</label>
           <div class="position-relative">
             <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,'').replace(/[a-z]/g,c=>c.toUpperCase()); syncCJN(); syncContractToAccount();" autocomplete="off">
             <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
@@ -56,7 +89,7 @@
         </div>
         <div class="col-12 col-lg-4">
           <label class="form-label d-flex align-items-center gap-2">
-            Client Job Number
+            Client Job Number {{ conf_badge('our_ref') }}
             <span style="font-weight:400;font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:4px;">
               <input type="checkbox" id="cjn_same" style="cursor:pointer;">
               same as contract number
@@ -70,7 +103,7 @@
       <div class="row g-3 mb-3">
         <div class="col-12 col-lg-6">
           <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label mb-0">Client</label>
+            <label class="form-label mb-0">Client {{ conf_badge('lender_name') }}</label>
             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
                     onclick="openEntityModal('client','/clients/new-popup')"
                     title="Create new client">+&nbsp;New</button>
@@ -84,7 +117,7 @@
         </div>
         <div class="col-12 col-lg-6">
           <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label mb-0">Customer</label>
+            <label class="form-label mb-0">Customer {{ conf_badge('customer_name') }}</label>
             <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
                     onclick="openEntityModal('customer','/customers/new-popup')"
                     title="Create new customer">+&nbsp;New</button>
@@ -100,7 +133,7 @@
 
 
       <div class="mb-3">
-        <label class="form-label">Customer Address</label>
+        <label class="form-label">Customer Address {{ conf_badge('customer_address') }}</label>
         <input class="form-control ax-address" id="customer_address" name="customer_address" placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false" value="{{ prefill_customer_address }}">
       </div>
 
@@ -408,7 +441,7 @@
   makeTypeahead({ searchId:'client_search',   hiddenId:'client_id_val',     dropId:'client_dropdown',
                   data:CLIENT_DATA,   preselect:{{ (new_client_id or autofill_client_id) | tojson }} });
   makeTypeahead({ searchId:'customer_search', hiddenId:'customer_id_val',    dropId:'customer_dropdown',
-                  data:CUSTOMER_DATA, preselect:{{ new_customer_id | tojson }},
+                  data:CUSTOMER_DATA, preselect:{{ (new_customer_id or autofill_customer_id) | tojson }},
                   onSelect: function(item) {
                     var addrField = document.getElementById('customer_address');
                     if (addrField && item.address) {
@@ -510,12 +543,20 @@
 })();
 </script>
 
-{% if autofill and autofill.customer and autofill.customer.full_name %}
+{% if autofill %}
 <script>
 (function() {
   var custSearch = document.getElementById('customer_search');
   if (custSearch && !custSearch.value) {
+    {% if autofill_customer_id %}
+    {# Matched: makeTypeahead already set the label via preselect. Do nothing. #}
+    {% elif autofill_customer_display %}
+    custSearch.value = {{ autofill_customer_display | tojson }};
+    {% elif autofill.customer and autofill.customer.full_name %}
     custSearch.value = {{ autofill.customer.full_name | tojson }};
+    {% elif autofill.customer and autofill.customer.company %}
+    custSearch.value = {{ autofill.customer.company | tojson }};
+    {% endif %}
   }
 })();
 </script>
@@ -607,7 +648,7 @@ function submitNewJobType() {
           <div class="mb-1 mt-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">LENDER DETAILS</div>
           <div class="row g-2 mb-2">
             <div class="col-12 col-lg-4">
-              <label class="form-label">Lender</label>
+              <label class="form-label">Lender {{ conf_badge('lender_name') }}</label>
               <input class="form-control" name="lender_name" id="lender_name" form="newJobForm"
                      list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off"
                      value="{{ prefill_lender_name or (autofill.lender_name if autofill else '') }}">
@@ -616,12 +657,12 @@ function submitNewJobType() {
               </datalist>
             </div>
             <div class="col-12 col-lg-4">
-              <label class="form-label">Account Number</label>
+              <label class="form-label">Account Number {{ conf_badge('account_number') }}</label>
               <input class="form-control" name="account_number" form="newJobForm" placeholder="e.g. 1234567"
                      value="{{ prefill_account_number or (autofill.account_number if autofill else '') }}">
             </div>
             <div class="col-12 col-lg-4">
-              <label class="form-label">Regulation</label>
+              <label class="form-label">Regulation {{ conf_badge('regulated_type') }}</label>
               <select class="form-select" name="regulation_type" form="newJobForm">
                 <option value="">Select…</option>
                 {% set _rt = autofill.regulated_type if autofill else '' %}
@@ -666,16 +707,19 @@ function submitNewJobType() {
               <div class="row g-2">
                 <div class="col-12 col-lg-3">
                   <label class="form-label">Security Type</label>
+                  {% set _stype = autofill.security_type if autofill else 'Vehicle' %}
                   <select class="form-select" name="asset_type[]" form="newJobForm">
-                    <option>Vehicle</option><option>Property</option>
-                    <option>Equipment</option><option>Other</option>
+                    <option {% if _stype == 'Vehicle' %}selected{% endif %}>Vehicle</option>
+                    <option {% if _stype == 'Property' %}selected{% endif %}>Property</option>
+                    <option {% if _stype == 'Equipment' %}selected{% endif %}>Equipment</option>
+                    <option {% if _stype == 'Other' %}selected{% endif %}>Other</option>
                   </select>
                 </div>
                 <div class="col-12 col-lg-9">
-                  <label class="form-label">Description</label>
+                  <label class="form-label">Description {{ conf_badge('year') if _sec and _sec.year }}</label>
                   <input class="form-control asset-description" name="asset_description[]" form="newJobForm"
                          placeholder="e.g. 2019 Ford Ranger XL REG: ABC123 VIN: … ENG: …"
-                         value="{% if _sec %}{{ ([_sec.year, _sec.make, _sec.model, _sec.colour] | select | join(' ')) }}{% endif %}">
+                         value="{% if _sec %}{{ _sec.description or ([_sec.year, _sec.make, _sec.model, _sec.colour] | select | join(' ')) }}{% endif %}">
                 </div>
               </div>
               <div class="row g-2 mt-2">
@@ -709,7 +753,8 @@ function submitNewJobType() {
               <div class="row g-2 mt-2">
                 <div class="col-12 col-md-8">
                   <input class="form-control asset-address ax-address" name="asset_address[]" form="newJobForm"
-                         placeholder="Asset address (property/site)" autocomplete="off" spellcheck="false">
+                         placeholder="Asset address (property/site)" autocomplete="off" spellcheck="false"
+                         value="{{ autofill.asset_address if autofill and autofill.asset_address else '' }}">
                 </div>
                 <div class="col-12 col-md-4">
                   <input class="form-control" name="asset_serial[]" form="newJobForm" placeholder="Serial (equipment)">
@@ -732,7 +777,7 @@ function submitNewJobType() {
         <div class="tab-pane fade" id="dtab-details">
           <div class="mb-1 mt-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">JOB DETAILS &amp; INSTRUCTIONS</div>
           <div class="mb-3">
-            <label class="form-label">Deliver To</label>
+            <label class="form-label">Deliver To {{ conf_badge('deliver_to') }}</label>
             <input class="form-control" name="deliver_to" form="newJobForm"
                    id="deliver_to_input"
                    list="deliver_to_list"
@@ -744,7 +789,7 @@ function submitNewJobType() {
             </datalist>
           </div>
           <div class="mb-1">
-            <label class="form-label">Description &amp; Instructions</label>
+            <label class="form-label">Description &amp; Instructions {{ conf_badge('instructions') }}</label>
             <textarea class="form-control" name="description" form="newJobForm" rows="9"
                       placeholder="Job description, field agent instructions, access codes, contact times, background information…"
                       style="resize:vertical;">{% if autofill and autofill.instructions_raw %}{{ autofill.instructions_raw }}{% endif %}</textarea>
@@ -1256,4 +1301,17 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 })();
 </script>
+
+{% if autofill %}
+<script>
+/* Auto-open the Lender & Security tab when a document has been auto-filled */
+document.addEventListener('DOMContentLoaded', function () {
+  var modalEl = document.getElementById('detailsModal');
+  if (!modalEl) return;
+  var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  /* Small delay so Bootstrap styles are applied before opening */
+  setTimeout(function () { modal.show(); }, 350);
+});
+</script>
+{% endif %}
 {% endblock %}

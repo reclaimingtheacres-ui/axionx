@@ -850,6 +850,11 @@ _REGULATED_TYPES = {"consumer", "regulated", "personal loan", "consumer loan"}
 
 
 def _parse_instruction_text(text):
+    """
+    Parse extracted text from an instruction document and return a structured dict.
+    Returns confidence per field: 'extracted' = cleanly parsed, 'low' = uncertain.
+    Confidence 'matched' is added by the route layer after DB lookups.
+    """
     def find_after(patterns):
         for pat in patterns:
             m = re.search(pat, text, re.IGNORECASE)
@@ -858,7 +863,7 @@ def _parse_instruction_text(text):
                 return val if val else None
         return None
 
-    def find_block(patterns, max_chars=800):
+    def find_block(patterns, max_chars=1200):
         for pat in patterns:
             m = re.search(pat, text, re.IGNORECASE | re.DOTALL)
             if m:
@@ -867,26 +872,44 @@ def _parse_instruction_text(text):
                 return val[:max_chars].strip() if val else None
         return None
 
-    contract   = find_after([r"Contract\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)"])
-    account    = find_after([
-        r"Account\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)",
-        r"Customer\s*(?:Account|No\.?)[:\s]*([A-Za-z0-9\-\/]+)",
+    # ── Sender / client (FROM: line at top of document) ─────────────────
+    from_name = find_after([
+        r"^FROM[:\s]+([^\n]{3,60})",
+        r"\nFROM[:\s]+([^\n]{3,60})",
+        r"(?:Sent\s*(?:by|from)|Instructing\s*(?:Party|Client))[:\s]+([^\n]{3,60})",
+    ])
+    if from_name:
+        from_name = from_name.strip().rstrip(".,")
+        # If it's an auction yard, discard (it's a Deliver To, not a client)
+        if any(yard in from_name.lower() for yard in _AUCTION_YARDS):
+            from_name = None
+
+    # ── Reference fields ─────────────────────────────────────────────────
+    contract = find_after([r"Contract\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)"])
+    account  = find_after([
+        r"(?:^|\n)\s*A[\/\\]?C\s*(?:No\.?|Number)?[:\s]*([A-Za-z0-9\-\/]{4,20})",
+        r"(?:^|\n|\s)Account\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)",
+        r"Customer\s*(?:Account|No\.?)\s*(?:No\.?|Number)?[:\s]*([A-Za-z0-9\-\/]+)",
     ])
     client_ref = find_after([
-        r"Authority\s*Ref(?:erence)?[:\s]*([A-Za-z0-9\-\/]+)",
+        r"Authority\s*Ref(?:erence)?[:\s#]*([A-Za-z0-9\-\/]+)",
         r"Client\s*Reference[:\s]*([A-Za-z0-9\-\/]+)",
         r"Your\s*Ref(?:erence)?[:\s]*([A-Za-z0-9\-\/]+)",
     ])
-    our_ref    = find_after([
+    our_ref = find_after([
         r"Our\s*Ref(?:erence)?[:\s]*([A-Za-z0-9\-\/]+)",
         r"Instruction\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)",
-        r"(?:Job|File)\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-\/]+)",
+        r"(?:Job|File)\s*(?:No\.?|Number)[:\s#]*([A-Za-z0-9\-\/]+)",
     ])
 
+    # ── Lender / sender name for client lookup ────────────────────────────
     lender_raw = find_after([
         r"(?:Lender|Finance\s*Company|Financier|Credit\s*Provider|Secured\s*Party)[:\s]+"
-        r"([A-Za-z0-9 ,.'&\-]{3,50}?)(?:\s*\n|\s{3,}|,\s*ABN|$)",
+        r"([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|\s{3,}|,\s*ABN|$)",
     ])
+    # Prefer from_name if no explicit lender label
+    if not lender_raw and from_name:
+        lender_raw = from_name
 
     deliver_to = None
     lender     = None
@@ -899,18 +922,22 @@ def _parse_instruction_text(text):
 
     explicit_deliver = find_after([
         r"Deliver(?:\s*Vehicle)?\s*To[:\s]*([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|$)",
+        r"Deliver\s*To\s*\|?\s*([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|$)",
         r"Release\s*To[:\s]*([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|$)",
+        r"(?:Yard|Auction)[:\s]*([A-Za-z0-9 ,.'&\-]{3,40}?)(?:\s*\n|$)",
     ])
     if explicit_deliver:
         deliver_to = explicit_deliver.strip().rstrip(".,")
 
+    # ── Regulation type ───────────────────────────────────────────────────
     contract_type = find_after([
         r"(?:Contract|Product|Loan|Finance|Agreement)\s*Type[:\s]*([A-Za-z][A-Za-z ]{2,35}?)(?:\s*\n|$|\s{2,})",
         r"(?:Type\s*of\s*(?:Finance|Contract|Agreement))[:\s]*([A-Za-z][A-Za-z ]{2,35}?)(?:\s*\n|$)",
+        r"Regulation[:\s]*([A-Za-z][A-Za-z ]{2,35}?)(?:\s*\n|$|\s{2,})",
     ])
-
     reg_type = find_after([
         r"Contract\s*Type[:\s]*(REGULATED|UNREGULATED)",
+        r"Regulation[:\s]*(REGULATED|UNREGULATED)",
         r"\b(REGULATED|UNREGULATED)\b",
     ])
     if not reg_type and contract_type:
@@ -920,48 +947,105 @@ def _parse_instruction_text(text):
         elif any(k in ct for k in _REGULATED_TYPES):
             reg_type = "REGULATED"
 
+    # ── Customer: try to split company vs individual ──────────────────────
     cust_name = find_after([
-        r"Customer\s*Name[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,40}?)(?:\s*\n|$)",
-        r"Debtor\s*Name[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,40}?)(?:\s*\n|$)",
-        r"Borrower(?:'s)?\s*Name[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,40}?)(?:\s*\n|$)",
-        r"(?:^|\n)Name[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,40}?)(?:\s*\n|$)",
+        r"Customer\s*(?:Name)?[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,60}?)(?:\s*\n|$)",
+        r"Debtor\s*(?:Name)?[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,60}?)(?:\s*\n|$)",
+        r"Borrower(?:'s)?\s*(?:Name)?[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,60}?)(?:\s*\n|$)",
+        r"(?:^|\n)Name[:\s]*([A-Za-z][A-Za-z ,.'&\-]{2,60}?)(?:\s*\n|$)",
     ])
-    dob       = find_after([
+    cust_company = None
+    # Heuristic: if name contains company indicators, treat as company
+    _COMPANY_WORDS = ("pty", "ltd", "pty ltd", "limited", "inc", "llc", "liquidat", "admin", "trust", "group")
+    if cust_name and any(kw in cust_name.lower() for kw in _COMPANY_WORDS):
+        cust_company = cust_name.strip()
+        # Try to also find an individual contact name after the company line
+        contact_name = find_after([
+            r"Contact(?:\s*Person)?[:\s]*([A-Za-z][A-Za-z ,.']{2,40}?)(?:\s*\n|$)",
+            r"Attention[:\s]*([A-Za-z][A-Za-z ,.']{2,40}?)(?:\s*\n|$)",
+        ])
+        if contact_name:
+            cust_name = contact_name.strip()
+        else:
+            cust_name = None  # Just a company, no individual
+
+    dob   = find_after([
         r"D\.?O\.?B\.?[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
         r"Date\s*of\s*Birth[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
     ])
-    email     = find_after([r"Email[:\s]*([^\s@]+@[^\s]+)"])
-    vin       = find_after([
+    email = find_after([r"Email[:\s]*([^\s@]+@[^\s]+)"])
+    vin   = find_after([
+        r"V\.?I\.?N\.?[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
         r"\bVIN\b[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
         r"VIN[\/]Chassis[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
         r"Chassis\s*(?:No\.?|Number)[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
     ])
-    rego      = find_after([
-        r"\bReg(?:istration|o)?\b[:\s]*([A-Za-z0-9]{2,9})\b",
+    rego  = find_after([
+        r"\bReg(?:istration|o)?\b[:\s#]*([A-Za-z0-9]{2,9})\b",
         r"\bPlate\b[:\s]*([A-Za-z0-9]{2,9})\b",
         r"Registration\s*(?:Plate|Number)?[:\s]*([A-Za-z0-9]{2,9})\b",
     ])
-    engine_no = find_after([r"Engine\s*(?:No\.?|Number)[:\s]*([A-Za-z0-9\-]+)"])
-    colour    = find_after([r"Colou?r[:\s]*([A-Za-z][A-Za-z ]{1,20}?)(?:\s*\n|$|\s{2,})"])
-    year      = find_after([r"\bYear\b[:\s]*([12][0-9]{3})", r"\b((?:19|20)[0-9]{2})\b"])
-    make      = find_after([r"\bMake\b[:\s]*([A-Za-z][A-Za-z0-9\- ]{1,20}?)(?:\s*\n|$|\s{2,})"])
-    model     = find_after([r"\bModel\b[:\s]*([A-Za-z0-9][A-Za-z0-9\- ]{1,30}?)(?:\s*\n|$|\s{2,})"])
-    arrears   = find_after([r"Arrears?[:\s]*\$?\s*([0-9,]+\.?\d{0,2})"])
-    due_date  = find_after([
-        r"(?:Next\s*Due\s*Date|Due\s*Date|Payment\s*Due)[:\s]*"
-        r"([0-9]{1,2}[A-Za-z]{3}[0-9]{2,4}|[0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
+    engine_no = find_after([
+        r"Engine\s*[#\s]*(?:No\.?|Number)?[:\s]*([A-Za-z0-9\-\/]+)",
     ])
-    phone     = find_after([
-        r"(?:Contact\s*(?:No\.?|Number)|Mobile|Phone|Tel(?:ephone)?)[:\s]*([+0-9\(\)\s\-]{8,20})",
-    ])
-    phone     = _normalise_phone(phone)
+    colour = find_after([r"Colou?r[:\s]*([A-Za-z][A-Za-z ]{1,20}?)(?:\s*\n|$|\s{2,})"])
+    year   = find_after([r"\bYear\b[:\s]*([12][0-9]{3})", r"\b((?:19|20)[0-9]{2})\b"])
+    make   = find_after([r"\bMake\b[:\s]*([A-Za-z][A-Za-z0-9\- ]{1,25}?)(?:\s*\n|$|\s{2,})"])
+    model  = find_after([r"\bModel\b[:\s]*([A-Za-z0-9][A-Za-z0-9\- ]{1,35}?)(?:\s*\n|$|\s{2,})"])
 
+    # ── Security type ─────────────────────────────────────────────────────
+    sec_type_raw = find_after([
+        r"Security\s*Type[:\s]*([A-Za-z][A-Za-z ]{2,20}?)(?:\s*\n|$|\s{2,})",
+        r"(?:^|\n)Security[:\s]*([A-Za-z][A-Za-z ]{2,20}?)(?:\s*\n|$|\s{2,})",
+        r"Asset\s*Type[:\s]*([A-Za-z][A-Za-z ]{2,20}?)(?:\s*\n|$)",
+    ])
+    _SEC_TYPES = {
+        "vehicle": "Vehicle", "motor vehicle": "Vehicle", "motor": "Vehicle",
+        "car": "Vehicle", "truck": "Vehicle", "ute": "Vehicle",
+        "property": "Property", "real property": "Property", "land": "Property",
+        "equipment": "Equipment", "machinery": "Equipment", "plant": "Equipment",
+        "other": "Other",
+    }
+    security_type = "Vehicle"  # default
+    if sec_type_raw:
+        stl = sec_type_raw.lower().strip()
+        for k, v in _SEC_TYPES.items():
+            if k in stl:
+                security_type = v
+                break
+
+    # ── Asset / last-known address (separate from customer address) ───────
+    asset_address = find_after([
+        r"(?:Last\s*Known\s*Location|Last\s*Known\s*Address)[:\s]*([^\n]{5,100})",
+        r"Asset\s*Address[:\s]*([^\n]{5,100})",
+        r"(?:Located|Location)\s*(?:at|At)[:\s]*([^\n]{5,100})",
+        r"(?:Vehicle|Asset)\s*(?:Located|Location)[:\s]*([^\n]{5,100})",
+        r"(?:Property|Site)\s*Address[:\s]*([^\n]{5,100})",
+    ])
+    if asset_address:
+        asset_address = asset_address.strip(" ,")
+
+    # ── Customer address (home / service / registered) ────────────────────
     addr = find_after([
-        r"(?:Service|Customer|Property|Registered)\s*Address[:\s]*([^\n]+)",
-        r"(?:^|\n)Address[:\s]*([^\n]+)",
+        r"Home\s*Address[:\s]*([^\n]{5,120})",
+        r"(?:Service|Customer|Registered)\s*Address[:\s]*([^\n]{5,120})",
+        r"(?:^|\n)Address[:\s]*([^\n]{5,120})",
     ])
     addr = addr.strip(" ,") if addr else None
 
+    # ── Phone ─────────────────────────────────────────────────────────────
+    phone = find_after([
+        r"Mobile\s*(?:Phone|No\.?)?[:\s]*([+0-9\(\)\s\-]{8,20})",
+        r"(?:Contact\s*(?:No\.?|Number)|Phone|Tel(?:ephone)?)[:\s]*([+0-9\(\)\s\-]{8,20})",
+    ])
+    phone = _normalise_phone(phone)
+
+    # ── Financial ─────────────────────────────────────────────────────────
+    arrears  = find_after([r"Arrears?[:\s]*\$?\s*([0-9,]+\.?\d{0,2})"])
+    due_date = find_after([
+        r"(?:Next\s*Due\s*Date|Due\s*Date|Payment\s*Due)[:\s]*"
+        r"([0-9]{1,2}[A-Za-z]{3}[0-9]{2,4}|[0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
+    ])
     costs = find_after([
         r"(?:Recovery|Repossession|Repo|Our)\s*(?:Fee|Cost)s?[:\s]*\$?\s*([0-9,]+(?:\.\d{2})?)",
         r"(?:Total\s*)?(?:Costs?|Fee)[s]?[:\s]*\$?\s*([0-9,]+(?:\.\d{2})?)",
@@ -970,19 +1054,61 @@ def _parse_instruction_text(text):
     if costs:
         costs = costs.replace(",", "")
 
+    # ── Instructions narrative ────────────────────────────────────────────
     instructions = find_block([
-        r"Special\s*Instructions?[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z]|\Z)",
-        r"(?:Field\s*)?Instructions?[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z]|\Z)",
-        r"Notes?[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z]|\Z)",
-        r"Additional\s*(?:Notes?|Information)[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z]|\Z)",
-        r"(?:Comments?|Remarks?)[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z]|\Z)",
+        r"(?:Special\s*)?Instructions?[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z][A-Z\s]+:|\Z)",
+        r"Background[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z][A-Z\s]+:|\Z)",
+        r"Notes?[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z][A-Z\s]+:|\Z)",
+        r"Additional\s*(?:Notes?|Information)[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z][A-Z\s]+:|\Z)",
+        r"(?:Comments?|Remarks?)[:\s]*\n+([\s\S]+?)(?=\n{2,}[A-Z][A-Z\s]+:|\Z)",
     ])
+    if not instructions:
+        instructions = find_block([
+            r"(?:Special\s*)?Instructions?[:\s]*\n+([\s\S]+)",
+            r"Background[:\s]*\n+([\s\S]+)",
+        ])
     if not instructions:
         instructions = find_after([
             r"Special\s*Instructions?[:\s]+([^\n]{15,})",
             r"Notes?[:\s]+([^\n]{15,})",
             r"Instructions?[:\s]+([^\n]{25,})",
         ])
+
+    # ── Build auto description from vehicle parts ─────────────────────────
+    desc_parts = [p for p in [year, make, model] if p]
+    if colour:
+        desc_parts.append(colour)
+    auto_description = " ".join(desc_parts) if desc_parts else None
+
+    # ── Confidence per field ──────────────────────────────────────────────
+    def _conf(val):
+        return "extracted" if val else None
+
+    confidence = {
+        "lender_name":      _conf(lender),
+        "from_name":        _conf(from_name),
+        "client_reference": _conf(client_ref or contract),
+        "our_ref":          _conf(our_ref),
+        "account_number":   _conf(account),
+        "regulated_type":   _conf(reg_type),
+        "customer_name":    _conf(cust_name or cust_company),
+        "customer_company": _conf(cust_company),
+        "customer_phone":   _conf(phone),
+        "customer_address": _conf(addr),
+        "deliver_to":       _conf(deliver_to),
+        "rego":             _conf(rego),
+        "vin":              _conf(vin),
+        "engine_number":    _conf(engine_no),
+        "year":             _conf(year),
+        "make":             _conf(make),
+        "model":            _conf(model),
+        "colour":           _conf(colour),
+        "asset_address":    _conf(asset_address),
+        "instructions":     _conf(instructions),
+        "costs":            _conf(costs),
+        "arrears":          _conf(arrears),
+    }
+    filled_count = sum(1 for v in confidence.values() if v)
 
     return {
         "client_reference":  client_ref or contract,
@@ -991,15 +1117,19 @@ def _parse_instruction_text(text):
         "our_ref":           our_ref,
         "regulated_type":    reg_type,
         "lender_name":       lender,
+        "from_name":         from_name,
         "deliver_to":        deliver_to,
         "costs":             costs,
+        "security_type":     security_type,
         "customer": {
-            "full_name": cust_name,
-            "dob":       dob,
-            "email":     email,
-            "mobile":    phone,
+            "full_name":  cust_name,
+            "company":    cust_company,
+            "dob":        dob,
+            "email":      email,
+            "mobile":     phone,
         },
         "job_address_full": addr,
+        "asset_address":    asset_address,
         "security": {
             "year":          year,
             "make":          make,
@@ -1008,12 +1138,15 @@ def _parse_instruction_text(text):
             "vin":           vin,
             "engine_number": engine_no,
             "colour":        colour,
+            "description":   auto_description,
         },
         "financials": {
             "arrears":   arrears,
             "due_date":  due_date,
         },
         "instructions_raw": instructions,
+        "_confidence":      confidence,
+        "_filled_count":    filled_count,
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1949,6 +2082,11 @@ def job_new():
     prefill_client_job_number = ""
     autofill_client_id        = None
 
+    autofill_customer_id      = None
+    autofill_customer_display = None
+    autofill_confidence       = {}
+    autofill_filled_count     = 0
+
     if autofill:
         if not prefill_client_reference:
             prefill_client_reference = autofill.get("client_reference") or autofill.get("contract_number") or ""
@@ -1965,19 +2103,61 @@ def job_new():
         if not prefill_client_job_number:
             prefill_client_job_number = autofill.get("our_ref") or ""
 
-        lender_for_lookup = (autofill.get("lender_name") or "").strip()
+        autofill_confidence   = autofill.get("_confidence") or {}
+        autofill_filled_count = autofill.get("_filled_count") or 0
+
+        # ── Client lookup: try lender_name and from_name, multi-word matching ──
+        lender_for_lookup = (autofill.get("lender_name") or autofill.get("from_name") or "").strip()
         if lender_for_lookup and not new_client_id:
-            words = lender_for_lookup.lower().split()
+            words = [w for w in lender_for_lookup.lower().split() if len(w) > 2]
             if words:
-                first_word = words[0]
-                client_match = cur.execute(
-                    "SELECT id, name FROM clients WHERE LOWER(name) LIKE ? ORDER BY name LIMIT 1",
-                    (f"%{first_word}%",)
-                ).fetchone()
+                # Try progressively shorter word sets for matching
+                client_match = None
+                for word in words[:4]:
+                    candidate = cur.execute(
+                        "SELECT id, name FROM clients WHERE LOWER(name) LIKE ? ORDER BY name LIMIT 1",
+                        (f"%{word}%",)
+                    ).fetchone()
+                    if candidate:
+                        match_lower = candidate["name"].lower()
+                        if any(w in match_lower for w in words[:3]):
+                            client_match = candidate
+                            break
                 if client_match:
-                    match_lower = client_match["name"].lower()
-                    if any(w in match_lower for w in words[:3]):
-                        autofill_client_id = client_match["id"]
+                    autofill_client_id = client_match["id"]
+                    autofill_confidence["lender_name"] = "matched"
+
+        # ── Customer lookup: search by name or company ──────────────────────
+        if not new_customer_id:
+            cust_data = autofill.get("customer") or {}
+            cust_full    = (cust_data.get("full_name") or "").strip()
+            cust_company = (cust_data.get("company") or "").strip()
+            search_name  = cust_full or cust_company
+            autofill_customer_display = search_name or None
+
+            if search_name:
+                parts = search_name.lower().split()
+                # Try last name match first (most selective)
+                cust_match = None
+                if len(parts) >= 2:
+                    cust_match = cur.execute("""
+                        SELECT id, first_name, last_name, company FROM customers
+                        WHERE LOWER(last_name) = ? OR LOWER(company) LIKE ?
+                        ORDER BY last_name LIMIT 1
+                    """, (parts[-1], f"%{parts[-1]}%")).fetchone()
+                if not cust_match and parts:
+                    cust_match = cur.execute("""
+                        SELECT id, first_name, last_name, company FROM customers
+                        WHERE LOWER(last_name) LIKE ? OR LOWER(company) LIKE ? OR LOWER(first_name) LIKE ?
+                        ORDER BY last_name LIMIT 1
+                    """, (f"%{parts[0]}%", f"%{parts[0]}%", f"%{parts[0]}%")).fetchone()
+                if cust_match:
+                    autofill_customer_id = cust_match["id"]
+                    disp_parts = [cust_match["first_name"] or "", cust_match["last_name"] or ""]
+                    if cust_match["company"]:
+                        disp_parts.append(f"({cust_match['company']})")
+                    autofill_customer_display = " ".join(p for p in disp_parts if p)
+                    autofill_confidence["customer_name"] = "matched"
 
     if new_customer_id:
         cur.execute("SELECT address FROM customers WHERE id = ?", (new_customer_id,))
@@ -2016,6 +2196,10 @@ def job_new():
                            prefill_costs=prefill_costs,
                            prefill_client_job_number=prefill_client_job_number,
                            autofill_client_id=autofill_client_id,
+                           autofill_customer_id=autofill_customer_id,
+                           autofill_customer_display=autofill_customer_display,
+                           autofill_confidence=autofill_confidence,
+                           autofill_filled_count=autofill_filled_count,
                            known_lenders=known_lenders,
                            booking_types=booking_types,
                            auction_yards=auction_yards,
