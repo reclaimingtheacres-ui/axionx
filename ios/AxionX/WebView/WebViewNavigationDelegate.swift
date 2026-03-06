@@ -112,8 +112,9 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     // MARK: - Private
 
     private func topViewController() -> UIViewController? {
+        // UIWindowScene.keyWindow is the non-deprecated API from iOS 15+
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = scene.windows.first(where: \.isKeyWindow) else { return nil }
+              let window = scene.keyWindow else { return nil }
         var vc = window.rootViewController
         while let presented = vc?.presentedViewController { vc = presented }
         return vc
