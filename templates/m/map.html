@@ -1,0 +1,142 @@
+{% extends "mobile/base.html" %}
+{% block title %}Map — AxionX{% endblock %}
+{% block header_title %}Map{% endblock %}
+
+{% block extra_head %}
+<style>
+#map-container {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  bottom: calc(var(--nav-h) + var(--safe-bot));
+  padding-top: calc(var(--safe-top) + 52px);
+}
+#map { width: 100%; height: 100%; }
+.map-callout {
+  background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+  padding: 10px 12px; min-width: 180px; max-width: 240px;
+}
+.map-callout-ref { font-size: .75rem; font-weight: 700; color: #60a5fa; letter-spacing: .06em; text-transform: uppercase; }
+.map-callout-addr { font-size: .85rem; color: #e6edf3; margin-top: 4px; line-height: 1.35; }
+.map-callout-agent { font-size: .75rem; color: #8b949e; margin-top: 4px; }
+.map-callout-link { display: block; margin-top: 8px; font-size: .82rem; font-weight: 600; color: #60a5fa; }
+.map-legend {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  background: rgba(22,27,34,.9); border: 1px solid #30363d; border-radius: 10px;
+  padding: 8px 14px; display: flex; gap: 14px; white-space: nowrap; z-index: 10;
+  backdrop-filter: blur(10px);
+}
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: .72rem; color: #8b949e; }
+.no-coords-banner {
+  position: absolute; top: 12px; left: 12px; right: 12px;
+  background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.3);
+  border-radius: 10px; padding: 10px 14px;
+  font-size: .82rem; color: #fbbf24; z-index: 10;
+}
+</style>
+{% endblock %}
+
+{% block header_right %}
+<span id="job-count" style="font-size:.75rem;color:#8b949e;font-weight:500;"></span>
+{% endblock %}
+
+{% block content %}
+<div id="map-container">
+  <div id="map"></div>
+</div>
+{% endblock %}
+
+{% block nav %}{{ super() }}{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+const jobs = {{ jobs_json | safe }};
+const withCoords = jobs.filter(j => j.lat && j.lng);
+const noCoords   = jobs.filter(j => !j.lat || !j.lng);
+
+document.getElementById("job-count").textContent =
+  withCoords.length + " / " + jobs.length + " pinned";
+
+const STATUS_COLORS = {
+  "active":      "#60a5fa",
+  "in progress": "#34d399",
+  "pending":     "#fbbf24",
+  "instructed":  "#a78bfa",
+};
+function colorFor(status) {
+  return STATUS_COLORS[(status||"").toLowerCase()] || "#8b949e";
+}
+
+function initMap() {
+  const container = document.getElementById("map-container");
+  const mapEl     = document.getElementById("map");
+
+  if (!withCoords.length) {
+    const b = document.createElement("div");
+    b.className = "no-coords-banner";
+    b.textContent = "No jobs with GPS coordinates to display.";
+    container.style.position = "relative";
+    container.appendChild(b);
+    return;
+  }
+
+  const map = L.map(mapEl, { zoomControl: false, attributionControl: true });
+  L.control.zoom({ position: "topright" }).addTo(map);
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "&copy; OpenStreetMap, Carto",
+    subdomains: "abcd", maxZoom: 19
+  }).addTo(map);
+
+  const bounds = [];
+  withCoords.forEach(j => {
+    const color = colorFor(j.status);
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid rgba(255,255,255,.5);box-shadow:0 0 6px ${color}80;"></div>`,
+      iconSize: [14,14], iconAnchor: [7,7]
+    });
+    const addr = j.address || "";
+    const popup = L.popup({ className: "" }).setContent(`
+      <div class="map-callout">
+        <div class="map-callout-ref">${j.display_ref || "#"+j.id}</div>
+        <div class="map-callout-addr">${addr || "Address not set"}</div>
+        ${j.agent_name ? `<div class="map-callout-agent">${j.agent_name}</div>` : ""}
+        <a class="map-callout-link" href="/m/job/${j.id}">View Job &rarr;</a>
+      </div>
+    `);
+    L.marker([j.lat, j.lng], {icon}).bindPopup(popup).addTo(map);
+    bounds.push([j.lat, j.lng]);
+  });
+
+  if (bounds.length === 1) {
+    map.setView(bounds[0], 14);
+  } else if (bounds.length > 1) {
+    map.fitBounds(bounds, { padding: [40, 40] });
+  }
+
+  if (noCoords.length) {
+    const b = document.createElement("div");
+    b.className = "no-coords-banner";
+    b.textContent = noCoords.length + " job" + (noCoords.length > 1 ? "s" : "") + " without GPS coordinates not shown.";
+    container.appendChild(b);
+    setTimeout(() => b.style.display = "none", 5000);
+  }
+}
+
+if (window.L) {
+  initMap();
+} else {
+  const css = document.createElement("link");
+  css.rel = "stylesheet";
+  css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+  document.head.appendChild(css);
+  const s = document.createElement("script");
+  s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  s.onload = initMap;
+  document.head.appendChild(s);
+}
+})();
+</script>
+{% endblock %}

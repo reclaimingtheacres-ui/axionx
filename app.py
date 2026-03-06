@@ -5762,23 +5762,43 @@ def mobile_login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("user_id"):
-            return redirect(url_for("m_login"))
+            next_path = request.path
+            return redirect(url_for("m_login") + f"?next={next_path}")
         return f(*args, **kwargs)
     return decorated
 
 
-@app.get("/m/login")
+def agent_mobile_guard(f):
+    """Blocks agents from mutating routes (job edits, schedule edits, status changes).
+    Admins and 'both' roles pass through freely."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        role = session.get("role", "")
+        if role not in ("admin", "both"):
+            flash("Access restricted to administrators.", "warning")
+            return redirect(url_for("m_today"))
+        return f(*args, **kwargs)
+    return decorated
+
+
 @app.get("/m")
+def m_root():
+    return redirect(url_for("m_login"))
+
+
+@app.get("/m/login")
 def m_login():
     if session.get("user_id"):
         return redirect(url_for("m_today"))
-    return render_template("m/login.html", error=None, prefill_email="")
+    next_path = request.args.get("next", "")
+    return render_template("mobile/login.html", error=None, prefill_email="", next=next_path)
 
 
 @app.post("/m/login")
 def m_login_post():
     email    = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
+    next_path = request.args.get("next", "").strip()
     ip       = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
     ip_key   = f"ip:{ip}"
 
@@ -5786,9 +5806,9 @@ def m_login_post():
     allowed, locked_until = throttle_check(conn, ip_key)
     if not allowed:
         conn.close()
-        return render_template("m/login.html",
+        return render_template("mobile/login.html",
                                error=f"Too many failed attempts. Try again after {locked_until} UTC.",
-                               prefill_email=email)
+                               prefill_email=email, next=next_path)
 
     user = conn.execute("SELECT * FROM users WHERE LOWER(email)=? AND active=1", (email,)).fetchone()
 
@@ -5796,7 +5816,8 @@ def m_login_post():
         throttle_fail(conn, ip_key)
         conn.commit()
         conn.close()
-        return render_template("m/login.html", error="Invalid email or password.", prefill_email=email)
+        return render_template("mobile/login.html", error="Invalid email or password.",
+                               prefill_email=email, next=next_path)
 
     throttle_success(conn, ip_key)
     conn.commit()
@@ -5805,6 +5826,8 @@ def m_login_post():
     session["user_id"]   = user["id"]
     session["user_name"] = user["full_name"]
     session["role"]      = user["role"]
+    if next_path and next_path.startswith("/m/"):
+        return redirect(next_path)
     return redirect(url_for("m_today"))
 
 
@@ -6139,6 +6162,41 @@ def m_settings_post():
     conn.close()
     flash("Preferences saved.", "success")
     return redirect(url_for("m_settings"))
+
+
+@app.get("/m/map")
+@mobile_login_required
+def m_map():
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    if role in ("admin", "both"):
+        jobs = conn.execute("""
+            SELECT j.id, j.display_ref, j.status, j.job_address AS address,
+                   j.lat, j.lng, u.full_name AS agent_name,
+                   c.name AS client_name
+            FROM jobs j
+            LEFT JOIN users u ON u.id = j.assigned_user_id
+            LEFT JOIN clients c ON c.id = j.client_id
+            WHERE j.status NOT IN ('completed','cancelled')
+            ORDER BY j.job_due_date ASC
+            LIMIT 200
+        """).fetchall()
+    else:
+        jobs = conn.execute("""
+            SELECT j.id, j.display_ref, j.status, j.job_address AS address,
+                   j.lat, j.lng, u.full_name AS agent_name,
+                   c.name AS client_name
+            FROM jobs j
+            LEFT JOIN users u ON u.id = j.assigned_user_id
+            LEFT JOIN clients c ON c.id = j.client_id
+            WHERE j.assigned_user_id=? AND j.status NOT IN ('completed','cancelled')
+            ORDER BY j.job_due_date ASC
+            LIMIT 200
+        """, (uid,)).fetchall()
+    conn.close()
+    jobs_json = json.dumps([dict(r) for r in jobs])
+    return render_template("m/map.html", jobs_json=jobs_json)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

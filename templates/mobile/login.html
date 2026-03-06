@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d1117">
+<title>AxionX — Sign In</title>
+<style>
+:root { --bg:#0d1117; --card:#161b22; --accent:#60a5fa; --line:#30363d; --text:#e6edf3; --muted:#8b949e; --red:#f87171; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100dvh;
+  padding: env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
+  -webkit-tap-highlight-color: transparent;
+}
+body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+.brand { text-align: center; margin-bottom: 36px; }
+.brand-logo { font-size: 2rem; font-weight: 800; letter-spacing: .05em; color: var(--accent); }
+.brand-sub { font-size: .72rem; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; margin-top: 4px; }
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 18px; padding: 28px 24px;
+  width: 100%; max-width: 360px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+label { display: block; font-size: .72rem; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+input {
+  width: 100%; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 12px; color: var(--text); font-size: 1rem; padding: 13px 14px;
+  outline: none; transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none; min-height: 48px;
+}
+input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(96,165,250,.15); }
+.fg { margin-bottom: 16px; }
+.submit-btn {
+  width: 100%; background: var(--accent); color: #0d1117;
+  border: none; border-radius: 12px; font-size: 1rem; font-weight: 700;
+  padding: 14px; cursor: pointer; margin-top: 6px;
+  -webkit-appearance: none; min-height: 50px;
+  transition: opacity .15s, transform .1s;
+}
+.submit-btn:active { opacity: .8; transform: scale(.98); }
+.err {
+  background: rgba(248,113,113,.1); color: var(--red);
+  border: 1px solid rgba(248,113,113,.3); border-radius: 10px;
+  padding: 11px 14px; font-size: .88rem; margin-bottom: 16px; line-height: 1.4;
+}
+</style>
+</head>
+<body>
+<div class="brand">
+  <div class="brand-logo">AxionX</div>
+  <div class="brand-sub">Field Operations</div>
+</div>
+<div class="card">
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="err">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+  <form method="post" action="{{ url_for('m_login_post') }}{% if next %}?next={{ next | urlencode }}{% endif %}">
+    <div class="fg">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email"
+             autocomplete="username" inputmode="email"
+             required value="{{ prefill_email or '' }}">
+    </div>
+    <div class="fg">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password"
+             autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="submit-btn">Sign In</button>
+  </form>
+</div>
+</body>
+</html>
