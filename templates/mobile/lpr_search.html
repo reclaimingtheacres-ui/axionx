@@ -3,6 +3,14 @@
 
 {% block header_title %}Plate Lookup{% endblock %}
 
+{% block header_right %}
+<a href="{{ url_for('m_lpr_history') }}"
+   style="font-size:.72rem;font-weight:600;color:var(--accent);padding:5px 10px;
+          background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;white-space:nowrap;text-decoration:none;">
+  History
+</a>
+{% endblock %}
+
 {% block content %}
 <div class="m-card">
   <div class="m-card-header">Search Active Assets</div>

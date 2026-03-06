@@ -1,0 +1,90 @@
+{% extends "mobile/base.html" %}
+{% block title %}My LPR History — AxionX{% endblock %}
+
+{% block header_title %}
+<a href="{{ url_for('m_lpr') }}" style="color:var(--muted);margin-right:8px;" aria-label="Back">
+  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.5" style="vertical-align:middle;"><polyline points="15 18 9 12 15 6"/></svg>
+</a>
+My LPR History
+{% endblock %}
+
+{% block content %}
+
+{% if not rows %}
+<div style="text-align:center;padding:48px 24px;">
+  <svg viewBox="0 0 24 24" width="48" height="48" stroke="var(--muted)" fill="none" stroke-width="1.5" style="margin-bottom:16px;opacity:.4;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+  <p style="color:var(--muted);font-size:.9rem;margin:0;">No sightings recorded yet.</p>
+  <p style="color:var(--muted);font-size:.82rem;margin-top:8px;">Use the scanner to look up plates — sightings you save will appear here.</p>
+</div>
+{% else %}
+
+<div style="display:flex;flex-direction:column;gap:10px;">
+  {% for r in rows %}
+  <div class="m-card" style="margin:0;padding:0;overflow:hidden;">
+    <div style="display:flex;align-items:center;gap:0;border-bottom:1px solid var(--line);">
+
+      {# Colour strip #}
+      <div style="width:5px;align-self:stretch;flex-shrink:0;
+        background:{%
+          if r.result_type == 'allocated_match' %}var(--green){%
+          elif r.result_type == 'restricted_match' %}var(--amber){%
+          elif r.result_type == 'conflict' %}var(--red){%
+          else %}var(--muted){%
+          endif %};"></div>
+
+      <div style="flex:1;padding:12px 14px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-size:1.1rem;font-weight:800;letter-spacing:.08em;">{{ r.registration_normalised }}</div>
+            <div style="font-size:.8rem;color:var(--muted);margin-top:2px;">{{ r.created_at[:10] }} at {{ r.created_at[11:16] }}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+            {% if r.result_type == 'allocated_match' %}
+            <span style="font-size:.7rem;font-weight:700;color:var(--green);background:#f0fdf4;border:1px solid #bbf7d0;padding:2px 8px;border-radius:8px;white-space:nowrap;">Allocated</span>
+            {% elif r.result_type == 'restricted_match' %}
+            <span style="font-size:.7rem;font-weight:700;color:var(--amber);background:#fffbeb;border:1px solid #fde68a;padding:2px 8px;border-radius:8px;white-space:nowrap;">Restricted</span>
+            {% elif r.result_type == 'conflict' %}
+            <span style="font-size:.7rem;font-weight:700;color:var(--red);background:#fef2f2;border:1px solid #fecaca;padding:2px 8px;border-radius:8px;white-space:nowrap;">Conflict</span>
+            {% else %}
+            <span style="font-size:.7rem;font-weight:700;color:var(--muted);background:#f9fafb;border:1px solid var(--line);padding:2px 8px;border-radius:8px;white-space:nowrap;">No Match</span>
+            {% endif %}
+
+            {% if r.escalated_to_office %}
+            <span style="font-size:.7rem;font-weight:700;color:#ea580c;background:#fff7ed;border:1px solid #fed7aa;padding:2px 8px;border-radius:8px;white-space:nowrap;">⚑ Escalated</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center;">
+          {% if r.search_method == 'live_scan' %}
+          <span style="font-size:.75rem;color:#7c3aed;">▣ Live Scan</span>
+          {% elif r.search_method == 'photo_ocr' %}
+          <span style="font-size:.75rem;color:#0284c7;">📷 Photo OCR</span>
+          {% else %}
+          <span style="font-size:.75rem;color:var(--muted);">✎ Manual</span>
+          {% endif %}
+
+          {% if r.matched_job_number %}
+          <span style="font-size:.75rem;color:var(--muted);">Job: {{ r.matched_job_number }}</span>
+          {% endif %}
+
+          {% if r.latitude is not none and r.longitude is not none %}
+          <span style="font-size:.75rem;color:var(--green);">
+            📍 {{ "%.4f"|format(r.latitude) }}, {{ "%.4f"|format(r.longitude) }}
+          </span>
+          {% endif %}
+        </div>
+
+        {% if r.notes %}
+        <div style="margin-top:10px;font-size:.82rem;color:var(--text);background:#f9fafb;border-radius:8px;padding:8px 10px;border:1px solid var(--line);">
+          {{ r.notes }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endif %}
+{% endblock %}

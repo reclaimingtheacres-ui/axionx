@@ -2,15 +2,17 @@ import SwiftUI
 import WebKit
 
 /// The main container that hosts the WKWebView.
-/// Wires up the navigation delegate callbacks so connectivity state
-/// is reflected back into SwiftUI without any polling.
-/// Surfaces a native Live Scan button when the agent is on an LPR page,
-/// and uses the JS bridge to pass confirmed plates seamlessly.
+/// For live scans, intercepts the confirmed plate, calls the lookup API
+/// natively, and presents LPRResultSheet so the agent never leaves the app
+/// to see a result.  All other LPR entry paths (manual, photo OCR) continue
+/// through the web layer unchanged.
 struct WebViewContainer: View {
     @StateObject private var store = WebViewStore()
-    @State private var isOffline = false
-    @State private var showLPRScanner = false
-    @State private var currentURL: URL? = nil
+    @State private var isOffline         = false
+    @State private var showLPRScanner    = false
+    @State private var isLookingUp       = false
+    @State private var lprNativeResult: LPRResult? = nil
+    @State private var currentURL: URL?  = nil
 
     private var isOnLPRPage: Bool {
         guard let url = currentURL else { return false }
@@ -31,8 +33,27 @@ struct WebViewContainer: View {
                 .transition(.opacity)
             }
 
-            // Native Live Scan button — only visible on /m/lpr* pages
-            if isOnLPRPage && !isOffline {
+            // Loading spinner while native lookup is in flight
+            if isLookingUp {
+                ZStack {
+                    Color.black.opacity(0.45).ignoresSafeArea()
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(1.4)
+                        Text("Looking up plate…")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(28)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(18)
+                }
+                .transition(.opacity)
+            }
+
+            // Floating Live Scan button — visible on /m/lpr* pages
+            if isOnLPRPage && !isOffline && !isLookingUp {
                 Button(action: { showLPRScanner = true }) {
                     HStack(spacing: 6) {
                         Image(systemName: "camera.viewfinder")
@@ -61,10 +82,28 @@ struct WebViewContainer: View {
             LiveLPRScannerView(
                 onPlateConfirmed: { plate in
                     showLPRScanner = false
-                    submitPlateToWebLayer(plate: plate)
+                    performNativeLookup(plate: plate)
                 },
                 onCancel: {
                     showLPRScanner = false
+                }
+            )
+        }
+        .sheet(item: Binding(
+            get: { lprNativeResult.map { IdentifiableResult($0) } },
+            set: { if $0 == nil { lprNativeResult = nil } }
+        )) { wrapper in
+            LPRResultSheet(
+                result:   wrapper.result,
+                webView:  store.webView,
+                onOpenJob: { urlStr in
+                    lprNativeResult = nil
+                    if let url = URL(string: urlStr) {
+                        store.webView.load(URLRequest(url: url))
+                    }
+                },
+                onDismiss: {
+                    lprNativeResult = nil
                 }
             )
         }
@@ -90,48 +129,50 @@ struct WebViewContainer: View {
         )
     }
 
-    /// Send the confirmed plate to the web layer.
-    ///
-    /// Preferred path: if the webview is already on /m/lpr, call the JS bridge
-    /// so the form is populated and submitted without a visible reload — this
-    /// makes the handoff feel native.
-    ///
-    /// Fallback: if the webview is on a different page, navigate to /m/lpr
-    /// with URL parameters so the page auto-submits on load.
-    private func submitPlateToWebLayer(plate: String) {
-        let safePlate = plate.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? plate
+    /// Call the lookup API natively using the webview's session cookies.
+    /// On success, present the native result sheet.
+    /// On failure (network/auth), fall back to the web form approach.
+    private func performNativeLookup(plate: String) {
+        guard !isLookingUp else { return }
+        withAnimation { isLookingUp = true }
 
-        // Try the JS bridge first (no reload, seamless UX)
-        if isOnLPRPage {
-            let js = "window.handleNativePlateScan('\(safePlate)', 'live_scan');"
-            store.webView.evaluateJavaScript(js) { _, error in
-                if error != nil {
-                    // Bridge call failed — fall back to URL navigation
-                    DispatchQueue.main.async { self.navigateToLPR(plate: safePlate) }
-                }
+        LPRAPIClient.lookup(plate: plate, method: "live_scan", webView: store.webView) { result in
+            withAnimation { isLookingUp = false }
+            if let result = result {
+                lprNativeResult = result
+            } else {
+                // API unreachable or unauthenticated — fall back to URL-param submission
+                submitPlateViaURL(plate: plate)
             }
-        } else {
-            navigateToLPR(plate: safePlate)
         }
     }
 
     /// URL-param fallback: loads /m/lpr?plate=…&method=live_scan.
-    /// The page's JavaScript auto-submits when it sees the `plate` param.
-    private func navigateToLPR(plate: String) {
-        var components        = URLComponents()
-        components.scheme     = AppConfig.entryURL.scheme
-        components.host       = AppConfig.entryURL.host
-        components.path       = "/m/lpr"
-        components.queryItems = [
-            URLQueryItem(name: "plate",  value: plate),
+    /// The page's JS auto-submits when it sees the plate param.
+    private func submitPlateViaURL(plate: String) {
+        let safe = plate.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? plate
+        var comps        = URLComponents()
+        comps.scheme     = AppConfig.entryURL.scheme
+        comps.host       = AppConfig.entryURL.host
+        comps.path       = "/m/lpr"
+        comps.queryItems = [
+            URLQueryItem(name: "plate",  value: safe),
             URLQueryItem(name: "method", value: "live_scan"),
         ]
-        guard let url = components.url else { return }
+        guard let url = comps.url else { return }
         store.webView.load(URLRequest(url: url))
     }
 }
 
-// MARK: - Simple KVO observer shim
+// MARK: - Identifiable wrapper for the sheet binding
+
+private struct IdentifiableResult: Identifiable {
+    let id = UUID()
+    let result: LPRResult
+    init(_ result: LPRResult) { self.result = result }
+}
+
+// MARK: - KVO observer shim
 
 private final class URLObserver: NSObject {
     private let handler: (URL?) -> Void

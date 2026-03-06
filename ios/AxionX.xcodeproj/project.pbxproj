@@ -22,6 +22,8 @@
                 F10000000000000000001A /* LaunchScreen.storyboard in Resources */   = {isa = PBXBuildFile; fileRef = F100000000000000000019; };
                 F10000000000000000001E /* PlateCandidateExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000001D; };
                 F100000000000000000020 /* LiveLPRScannerView.swift in Sources */    = {isa = PBXBuildFile; fileRef = F10000000000000000001F; };
+                F100000000000000000022 /* LPRResultSheet.swift in Sources */       = {isa = PBXBuildFile; fileRef = F100000000000000000021; };
+                F100000000000000000024 /* LPRLocationService.swift in Sources */   = {isa = PBXBuildFile; fileRef = F100000000000000000023; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +44,8 @@
                 F10000000000000000001C /* AxionX.app */                     = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AxionX.app; sourceTree = BUILT_PRODUCTS_DIR; };
                 F10000000000000000001D /* PlateCandidateExtractor.swift */  = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateCandidateExtractor.swift; sourceTree = "<group>"; };
                 F10000000000000000001F /* LiveLPRScannerView.swift */       = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLPRScannerView.swift; sourceTree = "<group>"; };
+                F100000000000000000021 /* LPRResultSheet.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LPRResultSheet.swift; sourceTree = "<group>"; };
+                F100000000000000000023 /* LPRLocationService.swift */       = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LPRLocationService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +117,7 @@
                         children = (
                                 F100000000000000000013 /* ConnectivityMonitor.swift */,
                                 F100000000000000000015 /* LocationPermissionHelper.swift */,
+                                F100000000000000000023 /* LPRLocationService.swift */,
                         );
                         path = Services;
                         sourceTree = "<group>";
@@ -130,6 +135,7 @@
                         children = (
                                 F10000000000000000001D /* PlateCandidateExtractor.swift */,
                                 F10000000000000000001F /* LiveLPRScannerView.swift */,
+                                F100000000000000000021 /* LPRResultSheet.swift */,
                         );
                         path = LPR;
                         sourceTree = "<group>";
@@ -217,6 +223,8 @@
                                 F100000000000000000016 /* LocationPermissionHelper.swift in Sources */,
                                 F10000000000000000001E /* PlateCandidateExtractor.swift in Sources */,
                                 F100000000000000000020 /* LiveLPRScannerView.swift in Sources */,
+                                F100000000000000000022 /* LPRResultSheet.swift in Sources */,
+                                F100000000000000000024 /* LPRLocationService.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };

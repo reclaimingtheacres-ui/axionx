@@ -6890,6 +6890,141 @@ def m_api_lpr_lookup():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# LPR Sightings — save + admin view + agent history
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _lpr_sightings_ensure_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_sightings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            registration_raw TEXT NOT NULL,
+            registration_normalised TEXT NOT NULL,
+            search_method TEXT DEFAULT 'live_scan',
+            result_type TEXT NOT NULL,
+            matched_job_id INTEGER,
+            matched_job_number TEXT,
+            latitude REAL,
+            longitude REAL,
+            photo_path TEXT,
+            notes TEXT,
+            escalated_to_office INTEGER DEFAULT 0,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    """)
+
+
+@app.post("/m/api/lpr/sighting")
+@mobile_login_required
+def m_api_lpr_sighting_save():
+    uid      = session.get("user_id")
+    username = session.get("user_name", "")
+
+    data = request.get_json(silent=True) or {}
+
+    reg_raw   = (data.get("registration_raw") or "").strip()
+    reg_norm  = normalise_registration(reg_raw)
+    if not reg_norm:
+        return jsonify({"ok": False, "error": "Invalid registration"}), 400
+
+    result_type   = (data.get("result_type") or "").strip()
+    search_method = (data.get("search_method") or "live_scan").strip()
+
+    # Only accept safe (non-customer) fields
+    matched_job_id     = data.get("matched_job_id")    or None
+    matched_job_number = data.get("matched_job_number") or None
+
+    lat  = data.get("latitude")
+    lng  = data.get("longitude")
+    notes      = (data.get("notes") or "").strip() or None
+    escalated  = 1 if data.get("escalated_to_office") else 0
+
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    cur = conn.execute("""
+        INSERT INTO lpr_sightings
+            (created_at, user_id, registration_raw, registration_normalised,
+             search_method, result_type, matched_job_id, matched_job_number,
+             latitude, longitude, notes, escalated_to_office)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (now_ts(), uid, reg_raw, reg_norm, search_method, result_type,
+          matched_job_id, matched_job_number,
+          float(lat) if lat is not None else None,
+          float(lng) if lng is not None else None,
+          notes, escalated))
+    sighting_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    _log_audit(uid, "save", "lpr_sighting", sighting_id)
+
+    return jsonify({"ok": True, "sighting_id": sighting_id}), 200
+
+
+@app.get("/m/lpr/history")
+@mobile_login_required
+def m_lpr_history():
+    uid  = session.get("user_id")
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    rows = conn.execute("""
+        SELECT s.*, u.full_name AS agent_name
+        FROM lpr_sightings s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.user_id = ?
+        ORDER BY s.created_at DESC
+        LIMIT 100
+    """, (uid,)).fetchall()
+    conn.close()
+    return render_template("mobile/lpr_history.html", rows=rows)
+
+
+@app.get("/admin/lpr-sightings")
+@admin_required
+def admin_lpr_sightings():
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+
+    f_from      = request.args.get("from_date", "")
+    f_to        = request.args.get("to_date", "")
+    f_user      = request.args.get("user_id", "")
+    f_escalated = request.args.get("escalated", "")
+    f_result    = request.args.get("result_type", "")
+
+    where, params = [], []
+    if f_from:
+        where.append("s.created_at >= ?"); params.append(f_from)
+    if f_to:
+        where.append("s.created_at <= ?"); params.append(f_to + "T23:59:59")
+    if f_user:
+        where.append("s.user_id = ?"); params.append(int(f_user))
+    if f_escalated == "1":
+        where.append("s.escalated_to_office = 1")
+    if f_result:
+        where.append("s.result_type = ?"); params.append(f_result)
+
+    sql = """
+        SELECT s.*, u.full_name AS agent_name
+        FROM lpr_sightings s
+        LEFT JOIN users u ON u.id = s.user_id
+        {}
+        ORDER BY s.created_at DESC
+        LIMIT 500
+    """.format("WHERE " + " AND ".join(where) if where else "")
+
+    rows  = conn.execute(sql, params).fetchall()
+    users = conn.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
+    conn.close()
+
+    return render_template("lpr_sightings.html",
+                           rows=rows, users=users,
+                           f_from=f_from, f_to=f_to,
+                           f_user=f_user, f_escalated=f_escalated,
+                           f_result=f_result)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)

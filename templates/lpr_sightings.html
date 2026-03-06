@@ -1,0 +1,164 @@
+{% extends "layout.html" %}
+{% block title %}LPR Sightings{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h2 class="mb-0">LPR Sightings</h2>
+      <p class="text-muted small mb-0">Plate sightings saved by field agents</p>
+    </div>
+    <a href="{{ url_for('admin_lpr_audit') }}" class="btn btn-sm btn-outline-secondary">Audit Log →</a>
+  </div>
+
+  {# ── Filter bar ── #}
+  <form method="GET" action="{{ url_for('admin_lpr_sightings') }}" class="card mb-4">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">From</label>
+          <input type="date" name="from_date" value="{{ f_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">To</label>
+          <input type="date" name="to_date" value="{{ f_to }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Agent</label>
+          <select name="user_id" class="form-select form-select-sm">
+            <option value="">All agents</option>
+            {% for u in users %}
+            <option value="{{ u.id }}" {% if f_user|string == u.id|string %}selected{% endif %}>{{ u.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Result</label>
+          <select name="result_type" class="form-select form-select-sm">
+            <option value="">All results</option>
+            <option value="restricted_match" {% if f_result == 'restricted_match' %}selected{% endif %}>Restricted</option>
+            <option value="conflict"         {% if f_result == 'conflict'         %}selected{% endif %}>Conflict</option>
+            <option value="no_match"         {% if f_result == 'no_match'         %}selected{% endif %}>No Match</option>
+            <option value="allocated_match"  {% if f_result == 'allocated_match'  %}selected{% endif %}>Allocated</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-semibold text-muted">Escalated</label>
+          <select name="escalated" class="form-select form-select-sm">
+            <option value="">All</option>
+            <option value="1" {% if f_escalated == '1' %}selected{% endif %}>Escalated only</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <button type="submit" class="btn btn-sm btn-primary w-100">Apply</button>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  {# ── Results ── #}
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+      <span class="fw-semibold">Sightings</span>
+      <div class="d-flex gap-2 align-items-center">
+        {% set escalated_count = rows | selectattr('escalated_to_office', 'equalto', 1) | list | length %}
+        {% if escalated_count %}
+        <span class="badge bg-warning text-dark">{{ escalated_count }} escalated</span>
+        {% endif %}
+        <span class="badge bg-secondary">{{ rows | length }} rows</span>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Date / Time</th>
+            <th>Agent</th>
+            <th>Registration</th>
+            <th>Result</th>
+            <th>Method</th>
+            <th>Job</th>
+            <th>GPS</th>
+            <th>Notes</th>
+            <th>Escalated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not rows %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-4">No sightings found</td>
+          </tr>
+          {% endif %}
+          {% for r in rows %}
+          <tr {% if r.escalated_to_office %}style="background:rgba(251,146,60,.07);"{% endif %}>
+            <td class="ps-3 text-nowrap small">
+              {{ r.created_at[:10] }}
+              <span class="text-muted"> {{ r.created_at[11:16] }}</span>
+            </td>
+            <td class="small">{{ r.agent_name or '—' }}</td>
+            <td>
+              <span class="fw-bold font-monospace">{{ r.registration_normalised }}</span>
+              {% if r.registration_raw != r.registration_normalised %}
+              <span class="text-muted small d-block">raw: {{ r.registration_raw }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.result_type == 'allocated_match' %}
+                <span class="badge bg-success">Allocated</span>
+              {% elif r.result_type == 'restricted_match' %}
+                <span class="badge bg-warning text-dark">Restricted</span>
+              {% elif r.result_type == 'conflict' %}
+                <span class="badge bg-danger">Conflict</span>
+              {% elif r.result_type == 'no_match' %}
+                <span class="badge bg-secondary">No Match</span>
+              {% else %}
+                <span class="badge bg-light text-muted border">{{ r.result_type }}</span>
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if r.search_method == 'live_scan' %}
+                <span style="color:#7c3aed;">▣ Live</span>
+              {% elif r.search_method == 'photo_ocr' %}
+                <span style="color:#0284c7;">📷 Photo</span>
+              {% else %}
+                <span class="text-muted">✎ Manual</span>
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if r.matched_job_number %}
+              <a href="{{ url_for('job_detail', job_id=r.matched_job_id) }}">{{ r.matched_job_number }}</a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="small text-nowrap">
+              {% if r.latitude is not none and r.longitude is not none %}
+              <a href="https://maps.apple.com/?q={{ r.latitude }},{{ r.longitude }}"
+                 target="_blank" rel="noopener"
+                 title="Open in Maps">
+                <span class="text-success">📍</span>
+                {{ "%.4f"|format(r.latitude) }},
+                {{ "%.4f"|format(r.longitude) }}
+              </a>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="small" style="max-width:180px;">
+              {% if r.notes %}
+              <span style="white-space:normal;word-break:break-word;">{{ r.notes }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="text-center">
+              {% if r.escalated_to_office %}
+              <span class="badge bg-warning text-dark">⚑ Yes</span>
+              {% else %}
+              <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
