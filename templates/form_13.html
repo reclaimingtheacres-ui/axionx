@@ -1,120 +1,178 @@
 {% extends "layout.html" %}
-{% block title %}Form 13 — {{ rec.registration or rec.customer_name or ('Job #' ~ job_id) }}{% endblock %}
+{% block title %}Form 13 — {{ rec.registration or ('Repo Lock #' ~ rec.id) }}{% endblock %}
 
 {% block content %}
 <div style="max-width:860px;margin:0 auto;padding:20px 16px 40px;">
 
   <div style="margin-bottom:20px;">
     <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
-    <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Form 13 — Notice to Occupier of Premises</h2>
-    <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">National Consumer Credit Protection Act 2009, Schedule 1</div>
+    <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Form 13 — Consent to Enter Premises</h2>
+    <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">Confirm details, obtain signatures, then generate PDF</div>
   </div>
 
-  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.82rem;color:#78350f;">
-    <strong>Important:</strong> A Form 13 is required when entering private property to repossess goods under a <strong>consumer credit contract</strong>. The occupier must sign this form, or a copy must be left at the premises.
+  <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:.82rem;color:#78350f;">
+    <strong>NCCP Act — Schedule 1, subsection 99(2).</strong>
+    Required when entering premises to take possession of mortgaged goods.
+    The occupier has the right to refuse consent.
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}{% for cat, msg in messages %}
-    <div class="alert alert-{{ 'danger' if cat=='error' else cat }} py-2 px-3 mb-3" style="font-size:.84rem;">{{ msg }}</div>
+    <div style="padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:.84rem;background:{% if cat=='error' %}#fef2f2;color:#b91c1c;border:1px solid #fecaca{% else %}#f0fdf4;color:#166534;border:1px solid #bbf7d0{% endif %}">{{ msg }}</div>
   {% endfor %}{% endif %}
   {% endwith %}
-
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
-    <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">FORM 13 — DATA PREVIEW</div>
-    {% macro field_row(label, value) %}<div style="display:flex;border-bottom:1px solid #f3f4f6;padding:6px 16px;font-size:.82rem;"><span style="width:200px;flex-shrink:0;color:#6b7280;font-weight:600;">{{ label }}</span><span style="color:#111;">{{ value or '—' }}</span></div>{% endmacro %}
-    {% macro section(title) %}<div style="background:#f3f4f6;padding:6px 16px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">{{ title }}</div>{% endmacro %}
-
-    {{ section('Creditor Details') }}
-    {{ field_row('Finance Company', rec.finance_company or rec.client_name) }}
-    {{ field_row('Account Number', rec.account_number) }}
-    {{ field_row('Client Reference', rec.client_reference) }}
-    {{ field_row('SWPI Reference', rec.swpi_ref) }}
-    {{ section('Mortgagor / Debtor') }}
-    {{ field_row('Full Name', rec.customer_name) }}
-    {{ field_row('Premises Address', rec.repo_address) }}
-    {{ section('Goods') }}
-    {{ field_row('Year / Make / Model', [item_year, item_make, item_model] | select | join(' ')) }}
-    {{ field_row('Registration', rec.registration) }}
-    {{ field_row('VIN / Chassis', rec.vin) }}
-    {{ section('Agent') }}
-    {{ field_row('Mercantile Agent', agent_name) }}
-    {{ field_row('Date', rec.repo_date) }}
-  </div>
 
   <form id="form13Form" method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/form-13">
     <input type="hidden" name="occupant_sig" id="occupantSigData">
     <input type="hidden" name="agent_sig"    id="agentSigData">
+    <input type="hidden" name="occupant_refused" id="occupantRefused" value="0">
 
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
-      <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">SIGNATURES</div>
+    {% macro fi(name, label, value) %}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <label style="font-size:.75rem;font-weight:600;color:#374151;">{{ label }}</label>
+      <input type="text" name="{{ name }}" value="{{ value or '' }}"
+             style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:.84rem;color:#111;background:#fff;width:100%;box-sizing:border-box;">
+    </div>
+    {% endmacro %}
 
-      <div style="padding:16px;border-bottom:1px solid #f3f4f6;">
-        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:4px;">Occupier / Mortgagor Signature <span style="color:#dc2626;">*</span></div>
-        <div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">If occupier refuses to sign, note this and leave a copy at premises</div>
-        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
-          <canvas id="occupantCanvas" width="480" height="120" style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
-          <button type="button" onclick="clearCanvas('occupantCanvas','occupantSigData','occupantSigned')" style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">Clear</button>
-        </div>
-        <div id="occupantSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Occupier signature is required. If they refuse, use the "No Signature" option below.</div>
-        <input type="hidden" id="occupantSigned" value="0">
-        <div style="margin-top:8px;">
-          <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:#374151;cursor:pointer;">
-            <input type="checkbox" id="occupantRefused" name="occupant_refused" value="1" onchange="handleRefusal(this)">
-            Occupier refused to sign — copy left at premises
-          </label>
-        </div>
-      </div>
+    {% macro section(title) %}
+    <div style="background:#2563eb;color:#fff;padding:8px 14px;font-weight:700;font-size:.82rem;border-radius:6px 6px 0 0;margin-top:16px;">{{ title }}</div>
+    <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:14px;background:#fff;">
+    {% endmacro %}
 
-      <div style="padding:16px;">
-        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:6px;">Agent Signature: {{ agent_name }} <span style="color:#dc2626;">*</span></div>
-        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
-          <canvas id="agentCanvas" width="480" height="120" style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
-          <button type="button" onclick="clearCanvas('agentCanvas','agentSigData','agentSigned')" style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">Clear</button>
+    {{ section('CREDIT PROVIDER') }}
+    {{ fi('finance_company', 'Credit Provider (Finance Company)', rec.finance_company) }}
+    </div>
+
+    {{ section('OCCUPIER / MORTGAGOR') }}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      {{ fi('customer_name',  'Occupier Name',   rec.customer_name) }}
+      {{ fi('account_number', 'Account Number',  rec.account_number) }}
+    </div>
+    <div style="margin-top:12px;">
+      {{ fi('repo_address', 'Occupier Address / Premises', rec.repo_address) }}
+    </div>
+    </div>
+
+    {{ section('MORTGAGED GOODS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
+      {{ fi('year',  'Year',         item_year  or rec.get('year','')) }}
+      {{ fi('make',  'Make',         item_make  or rec.get('make','')) }}
+      {{ fi('model', 'Model',        item_model or rec.get('model','')) }}
+      {{ fi('vin',   'VIN / Chassis', rec.vin) }}
+    </div>
+    </div>
+
+    {# ── Signatures ── #}
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:18px;">
+      <div style="background:#374151;color:#fff;padding:8px 14px;font-weight:700;font-size:.82rem;">SIGNATURES</div>
+      <div style="padding:14px;">
+
+        <div style="margin-bottom:18px;">
+          <div style="font-size:.84rem;font-weight:700;color:#111;margin-bottom:6px;">
+            Occupier Signature (giving consent) <span style="color:#dc2626;">*</span>
+          </div>
+          <div style="position:relative;display:inline-block;width:100%;max-width:500px;">
+            <canvas id="occupantCanvas" width="500" height="120"
+                    style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+            <button type="button" onclick="clearCanvas('occupantCanvas','occupantSigData','occupantSigned')"
+                    style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;">Clear</button>
+          </div>
+          <div id="occupantSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Occupier signature required, or tick Refused below.</div>
+          <input type="hidden" id="occupantSigned" value="0">
+          <div style="margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:.84rem;color:#374151;cursor:pointer;">
+              <input type="checkbox" id="refusedCheck" onchange="toggleRefused(this)" style="width:16px;height:16px;">
+              Occupier refused to sign
+            </label>
+          </div>
         </div>
-        <div id="agentSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Agent signature is required.</div>
-        <input type="hidden" id="agentSigned" value="0">
+
+        <div>
+          <div style="font-size:.84rem;font-weight:700;color:#111;margin-bottom:6px;">
+            Agent / Mercantile Agent: {{ agent_name }} <span style="color:#dc2626;">*</span>
+          </div>
+          <div style="position:relative;display:inline-block;width:100%;max-width:500px;">
+            <canvas id="agentCanvas" width="500" height="120"
+                    style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+            <button type="button" onclick="clearCanvas('agentCanvas','agentSigData','agentSigned')"
+                    style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;">Clear</button>
+          </div>
+          <div id="agentSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Agent signature is required.</div>
+          <input type="hidden" id="agentSigned" value="0">
+        </div>
+
       </div>
     </div>
 
-    <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;">
+    <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px;">
       <a href="/jobs/{{ job_id }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
-      <button type="submit" id="genBtn" style="padding:11px 24px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;min-width:200px;">
-        <span id="genBtnTxt">Generate &amp; Download Form 13 PDF</span>
+      <button type="submit" id="genBtn"
+              style="padding:11px 26px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;">
+        <span id="genBtnTxt">Save &amp; Generate PDF</span>
       </button>
     </div>
+
   </form>
 </div>
 {% endblock %}
 
-{% block extra_scripts %}
+{% block scripts %}
 <script>
 (function(){
-  function _pos(canvas,e){var r=canvas.getBoundingClientRect();var sx=canvas.width/r.width;var sy=canvas.height/r.height;var src=e.touches?e.touches[0]:e;return{x:(src.clientX-r.left)*sx,y:(src.clientY-r.top)*sy};}
-  var _drawing={};
-  function _init(cid,did,sid){var canvas=document.getElementById(cid);var ctx=canvas.getContext('2d');ctx.strokeStyle='#111827';ctx.lineWidth=2;ctx.lineCap='round';ctx.lineJoin='round';_drawing[cid]=false;
-    function start(e){e.preventDefault();_drawing[cid]=true;var p=_pos(canvas,e);ctx.beginPath();ctx.moveTo(p.x,p.y);}
-    function move(e){if(!_drawing[cid])return;e.preventDefault();var p=_pos(canvas,e);ctx.lineTo(p.x,p.y);ctx.stroke();document.getElementById(sid).value='1';document.getElementById(did).value=canvas.toDataURL('image/png');}
-    function end(){_drawing[cid]=false;}
-    canvas.addEventListener('mousedown',start);canvas.addEventListener('mousemove',move);canvas.addEventListener('mouseup',end);canvas.addEventListener('mouseleave',end);
-    canvas.addEventListener('touchstart',start,{passive:false});canvas.addEventListener('touchmove',move,{passive:false});canvas.addEventListener('touchend',end);}
-  window.clearCanvas=function(cid,did,sid){var canvas=document.getElementById(cid);canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);document.getElementById(sid).value='0';document.getElementById(did).value='';};
-  window.handleRefusal=function(cb){
-    var prompt=document.getElementById('occupantSigPrompt');
-    var canvas=document.getElementById('occupantCanvas');
-    if(cb.checked){canvas.style.borderColor='#d1d5db';prompt.style.display='none';}
+  var _drawing = {};
+  function _pos(canvas, e) {
+    var r = canvas.getBoundingClientRect();
+    var sx = canvas.width/r.width, sy = canvas.height/r.height;
+    var src = e.touches ? e.touches[0] : e;
+    return { x:(src.clientX-r.left)*sx, y:(src.clientY-r.top)*sy };
+  }
+  function _initCanvas(id, dataId, signedId) {
+    var canvas = document.getElementById(id);
+    var ctx = canvas.getContext('2d');
+    ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round';
+    _drawing[id] = false;
+    canvas.addEventListener('mousedown',  function(e){ e.preventDefault(); _drawing[id]=true; var p=_pos(canvas,e); ctx.beginPath(); ctx.moveTo(p.x,p.y); });
+    canvas.addEventListener('mousemove',  function(e){ if(!_drawing[id]) return; e.preventDefault(); var p=_pos(canvas,e); ctx.lineTo(p.x,p.y); ctx.stroke(); document.getElementById(signedId).value='1'; document.getElementById(dataId).value=canvas.toDataURL('image/png'); });
+    canvas.addEventListener('mouseup',    function(){ _drawing[id]=false; });
+    canvas.addEventListener('mouseleave', function(){ _drawing[id]=false; });
+    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); _drawing[id]=true; var p=_pos(canvas,e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }, {passive:false});
+    canvas.addEventListener('touchmove',  function(e){ if(!_drawing[id]) return; e.preventDefault(); var p=_pos(canvas,e); ctx.lineTo(p.x,p.y); ctx.stroke(); document.getElementById(signedId).value='1'; document.getElementById(dataId).value=canvas.toDataURL('image/png'); }, {passive:false});
+    canvas.addEventListener('touchend',   function(){ _drawing[id]=false; });
+  }
+  window.clearCanvas = function(id, dataId, signedId) {
+    document.getElementById(id).getContext('2d').clearRect(0,0,9999,9999);
+    document.getElementById(signedId).value='0';
+    document.getElementById(dataId).value='';
   };
-  _init('occupantCanvas','occupantSigData','occupantSigned');
-  _init('agentCanvas','agentSigData','agentSigned');
-  document.getElementById('form13Form').addEventListener('submit',function(e){
-    var refused=document.getElementById('occupantRefused').checked;
-    var occupantSigned=document.getElementById('occupantSigned').value==='1';
-    var agentSigned=document.getElementById('agentSigned').value==='1';
-    var ok=true;
-    if(!refused && !occupantSigned){document.getElementById('occupantSigPrompt').style.display='block';document.getElementById('occupantCanvas').style.borderColor='#dc2626';ok=false;}
-    if(!agentSigned){document.getElementById('agentSigPrompt').style.display='block';document.getElementById('agentCanvas').style.borderColor='#dc2626';ok=false;}
-    if(!ok){e.preventDefault();document.getElementById('occupantCanvas').scrollIntoView({behavior:'smooth',block:'center'});return;}
-    var btn=document.getElementById('genBtn');btn.disabled=true;document.getElementById('genBtnTxt').textContent='Generating PDF\u2026';});
+  window.toggleRefused = function(cb) {
+    document.getElementById('occupantRefused').value = cb.checked ? '1' : '0';
+    var canvas = document.getElementById('occupantCanvas');
+    canvas.style.opacity = cb.checked ? '0.4' : '1';
+    canvas.style.pointerEvents = cb.checked ? 'none' : '';
+  };
+  _initCanvas('occupantCanvas','occupantSigData','occupantSigned');
+  _initCanvas('agentCanvas','agentSigData','agentSigned');
+
+  document.getElementById('form13Form').addEventListener('submit', function(e) {
+    var refused = document.getElementById('occupantRefused').value === '1';
+    var oSigned = document.getElementById('occupantSigned').value === '1';
+    var aSigned = document.getElementById('agentSigned').value === '1';
+    var err = false;
+    if (!aSigned) {
+      document.getElementById('agentSigPrompt').style.display='block';
+      document.getElementById('agentCanvas').style.borderColor='#dc2626';
+      err = true;
+    } else { document.getElementById('agentSigPrompt').style.display='none'; }
+    if (!oSigned && !refused) {
+      document.getElementById('occupantSigPrompt').style.display='block';
+      document.getElementById('occupantCanvas').style.borderColor='#dc2626';
+      err = true;
+    } else { document.getElementById('occupantSigPrompt').style.display='none'; }
+    if (err) { e.preventDefault(); return; }
+    document.getElementById('genBtn').disabled=true;
+    document.getElementById('genBtnTxt').textContent='Generating PDF\u2026';
+  });
 })();
 </script>
 {% endblock %}

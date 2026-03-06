@@ -4685,17 +4685,46 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
         return redirect(url_for("repo_lock_vir", job_id=job_id, rec_id=rec_id))
 
     ts = now_ts()
-    uid = session.get("user_id")
+
+    # Ensure optional columns exist
+    for col in ("station_officer", "personal_effects_removed", "personal_effects_list",
+                "colour", "make", "model", "year"):
+        add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
+
+    def _f(name):
+        return request.form.get(name, "").strip() or rec.get(name) or ""
+
     conn.execute("""UPDATE repo_lock_records
-                    SET agent_signature=?, customer_signature=?,
+                    SET swpi_ref=?, finance_company=?, repo_date=?, account_number=?,
+                        customer_name=?, repo_address=?,
+                        registration=?, rego_expiry=?, vin=?, engine_number=?, speedometer=?,
+                        colour=?, make=?, model=?, year=?,
+                        person_present=?, keys_obtained=?, how_many_keys=?, vol_surrender=?,
+                        form_13=?, security_drivable=?, police_notified=?, station_officer=?,
+                        personal_effects_removed=?, personal_effects_list=?,
+                        tyres=?, body=?, duco=?, interior=?, engine_condition=?,
+                        transmission=?, fuel_level=?, any_damage=?, damage_list=?,
+                        agent_name=?,
+                        agent_signature=?, customer_signature=?,
                         agent_signed_at=?, customer_signed_at=?, updated_at=?
                     WHERE id=?""",
-                 (agent_sig, customer_sig or rec.get("customer_signature"),
-                  ts, (ts if customer_sig else rec.get("customer_signed_at")), ts, rec_id))
+                 (_f("swpi_ref"), _f("finance_company"), _f("repo_date"), _f("account_number"),
+                  _f("customer_name"), _f("repo_address"),
+                  _f("registration"), _f("rego_expiry"), _f("vin"), _f("engine_number"), _f("speedometer"),
+                  _f("colour"), _f("make"), _f("model"), _f("year"),
+                  _f("person_present"), _f("keys_obtained"), _f("how_many_keys"), _f("vol_surrender"),
+                  _f("form_13"), _f("security_drivable"), _f("police_notified"), _f("station_officer"),
+                  _f("personal_effects_removed"), _f("personal_effects_list"),
+                  _f("tyres"), _f("body"), _f("duco"), _f("interior"), _f("engine_condition"),
+                  _f("transmission"), _f("fuel_level"), _f("any_damage"), _f("damage_list"),
+                  _f("agent_name"),
+                  agent_sig, customer_sig or rec.get("customer_signature"),
+                  ts, (ts if customer_sig else rec.get("customer_signed_at")), ts,
+                  rec_id))
     conn.commit()
-    rec["agent_signature"]   = agent_sig
-    rec["customer_signature"] = customer_sig or rec.get("customer_signature")
 
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
+    rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
     conn.close()
 
@@ -4756,20 +4785,37 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
         conn.close()
         return redirect(url_for("repo_lock_transport", job_id=job_id, rec_id=rec_id))
 
+    for col in ("make", "model", "tow_phone"):
+        add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
+
+    def _f(name):
+        return request.form.get(name, "").strip() or rec.get(name) or ""
+
     effective_agent_sig = agent_sig or existing_agent_sig
-    ts  = now_ts()
+    ts = now_ts()
+
     conn.execute("""UPDATE repo_lock_records
-                    SET agent_signature=?, tow_signature=?,
+                    SET swpi_ref=?, finance_company=?, repo_date=?,
+                        customer_name=?, repo_address=?,
+                        make=?, model=?, registration=?, vin=?,
+                        tow_company_name=?, tow_phone=?, tow_costs=?,
+                        deliver_to=?, delivery_address=?,
+                        agent_signature=?, tow_signature=?,
                         agent_signed_at=?, tow_signed_at=?, updated_at=?
                     WHERE id=?""",
-                 (effective_agent_sig, tow_sig or rec.get("tow_signature"),
+                 (_f("swpi_ref"), _f("finance_company"), _f("repo_date"),
+                  _f("customer_name"), _f("repo_address"),
+                  _f("make"), _f("model"), _f("registration"), _f("vin"),
+                  _f("tow_company_name"), _f("tow_phone"), _f("tow_costs"),
+                  _f("deliver_to"), _f("delivery_address"),
+                  effective_agent_sig, tow_sig or rec.get("tow_signature"),
                   ts if agent_sig else rec.get("agent_signed_at"),
                   ts if tow_sig else rec.get("tow_signed_at"),
                   ts, rec_id))
     conn.commit()
-    rec["agent_signature"] = effective_agent_sig
-    rec["tow_signature"]   = tow_sig or rec.get("tow_signature")
 
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
+    rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
     conn.close()
 
@@ -4829,17 +4875,38 @@ def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
         conn.close()
         return redirect(url_for("repo_lock_wise_vir", job_id=job_id, rec_id=rec_id))
 
+    for col in ("body_type", "bumpers", "glass", "accessories", "make", "model", "year", "colour"):
+        add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
+
+    def _f(name):
+        return request.form.get(name, "").strip() or rec.get(name) or ""
+
     ts = now_ts()
     conn.execute("""UPDATE repo_lock_records
-                    SET agent_signature=?, customer_signature=?,
+                    SET customer_name=?,
+                        year=?, make=?, model=?, body_type=?, colour=?,
+                        registration=?, vin=?, engine_number=?,
+                        body=?, duco=?, bumpers=?, glass=?, tyres=?,
+                        security_drivable=?, engine_condition=?, interior=?,
+                        speedometer=?, keys_obtained=?, accessories=?, damage_list=?,
+                        tow_company_name=?, tow_costs=?, deliver_to=?, vol_surrender=?,
+                        agent_signature=?, customer_signature=?,
                         agent_signed_at=?, customer_signed_at=?, updated_at=?
                     WHERE id=?""",
-                 (agent_sig, customer_sig or rec.get("customer_signature"),
-                  ts, (ts if customer_sig else rec.get("customer_signed_at")), ts, rec_id))
+                 (_f("customer_name"),
+                  _f("year"), _f("make"), _f("model"), _f("body_type"), _f("colour"),
+                  _f("registration"), _f("vin"), _f("engine_number"),
+                  _f("body"), _f("duco"), _f("bumpers"), _f("glass"), _f("tyres"),
+                  _f("security_drivable"), _f("engine_condition"), _f("interior"),
+                  _f("speedometer"), _f("keys_obtained"), _f("accessories"), _f("damage_list"),
+                  _f("tow_company_name"), _f("tow_costs"), _f("deliver_to"), _f("vol_surrender"),
+                  agent_sig, customer_sig or rec.get("customer_signature"),
+                  ts, (ts if customer_sig else rec.get("customer_signed_at")), ts,
+                  rec_id))
     conn.commit()
-    rec["agent_signature"]    = agent_sig
-    rec["customer_signature"] = customer_sig or rec.get("customer_signature")
 
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
+    rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
     conn.close()
 
@@ -4899,16 +4966,27 @@ def repo_lock_form_13_pdf(job_id: int, rec_id: int):
         conn.close()
         return redirect(url_for("repo_lock_form_13", job_id=job_id, rec_id=rec_id))
 
+    for col in ("make", "model", "year"):
+        add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
+
+    def _f(name):
+        return request.form.get(name, "").strip() or rec.get(name) or ""
+
     ts = now_ts()
     conn.execute("""UPDATE repo_lock_records
-                    SET agent_signature=?, customer_signature=?,
+                    SET finance_company=?, customer_name=?, account_number=?,
+                        repo_address=?, year=?, make=?, model=?, vin=?,
+                        agent_signature=?, customer_signature=?,
                         agent_signed_at=?, updated_at=?
                     WHERE id=?""",
-                 (agent_sig, occupant_sig or rec.get("customer_signature"), ts, ts, rec_id))
+                 (_f("finance_company"), _f("customer_name"), _f("account_number"),
+                  _f("repo_address"), _f("year"), _f("make"), _f("model"), _f("vin"),
+                  agent_sig, occupant_sig or rec.get("customer_signature"),
+                  ts, ts, rec_id))
     conn.commit()
-    rec["agent_signature"]    = agent_sig
-    rec["customer_signature"] = occupant_sig
 
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
+    rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
     conn.close()
 
@@ -4966,16 +5044,29 @@ def repo_lock_voluntary_surrender_pdf(job_id: int, rec_id: int):
         conn.close()
         return redirect(url_for("repo_lock_voluntary_surrender", job_id=job_id, rec_id=rec_id))
 
+    for col in ("make", "model", "year"):
+        add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
+
+    def _f(name):
+        return request.form.get(name, "").strip() or rec.get(name) or ""
+
     ts = now_ts()
     conn.execute("""UPDATE repo_lock_records
-                    SET agent_signature=?, customer_signature=?,
+                    SET finance_company=?, customer_name=?, account_number=?,
+                        repo_address=?, year=?, make=?, model=?, vin=?,
+                        deliver_to=?,
+                        agent_signature=?, customer_signature=?,
                         agent_signed_at=?, customer_signed_at=?, updated_at=?
                     WHERE id=?""",
-                 (agent_sig, customer_sig, ts, ts, ts, rec_id))
+                 (_f("finance_company"), _f("customer_name"), _f("account_number"),
+                  _f("repo_address"), _f("year"), _f("make"), _f("model"), _f("vin"),
+                  _f("deliver_to"),
+                  agent_sig, customer_sig,
+                  ts, ts, ts, rec_id))
     conn.commit()
-    rec["agent_signature"]    = agent_sig
-    rec["customer_signature"] = customer_sig
 
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
+    rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
     conn.close()
 
@@ -4984,6 +5075,60 @@ def repo_lock_voluntary_surrender_pdf(job_id: int, rec_id: int):
     safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
                      as_attachment=True, download_name=f"VoluntarySurrender_{safe_ref}.pdf")
+
+
+# ─────────────────────────── Complete Repo Pack ──────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/repo-pack")
+@login_required
+def repo_lock_repo_pack(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    agent_sig    = rec.get("agent_signature")
+    customer_sig = rec.get("customer_signature")
+    tow_sig      = rec.get("tow_signature")
+
+    if not agent_sig:
+        flash("Please complete and sign at least the VIR form before generating the complete pack.", "error")
+        return redirect(url_for("repo_lock_forms", job_id=job_id, rec_id=rec_id))
+
+    # Build list of PDF byte-strings in pack order
+    pdf_list = []
+
+    # VIR always included
+    pdf_list.append(_pg.generate_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig))
+
+    # Transport instructions
+    pdf_list.append(_pg.generate_transport_pdf(d, agent_sig=agent_sig, tow_sig=tow_sig))
+
+    # Form 13 (consent to enter) if applicable
+    if d.get("form_13") or customer_sig:
+        occupant_sig = customer_sig if d.get("form_13") == "YES" else None
+        pdf_list.append(_pg.generate_form_13_pdf(d, occupant_sig=occupant_sig, agent_sig=agent_sig))
+
+    # Voluntary surrender if applicable
+    if d.get("vol_surrender") == "YES" and customer_sig:
+        pdf_list.append(_pg.generate_voluntary_surrender_pdf(d, customer_sig=customer_sig, agent_sig=agent_sig))
+
+    # Wise VIR if this is a Wise Group case
+    if d.get("client_name", "").upper().startswith("WISE") or d.get("wise_case_number"):
+        pdf_list.append(_pg.generate_wise_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig))
+
+    merged = _pg.generate_repo_pack_pdf(pdf_list)
+    safe_ref = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    return send_file(io.BytesIO(merged), mimetype="application/pdf",
+                     as_attachment=True, download_name=f"RepoPack_{safe_ref}.pdf")
 
 
 # ─────────────────────────── Auction Letter ─────────────────────────
@@ -5246,12 +5391,14 @@ def forms_generate():
             }
             proceed_url = _url_map.get(form_type,
                                        f"/jobs/{job_id}/repo-lock/{rec_id}/vir")
+            repo_pack_url = f"/jobs/{job_id}/repo-lock/{rec_id}/repo-pack"
             conn.close()
             return render_template("forms_selector.html",
                                    form_type=form_type, form_title=form_title,
                                    form_description=form_description, form_short=form_short,
                                    job=job, item=item,
                                    rl_rec=dict(rl), proceed_url=proceed_url,
+                                   repo_pack_url=repo_pack_url,
                                    no_repo_lock=False, jobs=[], items=[],
                                    selected_job_id=job_id, selected_item_id=item_id,
                                    recent_rl=[])

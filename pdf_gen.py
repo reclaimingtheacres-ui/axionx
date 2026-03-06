@@ -7,24 +7,18 @@ from reportlab.lib.colors import HexColor, white
 from reportlab.lib.utils import ImageReader, simpleSplit
 
 PAGE_W, PAGE_H = A4
-ML = 36
-MR = 36
-MT = 38
+ML = 40
+MR = 40
+MT = 36
 CW = PAGE_W - ML - MR
 
-BLUE     = HexColor('#2563eb')
-BLUE_LT  = HexColor('#dbeafe')
-DARK     = HexColor('#111827')
-MUTED    = HexColor('#6b7280')
-LINE     = HexColor('#d1d5db')
-ROW_ALT  = HexColor('#f9fafb')
-ROW_H    = 18
-LABEL_F  = ('Helvetica', 7.5)
-VALUE_F  = ('Helvetica-Bold', 8.5)
-_LW      = {1: 140, 2: 95, 3: 62, 4: 42}
+DARK       = HexColor('#111827')
+MUTED      = HexColor('#6b7280')
+LINE       = HexColor('#9ca3af')
+_WISE_AMBER = HexColor('#f59e0b')
 
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         'static', 'images', 'swpi_logo.jpg')
+                         'static', 'images', 'swpi_logo_sm.png')
 
 
 def _v(d, *keys, default=''):
@@ -35,44 +29,9 @@ def _v(d, *keys, default=''):
     return default
 
 
-def _trunc(val, max_ch=32):
+def _trunc(val, max_ch=40):
     s = str(val or '')
-    return s[:max_ch] + ('…' if len(s) > max_ch else '')
-
-
-def _section_hdr(c, y, title):
-    c.setFillColor(BLUE)
-    c.rect(ML, y - 16, CW, 16, fill=1, stroke=0)
-    c.setFillColor(white)
-    c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(ML + 6, y - 11.5, title.upper())
-    return y - 16
-
-
-def _row(c, y, pairs, alt=False):
-    n = len(pairs)
-    col = CW / n
-    lw  = _LW.get(n, 95)
-    if alt:
-        c.setFillColor(ROW_ALT)
-        c.rect(ML, y - ROW_H, CW, ROW_H, fill=1, stroke=0)
-    for i, (lbl, val) in enumerate(pairs):
-        x = ML + i * col
-        max_ch = max(8, int((col - lw - 10) / 5.0))
-        c.setFont(*LABEL_F)
-        c.setFillColor(MUTED)
-        c.drawString(x + 4, y - 12, str(lbl))
-        c.setFont(*VALUE_F)
-        c.setFillColor(DARK)
-        c.drawString(x + lw, y - 12, _trunc(val, max_ch))
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.3)
-    c.line(ML, y - ROW_H, PAGE_W - MR, y - ROW_H)
-    return y - ROW_H
-
-
-def _frow(c, y, lbl, val, alt=False):
-    return _row(c, y, [(lbl, val)], alt)
+    return s[:max_ch] + ('\u2026' if len(s) > max_ch else '')
 
 
 def _sig_box(c, x, y, w, h, label, sig_b64=None, date_str=''):
@@ -93,117 +52,271 @@ def _sig_box(c, x, y, w, h, label, sig_b64=None, date_str=''):
     c.line(x + 6, y - h + 20, x + w - 6, y - h + 20)
     c.setFont('Helvetica', 7.5)
     c.setFillColor(MUTED)
-    c.drawString(x + 6, y - h + 10, str(label)[:45])
+    c.drawString(x + 6, y - h + 10, str(label)[:50])
     if date_str:
         c.drawRightString(x + w - 6, y - h + 10, f'Dated: {date_str}')
 
 
-def _page_header(c, doc_title):
+def _cb(c, x, y, label, checked=False, w=8, h=8):
+    c.setStrokeColor(DARK)
+    c.setLineWidth(0.75)
+    c.rect(x, y - h + 1, w, h, fill=0, stroke=1)
+    if checked:
+        c.setFont('Helvetica-Bold', 7)
+        c.setFillColor(DARK)
+        c.drawString(x + 1.5, y - h + 2.5, 'X')
+    c.setFont('Helvetica', 7.5)
+    c.setFillColor(DARK)
+    c.drawString(x + w + 3, y - h + 2, label)
+    return x + w + 3 + c.stringWidth(label, 'Helvetica', 7.5) + 10
+
+
+def _condition_checked(val, option):
+    if not val:
+        return False
+    v = val.strip().lower()
+    o = option.strip().lower()
+    return o in v or v in o
+
+
+def _hr(c, y, strong=False):
+    c.setStrokeColor(DARK if strong else LINE)
+    c.setLineWidth(0.75 if strong else 0.3)
+    c.line(ML, y, PAGE_W - MR, y)
+
+
+def _swpi_letterhead(c):
     y = PAGE_H - MT
-    logo_h, logo_w = 50, 80
+    logo_h, logo_w = 55, 88
     try:
         c.drawImage(LOGO_PATH, ML, y - logo_h, width=logo_w, height=logo_h,
                     preserveAspectRatio=True, mask='auto')
     except Exception:
-        c.setFont('Helvetica-Bold', 10)
-        c.setFillColor(BLUE)
-        c.drawString(ML, y - 20, 'SWPI')
-    tx = ML + logo_w + 14
-    c.setFont('Helvetica-Bold', 11)
+        c.setFont('Helvetica-Bold', 16)
+        c.setFillColor(DARK)
+        c.drawString(ML, y - 32, 'SWPI')
+    c.setFont('Helvetica', 8)
     c.setFillColor(DARK)
-    c.drawString(tx, y - 13, 'South West Process Serving & Investigative Agency')
-    c.setFont('Helvetica', 9)
-    c.setFillColor(MUTED)
-    c.drawString(tx, y - 25, 'PO Box 651, Sunshine, VIC 3020')
-    c.drawString(tx, y - 36, 'Phone: +61 429 996 260')
-    sep_y = y - logo_h - 8
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.75)
-    c.line(ML, sep_y, PAGE_W - MR, sep_y)
-    tb_y = sep_y - 2
-    c.setFillColor(BLUE)
-    c.rect(ML, tb_y - 20, CW, 20, fill=1, stroke=0)
-    c.setFillColor(white)
-    c.setFont('Helvetica-Bold', 10)
-    c.drawCentredString(PAGE_W / 2, tb_y - 14, doc_title.upper())
-    return tb_y - 20 - 5
+    c.drawRightString(PAGE_W - MR, y - 8,  'PO Box 651, SUNSHINE. VIC, 3020')
+    c.drawRightString(PAGE_W - MR, y - 20, 'Ph: +61 429 996 260')
+    return y - logo_h - 4
 
+
+def _vir_condition_row(c, y, label, val, options):
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(DARK)
+    c.drawString(ML, y - 9, label + ':')
+    x = ML + 84
+    for opt in options:
+        x = _cb(c, x, y, opt, _condition_checked(val, opt))
+    _hr(c, y - 14)
+    return y - 14
+
+
+# =============================================================================
+# 1. SWPI VIR — Surrendered / Repossession Receipt
+# =============================================================================
 
 def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
-    c.setTitle('Vehicle Condition Report / Repossession Receipt')
-    c.setAuthor('South West Process Serving & Investigative Agency')
+    c.setTitle('Surrendered / Repossession Receipt')
 
-    y = _page_header(c, 'Vehicle Condition Report / Repossession Receipt')
+    y = _swpi_letterhead(c)
+    y -= 4
+
+    client_ref = _v(data, 'client_reference')
+    registration = _v(data, 'registration')
+    ref_display = client_ref or ''
+    if registration and registration not in ref_display:
+        ref_display = f'{ref_display} / {registration}' if ref_display else registration
+    if ref_display:
+        c.setFont('Helvetica', 8)
+        c.setFillColor(DARK)
+        c.drawCentredString(PAGE_W / 2, y, f'Client Ref: {ref_display}')
+    y -= 14
+
+    title = 'SURRENDERED / REPOSSESSION RECEIPT'
+    c.setFont('Helvetica-Bold', 11)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, title)
+    tw = c.stringWidth(title, 'Helvetica-Bold', 11)
+    _hr(c, y - 1, strong=True)
+
+    swpi_ref = _v(data, 'swpi_ref')
+    if swpi_ref:
+        c.setFont('Helvetica-Bold', 8)
+        c.drawRightString(PAGE_W - MR, y, f'SWPi Ref: {swpi_ref}')
+    y -= 14
+
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(DARK)
+    c.drawString(ML, y, 'Finance Company:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 90, y, _trunc(_v(data, 'finance_company'), 28))
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(PAGE_W - MR - 130, y, 'Date:')
+    c.setFont('Helvetica', 8)
+    c.drawString(PAGE_W - MR - 100, y, _v(data, 'repo_date'))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'Customer Name:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 84, y, _trunc(_v(data, 'customer_name'), 28))
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(PAGE_W - MR - 130, y, 'Account No:')
+    c.setFont('Helvetica', 8)
+    c.drawString(PAGE_W - MR - 68, y, _trunc(_v(data, 'account_number'), 16))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'Surrendered / Repossessed from:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 168, y, _trunc(_v(data, 'repo_address'), 42))
+    y -= 8
+    _hr(c, y, strong=True)
     y -= 2
 
-    y = _section_hdr(c, y, 'Job Details')
-    y = _row(c, y, [('Client', _v(data, 'client_name')),
-                    ('Client Reference', _v(data, 'client_reference'))])
-    y = _row(c, y, [('SWPI Reference', _v(data, 'swpi_ref')),
-                    ('Finance Company', _v(data, 'finance_company'))], alt=True)
-    y = _row(c, y, [('Date', _v(data, 'repo_date')),
-                    ('Account Number', _v(data, 'account_number'))])
-    y = _frow(c, y, 'Customer Name', _v(data, 'customer_name'), alt=True)
-    y = _frow(c, y, 'Surrendered / Repossessed From Address',
-              _v(data, 'repo_address'))
-    y -= 3
+    col_heads  = ['YEAR', 'MAKE', 'MODEL', 'COLOUR', 'REG', 'EXPIRY']
+    col_vals   = [_v(data, 'year'), _v(data, 'make'), _v(data, 'model'),
+                  _v(data, 'colour'), _v(data, 'registration'), _v(data, 'rego_expiry')]
+    col_widths = [38, 56, 72, 80, 55, 42]
+    x = ML
+    c.setFont('Helvetica-Bold', 7.5)
+    c.setFillColor(DARK)
+    for h, w in zip(col_heads, col_widths):
+        c.drawString(x + 2, y - 10, h)
+        x += w
+    y -= 12
+    _hr(c, y)
+    y -= 2
+    x = ML
+    c.setFont('Helvetica', 8)
+    for v, w in zip(col_vals, col_widths):
+        c.drawString(x + 2, y - 10, _trunc(v, int(w / 5.2)))
+        x += w
+    y -= 12
+    _hr(c, y, strong=True)
+    y -= 4
 
-    y = _section_hdr(c, y, 'Asset Details')
-    y = _row(c, y, [('Year', _v(data, 'year')), ('Make', _v(data, 'make')),
-                    ('Model', _v(data, 'model')), ('Colour', _v(data, 'colour'))],
-             alt=True)
-    y = _row(c, y, [('Registration', _v(data, 'registration')),
-                    ('Rego Expiry', _v(data, 'rego_expiry'))])
-    y = _row(c, y, [('VIN / Chassis', _v(data, 'vin')),
-                    ('Engine Number', _v(data, 'engine_number'))], alt=True)
-    y = _row(c, y, [('Odometer (km)', _v(data, 'speedometer')),
-                    ('Description', _v(data, 'description'))])
-    y -= 3
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'VIN/CHASSIS:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 72, y, _v(data, 'vin'))
+    y -= 12
 
-    y = _section_hdr(c, y, 'Recovery Details')
-    keys_val = _v(data, 'keys_obtained')
-    if keys_val == 'Yes' and _v(data, 'how_many_keys'):
-        keys_val += f" ({_v(data, 'how_many_keys')} key(s))"
-    y = _row(c, y, [('Person Present', _v(data, 'person_present')),
-                    ('Keys Obtained', keys_val)], alt=True)
-    y = _row(c, y, [('Voluntary Surrender', _v(data, 'vol_surrender')),
-                    ('Lien Paid', _v(data, 'lien_paid'))])
-    form13 = _v(data, 'form_13')
-    if form13 == 'Yes' and _v(data, 'form_13_signed_by'):
-        form13 += f", Signed By: {_v(data, 'form_13_signed_by')}"
-    y = _row(c, y, [('Form 13', form13),
-                    ('Security Drivable', _v(data, 'security_drivable'))], alt=True)
-    police = _v(data, 'police_notified')
-    if police == 'Yes' and _v(data, 'station_officer'):
-        police += f" — {_v(data, 'station_officer')}"
-    y = _frow(c, y, 'Police Notified', police)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'ENGINE:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 50, y, _v(data, 'engine_number'))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'KILOMETERS:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 66, y, _v(data, 'speedometer'))
+    y -= 8
+    _hr(c, y)
+    y -= 4
+
+    keys_val  = _v(data, 'keys_obtained')
+    how_many  = _v(data, 'how_many_keys')
+    keys_disp = keys_val + (f'  qty({how_many})' if how_many else '')
+
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'PERSON PRESENT')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 95, y, _v(data, 'person_present'))
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 165, y, 'KEYS OBTAINED?')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 250, y, keys_disp)
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 330, y, 'VOL SURRENDER?')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 420, y, _v(data, 'vol_surrender'))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'FORM 13?')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 56, y, _v(data, 'form_13'))
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 165, y, 'SECURITY DRIVABLE?')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 268, y, _v(data, 'security_drivable'))
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 330, y, 'POLICE NOTIFIED?')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 424, y, _v(data, 'police_notified'))
+    y -= 12
+
+    station = _v(data, 'station_officer')
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 330, y, 'STATION/OFFICER:')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 424, y, station)
+    y -= 12
+
     effects = _v(data, 'personal_effects_removed')
-    if effects == 'Yes' and _v(data, 'removed_by_who'):
-        effects += f", Removed By: {_v(data, 'removed_by_who')}"
-    y = _frow(c, y, 'Personal Effects Removed', effects, alt=True)
-    if _v(data, 'personal_effects_list'):
-        y = _frow(c, y, 'List of Effects', _v(data, 'personal_effects_list'))
-    y -= 3
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'PERSONAL EFFECTS REMOVED?')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 162, y, effects)
+    y -= 12
 
-    y = _section_hdr(c, y, 'Condition Report')
-    y = _row(c, y, [('Tyres', _v(data, 'tyres')), ('Body', _v(data, 'body')),
-                    ('Duco', _v(data, 'duco'))], alt=True)
-    y = _row(c, y, [('Interior', _v(data, 'interior')),
-                    ('Engine', _v(data, 'engine_condition')),
-                    ('Transmission', _v(data, 'transmission'))])
-    damage = _v(data, 'any_damage')
-    if damage == 'Yes' and _v(data, 'damage_list'):
-        damage += f": {_trunc(_v(data, 'damage_list'), 50)}"
-    y = _row(c, y, [('Fuel Level', _v(data, 'fuel_level')), ('Damage', damage)],
-             alt=True)
+    effects_list = _v(data, 'personal_effects_list')
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'LIST:')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 34, y, _trunc(effects_list, 70))
+    y -= 8
+    _hr(c, y)
+    y -= 4
+
+    for lbl, field, offset in [
+        ('TYRES:', 'tyres', 42), ('BODY:', 'body', 38),
+        ('DUCO:', 'duco', 38),  ('INTERIOR:', 'interior', 54),
+    ]:
+        xp = ML + (0 if lbl == 'TYRES:' else
+                   116 if lbl == 'BODY:' else
+                   228 if lbl == 'DUCO:' else 330)
+        c.setFont('Helvetica-Bold', 7.5)
+        c.drawString(xp, y, lbl)
+        c.setFont('Helvetica', 7.5)
+        c.drawString(xp + offset, y, _v(data, field))
+    y -= 12
+
+    for lbl, field, xp, offset in [
+        ('ENGINE:', 'engine_condition', ML, 50),
+        ('TRANSMISSION:', 'transmission', ML + 228, 80),
+    ]:
+        c.setFont('Helvetica-Bold', 7.5)
+        c.drawString(xp, y, lbl)
+        c.setFont('Helvetica', 7.5)
+        c.drawString(xp + offset, y, _v(data, field))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'FUEL level:')
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 60, y, _v(data, 'fuel_level'))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'DAMAGE:')
+    dmg = _v(data, 'damage_list') if _v(data, 'any_damage').upper() == 'YES' else ''
+    c.setFont('Helvetica', 7.5)
+    c.drawString(ML + 50, y, _trunc(dmg, 72))
+    y -= 12
+    _hr(c, y)
     y -= 6
 
-    agent_name = _v(data, 'agent_name', default='the above agent')
+    agent_name = _v(data, 'agent_name', default='the agent')
     legal1 = (
-        f"I, {agent_name}, mercantile agent, acting on behalf of the above financier, "
-        "hereby certify that a true copy of this notice was furnished to the above named."
+        f"I, {agent_name}, mercantile agent, acting on behalf of the above financier, hereby certify "
+        "that a true copy of this notice was furnished to the above named by;"
     )
     legal2 = (
         "I ACKNOWLEDGE RECEIPT OF THIS ORIGINAL NOTICE AND THAT THE ABOVE AGENT OR FINANCE "
@@ -222,7 +335,7 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     y -= 8
 
     sig_w = (CW - 14) / 2
-    sig_h = 75
+    sig_h = 76
     date_str = _v(data, 'repo_date')
     _sig_box(c, ML, y, sig_w, sig_h, 'Customer Signature', customer_sig, date_str)
     _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h,
@@ -233,348 +346,369 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     return buf.read()
 
 
+# =============================================================================
+# 2. SWPI Transport Instructions / Tow Receipt
+# =============================================================================
+
 def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
     c.setTitle('Transport Instructions / Tow Receipt')
-    c.setAuthor('South West Process Serving & Investigative Agency')
 
-    y = _page_header(c, 'Transport Instructions / Tow Receipt')
-    y -= 2
+    y = _swpi_letterhead(c)
+    y -= 6
 
-    y = _section_hdr(c, y, 'Job Details')
-    y = _row(c, y, [('SWPI Reference', _v(data, 'swpi_ref')),
-                    ('Finance Company', _v(data, 'finance_company'))])
-    y = _row(c, y, [('Date', _v(data, 'repo_date')),
-                    ('Customer Name', _v(data, 'customer_name'))], alt=True)
-    y = _frow(c, y, 'Repossession Address', _v(data, 'repo_address'))
-    y -= 3
+    title = 'TRANSPORT INSTRUCTIONS / TOW RECEIPT'
+    c.setFont('Helvetica-Bold', 11)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, title)
+    _hr(c, y - 1, strong=True)
+    y -= 14
 
-    y = _section_hdr(c, y, 'Security Details')
-    make_model = ' '.join(filter(None, [_v(data, 'make'), _v(data, 'model')])) or '—'
-    y = _row(c, y, [('Make / Model', make_model),
-                    ('Registration', _v(data, 'registration'))], alt=True)
-    y = _frow(c, y, 'VIN / Chassis', _v(data, 'vin'))
-    y -= 3
+    swpi_ref = _v(data, 'swpi_ref')
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'SWPI REFERENCE:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 96, y, swpi_ref)
+    y -= 12
 
-    y = _section_hdr(c, y, 'Tow Contractor Details')
-    y = _row(c, y, [('Tow Company', _v(data, 'tow_company_name')),
-                    ('Phone', _v(data, 'tow_phone'))], alt=True)
-    y = _frow(c, y, 'Tow Costs', _v(data, 'tow_costs') or 'TBA')
-    y -= 3
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'FINANCE COMPANY:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 100, y, _trunc(_v(data, 'finance_company'), 28))
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(PAGE_W - MR - 130, y, 'DATE:')
+    c.setFont('Helvetica', 8)
+    c.drawString(PAGE_W - MR - 100, y, _v(data, 'repo_date'))
+    y -= 12
 
-    y = _section_hdr(c, y, 'Delivery Instructions')
-    c.setFillColor(BLUE_LT)
-    c.rect(ML, y - ROW_H, CW, ROW_H, fill=1, stroke=0)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'CUSTOMER NAME:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 88, y, _trunc(_v(data, 'customer_name'), 38))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'REPOSSESSION ADDRESS:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 126, y, _trunc(_v(data, 'repo_address'), 42))
+    y -= 10
+    _hr(c, y)
+    y -= 4
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'SECURITY DETAILS')
+    y -= 12
+
+    make_model = ' '.join(filter(None, [_v(data, 'make'), _v(data, 'model')])) or ''
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'MAKE / MODEL:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 78, y, _trunc(make_model, 30))
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(PAGE_W - MR - 130, y, 'REGO:')
+    c.setFont('Helvetica', 8)
+    c.drawString(PAGE_W - MR - 98, y, _v(data, 'registration'))
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'VIN:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 28, y, _v(data, 'vin'))
+    y -= 10
+    _hr(c, y)
+    y -= 4
+
+    tow_name = _v(data, 'tow_company_name')
+    tow_phone = _v(data, 'tow_phone')
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'TOW CONTRACTOR:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 96, y, _trunc(tow_name + (' ' + tow_phone if tow_phone else ''), 36))
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(PAGE_W - MR - 130, y, 'PHONE:')
+    c.setFont('Helvetica', 8)
+    c.drawString(PAGE_W - MR - 90, y, tow_phone)
+    y -= 12
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'TOW COSTS:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 62, y, _v(data, 'tow_costs') or 'TBA')
+    y -= 12
+    _hr(c, y)
+    y -= 6
+
+    delivery_label = 'PLEASE DELIVER THE ABOVE ASSET TO THE FOLLOWING AUCTION FACILITY'
     c.setFont('Helvetica-Bold', 8.5)
-    c.setFillColor(BLUE)
-    c.drawString(ML + 6, y - 12, 'Please deliver the above asset to the following facility:')
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.3)
-    c.line(ML, y - ROW_H, PAGE_W - MR, y - ROW_H)
-    y -= ROW_H
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, delivery_label)
+    y -= 6
+    _hr(c, y)
+    y -= 10
 
-    y = _frow(c, y, 'Deliver To', _v(data, 'deliver_to'), alt=True)
-    y = _frow(c, y, 'Delivery Address', _v(data, 'delivery_address'))
-    invoice_val = _v(data, 'client_name')
-    if _v(data, 'client_email'):
-        invoice_val += f"  —  {_v(data, 'client_email')}"
-    y = _frow(c, y, 'Send Invoice Direct To', invoice_val, alt=True)
+    deliver_to = _v(data, 'deliver_to', 'delivery_address')
+    delivery_addr = _v(data, 'delivery_address')
+    c.setFont('Helvetica-Bold', 9)
+    c.drawCentredString(PAGE_W / 2, y, _trunc(deliver_to, 60))
+    if delivery_addr and delivery_addr != deliver_to:
+        y -= 12
+        c.setFont('Helvetica', 9)
+        c.drawCentredString(PAGE_W / 2, y, _trunc(delivery_addr, 70))
+    y -= 14
+    _hr(c, y)
+    y -= 8
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'SEND YOUR INVOICE DIRECT TO:')
+    y -= 12
+    client_name  = _v(data, 'client_name')
+    client_email = _v(data, 'client_email')
+    invoice_line = client_name + (f'  \u2014  {client_email}' if client_email else '')
+    c.setFont('Helvetica', 8.5)
+    c.drawString(ML, y, _trunc(invoice_line, 65))
+    y -= 16
+    _hr(c, y)
+    y -= 8
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'REFERENCE / JOB NUMBER:')
+    y -= 12
     ref = ' / '.join(filter(None, [_v(data, 'client_reference'),
                                    _v(data, 'registration')])) or _v(data, 'swpi_ref')
-    y = _frow(c, y, 'Reference / Job Number', ref)
-    y -= 8
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, ref)
+    y -= 20
 
     agent_name = _v(data, 'agent_name', default='Agent')
     sig_w = (CW - 14) / 2
-    sig_h = 82
+    sig_h = 80
     date_str = _v(data, 'repo_date')
-    _sig_box(c, ML, y, sig_w, sig_h,
-             f'Agent Signature: {agent_name}', agent_sig, date_str)
-    _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h,
-             'Tow Operator Signature', tow_sig, date_str)
+    _sig_box(c, ML, y, sig_w, sig_h, f'AGENT SIGNATURE: {agent_name}', agent_sig, date_str)
+    _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h, 'TOW SIGNATURE:', tow_sig, date_str)
 
     c.save()
     buf.seek(0)
     return buf.read()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Wise Vehicle Inspection Report
-# ─────────────────────────────────────────────────────────────────────────────
-
-_WISE_AMBER = HexColor('#f59e0b')
-_WISE_DARK  = HexColor('#1e293b')
-
-def _wise_header(c, case_number=''):
-    y = PAGE_H - MT
-    logo_h, logo_w = 50, 80
-    try:
-        c.drawImage(LOGO_PATH, ML, y - logo_h, width=logo_w, height=logo_h,
-                    preserveAspectRatio=True, mask='auto')
-    except Exception:
-        pass
-    tx = ML + logo_w + 14
-    c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(_WISE_DARK)
-    c.drawString(tx, y - 13, 'South West Process Serving & Investigative Agency')
-    c.setFont('Helvetica', 9)
-    c.setFillColor(MUTED)
-    c.drawString(tx, y - 26, 'Wisely Accredited Agent  |  PO Box 651, Sunshine VIC 3020')
-    c.drawString(tx, y - 38, 'Phone: +61 429 996 260')
-
-    sep_y = y - logo_h - 8
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.75)
-    c.line(ML, sep_y, PAGE_W - MR, sep_y)
-
-    tb_y = sep_y - 2
-    c.setFillColor(_WISE_AMBER)
-    c.rect(ML, tb_y - 20, CW, 20, fill=1, stroke=0)
-    c.setFillColor(white)
-    c.setFont('Helvetica-Bold', 10)
-    title = 'VEHICLE INSPECTION REPORT'
-    if case_number:
-        title += f'  —  WISE CASE {case_number}'
-    c.drawCentredString(PAGE_W / 2, tb_y - 14, title)
-    return tb_y - 20 - 5
-
-
-def _cb(c, x, y, label, checked=False, w=8, h=8):
-    """Draw a checkbox with label."""
-    c.setStrokeColor(DARK)
-    c.setLineWidth(0.75)
-    c.rect(x, y - h + 1, w, h, fill=0, stroke=1)
-    if checked:
-        c.setFont('Helvetica-Bold', 8)
-        c.setFillColor(DARK)
-        c.drawString(x + 1.5, y - h + 2.5, 'X')
-    c.setFont('Helvetica', 8)
-    c.setFillColor(DARK)
-    c.drawString(x + w + 4, y - h + 2, label)
-    return x + w + 4 + len(label) * 5.2 + 10
-
-
-def _condition_checked(val, option):
-    """Map a condition text value to whether a checkbox should be checked."""
-    if not val:
-        return False
-    v = val.strip().lower()
-    o = option.strip().lower()
-    return o in v or v in o
-
-
-def _vir_condition_row(c, y, label, val, options):
-    """Draw a condition label + checkbox row."""
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 9, label + ':')
-    x = ML + 90
-    for opt in options:
-        x = _cb(c, x, y, opt, _condition_checked(val, opt))
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.25)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
-    return y - 14
-
+# =============================================================================
+# 3. Wise Group — Vehicle Inspection Report
+# =============================================================================
 
 def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
-    c.setTitle('Wise Group — Vehicle Inspection Report')
+    c.setTitle('Wise Group \u2014 Vehicle Inspection Report')
 
+    y = PAGE_H - MT
     case_number = _v(data, 'wise_case_number', 'swpi_ref')
-    y = _wise_header(c, case_number)
-    y -= 4
-
-    # Debtor
-    c.setFont('Helvetica-Bold', 9)
+    title = f'VEHICLE INSPECTION REPORT{f"  {case_number}" if case_number else ""}'
+    c.setFont('Helvetica-Bold', 12)
     c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, title)
+    y -= 6
+    _hr(c, y, strong=True)
+    y -= 14
+
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'Name of Debtor:')
     c.setFont('Helvetica', 9)
-    c.drawString(ML + 90, y, _v(data, 'customer_name', default=''))
-    y -= 16
+    c.drawString(ML + 88, y, _v(data, 'customer_name'))
+    y -= 12
+    _hr(c, y)
+    y -= 8
 
-    # Vehicle description header
-    c.setFillColor(_WISE_AMBER)
-    c.rect(ML, y - 14, CW, 14, fill=1, stroke=0)
-    c.setFillColor(white)
-    c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(ML + 6, y - 10, 'VEHICLE DESCRIPTION')
-    y -= 14
-
-    # Year / Make / Model
-    c.setFillColor(ROW_ALT)
-    c.rect(ML, y - 14, CW, 14, fill=1, stroke=0)
-    col3 = CW / 3
-    for i, (lbl, field) in enumerate([('YEAR', 'year'), ('MAKE', 'make'), ('MODEL', 'model')]):
-        x = ML + i * col3
-        c.setFont('Helvetica-Bold', 7.5)
-        c.setFillColor(MUTED)
-        c.drawString(x + 4, y - 9, lbl + ':')
-        c.setFont('Helvetica', 8.5)
-        c.setFillColor(DARK)
-        c.drawString(x + 38, y - 9, _trunc(_v(data, field), 18))
-    c.setStrokeColor(LINE); c.setLineWidth(0.3)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
-    y -= 14
-
-    col4 = CW / 4
-    for i, (lbl, field) in enumerate([('BODY TYPE', 'body_type'), ('COLOUR', 'colour'),
-                                       ('REGO', 'registration'), ('ENGINE #', 'engine_number')]):
-        x = ML + i * col4
-        c.setFont('Helvetica-Bold', 7.5)
-        c.setFillColor(MUTED)
-        c.drawString(x + 4, y - 9, lbl + ':')
-        c.setFont('Helvetica', 8.5)
-        c.setFillColor(DARK)
-        c.drawString(x + int(col4 * 0.5), y - 9, _trunc(_v(data, field), 10))
-    c.setStrokeColor(LINE); c.setLineWidth(0.3)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
-    y -= 14
-
-    c.setFillColor(ROW_ALT)
-    c.rect(ML, y - 14, CW, 14, fill=1, stroke=0)
-    c.setFont('Helvetica-Bold', 7.5); c.setFillColor(MUTED)
-    c.drawString(ML + 4, y - 9, 'VIN/CHASSIS:')
-    c.setFont('Helvetica', 8.5); c.setFillColor(DARK)
-    c.drawString(ML + 72, y - 9, _v(data, 'vin'))
-    c.setStrokeColor(LINE); c.setLineWidth(0.3)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
-    y -= 18
-
-    # Condition — Exterior
-    c.setFillColor(_WISE_AMBER); c.rect(ML, y - 14, CW, 14, fill=1, stroke=0)
-    c.setFillColor(white); c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(ML + 6, y - 10, 'VEHICLE CONDITION  —  EXTERIOR')
-    y -= 14
-
-    for lbl, field, opts in [
-        ('BODY',    'body',  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
-        ('PAINT',   'duco',  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
-        ('BUMPERS', 'body',  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
-        ('WINDOWS', 'glass', ['BROKEN', 'CRACKED', 'GOOD']),
-        ('TYRES',   'tyres', ['BALD', 'FAIR', 'GOOD', 'EXCELLENT']),
-    ]:
-        y = _vir_condition_row(c, y, lbl, _v(data, field), opts)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'VEHICLE DESCRIPTION')
     y -= 4
+    _hr(c, y, strong=True)
+    y -= 10
 
-    # Mechanical
-    c.setFillColor(_WISE_AMBER); c.rect(ML, y - 14, CW, 14, fill=1, stroke=0)
-    c.setFillColor(white); c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(ML + 6, y - 10, 'MECHANICAL')
-    y -= 14
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'YEAR:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 32, y, _v(data, 'year'))
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 100, y, 'MAKE:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 130, y, _v(data, 'make'))
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 230, y, 'MODEL:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 264, y, _v(data, 'model'))
+    y -= 11
+    _hr(c, y)
+    y -= 10
 
-    c.setFont('Helvetica-Bold', 8); c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 9, 'DOES VEHICLE DRIVE:')
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'BODY TYPE:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 60, y, _v(data, 'body_type'))
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 130, y, 'COLOUR:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 172, y, _v(data, 'colour'))
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML + 258, y, 'REGO:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 288, y, _v(data, 'registration'))
+    y -= 11
+    _hr(c, y)
+    y -= 10
+
+    c.setFont('Helvetica-Bold', 7.5)
+    c.drawString(ML, y, 'VIN/CHASSIS:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 70, y, _v(data, 'vin'))
+    y -= 11
+    _hr(c, y)
+    y -= 10
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'VEHICLE CONDITION')
+    y -= 4
+    _hr(c, y, strong=True)
+    y -= 8
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'EXTERIOR')
+    y -= 4
+    _hr(c, y)
+    y -= 2
+
+    body_val = _v(data, 'body')
+    paint_val = _v(data, 'duco')
+    for lbl, val, opts in [
+        ('BODY',    body_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
+        ('PAINT',   paint_val, ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
+        ('BUMPERS', body_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
+        ('WINDOWS', _v(data, 'glass'), ['BROKEN', 'CRACKED', 'GOOD']),
+        ('TYRES',   _v(data, 'tyres'), ['BALD', 'FAIR', 'GOOD', 'EXCELLENT']),
+    ]:
+        y = _vir_condition_row(c, y, lbl, val, opts)
+    y -= 6
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'MECHANICAL')
+    y -= 4
+    _hr(c, y)
+    y -= 10
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'DOES VEHICLE DRIVE:')
     xb = ML + 120
-    xb = _cb(c, xb, y, 'YES', _v(data, 'security_drivable').upper() == 'YES')
-    xb = _cb(c, xb, y, 'NO',  _v(data, 'security_drivable').upper() == 'NO')
-    xb += 20
-    c.drawString(xb, y - 9, 'ENGINE INTACT:')
-    xb2 = xb + 82
-    eng_ok = _v(data, 'engine_condition').lower() not in ('damaged', 'poor', 'missing', 'no')
-    xb2 = _cb(c, xb2, y, 'YES', eng_ok and bool(_v(data, 'engine_condition')))
-    _cb(c, xb2, y, 'NO', not eng_ok and bool(_v(data, 'engine_condition')))
-    c.setStrokeColor(LINE); c.setLineWidth(0.25)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
+    xb = _cb(c, xb, y, 'YES', _condition_checked(_v(data, 'security_drivable'), 'yes'))
+    xb = _cb(c, xb, y, 'NO', _condition_checked(_v(data, 'security_drivable'), 'no'))
+    xb += 16
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(xb, y, 'ENGINE INTACT:')
+    xb2 = xb + 84
+    eng = _v(data, 'engine_condition').lower()
+    eng_ok = eng and eng not in ('damaged', 'poor', 'missing', 'no', 'n/a')
+    xb2 = _cb(c, xb2, y, 'YES', eng_ok and bool(eng))
+    _cb(c, xb2, y, 'NO', not eng_ok and bool(eng))
+    _hr(c, y - 14)
     y -= 18
 
-    # Interior
-    c.setFillColor(_WISE_AMBER); c.rect(ML, y - 14, CW, 14, fill=1, stroke=0)
-    c.setFillColor(white); c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(ML + 6, y - 10, 'INTERIOR')
-    y -= 14
-
-    for lbl, field, opts in [
-        ('TRIM',   'interior', ['POOR', 'GOOD', 'EXCELLENT']),
-        ('CARPET', 'interior', ['POOR', 'GOOD', 'EXCELLENT']),
-        ('DASH',   'interior', ['POOR', 'GOOD', 'EXCELLENT']),
-    ]:
-        y = _vir_condition_row(c, y, lbl, _v(data, field), opts)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'INTERIOR')
     y -= 4
+    _hr(c, y)
+    y -= 2
 
-    # Other
-    c.setFillColor(_WISE_AMBER); c.rect(ML, y - 14, CW, 14, fill=1, stroke=0)
-    c.setFillColor(white); c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(ML + 6, y - 10, 'OTHER')
-    y -= 14
+    interior_val = _v(data, 'interior')
+    for lbl, val, opts in [
+        ('TRIM',   interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+        ('CARPET', interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+        ('DASH',   interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+    ]:
+        y = _vir_condition_row(c, y, lbl, val, opts)
+    y -= 6
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'OTHER')
+    y -= 4
+    _hr(c, y)
+    y -= 10
 
     km = _v(data, 'speedometer')
-    c.setFont('Helvetica-Bold', 8); c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 9, "KM'S ON CLOCK:")
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 88, y - 9, km or '___________________')
-    xb = ML + int(CW * 0.45)
-    keys_yes = _v(data, 'keys_obtained').upper() == 'YES'
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(xb, y - 9, 'KEYS SECURED:')
-    xb2 = xb + 76
-    xb2 = _cb(c, xb2, y, 'YES', keys_yes)
-    _cb(c, xb2, y, 'NO', not keys_yes)
-    c.setStrokeColor(LINE); c.setLineWidth(0.25)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
+    c.drawString(ML, y, "KM'S ON CLOCK:")
+    c.setFont('Helvetica', 8)
+    line_end = ML + 88
+    c.drawString(line_end, y, km or '___________________')
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML + int(CW * 0.45), y, 'KEYS SECURED:')
+    xb = ML + int(CW * 0.45) + 78
+    keys_yes = _condition_checked(_v(data, 'keys_obtained'), 'yes')
+    xb = _cb(c, xb, y, 'YES', keys_yes)
+    _cb(c, xb, y, 'NO', not keys_yes)
+    _hr(c, y - 14)
     y -= 14
 
-    c.setFont('Helvetica-Bold', 8); c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 9, 'PLATES ATTACHED:')
-    xb = ML + 96
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'PLATES ATTACHED:')
+    xb = ML + 100
     xb = _cb(c, xb, y, 'YES', True)
     _cb(c, xb, y, 'NO', False)
-    c.setStrokeColor(LINE); c.setLineWidth(0.25)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
+    _hr(c, y - 14)
     y -= 14
 
-    c.setFont('Helvetica-Bold', 8); c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 9, 'ACCESSORIES:')
-    c.setStrokeColor(MUTED); c.setLineWidth(0.5)
-    c.line(ML + 80, y - 10, PAGE_W - MR, y - 10)
-    c.setStrokeColor(LINE); c.setLineWidth(0.25)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
-    y -= 18
-
-    # Damage box
-    c.setFont('Helvetica-Bold', 8); c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 8, 'DETAILS OF ANY DAMAGE:')
-    dmg_val = _v(data, 'damage_list') if _v(data, 'any_damage').upper() == 'YES' else ''
-    c.setFillColor(ROW_ALT)
-    c.rect(ML, y - 42, CW, 32, fill=1, stroke=0)
-    c.setStrokeColor(LINE); c.setLineWidth(0.5)
-    c.rect(ML, y - 42, CW, 32, fill=0, stroke=1)
-    if dmg_val:
-        c.setFont('Helvetica', 8); c.setFillColor(DARK)
-        for i, ln in enumerate(simpleSplit(dmg_val[:200], 'Helvetica', 8, CW - 8)[:3]):
-            c.drawString(ML + 4, y - 18 - i * 11, ln)
-    y -= 46
-
-    # Tow / delivery
-    c.setFont('Helvetica-Bold', 8); c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 9, 'TOWED BY:')
-    c.setFont('Helvetica', 8)
-    tow_name = _v(data, 'tow_company_name')
-    c.drawString(ML + 54, y - 9, tow_name)
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + int(CW * 0.47), y - 9, 'TOWING COST: $')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + int(CW * 0.47) + 82, y - 9, _v(data, 'tow_costs'))
-    c.setStrokeColor(LINE); c.setLineWidth(0.25)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
+    c.drawString(ML, y, 'ACCESSORIES:')
+    c.setStrokeColor(LINE)
+    c.setLineWidth(0.5)
+    c.line(ML + 80, y - 1, PAGE_W - MR, y - 1)
+    _hr(c, y - 14)
     y -= 14
 
-    c.setFont('Helvetica-Bold', 8); c.setFillColor(DARK)
-    c.drawString(ML + 4, y - 9, 'DELIVERED TO:')
-    xb = ML + 80
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'DETAILS OF ANY DAMAGE:')
+    y -= 2
+    dmg_val = _v(data, 'damage_list') if _v(data, 'any_damage').upper() == 'YES' else ''
+    c.setStrokeColor(LINE)
+    c.setLineWidth(0.5)
+    c.rect(ML, y - 30, CW, 30, fill=0, stroke=1)
+    if dmg_val:
+        c.setFont('Helvetica', 8)
+        c.setFillColor(DARK)
+        for i, ln in enumerate(simpleSplit(dmg_val[:200], 'Helvetica', 8, CW - 8)[:2]):
+            c.drawString(ML + 4, y - 14 - i * 11, ln)
+    y -= 38
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'TOWED BY:')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 56, y, _v(data, 'tow_company_name'))
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML + int(CW * 0.47), y, 'TOWING COST: $')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + int(CW * 0.47) + 84, y, _v(data, 'tow_costs'))
+    _hr(c, y - 14)
+    y -= 14
+
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'DELIVERED TO:')
+    xb = ML + 82
     delivery = _v(data, 'deliver_to', 'delivery_address').upper()
-    for yard in ['MANHEIM', 'PICKLES', 'HELD AT TOWING YARD', 'OTHER']:
-        xb = _cb(c, xb, y, yard, yard.split()[0] in delivery)
-    c.setStrokeColor(LINE); c.setLineWidth(0.25)
-    c.line(ML, y - 14, PAGE_W - MR, y - 14)
+    for yard in ['GAMERS', 'PICKLES', 'HELD AT TOWING YARD', 'OTHER']:
+        xb = _cb(c, xb, y, yard, any(w in delivery for w in yard.split()))
+    _hr(c, y - 14)
     y -= 20
 
-    # Signatures
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML, y, 'DOES THE DEBTOR WISH TO REDEEM THE SECURITY:')
+    xb = ML + 272
+    redeem_yes = _condition_checked(_v(data, 'vol_surrender'), 'yes')
+    xb = _cb(c, xb, y, 'YES', redeem_yes)
+    _cb(c, xb, y, 'NO', not redeem_yes)
+    _hr(c, y - 14)
+    y -= 24
+
     agent_name = _v(data, 'agent_name')
     sig_w = (CW - 14) / 2
-    sig_h = 70
+    sig_h = 72
     date_str = _v(data, 'repo_date')
     _sig_box(c, ML, y, sig_w, sig_h, f'Agent: {agent_name}', agent_sig, date_str)
     _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h, 'Customer Signature', customer_sig, date_str)
@@ -584,334 +718,489 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     return buf.read()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Form 13 — Notice to Occupier / NCCP Entry to Take Possession
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# 4. Form 13 — Consent to Enter Premises (NCCP Schedule 1)
+# =============================================================================
 
 def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
-    c.setTitle('Form 13 — Notice to Occupier of Premises')
+    c.setTitle('Form 13 Consent to Enter Premises')
 
-    y = _page_header(c, 'FORM 13 — NOTICE TO OCCUPIER OF PREMISES')
-    y -= 4
+    y = PAGE_H - MT
 
-    c.setFillColor(HexColor('#fef9c3'))
-    c.rect(ML, y - 28, CW, 28, fill=1, stroke=0)
-    c.setStrokeColor(HexColor('#fde047'))
-    c.setLineWidth(0.75)
-    c.rect(ML, y - 28, CW, 28, fill=0, stroke=1)
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(HexColor('#78350f'))
-    c.drawString(ML + 8, y - 12,
-        'National Consumer Credit Protection Act 2009, Schedule 1 — National Credit Code')
+    c.setFont('Helvetica-Bold', 12)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, 'Form 13 Consent to enter premises')
+    y -= 16
+
     c.setFont('Helvetica', 7.5)
-    c.setFillColor(HexColor('#92400e'))
-    c.drawString(ML + 8, y - 22,
-        'Required when entering premises to take possession of mortgaged goods under a consumer credit contract.')
-    y -= 36
+    c.setFillColor(MUTED)
+    c.drawRightString(PAGE_W - MR, y, 'subsection 99 (2) of the Code')
+    y -= 10
+    c.drawRightString(PAGE_W - MR, y, 'regulation 87 of the Regulations')
+    y -= 14
 
-    y = _section_hdr(c, y, 'Creditor Details')
-    y = _row(c, y, [('Creditor / Finance Company', _v(data, 'finance_company', 'client_name')),
-                    ('Client Reference', _v(data, 'client_reference'))])
-    y = _row(c, y, [('SWPI Reference', _v(data, 'swpi_ref')),
-                    ('Account Number', _v(data, 'account_number'))], alt=True)
-    y -= 3
-
-    y = _section_hdr(c, y, 'Debtor / Mortgagor Details')
-    y = _frow(c, y, 'Full Name of Mortgagor', _v(data, 'customer_name'))
-    y = _frow(c, y, 'Address of Premises', _v(data, 'repo_address'), alt=True)
-    y -= 3
-
-    y = _section_hdr(c, y, 'Goods Subject to Mortgage')
-    make_model = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
-                                        _v(data, 'model')])) or _v(data, 'description')
-    y = _row(c, y, [('Year / Make / Model', make_model), ('Registration', _v(data, 'registration'))])
-    y = _row(c, y, [('VIN / Chassis', _v(data, 'vin')), ('Engine Number', _v(data, 'engine_number'))],
-             alt=True)
-    y -= 3
-
-    y = _section_hdr(c, y, 'Notice')
-    notice_text = (
-        "TO THE OCCUPIER: You are hereby given notice that the above-named mercantile agent, acting "
-        "on behalf of the above creditor, intends to enter the above premises for the purpose of taking "
-        "possession of the above-described mortgaged goods pursuant to the National Consumer Credit "
-        "Protection Act 2009 and the terms of the credit contract.\n\n"
-        "Pursuant to Section 100 of the National Credit Code, this notice is given to you as an occupier "
-        "of the premises. The mortgagor has failed to meet their obligations under the credit contract "
-        "and the creditor is entitled to take possession of the mortgaged goods.\n\n"
-        "If the goods are not voluntarily surrendered, the creditor may apply to a court for an order to "
-        "take possession. You may contact the creditor or seek independent legal advice."
-    )
-    tx = ML + 6
-    ty = y - 10
     c.setFont('Helvetica', 8)
     c.setFillColor(DARK)
-    for line in simpleSplit(notice_text, 'Helvetica', 8, CW - 12):
-        c.drawString(tx, ty, line)
-        ty -= 11
-    y = ty - 6
+    c.drawRightString(PAGE_W - MR, y, '...............')
+    c.drawRightString(PAGE_W - MR - 15, y, 'Date')
+    y -= 16
 
-    y = _section_hdr(c, y, 'Acknowledgement by Occupier')
-    ack_text = (
-        "I, the undersigned occupier of the above premises, acknowledge receipt of this notice and "
-        "that a copy of this Form 13 has been delivered to me in accordance with the National Credit Code."
+    credit_provider = _v(data, 'finance_company', 'client_name')
+    c.setFont('Helvetica', 8)
+    c.drawString(ML, y, 'TO: . . . . . . . . ')
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML + 68, y, credit_provider)
+    c.setFont('Helvetica', 8)
+    c.drawString(ML + 68 + c.stringWidth(credit_provider, 'Helvetica-Bold', 8) + 4, y, '. . . . . . . . . .')
+    y -= 10
+    c.setFont('Helvetica-Oblique', 7.5)
+    c.setFillColor(MUTED)
+    c.drawString(ML + 68, y, '(name of credit provider)')
+    y -= 10
+    c.setFont('Helvetica-Oblique', 7.5)
+    c.drawString(ML + 68, y, '(Australian credit licence number)')
+    y -= 18
+
+    occupier_name = _v(data, 'customer_name')
+    occupier_addr = _v(data, 'repo_address')
+    c.setFont('Helvetica', 8)
+    c.setFillColor(DARK)
+    c.drawString(ML, y, 'FROM: . . . . . . . . . . ')
+    c.setFont('Helvetica-Bold', 8)
+    c.drawString(ML + 100, y, occupier_name)
+    c.setFont('Helvetica', 8)
+    end_x = ML + 100 + c.stringWidth(occupier_name, 'Helvetica-Bold', 8) + 4
+    if end_x < PAGE_W - MR - 40:
+        c.drawString(end_x, y, '. . . . . . . . . . . . . . . . . .')
+    y -= 10
+    c.setFont('Helvetica-Oblique', 7.5)
+    c.setFillColor(MUTED)
+    c.drawString(ML + 100, y, '(name of occupier)')
+    y -= 12
+
+    c.setFont('Helvetica', 8)
+    c.setFillColor(DARK)
+    c.drawString(ML + 100, y, _trunc(occupier_addr, 55))
+    y -= 10
+    c.setFont('Helvetica-Oblique', 7.5)
+    c.setFillColor(MUTED)
+    c.drawString(ML + 100, y, "(address of occupier's premises)")
+    y -= 10
+    c.setFont('Helvetica', 8)
+    c.setFillColor(DARK)
+    c.drawString(ML + 100, y, '.........................................')
+    y -= 10
+    c.setFont('Helvetica-Oblique', 7.5)
+    c.setFillColor(MUTED)
+    c.drawString(ML + 100, y, "('the premises')")
+    y -= 18
+
+    consent_text = (
+        "I consent to the credit provider entering the premises for the purpose of taking "
+        "possession of the mortgaged goods described below."
     )
-    ty = y - 10
-    for line in simpleSplit(ack_text, 'Helvetica', 8, CW - 12):
-        c.drawString(tx, ty, line)
-        ty -= 11
-    y = ty - 10
+    c.setFont('Helvetica', 8.5)
+    c.setFillColor(DARK)
+    for line in simpleSplit(consent_text, 'Helvetica', 8.5, CW):
+        c.drawString(ML, y, line)
+        y -= 12
+    y -= 6
 
-    agent_name = _v(data, 'agent_name')
-    date_str = _v(data, 'repo_date')
+    make_model = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
+                                        _v(data, 'model')])) or _v(data, 'description')
+    vin = _v(data, 'vin')
+    goods_desc = make_model
+    if vin:
+        goods_desc += f', VIN/CHASSIS: {vin}'
+
+    c.setFont('Helvetica-Bold', 8.5)
+    c.drawString(ML, y, 'The mortgaged goods are:')
+    y -= 12
+    c.setFont('Helvetica', 8.5)
+    c.drawString(ML, y, _trunc(goods_desc, 80))
+    y -= 20
+
+    _hr(c, y, strong=True)
+    y -= 14
+
+    c.setFont('Helvetica-Bold', 10)
+    c.drawCentredString(PAGE_W / 2, y, 'IMPORTANT')
+    y -= 12
+
+    important = (
+        'YOU HAVE THE RIGHT TO REFUSE CONSENT. IF YOU DO THE CREDIT PROVIDER MAY GO TO '
+        'COURT FOR PERMISSION TO ENTER THE PREMISES.'
+    )
+    c.setFont('Helvetica-Bold', 8.5)
+    for line in simpleSplit(important, 'Helvetica-Bold', 8.5, CW):
+        c.drawCentredString(PAGE_W / 2, y, line)
+        y -= 12
+    y -= 6
+    _hr(c, y, strong=True)
+    y -= 20
+
+    c.setFont('Helvetica', 8)
+    c.setFillColor(MUTED)
+    c.drawCentredString(PAGE_W / 2, y, '..................................................')
+    y -= 10
+    c.drawCentredString(PAGE_W / 2, y, '(signature of occupier giving consent)')
+    y -= 18
+
+    agent_name  = _v(data, 'agent_name')
+    date_str    = _v(data, 'repo_date')
     sig_w = (CW - 14) / 2
     sig_h = 80
 
-    _sig_box(c, ML, y, sig_w, sig_h, 'Signature of Occupier / Mortgagor', occupant_sig, date_str)
+    _sig_box(c, ML, y, sig_w, sig_h, 'Signature of Occupier giving consent', occupant_sig, date_str)
     _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h,
-             f'Mercantile Agent: {agent_name}', agent_sig, date_str)
+             f'Agent: {agent_name}, {_v(data, "repo_address")}', agent_sig, date_str)
+    y -= (sig_h + 16)
+
+    c.setFont('Helvetica', 7.5)
+    c.setFillColor(MUTED)
+    c.drawCentredString(PAGE_W / 2, y,
+        'Schedule 1 to the National Consumer Credit Protection Regulations 2010')
 
     c.save()
     buf.seek(0)
     return buf.read()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Voluntary Surrender Form — NCC Section 78(1)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# 5. Voluntary Surrender — Section 78(1) NCC
+# =============================================================================
 
 def generate_voluntary_surrender_pdf(data, customer_sig=None, agent_sig=None):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
-    c.setTitle('Voluntary Surrender of Mortgaged Goods — Section 78(1) NCC')
+    c.setTitle('Voluntary Surrender \u2014 Section 78(1)')
 
-    y = _page_header(c, 'VOLUNTARY SURRENDER OF MORTGAGED GOODS — SEC 78(1) NCC')
-    y -= 4
+    y = PAGE_H - MT
 
-    c.setFillColor(HexColor('#fef9c3'))
-    c.rect(ML, y - 28, CW, 28, fill=1, stroke=0)
-    c.setStrokeColor(HexColor('#fde047'))
-    c.setLineWidth(0.75)
-    c.rect(ML, y - 28, CW, 28, fill=0, stroke=1)
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(HexColor('#78350f'))
-    c.drawString(ML + 8, y - 12,
-        'National Consumer Credit Protection Act 2009, Schedule 1, Section 78(1) — Voluntary Surrender')
-    c.setFont('Helvetica', 7.5)
-    c.setFillColor(HexColor('#92400e'))
-    c.drawString(ML + 8, y - 22,
-        'A debtor under a consumer credit contract may voluntarily surrender possession of mortgaged goods.')
-    y -= 36
+    c.setFont('Helvetica-Bold', 12)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, 'SECTION 78(1) NOTICE')
+    y -= 14
 
-    y = _section_hdr(c, y, 'Credit Provider / Creditor Details')
-    y = _row(c, y, [('Finance Company', _v(data, 'finance_company', 'client_name')),
-                    ('Account Number', _v(data, 'account_number'))])
-    y = _row(c, y, [('Client Reference', _v(data, 'client_reference')),
-                    ('SWPI Reference', _v(data, 'swpi_ref'))], alt=True)
-    y -= 3
+    c.setFont('Helvetica-Bold', 11)
+    c.drawCentredString(PAGE_W / 2, y, 'VOLUNTARY SURRENDER OF MORTGAGE TO GOODS')
+    y -= 6
+    _hr(c, y, strong=True)
+    y -= 16
 
-    y = _section_hdr(c, y, 'Debtor Details')
-    y = _frow(c, y, 'Full Name of Debtor', _v(data, 'customer_name'))
-    y = _frow(c, y, 'Address', _v(data, 'repo_address'), alt=True)
-    y -= 3
+    creditor = _v(data, 'finance_company', 'client_name')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, 'To: ')
+    c.setFont('Helvetica-Bold', 9)
+    c.drawString(ML + 24, y, creditor)
+    y -= 14
 
-    y = _section_hdr(c, y, 'Goods Being Surrendered')
+    mortgagor = _v(data, 'customer_name')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, 'Mortgagor/s: ')
+    c.setFont('Helvetica-Bold', 9)
+    c.drawString(ML + 76, y, mortgagor)
+    y -= 14
+
+    address = _v(data, 'repo_address')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, 'Address of Mortgagor/s: ')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML + 140, y, _trunc(address, 48))
+    y -= 14
+
+    account = _v(data, 'account_number')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, 'Agreement/Account No. ')
+    c.setFont('Helvetica-Bold', 9)
+    c.drawString(ML + 130, y, account)
+    y -= 14
+
     make_model = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
                                         _v(data, 'model')])) or _v(data, 'description')
-    y = _row(c, y, [('Year / Make / Model', make_model), ('Registration', _v(data, 'registration'))])
-    y = _row(c, y, [('VIN / Chassis', _v(data, 'vin')), ('Engine Number', _v(data, 'engine_number'))],
-             alt=True)
-    y -= 3
+    vin = _v(data, 'vin')
+    goods_desc = make_model
+    if vin:
+        goods_desc += f', VIN/CHASSIS: {vin}'
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, 'Description of Goods: ')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML + 128, y, _trunc(goods_desc, 50))
+    y -= 14
 
-    y = _section_hdr(c, y, 'Declaration')
-    cust = _v(data, 'customer_name') or '___________________________________'
-    addr = _v(data, 'repo_address') or '___________________________________'
-    decl_text = (
-        f"I, {cust}, of {addr}, being the debtor/mortgagor under the above-referenced consumer "
-        "credit contract, DO HEREBY VOLUNTARILY SURRENDER possession of the above-described goods to "
-        "the credit provider pursuant to Section 78(1) of the National Consumer Credit Protection Act "
-        "2009, Schedule 1 (National Credit Code).\n\n"
-        "I acknowledge and declare that:\n"
-        "1. I am surrendering possession of the mortgaged goods of my own free will without duress.\n"
-        "2. I understand that voluntarily surrendering the goods does not extinguish my liability under "
-        "the credit contract.\n"
-        "3. I may be liable for any shortfall between the proceeds of sale and the amount outstanding.\n"
-        "4. I have been given the opportunity to seek independent legal advice prior to signing.\n"
-        "5. The goods are surrendered on the date below in the condition noted in the Vehicle Inspection Report."
-    )
-    tx = ML + 6
-    ty = y - 10
-    c.setFont('Helvetica', 8)
-    c.setFillColor(DARK)
-    for line in simpleSplit(decl_text, 'Helvetica', 8, CW - 12):
-        c.drawString(tx, ty, line)
-        ty -= 11
-    y = ty - 10
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, 'Place of Delivery:')
+    delivery = _v(data, 'deliver_to', 'delivery_address')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML + 106, y, _trunc(delivery, 48))
+    y -= 18
 
-    agent_name = _v(data, 'agent_name')
+    c.setFont('Helvetica', 8.5)
+    c.drawString(ML, y, 'I/We the person/s named above as Mortgagor/s:')
+    y -= 14
+
+    terms = [
+        f'1.  Require ({creditor}) to sell the Mortgaged goods:',
+        '        a.  As soon as reasonably practicable; and',
+        '        b.  For the best price that (Creditor) can reasonable obtain.',
+        '',
+        '2.  I/We acknowledge that the Mortgaged goods have already been delivered to the place '
+        'of delivery as set out above',
+        '    or will be delivered to the place of delivery within (7) seven days from the date '
+        'of this Notice during ordinary business',
+        '    hours.',
+    ]
+    for term in terms:
+        if not term:
+            y -= 6
+            continue
+        for ln in simpleSplit(term, 'Helvetica', 8.5, CW):
+            c.drawString(ML, y, ln)
+            y -= 12
+    y -= 10
+
+    c.setFont('Helvetica-Bold', 9)
+    c.drawString(ML, y, 'Declaration:')
+    y -= 16
+
+    c.setFont('Helvetica', 8.5)
+    c.drawString(ML, y, 'Mortgagor/s signature:')
+    y -= 16
+    _hr(c, y)
+    y -= 8
+
+    sig_w = CW
+    sig_h = 80
     date_str = _v(data, 'repo_date')
-    sig_w = (CW - 14) / 2
-    sig_h = 82
+    _sig_box(c, ML, y, sig_w, sig_h, f'Mortgagor/s: {mortgagor}', customer_sig, date_str)
+    y -= (sig_h + 14)
 
-    _sig_box(c, ML, y, sig_w, sig_h, 'Debtor / Customer Signature', customer_sig, date_str)
-    _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h,
-             f'Mercantile Agent Witness: {agent_name}', agent_sig, date_str)
+    c.setFont('Helvetica', 8.5)
+    c.drawString(ML, y, 'Print Name: _____________________________________')
+    c.drawString(ML + CW * 0.6, y, 'Date:')
+    y -= 20
+
+    if agent_sig:
+        _sig_box(c, ML, y, (CW - 14) / 2, 70,
+                 f'Witness (Agent): {_v(data, "agent_name")}', agent_sig, date_str)
 
     c.save()
     buf.seek(0)
     return buf.read()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Auction Manager Letter
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# 6. Auction Manager Letter
+# =============================================================================
 
 def generate_auction_letter_pdf(data):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
     c.setTitle('Auction Manager Letter')
 
-    y = _page_header(c, 'LETTER TO AUCTION MANAGER')
-    y -= 10
+    y = PAGE_H - MT
 
-    date_str     = _v(data, 'repo_date', default='')
-    deliver_to   = _v(data, 'deliver_to', 'delivery_address', default='Auction House')
-    ref_line     = ' / '.join(filter(None, [_v(data, 'swpi_ref'), _v(data, 'client_reference'),
-                                            _v(data, 'wise_case_number')]))
-    make_model   = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
-                                          _v(data, 'model')])) or _v(data, 'description')
-    agent_name   = _v(data, 'agent_name')
-    client_name  = _v(data, 'client_name', 'finance_company')
+    finance_company = _v(data, 'finance_company', 'client_name', default='the Finance Company')
+    ref_number      = _v(data, 'account_number', 'client_reference', 'swpi_ref')
+    make_model      = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
+                                             _v(data, 'model')])) or _v(data, 'description')
+    registration    = _v(data, 'registration')
+    engine_number   = _v(data, 'engine_number')
+    vin             = _v(data, 'vin')
 
-    paras = [
-        (True,  f"Date: {date_str}"),
-        (False, ""),
-        (False, f"Dear Auction Manager — {deliver_to},"),
-        (False, ""),
-        (True,  f"RE: VEHICLE DELIVERY  |  Reference: {ref_line}"),
-        (False, ""),
-        (False, f"Please be advised that SWPI, acting on behalf of {client_name}, has repossessed the "
-                "following security interest vehicle, which is being delivered to your facility for "
-                "storage and auction:"),
-        (False, ""),
-        (False, f"  Make / Model:     {make_model}"),
-        (False, f"  Registration:     {_v(data, 'registration')}"),
-        (False, f"  VIN / Chassis:    {_v(data, 'vin')}"),
-        (False, f"  Colour:           {_v(data, 'colour')}"),
-        (False, f"  Year:             {_v(data, 'year')}"),
-        (False, ""),
-        (False, f"  Finance Company:  {_v(data, 'finance_company', 'client_name')}"),
-        (False, f"  Account Number:   {_v(data, 'account_number')}"),
-        (False, f"  Client Reference: {_v(data, 'client_reference')}"),
-        (False, ""),
-        (False, "Please arrange to store the vehicle securely and prepare for auction in accordance with "
-                "standing instructions. Contact our office with any queries."),
-        (False, ""),
-        (False, f"Please send the invoice for storage and auction charges directly to {client_name}, "
-                f"referencing: {ref_line}"),
-        (False, ""),
-        (True,  "IMPORTANT: Photograph the vehicle on receipt and note any damage."),
-        (False, ""),
-        (False, "Yours faithfully,"),
-        (False, ""),
-        (False, ""),
-        (True,  agent_name),
-        (False, "South West Process Serving & Investigative Agency"),
-        (False, "Phone: +61 429 996 260"),
-    ]
-
-    tx = ML + 6
-    ty = y - 6
+    c.setFont('Helvetica-Bold', 11)
     c.setFillColor(DARK)
-    for bold, para in paras:
-        c.setFont('Helvetica-Bold' if bold else 'Helvetica', 9)
-        lines_p = simpleSplit(para, 'Helvetica', 9, CW - 12) if para else ['']
-        for ln in lines_p:
-            c.drawString(tx, ty, ln)
-            ty -= 13
+    c.drawString(ML, y, 'TO THE AUCTION MANAGER')
+    y -= 20
+
+    body1 = (
+        f'This unit has been repossessed on behalf of {finance_company}. '
+        'Please assign this asset to their stock list'
+    )
+    c.setFont('Helvetica', 9.5)
+    for ln in simpleSplit(body1, 'Helvetica', 9.5, CW):
+        c.drawString(ML, y, ln)
+        y -= 14
+    y -= 8
+
+    c.setFont('Helvetica', 9.5)
+    c.drawString(ML, y, f'Please quote the following reference number: ')
+    c.setFont('Helvetica-Bold', 9.5)
+    c.drawString(ML + c.stringWidth('Please quote the following reference number: ',
+                                    'Helvetica', 9.5), y, ref_number)
+    y -= 18
+
+    for label, value in [
+        ('UNIT DETAILS:', make_model),
+        ('REGO NO:', registration),
+        ('ENGINE NUMBER:', engine_number),
+        ('VIN number:', vin),
+    ]:
+        c.setFont('Helvetica-Bold', 9.5)
+        lw = c.stringWidth(label, 'Helvetica-Bold', 9.5)
+        c.drawString(ML, y, label)
+        c.setFont('Helvetica', 9.5)
+        c.drawString(ML + lw + 6, y, value)
+        y -= 14
+    y -= 12
+
+    for para in [
+        'Should you have any further queries, please contact this office.',
+        '',
+        'We thank you for your assistance.',
+    ]:
         if not para:
-            ty -= 2
+            y -= 6
+            continue
+        c.setFont('Helvetica', 9.5)
+        c.drawString(ML, y, para)
+        y -= 14
+    y -= 18
+
+    c.setFont('Helvetica', 9.5)
+    c.drawString(ML, y, 'Yours faithfully,')
+    y -= 28
+
+    agent_name = _v(data, 'agent_name')
+    if agent_name:
+        c.setFont('Helvetica-Bold', 9.5)
+        c.drawString(ML, y, agent_name)
+        y -= 14
+    c.setFont('Helvetica-Bold', 9.5)
+    c.drawString(ML, y, 'South West Process Serving & Investigative Agency')
+    y -= 12
+    c.setFont('Helvetica', 9)
+    c.drawString(ML, y, '+61 429 996 260')
+    y -= 10
+    c.drawString(ML, y, 'PO Box 651, Sunshine VIC 3020')
 
     c.save()
     buf.seek(0)
     return buf.read()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Towing Contractor Letter
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# 7. Towing Contractor Letter
+# =============================================================================
 
 def generate_tow_letter_pdf(data):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
     c.setTitle('Towing Contractor Letter')
 
-    y = _page_header(c, 'LETTER TO TOWING CONTRACTOR')
+    y = PAGE_H - MT
+
+    client_name  = _v(data, 'client_name', 'finance_company', default='our office')
+    client_email = _v(data, 'client_email')
+    ref_number   = _v(data, 'swpi_ref', 'client_reference', 'account_number')
+    make_model   = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
+                                          _v(data, 'model')])) or _v(data, 'description')
+    registration = _v(data, 'registration')
+    engine_number = _v(data, 'engine_number')
+    vin           = _v(data, 'vin')
+    deliver_to    = _v(data, 'deliver_to', default='')
+    delivery_addr = _v(data, 'delivery_address', default='')
+
+    c.setFont('Helvetica-Bold', 11)
+    c.setFillColor(DARK)
+    c.drawString(ML, y, 'TO THE TOWING CONTRACTOR')
+    y -= 20
+
+    c.setFont('Helvetica', 9.5)
+    c.drawString(ML, y, 'Please arrange for your account to be sent as follows;')
+    y -= 18
+
+    for label, value in [
+        ('Addressed to:', client_name),
+        ('Email:', client_email or 'wmgrecoveries@wisegroup.com.au'),
+        ('Tel:', '(02) 9210 0040'),
+    ]:
+        c.setFont('Helvetica-Bold', 9.5)
+        lw = c.stringWidth(label, 'Helvetica-Bold', 9.5)
+        c.drawString(ML, y, label)
+        c.setFont('Helvetica', 9.5)
+        c.drawString(ML + lw + 6, y, value)
+        y -= 14
+    y -= 8
+
+    c.setFont('Helvetica', 9.5)
+    c.drawString(ML, y, 'Please quote the following reference number and matter name;')
+    y -= 14
+
+    c.setFont('Helvetica-Bold', 9.5)
+    c.drawString(ML, y, 'Reference Number: ')
+    c.setFont('Helvetica', 9.5)
+    c.drawString(ML + c.stringWidth('Reference Number: ', 'Helvetica-Bold', 9.5), y, ref_number)
+    y -= 18
+
+    for label, value in [
+        ('UNIT DETAILS:', make_model),
+        ('REGO NO:', registration),
+        ('ENGINE NUMBER:', engine_number),
+        ('VIN/CHASSIS:', vin),
+    ]:
+        c.setFont('Helvetica-Bold', 9.5)
+        lw = c.stringWidth(label, 'Helvetica-Bold', 9.5)
+        c.drawString(ML, y, label)
+        c.setFont('Helvetica', 9.5)
+        c.drawString(ML + lw + 6, y, value)
+        y -= 14
     y -= 10
 
-    date_str         = _v(data, 'repo_date', default='')
-    tow_company      = _v(data, 'tow_company_name', default='Towing Contractor')
-    deliver_to       = _v(data, 'deliver_to', default='Auction Yard')
-    delivery_address = _v(data, 'delivery_address', default='')
-    ref_line         = ' / '.join(filter(None, [_v(data, 'swpi_ref'), _v(data, 'client_reference'),
-                                                _v(data, 'wise_case_number')]))
-    make_model       = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
-                                              _v(data, 'model')])) or _v(data, 'description')
-    agent_name       = _v(data, 'agent_name')
-    repo_address     = _v(data, 'repo_address', default='')
+    c.setFont('Helvetica-Bold', 9.5)
+    c.drawString(ML, y, 'PLEASE ARRANGE FOR THE UNIT TO BE DELIVERED TO:')
+    y -= 14
 
-    paras = [
-        (True,  f"Date: {date_str}"),
-        (False, ""),
-        (False, f"Dear {tow_company},"),
-        (False, ""),
-        (True,  f"RE: TOWING INSTRUCTIONS  |  Reference: {ref_line}"),
-        (False, ""),
-        (False, "Please collect and deliver the following vehicle to the auction facility as detailed below. "
-                "Please attend the collection address at the earliest opportunity."),
-        (False, ""),
-        (True,  "COLLECTION DETAILS:"),
-        (False, f"  Address:         {repo_address}"),
-        (False, f"  Make / Model:    {make_model}"),
-        (False, f"  Registration:    {_v(data, 'registration')}"),
-        (False, f"  VIN / Chassis:   {_v(data, 'vin')}"),
-        (False, f"  Colour:          {_v(data, 'colour')}"),
-        (False, ""),
-        (True,  "DELIVERY DETAILS:"),
-        (False, f"  Deliver To:      {deliver_to}"),
-        (False, f"  Address:         {delivery_address}"),
-        (False, f"  Reference:       {ref_line}"),
-        (False, ""),
-        (True,  "IMPORTANT INSTRUCTIONS:"),
-        (False, "  •  Inspect and photograph the vehicle before loading — note all pre-existing damage."),
-        (False, "  •  Do not allow removal of goods without written authority from our office."),
-        (False, "  •  Contact our office if any issues arise: +61 429 996 260"),
-        (False, "  •  Submit invoice directly to the finance company quoting the above reference."),
-        (False, ""),
-        (False, "Please sign and return a copy of this letter to confirm receipt of instructions."),
-        (False, ""),
-        (False, "Yours faithfully,"),
-        (False, ""),
-        (False, ""),
-        (True,  agent_name),
-        (False, "South West Process Serving & Investigative Agency"),
-        (False, "Phone: +61 429 996 260"),
-    ]
+    c.setFont('Helvetica-Bold', 9)
+    c.drawString(ML, y, 'Name of Auction Yard: ')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML + c.stringWidth('Name of Auction Yard: ', 'Helvetica-Bold', 9), y,
+                 _trunc(deliver_to, 40) or '___________________________________')
+    y -= 12
 
-    tx = ML + 6
-    ty = y - 6
-    c.setFillColor(DARK)
-    for bold, para in paras:
-        c.setFont('Helvetica-Bold' if bold else 'Helvetica', 9)
-        lines_p = simpleSplit(para, 'Helvetica', 9, CW - 12) if para else ['']
-        for ln in lines_p:
-            c.drawString(tx, ty, ln)
-            ty -= 13
-        if not para:
-            ty -= 2
+    c.setFont('Helvetica-Bold', 9)
+    c.drawString(ML, y, 'Address: ')
+    c.setFont('Helvetica', 9)
+    c.drawString(ML + c.stringWidth('Address: ', 'Helvetica-Bold', 9), y,
+                 _trunc(delivery_addr, 55) or '___________________________________')
+    y -= 18
+
+    nb = (
+        'NB: If the vehicle is to be stored, the storage facility must have sufficient '
+        'insurance to cover any damage sustained to the vehicle whilst in their possession.'
+    )
+    c.setFont('Helvetica', 8.5)
+    for ln in simpleSplit(nb, 'Helvetica', 8.5, CW):
+        c.drawString(ML, y, ln)
+        y -= 12
+    y -= 8
+
+    c.drawString(ML, y, 'Should you have any further queries, please contact this office.')
 
     c.save()
     buf.seek(0)
     return buf.read()
 
+
+# =============================================================================
+# 8. Complete Repo Pack — merge all applicable docs into one PDF
+# =============================================================================
+
+def generate_repo_pack_pdf(pdfs: list[bytes]) -> bytes:
+    """Merge a list of PDF byte strings into a single PDF using pypdf."""
+    try:
+        from pypdf import PdfWriter, PdfReader
+        writer = PdfWriter()
+        for pdf_bytes in pdfs:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            for page in reader.pages:
+                writer.add_page(page)
+        out = io.BytesIO()
+        writer.write(out)
+        out.seek(0)
+        return out.read()
+    except Exception:
+        # Fallback: just return the first PDF if merge fails
+        return pdfs[0] if pdfs else b''

@@ -2,131 +2,167 @@
 {% block title %}VIR — {{ rec.registration or rec.description or ('Repo Lock #' ~ rec.id) }}{% endblock %}
 
 {% block content %}
-<div style="max-width:860px;margin:0 auto;padding:20px 16px 40px;">
+<div style="max-width:900px;margin:0 auto;padding:20px 16px 40px;">
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
     <div>
-      <a href="/jobs/{{ job_id }}" style="color:var(--muted,#6b7280);font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
-      <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Vehicle Condition Report / Repossession Receipt</h2>
-      <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">{{ rec.registration or rec.description or ('Repo Lock #' ~ rec.id) }} &mdash; {{ rec.repo_date or '' }}</div>
+      <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
+      <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Surrendered / Repossession Receipt (VIR)</h2>
+      <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">Edit fields below, sign, then generate PDF</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/transport-instructions"
-         style="padding:8px 14px;border:1.5px solid #2563eb;color:#2563eb;border-radius:8px;text-decoration:none;font-size:.82rem;font-weight:600;">
-        Transport Instructions &#x2192;
-      </a>
-    </div>
+    <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/transport-instructions"
+       style="padding:8px 14px;border:1.5px solid #2563eb;color:#2563eb;border-radius:8px;text-decoration:none;font-size:.82rem;font-weight:600;">
+      Transport Instructions &#x2192;
+    </a>
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for cat, msg in messages %}
-    <div class="alert alert-{{ 'danger' if cat == 'error' else cat }} py-2 px-3 mb-3" style="font-size:.84rem;">{{ msg }}</div>
-    {% endfor %}
-  {% endif %}
+  {% if messages %}{% for cat, msg in messages %}
+    <div style="padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:.84rem;background:{% if cat=='error' %}#fef2f2;color:#b91c1c;border:1px solid #fecaca{% else %}#f0fdf4;color:#166534;border:1px solid #bbf7d0{% endif %}">{{ msg }}</div>
+  {% endfor %}{% endif %}
   {% endwith %}
 
-  {# ── Data summary ── #}
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
-    <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">VEHICLE CONDITION REPORT / REPOSSESSION RECEIPT — DATA PREVIEW</div>
-    {% macro field_row(label, value) %}
-    <div style="display:flex;border-bottom:1px solid #f3f4f6;padding:6px 16px;font-size:.82rem;">
-      <span style="width:200px;flex-shrink:0;color:#6b7280;font-weight:600;">{{ label }}</span>
-      <span style="color:#111;">{{ value or '—' }}</span>
-    </div>
-    {% endmacro %}
-    {% macro section(title) %}
-    <div style="background:#f3f4f6;padding:6px 16px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">{{ title }}</div>
-    {% endmacro %}
-
-    {{ section('Job Details') }}
-    {{ field_row('Client', rec.client_name) }}
-    {{ field_row('Client Reference', rec.client_reference) }}
-    {{ field_row('SWPI Reference', rec.swpi_ref) }}
-    {{ field_row('Finance Company', rec.finance_company) }}
-    {{ field_row('Date', rec.repo_date) }}
-    {{ field_row('Customer Name', rec.customer_name) }}
-    {{ field_row('Account Number', rec.account_number) }}
-    {{ field_row('Repossessed Address', rec.repo_address) }}
-
-    {{ section('Asset Details') }}
-    {{ field_row('Year / Make / Model', [item_year, item_make, item_model] | select | join(' ')) }}
-    {{ field_row('Registration', rec.registration) }}
-    {{ field_row('Rego Expiry', rec.rego_expiry) }}
-    {{ field_row('VIN / Chassis', rec.vin) }}
-    {{ field_row('Engine Number', rec.engine_number) }}
-    {{ field_row('Odometer', rec.speedometer) }}
-    {{ field_row('Description', rec.description) }}
-
-    {{ section('Recovery Details') }}
-    {{ field_row('Person Present', rec.person_present) }}
-    {{ field_row('Keys Obtained', rec.keys_obtained ~ (' (' ~ rec.how_many_keys ~ ')' if rec.how_many_keys else '')) }}
-    {{ field_row('Voluntary Surrender', rec.vol_surrender) }}
-    {{ field_row('Lien Paid', rec.lien_paid) }}
-    {{ field_row('Form 13', rec.form_13 ~ (', Signed: ' ~ rec.form_13_signed_by if rec.form_13_signed_by else '')) }}
-    {{ field_row('Security Drivable', rec.security_drivable) }}
-    {{ field_row('Police Notified', rec.police_notified ~ (' — ' ~ rec.station_officer if rec.station_officer else '')) }}
-    {{ field_row('Personal Effects Removed', rec.personal_effects_removed) }}
-    {% if rec.personal_effects_list %}{{ field_row('Effects List', rec.personal_effects_list) }}{% endif %}
-
-    {{ section('Condition Report') }}
-    {{ field_row('Tyres / Body / Duco', [rec.tyres, rec.body, rec.duco] | select | join(' / ')) }}
-    {{ field_row('Interior / Engine / Trans', [rec.interior, rec.engine_condition, rec.transmission] | select | join(' / ')) }}
-    {{ field_row('Fuel Level', rec.fuel_level) }}
-    {{ field_row('Damage', rec.any_damage ~ (': ' ~ rec.damage_list if rec.damage_list else '')) }}
-
-    {{ section('Agent') }}
-    {{ field_row('Mercantile Agent', agent_name) }}
-  </div>
-
-  {# ── Signature form ── #}
-  <form id="virSignForm" method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/vir">
+  <form id="virForm" method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/vir">
     <input type="hidden" name="agent_sig"    id="agentSigData">
     <input type="hidden" name="customer_sig" id="customerSigData">
 
-    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
-      <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">SIGNATURES</div>
+    {# ── Macro helpers ── #}
+    {% macro fi(name, label, value, type='text', placeholder='') %}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <label style="font-size:.75rem;font-weight:600;color:#374151;">{{ label }}</label>
+      <input type="{{ type }}" name="{{ name }}" value="{{ value or '' }}"
+             placeholder="{{ placeholder }}"
+             style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:.84rem;color:#111;background:#fff;width:100%;box-sizing:border-box;">
+    </div>
+    {% endmacro %}
 
-      {# Agent Signature — REQUIRED #}
-      <div style="padding:16px;border-bottom:1px solid #f3f4f6;">
-        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:6px;">
-          Agent / Mercantile Agent: {{ agent_name }} <span style="color:#dc2626;">*</span>
-        </div>
-        <div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">Required before generating PDF</div>
-        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
-          <canvas id="agentCanvas" width="480" height="120"
-                  style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
-          <button type="button" onclick="clearCanvas('agentCanvas','agentSigData','agentSigned')"
-                  style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">
-            Clear
-          </button>
-        </div>
-        <div id="agentSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Agent signature is required.</div>
-        <input type="hidden" id="agentSigned" value="0">
-      </div>
+    {% macro fsel(name, label, value, opts) %}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <label style="font-size:.75rem;font-weight:600;color:#374151;">{{ label }}</label>
+      <select name="{{ name }}" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:.84rem;color:#111;background:#fff;width:100%;box-sizing:border-box;">
+        <option value=""></option>
+        {% for o in opts %}
+        <option value="{{ o }}" {% if value == o %}selected{% endif %}>{{ o }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endmacro %}
 
-      {# Customer Signature — OPTIONAL #}
-      <div style="padding:16px;">
-        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:6px;">
-          Customer Signature <span style="font-size:.75rem;font-weight:400;color:#6b7280;">(optional)</span>
+    {% macro section(title, color='#2563eb') %}
+    <div style="background:{{ color }};color:#fff;padding:8px 14px;font-weight:700;font-size:.82rem;border-radius:6px 6px 0 0;margin-top:18px;">{{ title }}</div>
+    <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:14px;background:#fff;">
+    {% endmacro %}
+
+    {# ── Job Details ── #}
+    {{ section('JOB DETAILS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+      {{ fi('swpi_ref',        'SWPI Reference',  rec.swpi_ref) }}
+      {{ fi('finance_company', 'Finance Company', rec.finance_company) }}
+      {{ fi('repo_date',       'Date',            rec.repo_date) }}
+      {{ fi('account_number',  'Account Number',  rec.account_number) }}
+      {{ fi('customer_name',   'Customer Name',   rec.customer_name) }}
+    </div>
+    <div style="margin-top:12px;">
+      {{ fi('repo_address', 'Repossessed From Address', rec.repo_address) }}
+    </div>
+    </div>
+
+    {# ── Asset Details ── #}
+    {{ section('ASSET DETAILS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">
+      {{ fi('year',         'Year',         item_year  or rec.get('year','')) }}
+      {{ fi('make',         'Make',         item_make  or rec.get('make','')) }}
+      {{ fi('model',        'Model',        item_model or rec.get('model','')) }}
+      {{ fi('colour',       'Colour',       rec.colour) }}
+      {{ fi('registration', 'Registration', rec.registration) }}
+      {{ fi('rego_expiry',  'Rego Expiry',  rec.rego_expiry) }}
+      {{ fi('vin',          'VIN / Chassis', rec.vin) }}
+      {{ fi('engine_number','Engine Number', rec.engine_number) }}
+      {{ fi('speedometer',  'Kilometers',   rec.speedometer) }}
+    </div>
+    </div>
+
+    {# ── Recovery Details ── #}
+    {{ section('RECOVERY DETAILS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;">
+      {{ fsel('person_present',  'Person Present',    rec.person_present,    ['Yes','No','N/A']) }}
+      {{ fsel('keys_obtained',   'Keys Obtained',     rec.keys_obtained,     ['Yes','No','N/A']) }}
+      {{ fi('how_many_keys',     'How Many Keys',     rec.how_many_keys) }}
+      {{ fsel('vol_surrender',   'Voluntary Surrender', rec.vol_surrender,   ['Yes','No','N/A']) }}
+      {{ fsel('form_13',         'Form 13',           rec.form_13,           ['Yes','No','N/A']) }}
+      {{ fsel('security_drivable','Security Drivable', rec.security_drivable,['Yes','No','N/A']) }}
+      {{ fsel('police_notified', 'Police Notified',   rec.police_notified,   ['Yes','No']) }}
+      {{ fi('station_officer',   'Station / Officer', rec.station_officer) }}
+      {{ fsel('personal_effects_removed','Personal Effects Removed', rec.personal_effects_removed, ['Yes','No','N/A']) }}
+    </div>
+    <div style="margin-top:12px;">
+      {{ fi('personal_effects_list', 'Effects List (if any)', rec.personal_effects_list) }}
+    </div>
+    </div>
+
+    {# ── Condition Report ── #}
+    {{ section('CONDITION REPORT') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;">
+      {% set cond_opts = ['POOR','FAIR','GOOD','EXCELLENT','N/A','DAMAGED'] %}
+      {{ fsel('tyres',            'Tyres',        rec.tyres,            cond_opts) }}
+      {{ fsel('body',             'Body',         rec.body,             cond_opts) }}
+      {{ fsel('duco',             'Duco / Paint', rec.duco,             cond_opts) }}
+      {{ fsel('interior',         'Interior',     rec.interior,         cond_opts) }}
+      {{ fsel('engine_condition', 'Engine',       rec.engine_condition, cond_opts) }}
+      {{ fsel('transmission',     'Transmission', rec.transmission,     cond_opts) }}
+      {{ fsel('fuel_level',       'Fuel Level',   rec.fuel_level,       ['EMPTY','1/4','1/2','3/4','FULL','N/A']) }}
+      {{ fsel('any_damage',       'Any Damage',   rec.any_damage,       ['Yes','No','N/A']) }}
+    </div>
+    <div style="margin-top:12px;" id="damageLstWrap">
+      {{ fi('damage_list', 'Damage Description', rec.damage_list) }}
+    </div>
+    </div>
+
+    {# ── Agent ── #}
+    {{ section('AGENT') }}
+    {{ fi('agent_name', 'Agent / Mercantile Agent Name', agent_name) }}
+    </div>
+
+    {# ── Signatures ── #}
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:18px;">
+      <div style="background:#374151;color:#fff;padding:8px 14px;font-weight:700;font-size:.82rem;">SIGNATURES</div>
+      <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-wrap:wrap;">
+
+        <div>
+          <div style="font-size:.84rem;font-weight:700;color:#111;margin-bottom:6px;">
+            Agent Signature <span style="color:#dc2626;">*</span>
+          </div>
+          <div style="position:relative;">
+            <canvas id="agentCanvas" width="440" height="120"
+                    style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+            <button type="button" onclick="clearCanvas('agentCanvas','agentSigData','agentSigned')"
+                    style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">Clear</button>
+          </div>
+          <div id="agentSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Agent signature is required.</div>
+          <input type="hidden" id="agentSigned" value="0">
         </div>
-        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
-          <canvas id="customerCanvas" width="480" height="120"
-                  style="border:2px solid #e5e7eb;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
-          <button type="button" onclick="clearCanvas('customerCanvas','customerSigData','customerSigned')"
-                  style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">
-            Clear
-          </button>
+
+        <div>
+          <div style="font-size:.84rem;font-weight:700;color:#111;margin-bottom:6px;">
+            Customer Signature <span style="font-size:.76rem;font-weight:400;color:#6b7280;">(optional)</span>
+          </div>
+          <div style="position:relative;">
+            <canvas id="customerCanvas" width="440" height="120"
+                    style="border:2px solid #e5e7eb;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+            <button type="button" onclick="clearCanvas('customerCanvas','customerSigData','customerSigned')"
+                    style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">Clear</button>
+          </div>
+          <input type="hidden" id="customerSigned" value="0">
         </div>
-        <input type="hidden" id="customerSigned" value="0">
+
       </div>
     </div>
 
-    <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;">
+    <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px;">
       <a href="/jobs/{{ job_id }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
       <button type="submit" id="genVirBtn"
-              style="padding:11px 24px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;min-width:200px;">
-        <span id="genVirTxt">Generate &amp; Download PDF</span>
+              style="padding:11px 26px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;">
+        <span id="genVirTxt">Save &amp; Generate PDF</span>
       </button>
     </div>
 
@@ -134,78 +170,43 @@
 </div>
 {% endblock %}
 
-{% block extra_scripts %}
+{% block scripts %}
 <script>
 (function(){
-  var _drawing = {};
-  var _hasSig  = {};
-
-  function _getCtx(id) {
-    var canvas = document.getElementById(id);
-    var ctx    = canvas.getContext('2d');
-    ctx.strokeStyle = '#111827';
-    ctx.lineWidth   = 2;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
-    return ctx;
-  }
+  var _drawing = {}, _hasSig = {};
 
   function _pos(canvas, e) {
-    var r  = canvas.getBoundingClientRect();
-    var sx = canvas.width  / r.width;
-    var sy = canvas.height / r.height;
+    var r = canvas.getBoundingClientRect();
+    var sx = canvas.width / r.width, sy = canvas.height / r.height;
     var src = e.touches ? e.touches[0] : e;
     return { x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy };
   }
 
-  function _initCanvas(canvasId, dataId, signedId) {
-    var canvas = document.getElementById(canvasId);
-    var ctx    = _getCtx(canvasId);
-    _drawing[canvasId] = false;
-    _hasSig[canvasId]  = false;
-
-    function start(e) {
-      e.preventDefault();
-      _drawing[canvasId] = true;
-      var p = _pos(canvas, e);
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-    }
-    function move(e) {
-      if (!_drawing[canvasId]) return;
-      e.preventDefault();
-      var p = _pos(canvas, e);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-      _hasSig[canvasId] = true;
-      document.getElementById(signedId).value = '1';
-      document.getElementById(dataId).value = canvas.toDataURL('image/png');
-    }
-    function end(e) {
-      _drawing[canvasId] = false;
-    }
-    canvas.addEventListener('mousedown',  start);
-    canvas.addEventListener('mousemove',  move);
-    canvas.addEventListener('mouseup',    end);
-    canvas.addEventListener('mouseleave', end);
-    canvas.addEventListener('touchstart', start, { passive: false });
-    canvas.addEventListener('touchmove',  move,  { passive: false });
-    canvas.addEventListener('touchend',   end);
+  function _initCanvas(id, dataId, signedId) {
+    var canvas = document.getElementById(id);
+    var ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    _drawing[id] = false;
+    canvas.addEventListener('mousedown',  function(e){ e.preventDefault(); _drawing[id]=true; var p=_pos(canvas,e); ctx.beginPath(); ctx.moveTo(p.x,p.y); });
+    canvas.addEventListener('mousemove',  function(e){ if(!_drawing[id]) return; e.preventDefault(); var p=_pos(canvas,e); ctx.lineTo(p.x,p.y); ctx.stroke(); document.getElementById(signedId).value='1'; document.getElementById(dataId).value=canvas.toDataURL('image/png'); });
+    canvas.addEventListener('mouseup',    function(){ _drawing[id]=false; });
+    canvas.addEventListener('mouseleave', function(){ _drawing[id]=false; });
+    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); _drawing[id]=true; var p=_pos(canvas,e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }, {passive:false});
+    canvas.addEventListener('touchmove',  function(e){ if(!_drawing[id]) return; e.preventDefault(); var p=_pos(canvas,e); ctx.lineTo(p.x,p.y); ctx.stroke(); document.getElementById(signedId).value='1'; document.getElementById(dataId).value=canvas.toDataURL('image/png'); }, {passive:false});
+    canvas.addEventListener('touchend',   function(){ _drawing[id]=false; });
   }
 
-  window.clearCanvas = function(canvasId, dataId, signedId) {
-    var canvas = document.getElementById(canvasId);
-    var ctx    = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    _hasSig[canvasId] = false;
+  window.clearCanvas = function(id, dataId, signedId) {
+    var canvas = document.getElementById(id);
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
     document.getElementById(signedId).value = '0';
-    document.getElementById(dataId).value   = '';
+    document.getElementById(dataId).value = '';
   };
 
-  _initCanvas('agentCanvas',    'agentSigData',    'agentSigned');
+  _initCanvas('agentCanvas', 'agentSigData', 'agentSigned');
   _initCanvas('customerCanvas', 'customerSigData', 'customerSigned');
 
-  document.getElementById('virSignForm').addEventListener('submit', function(e) {
+  document.getElementById('virForm').addEventListener('submit', function(e) {
     if (document.getElementById('agentSigned').value !== '1') {
       e.preventDefault();
       document.getElementById('agentSigPrompt').style.display = 'block';

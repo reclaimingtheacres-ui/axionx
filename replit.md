@@ -41,10 +41,14 @@ No explicit user preferences were provided in the original `replit.md` file. The
 
 **6. Forms Module (`/forms`):**
    - Grid-based forms dashboard with 7 active form types: SWPI VIR, Transport Instructions, Voluntary Surrender (Sec 78(1) NCC), Form 13 (NCCP Notice to Occupier), Wise Group VIR, Auction Manager Letter, Towing Contractor Letter.
-   - Each form auto-populates from Repo Lock Records; signature forms use canvas-pad capture.
+   - Each form (VIR, Transport, Wise VIR, Form 13, Voluntary Surrender) is a fully editable HTML form with pre-populated fields from Repo Lock Records; all editable fields are saved back to the DB on submit before PDF generation.
+   - Signature forms use canvas-pad capture (agent + customer/occupier). Signature required validation on all forms.
    - PDF generation via `pdf_gen.py` (ReportLab). Mobile-accessible at `/m/forms`.
-   - PDF functions: `generate_vir_pdf`, `generate_transport_pdf`, `generate_wise_vir_pdf`, `generate_form_13_pdf`, `generate_voluntary_surrender_pdf`, `generate_auction_letter_pdf`, `generate_tow_letter_pdf`.
+   - PDF functions: `generate_vir_pdf`, `generate_transport_pdf`, `generate_wise_vir_pdf`, `generate_form_13_pdf`, `generate_voluntary_surrender_pdf`, `generate_auction_letter_pdf`, `generate_tow_letter_pdf`, `generate_repo_pack_pdf` (pypdf merge).
    - All form routes under `/jobs/{job_id}/repo-lock/{rec_id}/{form-type}`.
+   - **Complete Repo Pack**: GET `/jobs/{job_id}/repo-lock/{rec_id}/repo-pack` merges VIR + Transport + Form 13 (if applicable) + Voluntary Surrender (if applicable) + Wise VIR (if Wise Group) into one PDF.
+   - "Generate Complete Repo Pack" button (purple) shown on forms selector when a repo lock record is found.
+   - New DB columns added on demand: `station_officer`, `personal_effects_removed`, `personal_effects_list`, `make`, `model`, `year`, `colour`, `body_type`, `bumpers`, `glass`, `accessories`, `tow_phone`.
 
 **7. Job Creation Enhancements:**
    - Improved job creation flow with client job number tracking and reference search.
