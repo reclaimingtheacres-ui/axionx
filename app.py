@@ -6003,7 +6003,7 @@ def m_job_detail(job_id):
     ).fetchone())
     conn.close()
 
-    return render_template("m/job_detail.html",
+    return render_template("mobile/job_detail.html",
                            job=job, customer=customer, customer_mobile=customer_mobile,
                            client=client, bill_client=bill_client,
                            assets=assets, notes=notes, has_draft=has_draft)
