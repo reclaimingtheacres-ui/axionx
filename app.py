@@ -719,6 +719,12 @@ def now_ts():
     return datetime.now(melb).strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def normalise_registration(reg_text: str) -> str:
+    if not reg_text:
+        return ""
+    return re.sub(r"[^A-Za-z0-9]", "", reg_text).upper()
+
+
 # ── Document auto-fill helpers ────────────────────────────────────────────────
 
 PENDING_UPLOAD_DIR = os.path.join(UPLOAD_FOLDER, "pending")
@@ -6430,6 +6436,126 @@ def _log_audit(user_id, action, record_type, record_id):
     conn.close()
 
 
+# ── LPR helpers ───────────────────────────────────────────────────────────────
+
+_LPR_PRIVILEGED = {"admin", "both"}
+
+def _lpr_ensure_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            user_role TEXT NOT NULL,
+            searched_registration TEXT NOT NULL,
+            normalised_registration TEXT NOT NULL,
+            result_type TEXT NOT NULL,
+            matched_job_id INTEGER,
+            matched_job_number TEXT,
+            is_allocated_to_user INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+    """)
+
+
+def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: str) -> dict:
+    reg_norm = normalise_registration(reg_input)
+    if not reg_norm:
+        return {"result_type": "invalid", "message": "Enter a valid registration."}
+
+    conn = db()
+    _lpr_ensure_table(conn)
+    rows = conn.execute("""
+        SELECT ji.id AS item_id, ji.reg, ji.make, ji.model, ji.year, ji.vin,
+               j.id AS job_id, j.internal_job_number, j.display_ref,
+               j.assigned_user_id, j.client_id, j.status
+        FROM job_items ji
+        JOIN jobs j ON j.id = ji.job_id
+        WHERE j.status NOT IN ('Completed','Invoiced','Cancelled')
+          AND ji.reg IS NOT NULL AND ji.reg != ''
+    """).fetchall()
+
+    matched = None
+    for row in rows:
+        if normalise_registration(row["reg"]) == reg_norm:
+            matched = row
+            break
+
+    if not matched:
+        conn.close()
+        return {
+            "result_type": "no_match",
+            "searched_registration": reg_norm,
+            "message": "No active registration found.",
+        }
+
+    job_id      = matched["job_id"]
+    job_number  = matched["display_ref"] or matched["internal_job_number"]
+    allocated   = matched["assigned_user_id"] == uid
+    privileged  = role in _LPR_PRIVILEGED
+
+    client_name = None
+    if matched["client_id"]:
+        c = conn.execute("SELECT name FROM clients WHERE id=?", (matched["client_id"],)).fetchone()
+        client_name = c["name"] if c else None
+
+    asset = {
+        "registration": matched["reg"],
+        "year":  matched["year"],
+        "make":  matched["make"],
+        "model": matched["model"],
+        "vin":   matched["vin"],
+    }
+
+    conn.close()
+
+    if allocated or privileged:
+        return {
+            "result_type": "allocated_match",
+            "searched_registration": reg_norm,
+            "matched_job_id": job_id,
+            "matched_job_number": job_number,
+            "is_allocated_to_user": bool(allocated),
+            "asset": asset,
+            "open_url": url_for("m_job_detail", job_id=job_id),
+        }
+
+    return {
+        "result_type": "restricted_match",
+        "searched_registration": reg_norm,
+        "matched_job_id": job_id,
+        "matched_job_number": job_number,
+        "is_allocated_to_user": False,
+        "asset": asset,
+        "client_name": client_name,
+        "notice": "This file is not allocated to our agent. Contact the office for instructions.",
+    }
+
+
+def _log_lpr_search(uid: int, role: str, username: str, reg_input: str, result: dict):
+    conn = db()
+    _lpr_ensure_table(conn)
+    conn.execute("""
+        INSERT INTO lpr_audit_logs
+            (user_id, username, user_role, searched_registration, normalised_registration,
+             result_type, matched_job_id, matched_job_number, is_allocated_to_user, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (
+        uid,
+        username,
+        role,
+        reg_input,
+        normalise_registration(reg_input),
+        result.get("result_type"),
+        result.get("matched_job_id"),
+        result.get("matched_job_number"),
+        int(result.get("is_allocated_to_user", False)),
+        now_ts(),
+    ))
+    conn.commit()
+    conn.close()
+
+
 def _default_prefs():
     return {
         "list_sort": "visit_date", "list_dir": "asc", "distance_unit": "km",
@@ -6615,6 +6741,41 @@ def m_map():
                            distance_unit=distance_unit,
                            gps_foreground=gps_foreground,
                            gps_interval_mins=gps_interval)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Mobile LPR — Stage 1: manual plate lookup
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/m/lpr", methods=["GET", "POST"])
+@mobile_login_required
+def m_lpr():
+    uid      = session.get("user_id")
+    role     = session.get("role", "")
+    username = session.get("user_name", "")
+
+    if request.method == "POST":
+        reg_input = (request.form.get("registration") or "").strip()
+        result    = lookup_registration_for_lpr(uid, role, username, reg_input)
+        _log_lpr_search(uid, role, username, reg_input, result)
+        return render_template("mobile/lpr_result.html", result=result)
+
+    return render_template("mobile/lpr_search.html")
+
+
+@app.post("/m/api/lpr/lookup")
+@mobile_login_required
+def m_api_lpr_lookup():
+    uid      = session.get("user_id")
+    role     = session.get("role", "")
+    username = session.get("user_name", "")
+
+    data      = request.get_json(silent=True) or {}
+    reg_input = (data.get("registration") or "").strip()
+
+    result = lookup_registration_for_lpr(uid, role, username, reg_input)
+    _log_lpr_search(uid, role, username, reg_input, result)
+    return jsonify(result), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
