@@ -6473,9 +6473,11 @@ def _lpr_ensure_table(conn):
             matched_job_id INTEGER,
             matched_job_number TEXT,
             is_allocated_to_user INTEGER DEFAULT 0,
+            search_method TEXT DEFAULT 'manual',
             created_at TEXT NOT NULL
         )
     """)
+    add_column_if_missing(conn.cursor(), "lpr_audit_logs", "search_method", "TEXT DEFAULT 'manual'")
 
 
 def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: str) -> dict:
@@ -6552,14 +6554,16 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
     }
 
 
-def _log_lpr_search(uid: int, role: str, username: str, reg_input: str, result: dict):
+def _log_lpr_search(uid: int, role: str, username: str, reg_input: str, result: dict,
+                    search_method: str = "manual"):
     conn = db()
     _lpr_ensure_table(conn)
     conn.execute("""
         INSERT INTO lpr_audit_logs
             (user_id, username, user_role, searched_registration, normalised_registration,
-             result_type, matched_job_id, matched_job_number, is_allocated_to_user, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?)
+             result_type, matched_job_id, matched_job_number, is_allocated_to_user,
+             search_method, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
     """, (
         uid,
         username,
@@ -6570,6 +6574,7 @@ def _log_lpr_search(uid: int, role: str, username: str, reg_input: str, result: 
         result.get("matched_job_id"),
         result.get("matched_job_number"),
         int(result.get("is_allocated_to_user", False)),
+        search_method,
         now_ts(),
     ))
     conn.commit()
@@ -6786,7 +6791,9 @@ def m_lpr_capture():
         except OSError:
             pass
 
-        return render_template("mobile/lpr_confirm.html", detected_plate=detected_plate)
+        return render_template("mobile/lpr_confirm.html",
+                               detected_plate=detected_plate,
+                               search_method="photo_ocr")
 
     return render_template("mobile/lpr_capture.html", error=None)
 
@@ -6799,12 +6806,14 @@ def m_lpr():
     username = session.get("user_name", "")
 
     if request.method == "POST":
-        reg_input = (request.form.get("registration") or "").strip()
-        result    = lookup_registration_for_lpr(uid, role, username, reg_input)
-        _log_lpr_search(uid, role, username, reg_input, result)
+        reg_input     = (request.form.get("registration") or "").strip()
+        search_method = (request.form.get("method") or "manual").strip()
+        result        = lookup_registration_for_lpr(uid, role, username, reg_input)
+        _log_lpr_search(uid, role, username, reg_input, result, search_method=search_method)
         return render_template("mobile/lpr_result.html", result=result)
 
-    return render_template("mobile/lpr_search.html")
+    plate_param = (request.args.get("plate") or "").strip()
+    return render_template("mobile/lpr_search.html", plate_param=plate_param)
 
 
 @app.post("/m/api/lpr/lookup")
@@ -6814,11 +6823,12 @@ def m_api_lpr_lookup():
     role     = session.get("role", "")
     username = session.get("user_name", "")
 
-    data      = request.get_json(silent=True) or {}
-    reg_input = (data.get("registration") or "").strip()
+    data          = request.get_json(silent=True) or {}
+    reg_input     = (data.get("registration") or "").strip()
+    search_method = (data.get("method") or "live_scan").strip()
 
     result = lookup_registration_for_lpr(uid, role, username, reg_input)
-    _log_lpr_search(uid, role, username, reg_input, result)
+    _log_lpr_search(uid, role, username, reg_input, result, search_method=search_method)
     return jsonify(result), 200
 
 

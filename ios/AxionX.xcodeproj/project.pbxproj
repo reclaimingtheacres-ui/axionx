@@ -1,406 +1,422 @@
 // !$*UTF8*$!
 {
-	archiveVersion = 1;
-	classes = {
-	};
-	objectVersion = 56;
-	objects = {
+        archiveVersion = 1;
+        classes = {
+        };
+        objectVersion = 56;
+        objects = {
 
 /* Begin PBXBuildFile section */
-		F100000000000000000002 /* AxionXApp.swift in Sources */             = {isa = PBXBuildFile; fileRef = F100000000000000000001; };
-		F100000000000000000004 /* ContentView.swift in Sources */           = {isa = PBXBuildFile; fileRef = F100000000000000000003; };
-		F100000000000000000006 /* AxionWebView.swift in Sources */          = {isa = PBXBuildFile; fileRef = F100000000000000000005; };
-		F100000000000000000008 /* WebViewContainer.swift in Sources */      = {isa = PBXBuildFile; fileRef = F100000000000000000007; };
-		F10000000000000000000A /* WebViewNavigationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000009; };
-		F10000000000000000000C /* AppConfig.swift in Sources */             = {isa = PBXBuildFile; fileRef = F10000000000000000000B; };
-		F10000000000000000000E /* AllowedDomains.swift in Sources */        = {isa = PBXBuildFile; fileRef = F10000000000000000000D; };
-		F100000000000000000010 /* SplashView.swift in Sources */            = {isa = PBXBuildFile; fileRef = F10000000000000000000F; };
-		F100000000000000000012 /* OfflineView.swift in Sources */           = {isa = PBXBuildFile; fileRef = F100000000000000000011; };
-		F100000000000000000014 /* ConnectivityMonitor.swift in Sources */   = {isa = PBXBuildFile; fileRef = F100000000000000000013; };
-		F100000000000000000016 /* LocationPermissionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000015; };
-		F100000000000000000018 /* Assets.xcassets in Resources */           = {isa = PBXBuildFile; fileRef = F100000000000000000017; };
-		F10000000000000000001A /* LaunchScreen.storyboard in Resources */   = {isa = PBXBuildFile; fileRef = F100000000000000000019; };
+                F100000000000000000002 /* AxionXApp.swift in Sources */             = {isa = PBXBuildFile; fileRef = F100000000000000000001; };
+                F100000000000000000004 /* ContentView.swift in Sources */           = {isa = PBXBuildFile; fileRef = F100000000000000000003; };
+                F100000000000000000006 /* AxionWebView.swift in Sources */          = {isa = PBXBuildFile; fileRef = F100000000000000000005; };
+                F100000000000000000008 /* WebViewContainer.swift in Sources */      = {isa = PBXBuildFile; fileRef = F100000000000000000007; };
+                F10000000000000000000A /* WebViewNavigationDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000009; };
+                F10000000000000000000C /* AppConfig.swift in Sources */             = {isa = PBXBuildFile; fileRef = F10000000000000000000B; };
+                F10000000000000000000E /* AllowedDomains.swift in Sources */        = {isa = PBXBuildFile; fileRef = F10000000000000000000D; };
+                F100000000000000000010 /* SplashView.swift in Sources */            = {isa = PBXBuildFile; fileRef = F10000000000000000000F; };
+                F100000000000000000012 /* OfflineView.swift in Sources */           = {isa = PBXBuildFile; fileRef = F100000000000000000011; };
+                F100000000000000000014 /* ConnectivityMonitor.swift in Sources */   = {isa = PBXBuildFile; fileRef = F100000000000000000013; };
+                F100000000000000000016 /* LocationPermissionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000015; };
+                F100000000000000000018 /* Assets.xcassets in Resources */           = {isa = PBXBuildFile; fileRef = F100000000000000000017; };
+                F10000000000000000001A /* LaunchScreen.storyboard in Resources */   = {isa = PBXBuildFile; fileRef = F100000000000000000019; };
+                F10000000000000000001E /* PlateCandidateExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000001D; };
+                F100000000000000000020 /* LiveLPRScannerView.swift in Sources */    = {isa = PBXBuildFile; fileRef = F10000000000000000001F; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		F100000000000000000001 /* AxionXApp.swift */                = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxionXApp.swift; sourceTree = "<group>"; };
-		F100000000000000000003 /* ContentView.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		F100000000000000000005 /* AxionWebView.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxionWebView.swift; sourceTree = "<group>"; };
-		F100000000000000000007 /* WebViewContainer.swift */         = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewContainer.swift; sourceTree = "<group>"; };
-		F100000000000000000009 /* WebViewNavigationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewNavigationDelegate.swift; sourceTree = "<group>"; };
-		F10000000000000000000B /* AppConfig.swift */                = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
-		F10000000000000000000D /* AllowedDomains.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllowedDomains.swift; sourceTree = "<group>"; };
-		F10000000000000000000F /* SplashView.swift */               = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
-		F100000000000000000011 /* OfflineView.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineView.swift; sourceTree = "<group>"; };
-		F100000000000000000013 /* ConnectivityMonitor.swift */      = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
-		F100000000000000000015 /* LocationPermissionHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionHelper.swift; sourceTree = "<group>"; };
-		F100000000000000000017 /* Assets.xcassets */                = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		F100000000000000000019 /* LaunchScreen.storyboard */        = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-		F10000000000000000001B /* Info.plist */                     = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		F10000000000000000001C /* AxionX.app */                     = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AxionX.app; sourceTree = BUILT_PRODUCTS_DIR; };
+                F100000000000000000001 /* AxionXApp.swift */                = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxionXApp.swift; sourceTree = "<group>"; };
+                F100000000000000000003 /* ContentView.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+                F100000000000000000005 /* AxionWebView.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxionWebView.swift; sourceTree = "<group>"; };
+                F100000000000000000007 /* WebViewContainer.swift */         = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewContainer.swift; sourceTree = "<group>"; };
+                F100000000000000000009 /* WebViewNavigationDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewNavigationDelegate.swift; sourceTree = "<group>"; };
+                F10000000000000000000B /* AppConfig.swift */                = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+                F10000000000000000000D /* AllowedDomains.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllowedDomains.swift; sourceTree = "<group>"; };
+                F10000000000000000000F /* SplashView.swift */               = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
+                F100000000000000000011 /* OfflineView.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineView.swift; sourceTree = "<group>"; };
+                F100000000000000000013 /* ConnectivityMonitor.swift */      = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectivityMonitor.swift; sourceTree = "<group>"; };
+                F100000000000000000015 /* LocationPermissionHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPermissionHelper.swift; sourceTree = "<group>"; };
+                F100000000000000000017 /* Assets.xcassets */                = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+                F100000000000000000019 /* LaunchScreen.storyboard */        = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+                F10000000000000000001B /* Info.plist */                     = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+                F10000000000000000001C /* AxionX.app */                     = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AxionX.app; sourceTree = BUILT_PRODUCTS_DIR; };
+                F10000000000000000001D /* PlateCandidateExtractor.swift */  = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateCandidateExtractor.swift; sourceTree = "<group>"; };
+                F10000000000000000001F /* LiveLPRScannerView.swift */       = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLPRScannerView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		H100000000000000000003 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+                H100000000000000000003 /* Frameworks */ = {
+                        isa = PBXFrameworksBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		G100000000000000000001 /* MainGroup */ = {
-			isa = PBXGroup;
-			children = (
-				G100000000000000000002 /* AxionX */,
-				G100000000000000000007 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
-		G100000000000000000002 /* AxionX */ = {
-			isa = PBXGroup;
-			children = (
-				F100000000000000000001 /* AxionXApp.swift */,
-				F100000000000000000003 /* ContentView.swift */,
-				G100000000000000000003 /* WebView */,
-				G100000000000000000004 /* Config */,
-				G100000000000000000005 /* Views */,
-				G100000000000000000006 /* Services */,
-				F100000000000000000017 /* Assets.xcassets */,
-				F100000000000000000019 /* LaunchScreen.storyboard */,
-				F10000000000000000001B /* Info.plist */,
-			);
-			path = AxionX;
-			sourceTree = "<group>";
-		};
-		G100000000000000000003 /* WebView */ = {
-			isa = PBXGroup;
-			children = (
-				F100000000000000000005 /* AxionWebView.swift */,
-				F100000000000000000007 /* WebViewContainer.swift */,
-				F100000000000000000009 /* WebViewNavigationDelegate.swift */,
-			);
-			path = WebView;
-			sourceTree = "<group>";
-		};
-		G100000000000000000004 /* Config */ = {
-			isa = PBXGroup;
-			children = (
-				F10000000000000000000B /* AppConfig.swift */,
-				F10000000000000000000D /* AllowedDomains.swift */,
-			);
-			path = Config;
-			sourceTree = "<group>";
-		};
-		G100000000000000000005 /* Views */ = {
-			isa = PBXGroup;
-			children = (
-				F10000000000000000000F /* SplashView.swift */,
-				F100000000000000000011 /* OfflineView.swift */,
-			);
-			path = Views;
-			sourceTree = "<group>";
-		};
-		G100000000000000000006 /* Services */ = {
-			isa = PBXGroup;
-			children = (
-				F100000000000000000013 /* ConnectivityMonitor.swift */,
-				F100000000000000000015 /* LocationPermissionHelper.swift */,
-			);
-			path = Services;
-			sourceTree = "<group>";
-		};
-		G100000000000000000007 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				F10000000000000000001C /* AxionX.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
+                G100000000000000000001 /* MainGroup */ = {
+                        isa = PBXGroup;
+                        children = (
+                                G100000000000000000002 /* AxionX */,
+                                G100000000000000000007 /* Products */,
+                        );
+                        sourceTree = "<group>";
+                };
+                G100000000000000000002 /* AxionX */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F100000000000000000001 /* AxionXApp.swift */,
+                                F100000000000000000003 /* ContentView.swift */,
+                                G100000000000000000003 /* WebView */,
+                                G100000000000000000004 /* Config */,
+                                G100000000000000000005 /* Views */,
+                                G100000000000000000006 /* Services */,
+                                G100000000000000000008 /* LPR */,
+                                F100000000000000000017 /* Assets.xcassets */,
+                                F100000000000000000019 /* LaunchScreen.storyboard */,
+                                F10000000000000000001B /* Info.plist */,
+                        );
+                        path = AxionX;
+                        sourceTree = "<group>";
+                };
+                G100000000000000000003 /* WebView */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F100000000000000000005 /* AxionWebView.swift */,
+                                F100000000000000000007 /* WebViewContainer.swift */,
+                                F100000000000000000009 /* WebViewNavigationDelegate.swift */,
+                        );
+                        path = WebView;
+                        sourceTree = "<group>";
+                };
+                G100000000000000000004 /* Config */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F10000000000000000000B /* AppConfig.swift */,
+                                F10000000000000000000D /* AllowedDomains.swift */,
+                        );
+                        path = Config;
+                        sourceTree = "<group>";
+                };
+                G100000000000000000005 /* Views */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F10000000000000000000F /* SplashView.swift */,
+                                F100000000000000000011 /* OfflineView.swift */,
+                        );
+                        path = Views;
+                        sourceTree = "<group>";
+                };
+                G100000000000000000006 /* Services */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F100000000000000000013 /* ConnectivityMonitor.swift */,
+                                F100000000000000000015 /* LocationPermissionHelper.swift */,
+                        );
+                        path = Services;
+                        sourceTree = "<group>";
+                };
+                G100000000000000000007 /* Products */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F10000000000000000001C /* AxionX.app */,
+                        );
+                        name = Products;
+                        sourceTree = "<group>";
+                };
+                G100000000000000000008 /* LPR */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F10000000000000000001D /* PlateCandidateExtractor.swift */,
+                                F10000000000000000001F /* LiveLPRScannerView.swift */,
+                        );
+                        path = LPR;
+                        sourceTree = "<group>";
+                };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		I100000000000000000001 /* AxionX */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = J100000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */;
-			buildPhases = (
-				H100000000000000000001 /* Sources */,
-				H100000000000000000002 /* Resources */,
-				H100000000000000000003 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = AxionX;
-			productName = AxionX;
-			productReference = F10000000000000000001C /* AxionX.app */;
-			productType = "com.apple.product-type.application";
-		};
+                I100000000000000000001 /* AxionX */ = {
+                        isa = PBXNativeTarget;
+                        buildConfigurationList = J100000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */;
+                        buildPhases = (
+                                H100000000000000000001 /* Sources */,
+                                H100000000000000000002 /* Resources */,
+                                H100000000000000000003 /* Frameworks */,
+                        );
+                        buildRules = (
+                        );
+                        dependencies = (
+                        );
+                        name = AxionX;
+                        productName = AxionX;
+                        productReference = F10000000000000000001C /* AxionX.app */;
+                        productType = "com.apple.product-type.application";
+                };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		I100000000000000000002 /* Project object */ = {
-			isa = PBXProject;
-			attributes = {
-				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1500;
-				LastUpgradeCheck = 1500;
-				TargetAttributes = {
-					I100000000000000000001 = {
-						CreatedOnToolsVersion = 15.0;
-					};
-				};
-			};
-			buildConfigurationList = J100000000000000000003 /* Build configuration list for PBXProject "AxionX" */;
-			compatibilityVersion = "Xcode 14.0";
-			developmentRegion = en;
-			hasScannedForEncodings = 0;
-			knownRegions = (
-				en,
-				Base,
-			);
-			mainGroup = G100000000000000000001;
-			productRefGroup = G100000000000000000007 /* Products */;
-			projectDirPath = "";
-			projectRoot = "";
-			targets = (
-				I100000000000000000001 /* AxionX */,
-			);
-		};
+                I100000000000000000002 /* Project object */ = {
+                        isa = PBXProject;
+                        attributes = {
+                                BuildIndependentTargetsInParallel = 1;
+                                LastSwiftUpdateCheck = 1500;
+                                LastUpgradeCheck = 1500;
+                                TargetAttributes = {
+                                        I100000000000000000001 = {
+                                                CreatedOnToolsVersion = 15.0;
+                                        };
+                                };
+                        };
+                        buildConfigurationList = J100000000000000000003 /* Build configuration list for PBXProject "AxionX" */;
+                        compatibilityVersion = "Xcode 14.0";
+                        developmentRegion = en;
+                        hasScannedForEncodings = 0;
+                        knownRegions = (
+                                en,
+                                Base,
+                        );
+                        mainGroup = G100000000000000000001;
+                        productRefGroup = G100000000000000000007 /* Products */;
+                        projectDirPath = "";
+                        projectRoot = "";
+                        targets = (
+                                I100000000000000000001 /* AxionX */,
+                        );
+                };
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		H100000000000000000002 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				F100000000000000000018 /* Assets.xcassets in Resources */,
-				F10000000000000000001A /* LaunchScreen.storyboard in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+                H100000000000000000002 /* Resources */ = {
+                        isa = PBXResourcesBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                                F100000000000000000018 /* Assets.xcassets in Resources */,
+                                F10000000000000000001A /* LaunchScreen.storyboard in Resources */,
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		H100000000000000000001 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				F100000000000000000002 /* AxionXApp.swift in Sources */,
-				F100000000000000000004 /* ContentView.swift in Sources */,
-				F100000000000000000006 /* AxionWebView.swift in Sources */,
-				F100000000000000000008 /* WebViewContainer.swift in Sources */,
-				F10000000000000000000A /* WebViewNavigationDelegate.swift in Sources */,
-				F10000000000000000000C /* AppConfig.swift in Sources */,
-				F10000000000000000000E /* AllowedDomains.swift in Sources */,
-				F100000000000000000010 /* SplashView.swift in Sources */,
-				F100000000000000000012 /* OfflineView.swift in Sources */,
-				F100000000000000000014 /* ConnectivityMonitor.swift in Sources */,
-				F100000000000000000016 /* LocationPermissionHelper.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+                H100000000000000000001 /* Sources */ = {
+                        isa = PBXSourcesBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                                F100000000000000000002 /* AxionXApp.swift in Sources */,
+                                F100000000000000000004 /* ContentView.swift in Sources */,
+                                F100000000000000000006 /* AxionWebView.swift in Sources */,
+                                F100000000000000000008 /* WebViewContainer.swift in Sources */,
+                                F10000000000000000000A /* WebViewNavigationDelegate.swift in Sources */,
+                                F10000000000000000000C /* AppConfig.swift in Sources */,
+                                F10000000000000000000E /* AllowedDomains.swift in Sources */,
+                                F100000000000000000010 /* SplashView.swift in Sources */,
+                                F100000000000000000012 /* OfflineView.swift in Sources */,
+                                F100000000000000000014 /* ConnectivityMonitor.swift in Sources */,
+                                F100000000000000000016 /* LocationPermissionHelper.swift in Sources */,
+                                F10000000000000000001E /* PlateCandidateExtractor.swift in Sources */,
+                                F100000000000000000020 /* LiveLPRScannerView.swift in Sources */,
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		J100000000000000000001 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"DEBUG=1",
-					"$(inherited)",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
-				MTL_FAST_MATH = YES;
-				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-			};
-			name = Debug;
-		};
-		J100000000000000000002 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MTL_FAST_MATH = YES;
-				SDKROOT = iphoneos;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
-		J100000000000000000004 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = AxionX/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.axionx.ios";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = iphoneos;
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
-		J100000000000000000005 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = AxionX/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.axionx.ios";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = iphoneos;
-				SUPPORTS_MACCATALYST = NO;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
-		};
+                J100000000000000000001 /* Debug */ = {
+                        isa = XCBuildConfiguration;
+                        buildSettings = {
+                                ALWAYS_SEARCH_USER_PATHS = NO;
+                                ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+                                CLANG_ANALYZER_NONNULL = YES;
+                                CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+                                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                                CLANG_ENABLE_MODULES = YES;
+                                CLANG_ENABLE_OBJC_ARC = YES;
+                                CLANG_ENABLE_OBJC_WEAK = YES;
+                                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+                                CLANG_WARN_BOOL_CONVERSION = YES;
+                                CLANG_WARN_COMMA = YES;
+                                CLANG_WARN_CONSTANT_CONVERSION = YES;
+                                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+                                CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+                                CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+                                CLANG_WARN_EMPTY_BODY = YES;
+                                CLANG_WARN_ENUM_CONVERSION = YES;
+                                CLANG_WARN_INFINITE_RECURSION = YES;
+                                CLANG_WARN_INT_CONVERSION = YES;
+                                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+                                CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
+                                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+                                CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+                                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+                                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+                                CLANG_WARN_STRICT_PROTOTYPES = YES;
+                                CLANG_WARN_SUSPICIOUS_MOVE = YES;
+                                CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+                                CLANG_WARN_UNREACHABLE_CODE = YES;
+                                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+                                COPY_PHASE_STRIP = NO;
+                                DEBUG_INFORMATION_FORMAT = dwarf;
+                                ENABLE_STRICT_OBJC_MSGSEND = YES;
+                                ENABLE_TESTABILITY = YES;
+                                ENABLE_USER_SCRIPT_SANDBOXING = YES;
+                                GCC_C_LANGUAGE_STANDARD = gnu17;
+                                GCC_DYNAMIC_NO_PIC = NO;
+                                GCC_NO_COMMON_BLOCKS = YES;
+                                GCC_OPTIMIZATION_LEVEL = 0;
+                                GCC_PREPROCESSOR_DEFINITIONS = (
+                                        "DEBUG=1",
+                                        "$(inherited)",
+                                );
+                                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+                                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+                                GCC_WARN_UNDECLARED_SELECTOR = YES;
+                                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+                                GCC_WARN_UNUSED_FUNCTION = YES;
+                                GCC_WARN_UNUSED_VARIABLE = YES;
+                                IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+                                MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+                                MTL_FAST_MATH = YES;
+                                ONLY_ACTIVE_ARCH = YES;
+                                SDKROOT = iphoneos;
+                                SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+                                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+                        };
+                        name = Debug;
+                };
+                J100000000000000000002 /* Release */ = {
+                        isa = XCBuildConfiguration;
+                        buildSettings = {
+                                ALWAYS_SEARCH_USER_PATHS = NO;
+                                ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+                                CLANG_ANALYZER_NONNULL = YES;
+                                CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+                                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                                CLANG_ENABLE_MODULES = YES;
+                                CLANG_ENABLE_OBJC_ARC = YES;
+                                CLANG_ENABLE_OBJC_WEAK = YES;
+                                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+                                CLANG_WARN_BOOL_CONVERSION = YES;
+                                CLANG_WARN_COMMA = YES;
+                                CLANG_WARN_CONSTANT_CONVERSION = YES;
+                                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+                                CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+                                CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+                                CLANG_WARN_EMPTY_BODY = YES;
+                                CLANG_WARN_ENUM_CONVERSION = YES;
+                                CLANG_WARN_INFINITE_RECURSION = YES;
+                                CLANG_WARN_INT_CONVERSION = YES;
+                                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+                                CLANG_WARN_OBJC_IMPLICIT_RETAIN_CYCLE = YES;
+                                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+                                CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+                                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+                                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+                                CLANG_WARN_STRICT_PROTOTYPES = YES;
+                                CLANG_WARN_SUSPICIOUS_MOVE = YES;
+                                CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+                                CLANG_WARN_UNREACHABLE_CODE = YES;
+                                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+                                COPY_PHASE_STRIP = NO;
+                                DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+                                ENABLE_NS_ASSERTIONS = NO;
+                                ENABLE_STRICT_OBJC_MSGSEND = YES;
+                                ENABLE_USER_SCRIPT_SANDBOXING = YES;
+                                GCC_C_LANGUAGE_STANDARD = gnu17;
+                                GCC_NO_COMMON_BLOCKS = YES;
+                                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+                                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+                                GCC_WARN_UNDECLARED_SELECTOR = YES;
+                                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+                                GCC_WARN_UNUSED_FUNCTION = YES;
+                                GCC_WARN_UNUSED_VARIABLE = YES;
+                                IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+                                MTL_FAST_MATH = YES;
+                                SDKROOT = iphoneos;
+                                SWIFT_COMPILATION_MODE = wholemodule;
+                                SWIFT_OPTIMIZATION_LEVEL = "-O";
+                                VALIDATE_PRODUCT = YES;
+                        };
+                        name = Release;
+                };
+                J100000000000000000004 /* Debug */ = {
+                        isa = XCBuildConfiguration;
+                        buildSettings = {
+                                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+                                CODE_SIGN_STYLE = Automatic;
+                                CURRENT_PROJECT_VERSION = 1;
+                                DEVELOPMENT_TEAM = "";
+                                GENERATE_INFOPLIST_FILE = NO;
+                                INFOPLIST_FILE = AxionX/Info.plist;
+                                IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+                                LD_RUNPATH_SEARCH_PATHS = (
+                                        "$(inherited)",
+                                        "@executable_path/Frameworks",
+                                );
+                                MARKETING_VERSION = 1.0;
+                                PRODUCT_BUNDLE_IDENTIFIER = "com.axionx.ios";
+                                PRODUCT_NAME = "$(TARGET_NAME)";
+                                SUPPORTED_PLATFORMS = iphoneos;
+                                SUPPORTS_MACCATALYST = NO;
+                                SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+                                SWIFT_EMIT_LOC_STRINGS = YES;
+                                SWIFT_VERSION = 5.0;
+                                TARGETED_DEVICE_FAMILY = 1;
+                        };
+                        name = Debug;
+                };
+                J100000000000000000005 /* Release */ = {
+                        isa = XCBuildConfiguration;
+                        buildSettings = {
+                                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+                                CODE_SIGN_STYLE = Automatic;
+                                CURRENT_PROJECT_VERSION = 1;
+                                DEVELOPMENT_TEAM = "";
+                                GENERATE_INFOPLIST_FILE = NO;
+                                INFOPLIST_FILE = AxionX/Info.plist;
+                                IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+                                LD_RUNPATH_SEARCH_PATHS = (
+                                        "$(inherited)",
+                                        "@executable_path/Frameworks",
+                                );
+                                MARKETING_VERSION = 1.0;
+                                PRODUCT_BUNDLE_IDENTIFIER = "com.axionx.ios";
+                                PRODUCT_NAME = "$(TARGET_NAME)";
+                                SUPPORTED_PLATFORMS = iphoneos;
+                                SUPPORTS_MACCATALYST = NO;
+                                SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+                                SWIFT_EMIT_LOC_STRINGS = YES;
+                                SWIFT_VERSION = 5.0;
+                                TARGETED_DEVICE_FAMILY = 1;
+                        };
+                        name = Release;
+                };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		J100000000000000000003 /* Build configuration list for PBXProject "AxionX" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				J100000000000000000001 /* Debug */,
-				J100000000000000000002 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		J100000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				J100000000000000000004 /* Debug */,
-				J100000000000000000005 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
+                J100000000000000000003 /* Build configuration list for PBXProject "AxionX" */ = {
+                        isa = XCConfigurationList;
+                        buildConfigurations = (
+                                J100000000000000000001 /* Debug */,
+                                J100000000000000000002 /* Release */,
+                        );
+                        defaultConfigurationIsVisible = 0;
+                        defaultConfigurationName = Release;
+                };
+                J100000000000000000006 /* Build configuration list for PBXNativeTarget "AxionX" */ = {
+                        isa = XCConfigurationList;
+                        buildConfigurations = (
+                                J100000000000000000004 /* Debug */,
+                                J100000000000000000005 /* Release */,
+                        );
+                        defaultConfigurationIsVisible = 0;
+                        defaultConfigurationName = Release;
+                };
 /* End XCConfigurationList section */
 
-	};
-	rootObject = I100000000000000000002 /* Project object */;
+        };
+        rootObject = I100000000000000000002 /* Project object */;
 }

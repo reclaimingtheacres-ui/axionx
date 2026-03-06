@@ -71,6 +71,10 @@
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>AxionX uses your location while the app is in use to show nearby jobs, calculate travel distance, and assist with navigation.</string>
 
+    <!-- Camera permission — required for live plate scanning -->
+    <key>NSCameraUsageDescription</key>
+    <string>AxionX requires camera access to scan vehicle registrations for live LPR lookups.</string>
+
     <!-- App icon -->
     <key>CFBundleIconName</key>
     <string>AppIcon</string>

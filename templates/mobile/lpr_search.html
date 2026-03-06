@@ -7,7 +7,8 @@
 <div class="m-card">
   <div class="m-card-header">Search Active Assets</div>
   <div class="m-card-body">
-    <form method="POST" action="{{ url_for('m_lpr') }}" autocomplete="off">
+    <form id="lprForm" method="POST" action="{{ url_for('m_lpr') }}" autocomplete="off">
+      <input type="hidden" name="method" value="manual">
       <div style="margin-bottom:16px;">
         <label for="registration" class="m-label">Registration Number</label>
         <input
@@ -37,6 +38,7 @@
   </div>
 </div>
 
+{# Camera / Photo Upload — real link now #}
 <a href="{{ url_for('m_lpr_capture') }}"
    style="display:flex;align-items:center;justify-content:space-between;gap:12px;
           background:#f9fafb;border:1.5px solid var(--line);border-radius:12px;
@@ -50,4 +52,72 @@
   </div>
   <svg viewBox="0 0 24 24" width="18" height="18" stroke="var(--muted)" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
 </a>
+
+{# Live Scan — native iOS wrapper only #}
+<div id="liveScanRow" style="display:none;
+     background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;
+     padding:14px 16px;margin-bottom:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <svg viewBox="0 0 24 24" width="22" height="22" stroke="#2563eb" fill="none" stroke-width="1.5" style="flex-shrink:0;"><path d="M1 4h4v4M1 20h4v-4M23 4h-4v4M23 20h-4v-4"/><rect x="7" y="7" width="10" height="10" rx="1" ry="1"/></svg>
+      <div>
+        <div style="font-size:.88rem;font-weight:600;color:#1d4ed8;">Live Scan</div>
+        <div style="font-size:.78rem;color:#3b82f6;margin-top:2px;">Real-time plate detection via iOS camera</div>
+      </div>
+    </div>
+    <div style="font-size:.75rem;font-weight:600;color:#2563eb;
+                padding:4px 10px;background:#dbeafe;border-radius:7px;white-space:nowrap;">
+      Use button above ↑
+    </div>
+  </div>
+</div>
+<div id="liveScanBrowserMsg" style="display:none;
+     background:#f9fafb;border:1.5px solid var(--line);border-radius:12px;
+     padding:14px 16px;margin-bottom:14px;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <svg viewBox="0 0 24 24" width="22" height="22" stroke="var(--muted)" fill="none" stroke-width="1.5" style="flex-shrink:0;"><path d="M1 4h4v4M1 20h4v-4M23 4h-4v4M23 20h-4v-4"/><rect x="7" y="7" width="10" height="10" rx="1" ry="1"/></svg>
+    <div>
+      <div style="font-size:.88rem;font-weight:600;color:var(--muted);">Live Scan</div>
+      <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">Live scan is available in the AxionX iPhone app</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var isWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
+  if (isWrapper) {
+    document.getElementById('liveScanRow').style.display = 'block';
+  } else {
+    document.getElementById('liveScanBrowserMsg').style.display = 'block';
+  }
+
+  // Native live scan bridge — called by Swift after plate confirmation
+  window.handleNativePlateScan = function (plate, method) {
+    var field = document.getElementById('registration');
+    if (field) {
+      field.value = plate.toUpperCase();
+      var methodInput = document.querySelector('input[name="method"]');
+      if (methodInput) methodInput.value = method || 'live_scan';
+      document.getElementById('lprForm').submit();
+    }
+  };
+
+  // Auto-submit when the native scanner navigates to /m/lpr?plate=ABC123
+  var params = new URLSearchParams(window.location.search);
+  var plate  = params.get('plate');
+  var method = params.get('method') || 'live_scan';
+  if (plate && plate.length >= 4) {
+    var field = document.getElementById('registration');
+    if (field) {
+      field.value = plate.toUpperCase();
+      var methodInput = document.querySelector('input[name="method"]');
+      if (methodInput) methodInput.value = method;
+      setTimeout(function () {
+        document.getElementById('lprForm').submit();
+      }, 120);
+    }
+  }
+}());
+</script>
 {% endblock %}
