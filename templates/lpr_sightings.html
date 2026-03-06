@@ -114,6 +114,13 @@
               {% if r.registration_raw != r.registration_normalised %}
               <span class="text-muted small d-block">raw: {{ r.registration_raw }}</span>
               {% endif %}
+              {% if r.plate_count and r.plate_count >= 2 %}
+              <span class="badge ms-1"
+                    style="background:#dc2626;font-size:.63rem;vertical-align:middle;"
+                    title="{{ r.plate_count }} sighting(s) of this plate in last 30 days">
+                ×{{ r.plate_count }}
+              </span>
+              {% endif %}
             </td>
             <td>
               {% if r.result_type == 'allocated_match' %}
@@ -196,10 +203,12 @@
     </div>
   </div>
 </div>
+{% endblock %}
 
+{% block modals %}
 {# ── Follow-up Modal ── #}
 <div class="modal fade" id="followupModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form method="POST" id="followupForm" action="">
         <div class="modal-header">
@@ -207,9 +216,34 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+
+          {# Dispatch Intelligence Panel #}
+          <div id="followupIntelPanel" class="mb-3" style="display:none;">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="fw-semibold small">Dispatch Intelligence</span>
+              <span id="fu-priority-badge" class="badge"></span>
+            </div>
+            <div id="fu-action-box" class="alert alert-sm py-2 px-3 mb-2" style="font-size:.85rem;"></div>
+            <div class="row g-2 small">
+              <div class="col-md-6" id="fu-agents-col" style="display:none;">
+                <div class="fw-semibold text-muted mb-1" style="font-size:.75rem;">NEAREST AGENTS</div>
+                <div id="fu-agents-list"></div>
+              </div>
+              <div class="col-md-6" id="fu-repeat-col" style="display:none;">
+                <div class="fw-semibold text-muted mb-1" style="font-size:.75rem;">REPEAT SIGHTINGS (30 days)</div>
+                <div id="fu-repeat-info"></div>
+              </div>
+            </div>
+          </div>
+          <div id="followupIntelLoading" class="text-center text-muted py-2 small">
+            <span class="spinner-border spinner-border-sm me-1"></span> Loading intelligence…
+          </div>
+
+          <hr class="my-3">
+
           <div class="mb-3">
             <label class="form-label fw-semibold">Action Type <span class="text-danger">*</span></label>
-            <select name="action_type" class="form-select" required>
+            <select name="action_type" id="followupActionType" class="form-select" required>
               <option value="">— Select action —</option>
               <option value="investigate">Investigate Vehicle</option>
               <option value="phone_contact">Phone Contact Required</option>
@@ -221,7 +255,7 @@
           <div class="row g-2 mb-3">
             <div class="col">
               <label class="form-label fw-semibold">Assign To Agent</label>
-              <select name="assigned_user_id" class="form-select">
+              <select name="assigned_user_id" id="followupAssignee" class="form-select">
                 <option value="">— Unassigned —</option>
                 {% for u in users %}
                 <option value="{{ u.id }}">{{ u.full_name }}</option>
@@ -230,7 +264,7 @@
             </div>
             <div class="col">
               <label class="form-label fw-semibold">Priority</label>
-              <select name="priority" class="form-select">
+              <select name="priority" id="followupPriority" class="form-select">
                 <option value="low">Low</option>
                 <option value="normal" selected>Normal</option>
                 <option value="high">High</option>
@@ -259,7 +293,7 @@
 
 {# ── Review Modal ── #}
 <div class="modal fade" id="reviewModal" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form method="POST" id="reviewForm" action="">
         <div class="modal-header">
@@ -267,6 +301,31 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+
+          {# Dispatch Intelligence Panel #}
+          <div id="reviewIntelPanel" class="mb-3" style="display:none;">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="fw-semibold small">Dispatch Intelligence</span>
+              <span id="rv-priority-badge" class="badge"></span>
+            </div>
+            <div id="rv-action-box" class="alert alert-sm py-2 px-3 mb-2" style="font-size:.85rem;"></div>
+            <div class="row g-2 small">
+              <div class="col-md-6" id="rv-agents-col" style="display:none;">
+                <div class="fw-semibold text-muted mb-1" style="font-size:.75rem;">NEAREST AGENTS</div>
+                <div id="rv-agents-list"></div>
+              </div>
+              <div class="col-md-6" id="rv-repeat-col" style="display:none;">
+                <div class="fw-semibold text-muted mb-1" style="font-size:.75rem;">REPEAT SIGHTINGS (30 days)</div>
+                <div id="rv-repeat-info"></div>
+              </div>
+            </div>
+          </div>
+          <div id="reviewIntelLoading" class="text-center text-muted py-2 small">
+            <span class="spinner-border spinner-border-sm me-1"></span> Loading intelligence…
+          </div>
+
+          <hr class="my-3">
+
           <div class="mb-3">
             <label class="form-label fw-semibold">Follow-up Status</label>
             <select name="follow_up_status" id="reviewStatus" class="form-select">
@@ -290,19 +349,137 @@
     </div>
   </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
+/* ── Colour maps for score bands ── */
+var SCORE_COLORS = {
+  'Urgent': 'danger',
+  'High':   'warning',
+  'Medium': 'info',
+  'Low':    'secondary'
+};
+var ALERT_CLASSES = {
+  'Urgent': 'alert-danger',
+  'High':   'alert-warning',
+  'Medium': 'alert-info',
+  'Low':    'alert-secondary'
+};
+
+/* ── Render intelligence data into a panel ── */
+function renderIntelPanel(prefix, data) {
+  var score  = data.dispatch_score;
+  var agents = data.nearest_agents;
+  var repeat = data.repeat_info;
+  var prox   = data.proximity_hits;
+
+  /* Priority badge */
+  var badge = document.getElementById(prefix+'-priority-badge');
+  badge.textContent = score.priority + ' Priority (score ' + score.score + ')';
+  badge.className = 'badge bg-' + (SCORE_COLORS[score.priority] || 'secondary');
+  if (score.priority === 'High') badge.style.color = '#333';
+
+  /* Recommended action */
+  var box = document.getElementById(prefix+'-action-box');
+  box.textContent = score.action;
+  box.className = 'alert alert-sm py-2 px-3 mb-2 ' + (ALERT_CLASSES[score.priority] || 'alert-secondary');
+
+  /* Proximity hits note */
+  if (prox && prox.length) {
+    var proxNote = document.createElement('div');
+    proxNote.style.cssText = 'font-size:.78rem;margin-bottom:6px;color:#7c3aed;font-weight:600;';
+    proxNote.textContent = '📍 ' + prox.map(function(p){ return p.zone + ' (' + p.dist_label + ')'; }).join(', ');
+    box.parentNode.insertBefore(proxNote, box.nextSibling);
+  }
+
+  /* Nearest agents */
+  var agentsCol  = document.getElementById(prefix+'-agents-col');
+  var agentsList = document.getElementById(prefix+'-agents-list');
+  if (agents && agents.length) {
+    agentsCol.style.display = '';
+    agentsList.innerHTML = agents.map(function(a, i) {
+      return '<div class="d-flex align-items-center gap-2 mb-1">'
+        + '<span class="badge bg-'+(i===0?'success':'secondary')+'">'+( i===0 ? 'Nearest' : '#'+(i+1))+'</span>'
+        + '<span>'+a.name+'</span>'
+        + '<span class="text-muted ms-auto">'+a.dist_label+'</span>'
+        + '</div>';
+    }).join('');
+
+    /* Pre-select nearest agent in the followup assign dropdown */
+    if (prefix === 'fu') {
+      var sel = document.getElementById('followupAssignee');
+      if (sel && agents[0]) {
+        var opt = Array.from(sel.options).find(o => o.textContent.trim() === agents[0].name);
+        if (opt) opt.selected = true;
+      }
+    }
+  }
+
+  /* Repeat sightings */
+  var repeatCol  = document.getElementById(prefix+'-repeat-col');
+  var repeatInfo = document.getElementById(prefix+'-repeat-info');
+  if (repeat && repeat.total_count > 0) {
+    repeatCol.style.display = '';
+    var html = '<div class="mb-1">'
+      + '<strong>' + repeat.total_count + '</strong> sighting(s) of this plate';
+    if (repeat.agents_count > 1)
+      html += ' by <strong>' + repeat.agents_count + '</strong> agents';
+    if (repeat.nearby_count > 0)
+      html += ', <strong>' + repeat.nearby_count + '</strong> within 1 km';
+    html += '</div>';
+    if (repeat.recent && repeat.recent.length) {
+      html += repeat.recent.map(function(s) {
+        return '<div class="text-muted" style="font-size:.76rem;">'
+          + s.date + ' · ' + s.agent + ' · ' + s.result_type.replace('_',' ') + '</div>';
+      }).join('');
+    }
+    repeatInfo.innerHTML = html;
+  }
+
+  document.getElementById(prefix+'-priority-badge').closest('[id$="IntelPanel"]').style.display = '';
+}
+
+/* ── Load intelligence for a sighting ── */
+function loadIntelligence(sightingId, prefix) {
+  var loading = document.getElementById(prefix === 'rv' ? 'reviewIntelLoading' : 'followupIntelLoading');
+  var panel   = document.getElementById(prefix === 'rv' ? 'reviewIntelPanel'   : 'followupIntelPanel');
+  panel.style.display   = 'none';
+  loading.style.display = '';
+
+  /* Reset proximity note from last time */
+  var box = document.getElementById(prefix+'-action-box');
+  if (box.nextSibling && box.nextSibling.style && box.nextSibling.style.color === 'rgb(124, 58, 237)') {
+    box.parentNode.removeChild(box.nextSibling);
+  }
+  document.getElementById(prefix+'-agents-col').style.display  = 'none';
+  document.getElementById(prefix+'-repeat-col').style.display  = 'none';
+  document.getElementById(prefix+'-agents-list').innerHTML     = '';
+  document.getElementById(prefix+'-repeat-info').innerHTML     = '';
+
+  fetch('/admin/lpr-sightings/' + sightingId + '/intelligence')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      loading.style.display = 'none';
+      if (data && !data.error) renderIntelPanel(prefix, data);
+    })
+    .catch(function() { loading.style.display = 'none'; });
+}
+
+/* ── Modal openers ── */
 function openReview(id, reg, note, status) {
   document.getElementById('reviewReg').textContent    = reg;
   document.getElementById('reviewNote').value         = note;
   document.getElementById('reviewStatus').value       = status || 'pending';
   document.getElementById('reviewForm').action        = '/admin/lpr-sightings/' + id + '/review';
+  loadIntelligence(id, 'rv');
   new bootstrap.Modal(document.getElementById('reviewModal')).show();
 }
 
 function openFollowup(id, reg, jobId) {
   document.getElementById('followupReg').textContent = reg;
   document.getElementById('followupForm').action     = '/admin/lpr-sightings/' + id + '/followup';
+  loadIntelligence(id, 'fu');
   new bootstrap.Modal(document.getElementById('followupModal')).show();
 }
 </script>

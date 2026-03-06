@@ -7177,14 +7177,23 @@ def admin_lpr_sightings():
     if f_result:
         where.append("s.result_type = ?"); params.append(f_result)
 
+    where_clause = "WHERE " + " AND ".join(where) if where else ""
     sql = """
-        SELECT s.*, u.full_name AS agent_name
+        WITH plate_counts AS (
+            SELECT registration_normalised, COUNT(*) AS cnt
+            FROM lpr_sightings
+            WHERE created_at >= datetime('now', '-30 days')
+            GROUP BY registration_normalised
+        )
+        SELECT s.*, u.full_name AS agent_name,
+               COALESCE(pc.cnt, 1) AS plate_count
         FROM lpr_sightings s
         LEFT JOIN users u ON u.id = s.user_id
-        {}
+        LEFT JOIN plate_counts pc ON pc.registration_normalised = s.registration_normalised
+        {where}
         ORDER BY s.created_at DESC
         LIMIT 500
-    """.format("WHERE " + " AND ".join(where) if where else "")
+    """.format(where=where_clause)
 
     rows  = conn.execute(sql, params).fetchall()
     users = conn.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
@@ -7236,19 +7245,42 @@ def admin_lpr_sightings_map():
     conn = db()
     _lpr_sightings_ensure_table(conn)
     rows = conn.execute("""
+        WITH plate_counts AS (
+            SELECT registration_normalised, COUNT(*) AS cnt
+            FROM lpr_sightings
+            WHERE created_at >= datetime('now', '-30 days')
+            GROUP BY registration_normalised
+        )
         SELECT s.id, s.created_at, s.registration_normalised,
                s.result_type, s.search_method,
                s.latitude, s.longitude,
                s.escalated_to_office, s.watchlist_hit,
-               s.matched_job_number,
-               u.full_name AS agent_name
+               s.matched_job_number, s.reviewed, s.follow_up_status,
+               u.full_name AS agent_name,
+               COALESCE(pc.cnt, 1) AS plate_count
         FROM lpr_sightings s
         LEFT JOIN users u ON u.id = s.user_id
+        LEFT JOIN plate_counts pc ON pc.registration_normalised = s.registration_normalised
         WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
         ORDER BY s.created_at DESC
         LIMIT 1000
     """).fetchall()
+
+    # Agent locations (last 8 hours)
+    agent_rows = []
+    try:
+        agent_rows = conn.execute("""
+            SELECT al.user_id, u.full_name, al.lat, al.lng, al.updated_at
+            FROM agent_locations al
+            JOIN users u ON u.id = al.user_id
+            WHERE al.lat IS NOT NULL AND al.lng IS NOT NULL
+              AND al.updated_at >= datetime('now', '-8 hours')
+            ORDER BY al.updated_at DESC
+        """).fetchall()
+    except Exception:
+        pass
     conn.close()
+
     features = []
     for r in rows:
         features.append({
@@ -7265,10 +7297,27 @@ def admin_lpr_sightings_map():
                 "job":          r["matched_job_number"] or "",
                 "escalated":    bool(r["escalated_to_office"]),
                 "watchlist":    bool(r["watchlist_hit"]),
+                "reviewed":     bool(r["reviewed"]),
+                "follow_up":    r["follow_up_status"] or "",
+                "plate_count":  r["plate_count"] or 1,
             }
         })
+
+    agents = [
+        {
+            "name":       r["full_name"],
+            "lat":        r["lat"],
+            "lng":        r["lng"],
+            "updated_at": r["updated_at"],
+        }
+        for r in agent_rows
+    ]
+
     geojson = _json.dumps({"type": "FeatureCollection", "features": features})
-    return render_template("lpr_sightings_map.html", geojson=geojson, count=len(features))
+    agents_json = _json.dumps(agents)
+    return render_template("lpr_sightings_map.html",
+                           geojson=geojson, count=len(features),
+                           agents_json=agents_json)
 
 
 @app.get("/admin/lpr-watchlist")
@@ -7418,7 +7467,7 @@ def _lpr_proximity_ensure(conn):
     add_column_if_missing(cur, "lpr_proximity_rules", "priority", "TEXT DEFAULT 'normal'")
 
 
-# ── Haversine distance + proximity check ──────────────────────────────────────
+# ── Haversine distance + proximity check + dispatch intelligence ───────────────
 
 def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     R = 6_371_000.0
@@ -7441,6 +7490,162 @@ def _proximity_check(lat: float, lng: float, conn) -> list:
         if dist <= rule["radius_m"]:
             triggered.append({"rule": rule, "distance_m": round(dist)})
     return triggered
+
+
+def _dist_label(metres: float) -> str:
+    if metres < 1000:
+        return f"{round(metres)} m"
+    return f"{metres / 1000:.1f} km"
+
+
+def _nearest_agents(lat: float, lng: float, conn, limit: int = 3,
+                    max_hours: int = 8) -> list:
+    """Return up to `limit` agents with GPS updated within `max_hours`, sorted by distance."""
+    from datetime import timedelta as _td2
+    cutoff = (datetime.utcnow() - _td2(hours=max_hours)).strftime("%Y-%m-%dT%H:%M:%S")
+    try:
+        rows = conn.execute("""
+            SELECT al.user_id, u.full_name, al.lat, al.lng, al.updated_at
+            FROM agent_locations al
+            JOIN users u ON u.id = al.user_id
+            WHERE al.updated_at >= ? AND al.lat IS NOT NULL AND al.lng IS NOT NULL
+            ORDER BY al.updated_at DESC
+        """, (cutoff,)).fetchall()
+    except Exception:
+        return []
+    agents = []
+    for r in rows:
+        dist = _haversine_m(lat, lng, r["lat"], r["lng"])
+        agents.append({
+            "user_id":    r["user_id"],
+            "name":       r["full_name"],
+            "lat":        r["lat"],
+            "lng":        r["lng"],
+            "dist_m":     round(dist),
+            "dist_label": _dist_label(dist),
+            "updated_at": r["updated_at"],
+        })
+    agents.sort(key=lambda x: x["dist_m"])
+    return agents[:limit]
+
+
+def _lpr_repeat_info(reg_norm: str, lat, lng, conn,
+                     exclude_id=None, days: int = 30,
+                     radius_m: float = 1000.0) -> dict:
+    """Repeat-sighting intelligence for a given normalised registration."""
+    from datetime import timedelta as _td2
+    cutoff = (datetime.utcnow() - _td2(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+    q = """
+        SELECT s.id, s.created_at, s.result_type, s.latitude, s.longitude,
+               s.watchlist_hit, s.user_id, u.full_name AS agent_name
+        FROM lpr_sightings s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.registration_normalised=? AND s.created_at>=?
+    """
+    params = [reg_norm, cutoff]
+    if exclude_id:
+        q += " AND s.id != ?"
+        params.append(exclude_id)
+    q += " ORDER BY s.created_at DESC"
+    rows = conn.execute(q, params).fetchall()
+
+    total_count     = len(rows)
+    agents_seen     = len(set(r["user_id"] for r in rows))
+    watchlist_count = sum(1 for r in rows if r["watchlist_hit"])
+
+    nearby = []
+    if lat is not None and lng is not None:
+        for r in rows:
+            if r["latitude"] is not None and r["longitude"] is not None:
+                d = _haversine_m(lat, lng, r["latitude"], r["longitude"])
+                if d <= radius_m:
+                    nearby.append({
+                        "id":       r["id"],
+                        "dist_m":   round(d),
+                        "dist_label": _dist_label(d),
+                        "date":     r["created_at"][:10] if r["created_at"] else "",
+                        "agent":    r["agent_name"] or "",
+                        "result_type": r["result_type"],
+                    })
+    nearby.sort(key=lambda x: x["dist_m"])
+
+    return {
+        "total_count":      total_count,
+        "agents_count":     agents_seen,
+        "nearby_count":     len(nearby),
+        "nearby":           nearby[:5],
+        "watchlist_count":  watchlist_count,
+        "recent": [
+            {
+                "id":          r["id"],
+                "date":        r["created_at"][:10] if r["created_at"] else "",
+                "agent":       r["agent_name"] or "",
+                "result_type": r["result_type"],
+            }
+            for r in rows[:5]
+        ],
+    }
+
+
+_ACTION_LABELS_RESULT = {
+    "allocated_match":  "Allocated",
+    "restricted_match": "Restricted",
+    "conflict":         "Conflict",
+    "no_match":         "No Match",
+}
+
+
+def _lpr_dispatch_score(result_type: str, watchlist_h: int, escalated: int,
+                        repeat_info: dict, nearest_agents: list,
+                        prox_hits: list) -> dict:
+    """
+    Compute a priority band and recommended action from observable signals.
+    Returns no customer/finance data — only operational intelligence.
+    """
+    score = 0
+    if watchlist_h:            score += 40
+    if prox_hits:              score += 20
+    if result_type == "conflict":         score += 25
+    elif result_type == "restricted_match": score += 15
+    elif result_type == "allocated_match":  score += 10
+    if escalated:              score += 15
+    tc = repeat_info.get("total_count", 0)
+    ac = repeat_info.get("agents_count", 0)
+    nc = repeat_info.get("nearby_count", 0)
+    if tc >= 5:   score += 20
+    elif tc >= 2: score += 10
+    if ac >= 2:   score += 10
+    if nc >= 2:   score += 10
+
+    if score >= 70:
+        priority, color = "Urgent",  "danger"
+    elif score >= 45:
+        priority, color = "High",    "warning"
+    elif score >= 20:
+        priority, color = "Medium",  "info"
+    else:
+        priority, color = "Low",     "secondary"
+
+    if watchlist_h and prox_hits:
+        action = "Dispatch urgently — watchlist plate inside a proximity zone"
+    elif watchlist_h and tc >= 2:
+        action = "Dispatch — watchlist plate seen multiple times recently"
+    elif watchlist_h:
+        action = "Review and dispatch — watchlist hit"
+    elif result_type == "conflict":
+        action = "Investigate — multiple active files for this plate"
+    elif result_type == "restricted_match" and nc >= 2:
+        action = "Dispatch to area — plate repeatedly sighted nearby"
+    elif result_type == "restricted_match":
+        action = "Phone contact — restricted plate sighted"
+    elif escalated and nearest_agents:
+        action = f"Assign to {nearest_agents[0]['name']} — {nearest_agents[0]['dist_label']} from sighting"
+    elif tc >= 3:
+        action = "Investigate pattern — plate seen frequently in the area"
+    else:
+        action = "Monitor — no immediate dispatch required"
+
+    return {"score": score, "priority": priority, "color": color, "action": action}
 
 
 # ── APNs push delivery ─────────────────────────────────────────────────────────
@@ -7739,6 +7944,53 @@ def admin_lpr_sighting_followup(sighting_id: int):
 
     flash("Follow-up created.", "success")
     return redirect(request.referrer or url_for("admin_lpr_sightings"))
+
+
+@app.get("/admin/lpr-sightings/<int:sighting_id>/intelligence")
+@admin_required
+def admin_lpr_sighting_intelligence(sighting_id: int):
+    import json as _json
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    s = conn.execute("""
+        SELECT s.id, s.registration_normalised, s.result_type,
+               s.watchlist_hit, s.escalated_to_office,
+               s.latitude, s.longitude, s.search_method, s.created_at,
+               u.full_name AS agent_name
+        FROM lpr_sightings s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.id=?
+    """, (sighting_id,)).fetchone()
+    if not s:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    lat = s["latitude"]
+    lng = s["longitude"]
+
+    nearest   = _nearest_agents(lat, lng, conn) if (lat and lng) else []
+    repeat    = _lpr_repeat_info(s["registration_normalised"], lat, lng,
+                                  conn, exclude_id=sighting_id)
+    prox_hits = []
+    if lat and lng and s["watchlist_hit"]:
+        prox_hits = _proximity_check(lat, lng, conn)
+
+    score = _lpr_dispatch_score(
+        s["result_type"], s["watchlist_hit"], s["escalated_to_office"],
+        repeat, nearest, prox_hits
+    )
+
+    prox_clean = [{"zone": p["rule"]["zone_name"], "dist_label": _dist_label(p["distance_m"])}
+                  for p in prox_hits]
+
+    conn.close()
+    return jsonify({
+        "sighting_id":    sighting_id,
+        "nearest_agents": nearest,
+        "repeat_info":    repeat,
+        "proximity_hits": prox_clean,
+        "dispatch_score": score,
+    }), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────

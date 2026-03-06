@@ -313,3 +313,32 @@ Mobile LPR system for iOS field agents. Backend in `app.py`, mobile templates un
 **Helper functions**: `_haversine_m()`, `_proximity_check()`, `_notify_user()`, `_notify_admins()`
 
 **Templates**: `lpr_proximity.html` (admin zone CRUD), `mobile/lpr_notifications.html` (agent feed), `lpr_sightings.html` updated with Follow-up modal + Zones nav link, `mobile/lpr_search.html` updated with Alerts header link.
+
+---
+
+## LPR Stage 9 — Dispatch Intelligence & Map Upgrade
+
+**New dispatch intelligence helpers** (`app.py`):
+- `_dist_label(metres)` — human-readable distance string (e.g. "450 m", "2.3 km")
+- `_nearest_agents(lat, lng, conn, limit=3, max_hours=8)` — agents with recent GPS updates, sorted by distance from sighting
+- `_lpr_repeat_info(reg_norm, lat, lng, conn, ...)` — total/nearby/multi-agent repeat sightings of the same plate (last 30 days, 1 km radius)
+- `_lpr_dispatch_score(result_type, watchlist_h, escalated, repeat_info, nearest_agents, prox_hits)` — score-based priority band (Urgent/High/Medium/Low) + recommended action string
+
+**New route**: `GET /admin/lpr-sightings/<id>/intelligence` — returns JSON with `nearest_agents`, `repeat_info`, `proximity_hits`, `dispatch_score`. No customer/finance data in payload.
+
+**Updated routes**:
+- `admin_lpr_sightings_map` — geojson features now include `plate_count` (30-day repeat count), `reviewed`, `follow_up` fields; also passes `agents_json` (agent pins for last 8 h)
+- `admin_lpr_sightings` — rows now include `plate_count` via CTE subquery
+
+**Map rewrite** (`lpr_sightings_map.html`):
+- Leaflet.markercluster 1.5.3 with custom cluster icons (priority-colour-coded: purple=watchlist/escalated, red=hotspot, amber=restricted, blue=default)
+- Floating toolbar: filter chips (All / Watchlist / Escalated / Unreviewed / Restricted / Hotspot 3+), plate search input, Agents toggle
+- Agent location pins (green initials circles) pulled from `agent_locations` table, togglable
+- Enhanced popups: repeat-count badge (×N), review status, "Seen N times in 30 days" note
+- JS-only filtering (no server round-trip); search debounced at 280 ms
+
+**Sightings table update** (`lpr_sightings.html`):
+- Registration column shows red ×N badge when plate_count ≥ 2
+- Review and Follow-up modals expanded to `modal-lg` with dispatch intelligence panel
+- Intelligence panel loads via AJAX on modal open: priority badge, recommended-action alert box, nearest agents list, repeat-sightings summary
+- Follow-up modal auto-selects the nearest agent in the assignee dropdown
