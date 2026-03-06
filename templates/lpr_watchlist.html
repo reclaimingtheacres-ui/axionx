@@ -1,0 +1,156 @@
+{% extends "layout.html" %}
+{% block title %}LPR Watchlist{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h2 class="mb-0">LPR Watchlist</h2>
+      <p class="text-muted small mb-0">Flagged registrations — agents are alerted when these plates are scanned</p>
+    </div>
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addModal">
+      + Add to Watchlist
+    </button>
+  </div>
+
+  {# ── Filter bar ── #}
+  <form method="GET" class="mb-3 d-flex gap-2 align-items-center">
+    <label class="form-label mb-0 small fw-semibold text-muted">Show:</label>
+    <select name="active" class="form-select form-select-sm" style="width:auto;"
+            onchange="this.form.submit()">
+      <option value="1" {% if f_active == '1' %}selected{% endif %}>Active only</option>
+      <option value="0" {% if f_active == '0' %}selected{% endif %}>Inactive only</option>
+      <option value=""  {% if f_active == ''  %}selected{% endif %}>All</option>
+    </select>
+    <a href="{{ url_for('admin_lpr_sightings') }}" class="btn btn-sm btn-outline-secondary ms-auto">
+      Sightings →
+    </a>
+  </form>
+
+  {# ── Table ── #}
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+      <span class="fw-semibold">Watchlist entries</span>
+      <span class="badge bg-secondary">{{ rows | length }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Registration</th>
+            <th>Priority</th>
+            <th>Reason</th>
+            <th>Linked Job</th>
+            <th>Added By</th>
+            <th>Date Added</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not rows %}
+          <tr><td colspan="8" class="text-center text-muted py-4">No watchlist entries</td></tr>
+          {% endif %}
+          {% for r in rows %}
+          <tr {% if not r.active %}class="opacity-50"{% endif %}>
+            <td class="ps-3">
+              <span class="fw-bold font-monospace fs-6">{{ r.registration_normalised }}</span>
+              {% if r.registration != r.registration_normalised %}
+              <span class="text-muted small d-block">raw: {{ r.registration }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.priority == 'urgent' %}
+                <span class="badge bg-danger">Urgent</span>
+              {% elif r.priority == 'high' %}
+                <span class="badge bg-warning text-dark">High</span>
+              {% elif r.priority == 'normal' %}
+                <span class="badge bg-secondary">Normal</span>
+              {% else %}
+                <span class="badge bg-light text-muted border">Low</span>
+              {% endif %}
+            </td>
+            <td class="small" style="max-width:220px;white-space:normal;">{{ r.reason or '—' }}</td>
+            <td class="small">
+              {% if r.matched_job_id %}
+              <a href="{{ url_for('job_detail', job_id=r.matched_job_id) }}">
+                {{ r.job_ref or r.job_num }}
+              </a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="small">{{ r.creator_name or '—' }}</td>
+            <td class="small text-nowrap">{{ r.created_at[:10] if r.created_at else '—' }}</td>
+            <td>
+              {% if r.active %}
+              <span class="badge bg-success">Active</span>
+              {% else %}
+              <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td class="text-end pe-3">
+              <form method="POST"
+                    action="{{ url_for('admin_lpr_watchlist_toggle', entry_id=r.id) }}"
+                    style="display:inline;">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                  {{ 'Deactivate' if r.active else 'Reactivate' }}
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ── Add Modal ── #}
+<div class="modal fade" id="addModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_lpr_watchlist_add') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Add to Watchlist</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Registration <span class="text-danger">*</span></label>
+            <input type="text" name="registration" required
+                   class="form-control text-uppercase" autocomplete="off"
+                   placeholder="e.g. ABC123"
+                   style="font-family:monospace;font-size:1.1rem;font-weight:700;letter-spacing:.08em;">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Priority</label>
+            <select name="priority" class="form-select">
+              <option value="low">Low</option>
+              <option value="normal" selected>Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Reason</label>
+            <textarea name="reason" class="form-control" rows="2"
+                      placeholder="Why is this plate being watched?"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Link to Job (optional)</label>
+            <select name="matched_job_id" class="form-select">
+              <option value="">— No linked job —</option>
+              {% for j in jobs %}
+              <option value="{{ j.id }}">{{ j.ref }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add to Watchlist</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -4,29 +4,36 @@ import WebKit
 // MARK: - Data model (only safe / non-restricted fields)
 
 struct LPRResult {
-    let resultType:        String
-    let searchedReg:       String
-    let searchMethod:      String
-    let matchedJobId:      Int?
-    let matchedJobNumber:  String?
-    let openURL:           String?
-    let assetRegistration: String?
-    let assetYear:         String?
-    let assetMake:         String?
-    let assetModel:        String?
-    let matchCount:        Int?
-    let message:           String?
+    let resultType:          String
+    let searchedReg:         String
+    let searchMethod:        String
+    let matchedJobId:        Int?
+    let matchedJobNumber:    String?
+    let openURL:             String?
+    let assetRegistration:   String?
+    let assetYear:           String?
+    let assetMake:           String?
+    let assetModel:          String?
+    let matchCount:          Int?
+    let message:             String?
+    // Watchlist
+    let watchlistHit:        Bool
+    let watchlistReason:     String?
+    let watchlistPriority:   String?
 
     init(from json: [String: Any], searchMethod: String) {
-        self.resultType       = json["result_type"]        as? String ?? "invalid"
-        self.searchedReg      = json["searched_registration"] as? String ?? ""
-        self.searchMethod     = searchMethod
-        self.matchedJobId     = json["matched_job_id"]     as? Int
-        self.matchedJobNumber = json["matched_job_number"] as? String
-        self.openURL          = json["open_url"]           as? String
-        self.matchCount       = json["match_count"]        as? Int
-        self.message          = json["message"]            as? String
-        if let asset          = json["asset"] as? [String: Any] {
+        self.resultType        = json["result_type"]           as? String ?? "invalid"
+        self.searchedReg       = json["searched_registration"] as? String ?? ""
+        self.searchMethod      = searchMethod
+        self.matchedJobId      = json["matched_job_id"]        as? Int
+        self.matchedJobNumber  = json["matched_job_number"]    as? String
+        self.openURL           = json["open_url"]              as? String
+        self.matchCount        = json["match_count"]           as? Int
+        self.message           = json["message"]               as? String
+        self.watchlistHit      = json["watchlist_hit"]         as? Bool ?? false
+        self.watchlistReason   = json["watchlist_reason"]      as? String
+        self.watchlistPriority = json["watchlist_priority"]    as? String
+        if let asset = json["asset"] as? [String: Any] {
             self.assetRegistration = asset["registration"] as? String
             self.assetYear         = asset["year"]         as? String
             self.assetMake         = asset["make"]         as? String
@@ -85,12 +92,12 @@ enum LPRAPIClient {
             var req            = URLRequest(url: url)
             req.httpMethod     = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.setValue("AxionXiOS/1.0", forHTTPHeaderField: "User-Agent")
+            req.setValue("AxionXiOS/1.0",    forHTTPHeaderField: "User-Agent")
             req.httpBody       = try? JSONSerialization.data(withJSONObject: body)
 
             let cookieHeader = cookies
                 .filter { $0.domain.hasSuffix(base) || base.hasSuffix($0.domain.hasPrefix(".") ? String($0.domain.dropFirst()) : $0.domain) }
-                .map { "\($0.name)=\($0.value)" }
+                .map    { "\($0.name)=\($0.value)" }
                 .joined(separator: "; ")
             if !cookieHeader.isEmpty {
                 req.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
@@ -113,7 +120,7 @@ struct LPRResultSheet: View {
     var onDismiss:  () -> Void
 
     @State private var notes: String = ""
-    @State private var escalate = false
+    @State private var escalate  = false
     @State private var isSaving  = false
     @State private var savedOK   = false
     @State private var saveError: String? = nil
@@ -125,6 +132,13 @@ struct LPRResultSheet: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
+
+                    // Watchlist alert — shown above all other content
+                    if result.watchlistHit {
+                        watchlistAlert
+                            .padding(.bottom, 14)
+                    }
+
                     resultBanner
                         .padding(.bottom, 16)
 
@@ -152,7 +166,46 @@ struct LPRResultSheet: View {
         .onAppear { fetchGPS() }
     }
 
-    // MARK: Sub-views
+    // MARK: Watchlist alert
+
+    private var watchlistAlert: some View {
+        let isUrgent = result.watchlistPriority == "urgent"
+        let isHigh   = result.watchlistPriority == "high"
+        let bg    = isUrgent ? Color.red.opacity(0.1)    : Color.purple.opacity(0.1)
+        let brd   = isUrgent ? Color.red.opacity(0.5)    : Color(red: 0.55, green: 0.2, blue: 0.9).opacity(0.5)
+        let fg    = isUrgent ? Color.red                 : Color(red: 0.49, green: 0.14, blue: 0.82)
+
+        return HStack(alignment: .top, spacing: 12) {
+            Text("⚑")
+                .font(.system(size: 22))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("WATCHLIST HIT")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundColor(fg)
+                    .tracking(1)
+                if isUrgent {
+                    Text("URGENT — Contact the office immediately")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.red)
+                } else if isHigh {
+                    Text("HIGH PRIORITY")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.orange)
+                }
+                if let reason = result.watchlistReason, !reason.isEmpty {
+                    Text(reason)
+                        .font(.system(size: 13))
+                        .foregroundColor(fg.opacity(0.85))
+                }
+            }
+        }
+        .padding(14)
+        .background(bg)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(brd, lineWidth: isUrgent ? 2 : 1.5))
+        .cornerRadius(12)
+    }
+
+    // MARK: Result banner
 
     private var resultBanner: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -176,6 +229,8 @@ struct LPRResultSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(bannerBorder, lineWidth: 1.5))
         .cornerRadius(12)
     }
+
+    // MARK: Plate card
 
     private var plateCard: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -231,6 +286,8 @@ struct LPRResultSheet: View {
             .cornerRadius(8)
     }
 
+    // MARK: Allocated actions
+
     private var allocatedActions: some View {
         VStack(spacing: 12) {
             if let urlStr = result.openURL {
@@ -251,10 +308,11 @@ struct LPRResultSheet: View {
                     .background(Color(.systemGray5))
                     .foregroundColor(.primary)
                     .cornerRadius(12)
-                    .font(.system(size: 15))
             }
         }
     }
+
+    // MARK: Sighting form
 
     private var sightingForm: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -262,7 +320,6 @@ struct LPRResultSheet: View {
                 .font(.system(size: 15, weight: .bold))
                 .padding(.top, 4)
 
-            // GPS status
             HStack(spacing: 8) {
                 Image(systemName: latitude != nil ? "location.fill" : "location.slash")
                     .font(.system(size: 14))
@@ -272,7 +329,6 @@ struct LPRResultSheet: View {
                     .foregroundColor(.secondary)
             }
 
-            // Notes
             VStack(alignment: .leading, spacing: 6) {
                 Text("Notes (optional)")
                     .font(.system(size: 13, weight: .medium))
@@ -298,7 +354,6 @@ struct LPRResultSheet: View {
                 }
             }
 
-            // Escalate toggle
             Toggle(isOn: $escalate) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Flag for office follow-up")
@@ -310,14 +365,10 @@ struct LPRResultSheet: View {
             }
             .toggleStyle(SwitchToggleStyle(tint: .orange))
 
-            // Save button
             if savedOK {
                 HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Sighting saved")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.green)
+                    Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                    Text("Sighting saved").font(.system(size: 15, weight: .semibold)).foregroundColor(.green)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
@@ -334,21 +385,14 @@ struct LPRResultSheet: View {
                 }
             } else {
                 if let err = saveError {
-                    Text(err)
-                        .font(.system(size: 13))
-                        .foregroundColor(.red)
-                        .padding(.vertical, 6)
+                    Text(err).font(.system(size: 13)).foregroundColor(.red).padding(.vertical, 6)
                 }
 
                 Button(action: doSaveSighting) {
                     HStack(spacing: 8) {
-                        if isSaving {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "mappin.and.ellipse")
-                        }
-                        Text(isSaving ? "Saving…" : "Save Sighting")
-                            .fontWeight(.semibold)
+                        if isSaving { ProgressView().tint(.white) }
+                        else { Image(systemName: "mappin.and.ellipse") }
+                        Text(isSaving ? "Saving…" : "Save Sighting").fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
@@ -370,30 +414,28 @@ struct LPRResultSheet: View {
         }
     }
 
-    // MARK: Helpers
+    // MARK: Save logic
 
     private func doSaveSighting() {
         isSaving  = true
         saveError = nil
         var body: [String: Any] = [
-            "registration_raw":        result.searchedReg,
-            "result_type":             result.resultType,
-            "search_method":           result.searchMethod,
-            "escalated_to_office":     escalate,
-            "notes":                   notes,
+            "registration_raw":    result.searchedReg,
+            "result_type":         result.resultType,
+            "search_method":       result.searchMethod,
+            "escalated_to_office": escalate,
+            "watchlist_hit":       result.watchlistHit,
+            "notes":               notes,
         ]
-        if let jid = result.matchedJobId     { body["matched_job_id"]     = jid }
-        if let jn  = result.matchedJobNumber { body["matched_job_number"]  = jn  }
+        if let jid = result.matchedJobId     { body["matched_job_id"]    = jid }
+        if let jn  = result.matchedJobNumber { body["matched_job_number"] = jn  }
         if let lat = latitude  { body["latitude"]  = lat }
         if let lng = longitude { body["longitude"] = lng }
 
         LPRAPIClient.saveSighting(body, webView: webView) { ok, _ in
             isSaving = false
-            if ok {
-                savedOK = true
-            } else {
-                saveError = "Save failed. Check your connection and try again."
-            }
+            if ok { savedOK = true }
+            else  { saveError = "Save failed. Check your connection and try again." }
         }
     }
 
@@ -402,9 +444,8 @@ struct LPRResultSheet: View {
             if let loc = loc {
                 latitude  = loc.coordinate.latitude
                 longitude = loc.coordinate.longitude
-                let latStr = String(format: "%.4f", loc.coordinate.latitude)
-                let lngStr = String(format: "%.4f", loc.coordinate.longitude)
-                gpsLabel = "\(latStr), \(lngStr)"
+                gpsLabel = String(format: "%.4f, %.4f",
+                                  loc.coordinate.latitude, loc.coordinate.longitude)
             } else {
                 gpsLabel = "Location unavailable"
             }

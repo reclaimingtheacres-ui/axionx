@@ -10,6 +10,26 @@ Plate Result
 
 {% block content %}
 
+{# ── Watchlist alert — highest priority banner ── #}
+{% if result.watchlist_hit %}
+<div style="display:flex;align-items:flex-start;gap:10px;
+            background:#faf5ff;border:2px solid #a855f7;border-radius:12px;
+            padding:13px 16px;margin-bottom:14px;">
+  <span style="font-size:1.2rem;flex-shrink:0;">⚑</span>
+  <div>
+    <div style="font-size:.78rem;font-weight:800;color:#7c3aed;letter-spacing:.06em;text-transform:uppercase;">Watchlist Hit</div>
+    {% if result.watchlist_priority == 'urgent' %}
+    <div style="font-size:.8rem;font-weight:700;color:#dc2626;margin-top:2px;">URGENT — Contact the office immediately</div>
+    {% elif result.watchlist_priority == 'high' %}
+    <div style="font-size:.8rem;font-weight:700;color:#d97706;margin-top:2px;">HIGH PRIORITY</div>
+    {% endif %}
+    {% if result.watchlist_reason %}
+    <div style="font-size:.82rem;color:#6b21a8;margin-top:4px;">{{ result.watchlist_reason }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {# ── Search method badge ── #}
 {% if search_method %}
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">

@@ -491,6 +491,75 @@
       </div>
     </div>
 
+
+  {# ── LPR Sightings Widget ── #}
+  {% if job_lpr_sightings %}
+  <div class="ax-card mb-3" style="margin-top:16px;">
+    <div class="ax-card-h d-flex align-items-center justify-content-between">
+      <span>LPR Sightings</span>
+      <span class="badge bg-secondary" style="font-size:.72rem;">{{ job_lpr_sightings | length }}</span>
+    </div>
+    <div class="ax-card-b" style="padding:0;">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle" style="font-size:.82rem;">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Date</th>
+              <th>Agent</th>
+              <th>Plate</th>
+              <th>Result</th>
+              <th>Method</th>
+              <th>GPS</th>
+              <th>Flags</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in job_lpr_sightings %}
+            <tr {% if s.watchlist_hit %}style="background:rgba(124,58,237,.05);"{% elif s.escalated_to_office %}style="background:rgba(251,146,60,.05);"{% endif %}>
+              <td class="ps-3 text-nowrap">
+                {{ s.created_at[:10] if s.created_at else '—' }}
+                <span style="color:var(--muted);"> {{ s.created_at[11:16] if s.created_at else '' }}</span>
+              </td>
+              <td>{{ s.agent_name or '—' }}</td>
+              <td><span style="font-family:monospace;font-weight:700;">{{ s.registration_normalised }}</span></td>
+              <td>
+                {% if s.result_type == 'allocated_match' %}
+                  <span class="badge bg-success" style="font-size:.68rem;">Allocated</span>
+                {% elif s.result_type == 'restricted_match' %}
+                  <span class="badge bg-warning text-dark" style="font-size:.68rem;">Restricted</span>
+                {% elif s.result_type == 'conflict' %}
+                  <span class="badge bg-danger" style="font-size:.68rem;">Conflict</span>
+                {% else %}
+                  <span class="badge bg-secondary" style="font-size:.68rem;">{{ s.result_type }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if s.search_method == 'live_scan' %}<span style="color:#7c3aed;">▣ Live</span>
+                {% elif s.search_method == 'photo_ocr' %}<span style="color:#0284c7;">📷 Photo</span>
+                {% else %}<span style="color:var(--muted);">✎ Manual</span>{% endif %}
+              </td>
+              <td>
+                {% if s.latitude is not none and s.longitude is not none %}
+                <a href="https://maps.apple.com/?q={{ s.latitude }},{{ s.longitude }}"
+                   target="_blank" rel="noopener" title="Open in Maps" style="color:var(--green);">📍</a>
+                {% else %}—{% endif %}
+              </td>
+              <td style="white-space:nowrap;">
+                {% if s.watchlist_hit %}<span style="color:#7c3aed;">⚑</span> {% endif %}
+                {% if s.escalated_to_office %}<span style="color:#ea580c;">⬆</span>{% endif %}
+                {% if not s.watchlist_hit and not s.escalated_to_office %}—{% endif %}
+              </td>
+              <td style="max-width:160px;white-space:normal;color:var(--muted);">{{ s.notes or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
 </div><!-- /tab-job inner -->
 </div><!-- /tab-job pane -->
 

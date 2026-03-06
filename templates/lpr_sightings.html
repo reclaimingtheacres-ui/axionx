@@ -8,7 +8,11 @@
       <h2 class="mb-0">LPR Sightings</h2>
       <p class="text-muted small mb-0">Plate sightings saved by field agents</p>
     </div>
-    <a href="{{ url_for('admin_lpr_audit') }}" class="btn btn-sm btn-outline-secondary">Audit Log →</a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin_lpr_sightings_map') }}" class="btn btn-sm btn-outline-secondary">🗺 Map View</a>
+      <a href="{{ url_for('admin_lpr_watchlist') }}"    class="btn btn-sm btn-outline-secondary">⚑ Watchlist</a>
+      <a href="{{ url_for('admin_lpr_audit') }}"         class="btn btn-sm btn-outline-secondary">Audit Log →</a>
+    </div>
   </div>
 
   {# ── Filter bar ── #}
@@ -62,6 +66,10 @@
       <span class="fw-semibold">Sightings</span>
       <div class="d-flex gap-2 align-items-center">
         {% set escalated_count = rows | selectattr('escalated_to_office', 'equalto', 1) | list | length %}
+        {% set watchlist_count = rows | selectattr('watchlist_hit', 'equalto', 1) | list | length %}
+        {% if watchlist_count %}
+        <span class="badge" style="background:#7c3aed;">⚑ {{ watchlist_count }} watchlist</span>
+        {% endif %}
         {% if escalated_count %}
         <span class="badge bg-warning text-dark">{{ escalated_count }} escalated</span>
         {% endif %}
@@ -80,17 +88,21 @@
             <th>Job</th>
             <th>GPS</th>
             <th>Notes</th>
-            <th>Escalated</th>
+            <th>Flags</th>
+            <th>Review</th>
           </tr>
         </thead>
         <tbody>
           {% if not rows %}
           <tr>
-            <td colspan="9" class="text-center text-muted py-4">No sightings found</td>
+            <td colspan="10" class="text-center text-muted py-4">No sightings found</td>
           </tr>
           {% endif %}
           {% for r in rows %}
-          <tr {% if r.escalated_to_office %}style="background:rgba(251,146,60,.07);"{% endif %}>
+          <tr id="sighting-{{ r.id }}"
+              {% if r.watchlist_hit %}style="background:rgba(124,58,237,.06);"
+              {% elif r.escalated_to_office %}style="background:rgba(251,146,60,.07);"
+              {% endif %}>
             <td class="ps-3 text-nowrap small">
               {{ r.created_at[:10] }}
               <span class="text-muted"> {{ r.created_at[11:16] }}</span>
@@ -132,8 +144,7 @@
             <td class="small text-nowrap">
               {% if r.latitude is not none and r.longitude is not none %}
               <a href="https://maps.apple.com/?q={{ r.latitude }},{{ r.longitude }}"
-                 target="_blank" rel="noopener"
-                 title="Open in Maps">
+                 target="_blank" rel="noopener" title="Open in Maps">
                 <span class="text-success">📍</span>
                 {{ "%.4f"|format(r.latitude) }},
                 {{ "%.4f"|format(r.longitude) }}
@@ -142,14 +153,31 @@
               <span class="text-muted">—</span>
               {% endif %}
             </td>
-            <td class="small" style="max-width:180px;">
-              {% if r.notes %}
-              <span style="white-space:normal;word-break:break-word;">{{ r.notes }}</span>
-              {% else %}—{% endif %}
+            <td class="small" style="max-width:160px;white-space:normal;">
+              {{ r.notes or '—' }}
             </td>
-            <td class="text-center">
+            <td class="small" style="white-space:nowrap;">
+              {% if r.watchlist_hit %}
+              <span style="color:#7c3aed;">⚑ Watch</span>
+              {% endif %}
               {% if r.escalated_to_office %}
-              <span class="badge bg-warning text-dark">⚑ Yes</span>
+              <span class="text-warning fw-bold">⬆ Esc.</span>
+              {% endif %}
+              {% if not r.watchlist_hit and not r.escalated_to_office %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if r.reviewed %}
+              <span class="badge bg-light text-muted border small">
+                ✓ {{ r.follow_up_status or 'Reviewed' }}
+              </span>
+              {% elif r.escalated_to_office or r.watchlist_hit %}
+              <button type="button" class="btn btn-xs btn-outline-warning btn-sm"
+                      style="font-size:.72rem;padding:2px 8px;"
+                      onclick="openReview({{ r.id }}, '{{ r.registration_normalised }}', '{{ (r.office_note or '')|e }}', '{{ r.follow_up_status or '' }}')">
+                Review
+              </button>
               {% else %}
               <span class="text-muted small">—</span>
               {% endif %}
@@ -161,4 +189,49 @@
     </div>
   </div>
 </div>
+
+{# ── Review Modal ── #}
+<div class="modal fade" id="reviewModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" id="reviewForm" action="">
+        <div class="modal-header">
+          <h5 class="modal-title">Review Sighting — <span id="reviewReg" class="font-monospace"></span></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Follow-up Status</label>
+            <select name="follow_up_status" id="reviewStatus" class="form-select">
+              <option value="pending">Pending — needs further action</option>
+              <option value="actioned">Actioned — follow-up completed</option>
+              <option value="closed">Closed — no further action needed</option>
+              <option value="no_action">No Action Required</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Office Notes</label>
+            <textarea name="office_note" id="reviewNote" class="form-control" rows="3"
+                      placeholder="Add an office note for this sighting…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">Mark Reviewed</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openReview(id, reg, note, status) {
+  document.getElementById('reviewReg').textContent    = reg;
+  document.getElementById('reviewNote').value         = note;
+  document.getElementById('reviewStatus').value       = status || 'pending';
+  document.getElementById('reviewForm').action        = '/admin/lpr-sightings/' + id + '/review';
+  var modal = new bootstrap.Modal(document.getElementById('reviewModal'));
+  modal.show();
+}
+</script>
 {% endblock %}

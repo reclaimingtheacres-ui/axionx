@@ -2348,6 +2348,18 @@ def job_detail(job_id: int):
     conn3.close()
     job_types = [r["name"] for r in job_types_rows]
 
+    conn4 = db()
+    _lpr_sightings_ensure_table(conn4)
+    job_lpr_sightings = conn4.execute("""
+        SELECT s.*, u.full_name AS agent_name
+        FROM lpr_sightings s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.matched_job_id = ?
+        ORDER BY s.created_at DESC
+        LIMIT 30
+    """, (job_id,)).fetchall()
+    conn4.close()
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -2362,7 +2374,8 @@ def job_detail(job_id: int):
                            customer_roles=customer_roles,
                            tow_operators=tow_operators,
                            auction_yards=auction_yards,
-                           form_templates=form_templates)
+                           form_templates=form_templates,
+                           job_lpr_sightings=job_lpr_sightings)
 
 
 @app.post("/jobs/<int:job_id>/customers/add")
@@ -6480,10 +6493,51 @@ def _lpr_ensure_table(conn):
     add_column_if_missing(conn.cursor(), "lpr_audit_logs", "search_method", "TEXT DEFAULT 'manual'")
 
 
+def _lpr_watchlist_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_watchlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            registration TEXT NOT NULL,
+            registration_normalised TEXT NOT NULL,
+            matched_job_id INTEGER,
+            reason TEXT,
+            priority TEXT DEFAULT 'normal',
+            active INTEGER DEFAULT 1,
+            created_by INTEGER,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(matched_job_id) REFERENCES jobs(id),
+            FOREIGN KEY(created_by) REFERENCES users(id)
+        )
+    """)
+
+
+def _lpr_watchlist_check(reg_norm: str) -> dict:
+    conn = db()
+    _lpr_watchlist_ensure(conn)
+    row = conn.execute("""
+        SELECT reason, priority FROM lpr_watchlist
+        WHERE registration_normalised = ? AND active = 1
+        ORDER BY CASE priority
+            WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
+            WHEN 'normal' THEN 3 ELSE 4 END
+        LIMIT 1
+    """, (reg_norm,)).fetchone()
+    conn.close()
+    if row:
+        return {
+            "watchlist_hit":      True,
+            "watchlist_reason":   row["reason"],
+            "watchlist_priority": row["priority"],
+        }
+    return {"watchlist_hit": False, "watchlist_reason": None, "watchlist_priority": None}
+
+
 def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: str) -> dict:
     reg_norm = normalise_registration(reg_input)
     if not reg_norm:
         return {"result_type": "invalid", "message": "Enter a valid registration."}
+
+    wl = _lpr_watchlist_check(reg_norm)
 
     conn = db()
     _lpr_ensure_table(conn)
@@ -6505,6 +6559,7 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
             "result_type": "no_match",
             "searched_registration": reg_norm,
             "message": "No active registration found.",
+            **wl,
         }
 
     if len(matches) > 1:
@@ -6514,6 +6569,7 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
             "searched_registration": reg_norm,
             "match_count": len(matches),
             "message": f"{len(matches)} active files share this registration. Contact the office for instructions.",
+            **wl,
         }
 
     matched     = matches[0]
@@ -6546,6 +6602,7 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
             "is_allocated_to_user": bool(allocated),
             "asset": asset,
             "open_url": url_for("m_job_detail", job_id=job_id),
+            **wl,
         }
 
     return {
@@ -6557,6 +6614,7 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
         "asset": asset,
         "client_name": client_name,
         "notice": "This file is not allocated to our agent. Contact the office for instructions.",
+        **wl,
     }
 
 
@@ -6910,9 +6968,22 @@ def _lpr_sightings_ensure_table(conn):
             photo_path TEXT,
             notes TEXT,
             escalated_to_office INTEGER DEFAULT 0,
+            watchlist_hit INTEGER DEFAULT 0,
+            reviewed INTEGER DEFAULT 0,
+            reviewed_by INTEGER,
+            reviewed_at TEXT,
+            office_note TEXT,
+            follow_up_status TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
+    cur = conn.cursor()
+    add_column_if_missing(cur, "lpr_sightings", "watchlist_hit",      "INTEGER DEFAULT 0")
+    add_column_if_missing(cur, "lpr_sightings", "reviewed",           "INTEGER DEFAULT 0")
+    add_column_if_missing(cur, "lpr_sightings", "reviewed_by",        "INTEGER")
+    add_column_if_missing(cur, "lpr_sightings", "reviewed_at",        "TEXT")
+    add_column_if_missing(cur, "lpr_sightings", "office_note",        "TEXT")
+    add_column_if_missing(cur, "lpr_sightings", "follow_up_status",   "TEXT")
 
 
 @app.post("/m/api/lpr/sighting")
@@ -6937,8 +7008,9 @@ def m_api_lpr_sighting_save():
 
     lat  = data.get("latitude")
     lng  = data.get("longitude")
-    notes      = (data.get("notes") or "").strip() or None
-    escalated  = 1 if data.get("escalated_to_office") else 0
+    notes       = (data.get("notes") or "").strip() or None
+    escalated   = 1 if data.get("escalated_to_office") else 0
+    watchlist_h = 1 if data.get("watchlist_hit") else 0
 
     conn = db()
     _lpr_sightings_ensure_table(conn)
@@ -6946,13 +7018,13 @@ def m_api_lpr_sighting_save():
         INSERT INTO lpr_sightings
             (created_at, user_id, registration_raw, registration_normalised,
              search_method, result_type, matched_job_id, matched_job_number,
-             latitude, longitude, notes, escalated_to_office)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             latitude, longitude, notes, escalated_to_office, watchlist_hit)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (now_ts(), uid, reg_raw, reg_norm, search_method, result_type,
           matched_job_id, matched_job_number,
           float(lat) if lat is not None else None,
           float(lng) if lng is not None else None,
-          notes, escalated))
+          notes, escalated, watchlist_h))
     sighting_id = cur.lastrowid
     conn.commit()
     conn.close()
@@ -7022,6 +7094,137 @@ def admin_lpr_sightings():
                            f_from=f_from, f_to=f_to,
                            f_user=f_user, f_escalated=f_escalated,
                            f_result=f_result)
+
+
+@app.post("/admin/lpr-sightings/<int:sighting_id>/review")
+@admin_required
+def admin_lpr_sighting_review(sighting_id: int):
+    reviewer_id = session.get("user_id")
+    reviewer    = session.get("user_name", "")
+    office_note       = (request.form.get("office_note") or "").strip() or None
+    follow_up_status  = (request.form.get("follow_up_status") or "").strip() or None
+
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    conn.execute("""
+        UPDATE lpr_sightings
+        SET reviewed=1, reviewed_by=?, reviewed_at=?, office_note=?, follow_up_status=?
+        WHERE id=?
+    """, (reviewer_id, now_ts(), office_note, follow_up_status, sighting_id))
+    conn.commit()
+    conn.close()
+    _log_audit(reviewer_id, "review", "lpr_sighting", sighting_id)
+    return redirect(request.referrer or url_for("admin_lpr_sightings"))
+
+
+@app.get("/admin/lpr-sightings/map")
+@admin_required
+def admin_lpr_sightings_map():
+    import json as _json
+    conn = db()
+    _lpr_sightings_ensure_table(conn)
+    rows = conn.execute("""
+        SELECT s.id, s.created_at, s.registration_normalised,
+               s.result_type, s.search_method,
+               s.latitude, s.longitude,
+               s.escalated_to_office, s.watchlist_hit,
+               s.matched_job_number,
+               u.full_name AS agent_name
+        FROM lpr_sightings s
+        LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+        ORDER BY s.created_at DESC
+        LIMIT 1000
+    """).fetchall()
+    conn.close()
+    features = []
+    for r in rows:
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [r["longitude"], r["latitude"]]},
+            "properties": {
+                "id":           r["id"],
+                "reg":          r["registration_normalised"],
+                "result_type":  r["result_type"],
+                "method":       r["search_method"],
+                "agent":        r["agent_name"] or "",
+                "date":         r["created_at"][:10] if r["created_at"] else "",
+                "time":         r["created_at"][11:16] if r["created_at"] else "",
+                "job":          r["matched_job_number"] or "",
+                "escalated":    bool(r["escalated_to_office"]),
+                "watchlist":    bool(r["watchlist_hit"]),
+            }
+        })
+    geojson = _json.dumps({"type": "FeatureCollection", "features": features})
+    return render_template("lpr_sightings_map.html", geojson=geojson, count=len(features))
+
+
+@app.get("/admin/lpr-watchlist")
+@admin_required
+def admin_lpr_watchlist():
+    conn = db()
+    _lpr_watchlist_ensure(conn)
+    f_active = request.args.get("active", "1")
+    where = "WHERE w.active=1" if f_active == "1" else ("WHERE w.active=0" if f_active == "0" else "")
+    rows = conn.execute(f"""
+        SELECT w.*, u.full_name AS creator_name,
+               j.display_ref AS job_ref, j.internal_job_number AS job_num
+        FROM lpr_watchlist w
+        LEFT JOIN users u ON u.id = w.created_by
+        LEFT JOIN jobs  j ON j.id = w.matched_job_id
+        {where}
+        ORDER BY w.created_at DESC
+        LIMIT 500
+    """).fetchall()
+    jobs  = conn.execute("""
+        SELECT id, COALESCE(display_ref, internal_job_number) AS ref
+        FROM jobs WHERE status NOT IN ('Completed','Invoiced','Cancelled')
+        ORDER BY ref
+    """).fetchall()
+    conn.close()
+    return render_template("lpr_watchlist.html", rows=rows, jobs=jobs, f_active=f_active)
+
+
+@app.post("/admin/lpr-watchlist/add")
+@admin_required
+def admin_lpr_watchlist_add():
+    uid = session.get("user_id")
+    reg_raw = (request.form.get("registration") or "").strip()
+    reg_norm = normalise_registration(reg_raw)
+    if not reg_norm:
+        flash("Invalid registration plate.", "danger")
+        return redirect(url_for("admin_lpr_watchlist"))
+
+    matched_job_id = request.form.get("matched_job_id") or None
+    reason   = (request.form.get("reason") or "").strip() or None
+    priority = (request.form.get("priority") or "normal").strip()
+
+    conn = db()
+    _lpr_watchlist_ensure(conn)
+    conn.execute("""
+        INSERT INTO lpr_watchlist
+            (registration, registration_normalised, matched_job_id,
+             reason, priority, active, created_by, created_at)
+        VALUES (?,?,?,?,?,1,?,?)
+    """, (reg_raw, reg_norm, matched_job_id, reason, priority, uid, now_ts()))
+    conn.commit()
+    conn.close()
+    flash(f"Watchlist entry added for {reg_norm}.", "success")
+    return redirect(url_for("admin_lpr_watchlist"))
+
+
+@app.post("/admin/lpr-watchlist/<int:entry_id>/toggle")
+@admin_required
+def admin_lpr_watchlist_toggle(entry_id: int):
+    conn = db()
+    _lpr_watchlist_ensure(conn)
+    current = conn.execute("SELECT active FROM lpr_watchlist WHERE id=?", (entry_id,)).fetchone()
+    if current:
+        conn.execute("UPDATE lpr_watchlist SET active=? WHERE id=?",
+                     (0 if current["active"] else 1, entry_id))
+        conn.commit()
+    conn.close()
+    return redirect(request.referrer or url_for("admin_lpr_watchlist"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
