@@ -52,6 +52,29 @@ templates/
     update_builder.html Mobile AI update builder (shares backend generate/save endpoints)
 ```
 
+## iOS Wrapper (ios/)
+
+Native iPhone app wrapping the /m/* mobile web routes. Open `ios/AxionX.xcodeproj` in Xcode 15+.
+
+```
+ios/
+├── AxionX.xcodeproj/           Xcode project (pbxproj + shared scheme)
+├── AxionX/
+│   ├── Config.swift            Debug URL (Replit) vs Release URL (axionx.com.au)
+│   ├── AppDelegate.swift       Lifecycle + push notification stubs
+│   ├── SceneDelegate.swift     Window setup, foreground resume
+│   ├── WebViewController.swift WKWebView, URL routing (tel/sms/maps → native, external → Safari)
+│   ├── OfflineViewController.swift  "No connection" retry screen
+│   ├── LocationPermissionManager.swift  CLLocationManager wrapper (WhenInUse only)
+│   ├── Info.plist              NSLocationWhenInUseUsageDescription, HTTPS-only ATS, portrait-only
+│   ├── LaunchScreen.storyboard White splash with AxionX text
+│   └── Assets.xcassets/        AppIcon + AccentColor (#2563EB) + LaunchLogo slots
+├── README.md                   Setup guide, URL config, icon sizes, TestFlight steps
+└── TESTFLIGHT_NOTES.md         12-step tester guide for TestFlight reviewers
+```
+
+**To build:** edit `Config.swift` debug URL → set signing team → Product → Archive → TestFlight
+
 ## Database Schema
 
 - **users** — staff (admin / agent roles)
