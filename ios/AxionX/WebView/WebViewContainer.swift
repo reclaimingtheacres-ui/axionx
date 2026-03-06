@@ -8,11 +8,13 @@ import WebKit
 /// through the web layer unchanged.
 struct WebViewContainer: View {
     @StateObject private var store = WebViewStore()
+    @EnvironmentObject private var syncManager: SyncManager
     @State private var isOffline         = false
     @State private var showLPRScanner    = false
     @State private var isLookingUp       = false
     @State private var lprNativeResult: LPRResult? = nil
     @State private var currentURL: URL?  = nil
+    @State private var showSyncStatus    = false
 
     private var isOnLPRPage: Bool {
         guard let url = currentURL else { return false }
@@ -73,6 +75,38 @@ struct WebViewContainer: View {
                 .transition(.opacity.combined(with: .scale))
                 .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
             }
+
+            // Sync badge — bottom-left, shown when there are pending or failed items
+            if syncManager.pendingCount > 0 || syncManager.failedCount > 0 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Button(action: { showSyncStatus = true }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: syncManager.failedCount > 0
+                                      ? "exclamationmark.circle.fill"
+                                      : "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 11, weight: .semibold))
+                                let total = syncManager.pendingCount + syncManager.failedCount
+                                Text(total == 1 ? "1 pending" : "\(total) pending")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(syncManager.failedCount > 0 ? Color.red : Color.orange)
+                            .cornerRadius(20)
+                            .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 2)
+                        }
+                        Spacer()
+                    }
+                    .padding(.leading, 16)
+                    .padding(.bottom, 20)
+                }
+                .ignoresSafeArea(edges: .bottom)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .animation(.easeInOut(duration: 0.25), value: syncManager.pendingCount + syncManager.failedCount)
+            }
         }
         .onAppear {
             wireDelegate()
@@ -107,6 +141,10 @@ struct WebViewContainer: View {
                 }
             )
         }
+        .sheet(isPresented: $showSyncStatus) {
+            SyncStatusView()
+                .environmentObject(syncManager)
+        }
         .onReceive(
             NotificationCenter.default.publisher(for: .axionOpenNotifications)
         ) { _ in
@@ -138,6 +176,8 @@ struct WebViewContainer: View {
             options: [.new],
             context: nil
         )
+        // Give the sync manager access to the shared webView session
+        SyncManager.shared.setWebView(store.webView)
     }
 
     /// Call the lookup API natively using the webview's session cookies.

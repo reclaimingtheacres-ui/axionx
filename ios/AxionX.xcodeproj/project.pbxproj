@@ -25,6 +25,9 @@
                 F100000000000000000022 /* LPRResultSheet.swift in Sources */       = {isa = PBXBuildFile; fileRef = F100000000000000000021; };
                 F100000000000000000024 /* LPRLocationService.swift in Sources */   = {isa = PBXBuildFile; fileRef = F100000000000000000023; };
                 F100000000000000000026 /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000025; };
+                F100000000000000000029 /* OfflineQueue.swift in Sources */           = {isa = PBXBuildFile; fileRef = F100000000000000000028; };
+                F10000000000000000002B /* SyncManager.swift in Sources */            = {isa = PBXBuildFile; fileRef = F10000000000000000002A; };
+                F10000000000000000002D /* SyncStatusView.swift in Sources */         = {isa = PBXBuildFile; fileRef = F10000000000000000002C; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +52,9 @@
                 F100000000000000000023 /* LPRLocationService.swift */       = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LPRLocationService.swift; sourceTree = "<group>"; };
                 F100000000000000000025 /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
                 F100000000000000000027 /* AxionX.entitlements */           = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AxionX.entitlements; sourceTree = "<group>"; };
+                F100000000000000000028 /* OfflineQueue.swift */            = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineQueue.swift; sourceTree = "<group>"; };
+                F10000000000000000002A /* SyncManager.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncManager.swift; sourceTree = "<group>"; };
+                F10000000000000000002C /* SyncStatusView.swift */          = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,6 +86,7 @@
                                 G100000000000000000005 /* Views */,
                                 G100000000000000000006 /* Services */,
                                 G100000000000000000008 /* LPR */,
+                                G100000000000000000009 /* Offline */,
                                 F100000000000000000017 /* Assets.xcassets */,
                                 F100000000000000000019 /* LaunchScreen.storyboard */,
                                 F10000000000000000001B /* Info.plist */,
@@ -112,6 +119,7 @@
                         children = (
                                 F10000000000000000000F /* SplashView.swift */,
                                 F100000000000000000011 /* OfflineView.swift */,
+                                F10000000000000000002C /* SyncStatusView.swift */,
                         );
                         path = Views;
                         sourceTree = "<group>";
@@ -143,6 +151,15 @@
                                 F100000000000000000021 /* LPRResultSheet.swift */,
                         );
                         path = LPR;
+                        sourceTree = "<group>";
+                };
+                G100000000000000000009 /* Offline */ = {
+                        isa = PBXGroup;
+                        children = (
+                                F100000000000000000028 /* OfflineQueue.swift */,
+                                F10000000000000000002A /* SyncManager.swift */,
+                        );
+                        path = Offline;
                         sourceTree = "<group>";
                 };
 /* End PBXGroup section */
@@ -231,6 +248,9 @@
                                 F100000000000000000022 /* LPRResultSheet.swift in Sources */,
                                 F100000000000000000024 /* LPRLocationService.swift in Sources */,
                                 F100000000000000000026 /* PushNotificationService.swift in Sources */,
+                                F100000000000000000029 /* OfflineQueue.swift in Sources */,
+                                F10000000000000000002B /* SyncManager.swift in Sources */,
+                                F10000000000000000002D /* SyncStatusView.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };

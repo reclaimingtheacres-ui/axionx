@@ -78,6 +78,43 @@ enum LPRAPIClient {
         }
     }
 
+    /// Generic authenticated POST; returns true when the server responds with {"ok": true}.
+    static func postAction(path: String, body: [String: Any],
+                           webView: WKWebView) async -> Bool {
+        return await withCheckedContinuation { cont in
+            request(path: path, body: body, webView: webView) { json in
+                cont.resume(returning: json?["ok"] as? Bool ?? false)
+            }
+        }
+    }
+
+    /// Authenticated GET returning the parsed JSON dict, or nil on failure.
+    static func getJSON(path: String, webView: WKWebView,
+                        completion: @escaping ([String: Any]?) -> Void) {
+        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+            guard let base = AppConfig.entryURL.host else { completion(nil); return }
+            var comps    = URLComponents()
+            comps.scheme = AppConfig.entryURL.scheme
+            comps.host   = base
+            comps.path   = path
+            guard let url = comps.url else { completion(nil); return }
+
+            var req = URLRequest(url: url)
+            req.setValue("AxionXiOS/1.0", forHTTPHeaderField: "User-Agent")
+
+            let cookieHeader = cookies
+                .filter { $0.domain.hasSuffix(base) || base.hasSuffix($0.domain.hasPrefix(".") ? String($0.domain.dropFirst()) : $0.domain) }
+                .map    { "\($0.name)=\($0.value)" }
+                .joined(separator: "; ")
+            if !cookieHeader.isEmpty { req.setValue(cookieHeader, forHTTPHeaderField: "Cookie") }
+
+            URLSession.shared.dataTask(with: req) { data, _, _ in
+                let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                DispatchQueue.main.async { completion(json) }
+            }.resume()
+        }
+    }
+
     private static func request(path: String, body: [String: Any],
                                  webView: WKWebView,
                                  completion: @escaping ([String: Any]?) -> Void) {
@@ -120,11 +157,12 @@ struct LPRResultSheet: View {
     var onDismiss:  () -> Void
 
     @State private var notes: String = ""
-    @State private var escalate  = false
-    @State private var isSaving  = false
-    @State private var savedOK   = false
+    @State private var escalate   = false
+    @State private var isSaving   = false
+    @State private var savedOK    = false
+    @State private var savedQueued = false   // queued for offline sync
     @State private var saveError: String? = nil
-    @State private var gpsLabel  = "Fetching location…"
+    @State private var gpsLabel   = "Fetching location…"
     @State private var latitude:  Double? = nil
     @State private var longitude: Double? = nil
 
@@ -383,6 +421,33 @@ struct LPRResultSheet: View {
                         .foregroundColor(.primary)
                         .cornerRadius(12)
                 }
+            } else if savedQueued {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundColor(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Saved offline")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.orange)
+                        Text("Will upload automatically when connection returns.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Color.orange.opacity(0.08))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.orange.opacity(0.3), lineWidth: 1))
+                .cornerRadius(12)
+
+                Button(action: onDismiss) {
+                    Text("Close")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color(.systemGray5))
+                        .foregroundColor(.primary)
+                        .cornerRadius(12)
+                }
             } else {
                 if let err = saveError {
                     Text(err).font(.system(size: 13)).foregroundColor(.red).padding(.vertical, 6)
@@ -417,8 +482,10 @@ struct LPRResultSheet: View {
     // MARK: Save logic
 
     private func doSaveSighting() {
-        isSaving  = true
-        saveError = nil
+        isSaving       = true
+        saveError      = nil
+        let actionId   = UUID().uuidString
+
         var body: [String: Any] = [
             "registration_raw":    result.searchedReg,
             "result_type":         result.resultType,
@@ -426,6 +493,7 @@ struct LPRResultSheet: View {
             "escalated_to_office": escalate,
             "watchlist_hit":       result.watchlistHit,
             "notes":               notes,
+            "client_action_id":    actionId,
         ]
         if let jid = result.matchedJobId     { body["matched_job_id"]    = jid }
         if let jn  = result.matchedJobNumber { body["matched_job_number"] = jn  }
@@ -434,8 +502,26 @@ struct LPRResultSheet: View {
 
         LPRAPIClient.saveSighting(body, webView: webView) { ok, _ in
             isSaving = false
-            if ok { savedOK = true }
-            else  { saveError = "Save failed. Check your connection and try again." }
+            if ok {
+                savedOK = true
+            } else {
+                // Queue for offline sync — safe payload only (no customer data)
+                var payload: [String: String] = [
+                    "registration_raw":    result.searchedReg,
+                    "result_type":         result.resultType,
+                    "search_method":       result.searchMethod,
+                    "escalated_to_office": escalate          ? "1" : "0",
+                    "watchlist_hit":       result.watchlistHit ? "1" : "0",
+                    "notes":               notes,
+                ]
+                if let jid = result.matchedJobId     { payload["matched_job_id"]     = String(jid) }
+                if let jn  = result.matchedJobNumber { payload["matched_job_number"]  = jn }
+                if let lat = latitude  { payload["latitude"]  = String(lat) }
+                if let lng = longitude { payload["longitude"] = String(lng) }
+
+                SyncManager.shared.enqueueSaveSighting(payload: payload, clientActionId: actionId)
+                savedQueued = true
+            }
         }
     }
 

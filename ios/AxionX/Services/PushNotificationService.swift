@@ -31,11 +31,17 @@ final class PushNotificationService: NSObject {
     }
 
     // MARK: - Upload token to AxionX backend
+    //
+    // Tries the direct upload first (may succeed if the session cookie is already
+    // in URLSession.shared from a prior shared-cookie sync).  On any failure the
+    // token is queued via SyncManager so it will be retried once the WebView
+    // session is available and connectivity is confirmed.
 
     func uploadToken(_ deviceToken: Data) {
         let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
 
         guard let url = URL(string: AppConfig.currentBaseURL + "/m/api/device/register") else {
+            SyncManager.shared.enqueueDeviceRegister(token: tokenString)
             return
         }
 
@@ -47,7 +53,14 @@ final class PushNotificationService: NSObject {
         let body: [String: Any] = ["token": tokenString, "platform": "ios"]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            let ok = (data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] })?["ok"] as? Bool ?? false
+            if !ok {
+                DispatchQueue.main.async {
+                    SyncManager.shared.enqueueDeviceRegister(token: tokenString)
+                }
+            }
+        }.resume()
     }
 
     // MARK: - Unread count badge (polled after login)

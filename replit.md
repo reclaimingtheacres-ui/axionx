@@ -251,7 +251,37 @@ Admin-only full-page map view combining job pins and live agent location trackin
 
 Mobile LPR system for iOS field agents. Backend in `app.py`, mobile templates under `templates/mobile/`, admin templates at root, iOS code under `ios/AxionX/`.
 
-**Stage 7 — Push Notifications, Dispatch, Proximity (current)**
+**Stage 8 — Offline Queue, Background Sync, Idempotency (current)**
+
+**DB change**: `lpr_sightings.client_action_id TEXT` column added (idempotency key).
+
+**Backend idempotency**:
+- `POST /m/api/lpr/sighting` checks `client_action_id` + `user_id` before insert; returns existing record if already saved (no duplicate created on retry). Returns `{"ok": true, "sighting_id": N, "duplicate": true}` on duplicate.
+- `POST /m/api/device/register` already idempotent via `ON CONFLICT` constraint.
+
+**New routes**:
+- `GET /m/api/lpr/sync` — returns `{unread_notification_count, assigned_followup_count, server_time}` for the current agent
+- `GET /m/api/lpr/assigned-followups` — returns `{count, items[]}` of open follow-ups assigned to the current agent
+
+**iOS new files**:
+- `ios/AxionX/Offline/OfflineQueue.swift` — thread-safe NSLock + UserDefaults-backed queue; `OfflineQueueItem` stores `clientActionId, actionType, payload[String:String], createdAt, retryCount, lastError, status`. Action types: `save_sighting`, `register_device`, `mark_notifications_read`. Sensitive data (customer name, address, finance) never stored.
+- `ios/AxionX/Offline/SyncManager.swift` — `@MainActor ObservableObject` singleton; uses `NWPathMonitor` to auto-sync when connectivity returns; `setWebView()` wires WKWebView session for cookie-authenticated requests and triggers immediate drain of pending items; `syncNow()`, `retryFailed()`, `enqueueSaveSighting/enqueueDeviceRegister/enqueueMarkNotificationsRead()` helpers.
+- `ios/AxionX/Views/SyncStatusView.swift` — SwiftUI sheet with pending/failed/recent-success sections; per-item retry and "Retry All" / "Sync Now" actions; follows environmentObject pattern.
+
+**iOS updated files**:
+- `LPRResultSheet.swift` — `doSaveSighting()` generates `clientActionId` (UUID), sends it with every save attempt; on network failure, safe payload is queued via `SyncManager.shared.enqueueSaveSighting()`; new `savedQueued` state shows orange "Saved offline" banner. `LPRAPIClient` gains `postAction(path:body:webView:)` (async Bool) and `getJSON(path:webView:completion:)` (cookie-authenticated GET).
+- `WebViewContainer.swift` — calls `SyncManager.shared.setWebView()` in `wireDelegate()`; shows orange/red pill badge at bottom-left when `pendingCount + failedCount > 0`; tapping badge opens `SyncStatusView` sheet.
+- `AxionXApp.swift` — `applicationDidBecomeActive` now also calls `await SyncManager.shared.syncNow()`.
+- `PushNotificationService.swift` — `uploadToken()` enqueues via `SyncManager.enqueueDeviceRegister()` if direct upload fails (fallback path for cold-start before WKWebView session is established).
+- `AxionXApp.swift` — `WindowGroup` passes `.environmentObject(SyncManager.shared)` so all child views can access it.
+
+**pbxproj IDs used**:
+- `OfflineQueue.swift`: fileRef `F100000000000000000028`, buildFile `F100000000000000000029`
+- `SyncManager.swift`: fileRef `F10000000000000000002A`, buildFile `F10000000000000000002B`
+- `SyncStatusView.swift`: fileRef `F10000000000000000002C`, buildFile `F10000000000000000002D`
+- Offline group: `G100000000000000000009` (next available group ID)
+
+**Stage 7 — Push Notifications, Dispatch, Proximity**
 
 **New DB tables**: `lpr_device_tokens`, `lpr_notifications`, `lpr_followups`, `lpr_proximity_rules`
 

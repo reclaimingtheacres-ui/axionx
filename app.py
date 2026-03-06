@@ -6990,6 +6990,7 @@ def _lpr_sightings_ensure_table(conn):
             reviewed_at TEXT,
             office_note TEXT,
             follow_up_status TEXT,
+            client_action_id TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
@@ -7000,6 +7001,7 @@ def _lpr_sightings_ensure_table(conn):
     add_column_if_missing(cur, "lpr_sightings", "reviewed_at",        "TEXT")
     add_column_if_missing(cur, "lpr_sightings", "office_note",        "TEXT")
     add_column_if_missing(cur, "lpr_sightings", "follow_up_status",   "TEXT")
+    add_column_if_missing(cur, "lpr_sightings", "client_action_id",   "TEXT")
 
 
 @app.post("/m/api/lpr/sighting")
@@ -7028,19 +7030,33 @@ def m_api_lpr_sighting_save():
     escalated   = 1 if data.get("escalated_to_office") else 0
     watchlist_h = 1 if data.get("watchlist_hit") else 0
 
+    client_action_id = (data.get("client_action_id") or "").strip() or None
+
     conn = db()
     _lpr_sightings_ensure_table(conn)
+
+    # Idempotency: if this client_action_id was already saved by this user, return it
+    if client_action_id:
+        existing = conn.execute(
+            "SELECT id FROM lpr_sightings WHERE client_action_id=? AND user_id=?",
+            (client_action_id, uid)
+        ).fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"ok": True, "sighting_id": existing["id"], "duplicate": True}), 200
+
     cur = conn.execute("""
         INSERT INTO lpr_sightings
             (created_at, user_id, registration_raw, registration_normalised,
              search_method, result_type, matched_job_id, matched_job_number,
-             latitude, longitude, notes, escalated_to_office, watchlist_hit)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+             latitude, longitude, notes, escalated_to_office, watchlist_hit,
+             client_action_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (now_ts(), uid, reg_raw, reg_norm, search_method, result_type,
           matched_job_id, matched_job_number,
           float(lat) if lat is not None else None,
           float(lng) if lng is not None else None,
-          notes, escalated, watchlist_h))
+          notes, escalated, watchlist_h, client_action_id))
     sighting_id = cur.lastrowid
     # proximity check before close
     prox_hits = []
@@ -7074,6 +7090,49 @@ def m_api_lpr_sighting_save():
         )
 
     return jsonify({"ok": True, "sighting_id": sighting_id}), 200
+
+
+@app.get("/m/api/lpr/sync")
+@mobile_login_required
+def m_api_lpr_sync():
+    uid  = session.get("user_id")
+    conn = db()
+    _lpr_notifications_ensure(conn)
+    _lpr_followups_ensure(conn)
+    unread = conn.execute(
+        "SELECT COUNT(*) AS n FROM lpr_notifications WHERE user_id=? AND read_at IS NULL",
+        (uid,)
+    ).fetchone()["n"]
+    followups = conn.execute("""
+        SELECT COUNT(*) AS n FROM lpr_followups
+        WHERE assigned_user_id=? AND status='open'
+    """, (uid,)).fetchone()["n"]
+    conn.close()
+    return jsonify({"unread_notification_count": unread,
+                    "assigned_followup_count": followups,
+                    "server_time": now_ts()}), 200
+
+
+@app.get("/m/api/lpr/assigned-followups")
+@mobile_login_required
+def m_api_lpr_assigned_followups():
+    uid  = session.get("user_id")
+    conn = db()
+    _lpr_followups_ensure(conn)
+    rows = conn.execute("""
+        SELECT f.*, s.registration_normalised
+        FROM lpr_followups f
+        LEFT JOIN lpr_sightings s ON s.id = f.sighting_id
+        WHERE f.assigned_user_id=? AND f.status='open'
+        ORDER BY f.created_at DESC
+        LIMIT 20
+    """, (uid,)).fetchall()
+    count = len(rows)
+    conn.close()
+    items = [{"id": r["id"], "action_type": r["action_type"],
+              "priority": r["priority"], "due_at": r["due_at"],
+              "registration": r["registration_normalised"]} for r in rows]
+    return jsonify({"count": count, "items": items}), 200
 
 
 @app.get("/m/lpr/history")

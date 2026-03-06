@@ -15,6 +15,7 @@ struct AxionXApp: App {
         WindowGroup {
             ContentView()
                 .preferredColorScheme(.light) // Force light mode for v1; dark mode TBD
+                .environmentObject(SyncManager.shared)
         }
     }
 }
@@ -55,11 +56,12 @@ final class AxionAppDelegate: NSObject, UIApplicationDelegate {
         // Silently swallow — notifications are non-critical for core functionality.
     }
 
-    // MARK: - App foregrounded: refresh badge count
+    // MARK: - App foregrounded: refresh badge + attempt pending sync
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         Task { @MainActor in
             PushNotificationService.shared.refreshUnreadBadge()
+            await SyncManager.shared.syncNow()
         }
     }
 }
