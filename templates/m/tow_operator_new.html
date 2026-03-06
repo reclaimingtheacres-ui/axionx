@@ -1,0 +1,30 @@
+{% extends "m/layout.html" %}
+{% block title %}New Tow Operator — AxionX{% endblock %}
+{% block header_title %}
+<a href="{{ url_for('m_settings') }}" style="color:var(--muted);margin-right:8px;">
+  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" style="vertical-align:middle;"><polyline points="15 18 9 12 15 6"/></svg>
+</a>
+New Tow Operator
+{% endblock %}
+
+{% block content %}
+<div class="m-card">
+  <div class="m-card-body">
+    <form method="post" action="{{ url_for('m_tow_operator_new') }}">
+      <div class="m-form-group">
+        <label class="m-label">Company Name <span style="color:var(--red);">*</span></label>
+        <input type="text" name="company_name" class="m-input" required autocomplete="organization">
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Phone</label>
+        <input type="tel" name="phone" class="m-input" autocomplete="tel">
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Address</label>
+        <input type="text" name="address" class="m-input" autocomplete="street-address">
+      </div>
+      <button type="submit" class="m-btn m-btn-primary">Save Tow Operator</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

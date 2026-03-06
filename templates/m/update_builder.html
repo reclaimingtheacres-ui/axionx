@@ -1,0 +1,249 @@
+{% extends "m/layout.html" %}
+{% block title %}Update Builder — {{ job.display_ref }}{% endblock %}
+
+{% block header_title %}
+<a href="{{ url_for('m_job_detail', job_id=job.id) }}" style="color:var(--muted);margin-right:8px;">
+  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" style="vertical-align:middle;"><polyline points="15 18 9 12 15 6"/></svg>
+</a>
+Update Builder
+{% endblock %}
+{% block header_right %}<span style="font-size:.78rem;color:var(--muted);">{{ job.display_ref }}</span>{% endblock %}
+
+{% block extra_head %}
+<style>
+.toggle-pill { display:flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+.toggle-pill input { display:none; }
+.toggle-pill label { flex:1; text-align:center; padding:10px 4px; font-size:.82rem; font-weight:600; cursor:pointer; color:var(--muted); transition:all .15s; }
+.toggle-pill input:checked + label { background:var(--accent); color:#0d1117; }
+
+.poc-row { display:flex; align-items:center; justify-content:space-between; padding:13px 0; border-bottom:1px solid var(--line); gap:10px; }
+.poc-row:last-child { border-bottom:none; }
+.poc-row-label { flex:1; }
+.poc-check { width:24px; height:24px; border-radius:7px; border:2px solid var(--line); cursor:pointer; -webkit-appearance:none; appearance:none; flex-shrink:0; transition:all .15s; background:var(--bg); }
+.poc-check:checked { background:var(--accent); border-color:var(--accent); }
+.poc-check:checked::after { content:'✓'; display:block; color:#0d1117; font-size:14px; font-weight:700; text-align:center; line-height:20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="m-card">
+  <div class="m-card-header">Attendance Details</div>
+  <div class="m-card-body">
+    <div class="m-form-group">
+      <label class="m-label">Visit Type</label>
+      <div class="toggle-pill">
+        <input type="radio" name="vt_pill" id="vt_new" value="new" {% if not (draft and draft.is_first_attendance == 0) %}checked{% endif %}>
+        <label for="vt_new">New Visit</label>
+        <input type="radio" name="vt_pill" id="vt_re" value="re" {% if draft and draft.is_first_attendance == 0 %}checked{% endif %}>
+        <label for="vt_re">Re-attend</label>
+      </div>
+    </div>
+    <div class="m-row">
+      <div class="m-form-group">
+        <label class="m-label">Date</label>
+        <input type="date" id="attend_date" class="m-input" value="{{ draft.attend_date or now_date }}">
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Time</label>
+        <input type="time" id="attend_time" class="m-input" value="{{ draft.attend_time or now_time }}">
+      </div>
+    </div>
+    <div class="m-form-group">
+      <label class="m-label">Property Description <span class="text-muted text-sm">(optional)</span></label>
+      <input type="text" id="property_description" class="m-input" placeholder="e.g. residential dwelling" value="{{ draft.property_description or '' }}">
+    </div>
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-header">Points of Contact</div>
+  <div style="padding:0 16px;">
+    <div class="poc-row">
+      <div class="poc-row-label"><div style="font-size:.95rem;">Calling Card Left</div></div>
+      <input type="checkbox" id="calling_card" class="poc-check" {% if draft and draft.calling_card %}checked{% endif %}>
+    </div>
+    <div class="poc-row">
+      <div class="poc-row-label"><div style="font-size:.95rem;">Call Made</div></div>
+      <input type="checkbox" id="call_made" class="poc-check" {% if draft and draft.call_made %}checked{% endif %}>
+    </div>
+    <div class="poc-row" id="call_outcome_row" style="display:none;">
+      <div class="poc-row-label"><div style="font-size:.95rem;">Call Outcome</div></div>
+      <select id="call_outcome" class="m-select" style="width:auto;max-width:170px;">
+        {% for opt in ['No Answer','Voicemail','Answered','Disconnected','Wrong Number'] %}
+        <option {% if draft and draft.call_outcome == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="poc-row">
+      <div class="poc-row-label"><div style="font-size:.95rem;">SMS Sent</div></div>
+      <input type="checkbox" id="sms_sent" class="poc-check" {% if draft and draft.sms_sent %}checked{% endif %}>
+    </div>
+    <div class="poc-row" id="phone_row" style="display:none;flex-direction:column;align-items:flex-start;gap:6px;">
+      <label class="m-label">Phone Number Used</label>
+      <input type="tel" id="phone_number_used" class="m-input" placeholder="e.g. 0412 345 678" value="{{ draft.customer_mobile or customer_mobile or '' }}">
+    </div>
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-header">Security Details</div>
+  <div class="m-card-body">
+    <div class="poc-row" style="padding-top:0;">
+      <div class="poc-row-label"><div style="font-size:.95rem;">Security Sighted</div></div>
+      <input type="checkbox" id="security_sighted" class="poc-check" {% if draft and draft.security_sighted %}checked{% endif %}>
+    </div>
+    <div class="m-form-group mt-3">
+      <label class="m-label">Make &amp; Model</label>
+      <input type="text" id="security_make_model" class="m-input" placeholder="e.g. Toyota Camry" value="{{ draft.security_make_model or asset_make_model or '' }}">
+    </div>
+    <div class="m-form-group">
+      <label class="m-label">Registration</label>
+      <input type="text" id="security_reg" class="m-input" placeholder="e.g. ABC123" value="{{ draft.security_reg or asset_reg or '' }}" style="text-transform:uppercase;">
+    </div>
+    <div class="m-form-group">
+      <label class="m-label">Location on Property</label>
+      <select id="security_location" class="m-select">
+        {% set locs = ['ON THE DRIVEWAY','COMMERCIAL PROPERTY','THE ROADWAY','NATURE STRIP','PUBLIC CAR PARK','VACANT LAND','PUBLIC LAND'] %}
+        {% for loc in locs %}
+        <option value="{{ loc }}" {% if draft and draft.security_location == loc %}selected{% elif not (draft and draft.security_location) and loc == 'ON THE DRIVEWAY' %}selected{% endif %}>{{ loc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-header">Additional Notes</div>
+  <div class="m-card-body">
+    <textarea id="extra_notes" class="m-textarea" rows="4" placeholder="Any additional notes for this update…">{{ draft.neighbour_outcome or '' }}</textarea>
+  </div>
+</div>
+
+<button type="button" class="m-btn m-btn-primary" id="generateBtn" style="margin-bottom:12px;">
+  <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  Generate AI Update
+</button>
+
+<div id="narrative_section" style="display:none;margin-bottom:16px;">
+  <div class="m-card">
+    <div class="m-card-header">
+      Generated Narrative
+      <span style="float:right;font-size:.7rem;color:var(--muted);font-weight:400;">Review &amp; edit before applying</span>
+    </div>
+    <div class="m-card-body">
+      <textarea id="final_narrative" class="m-textarea" rows="10" style="font-size:.88rem;line-height:1.6;"></textarea>
+    </div>
+  </div>
+  <button type="button" class="m-btn m-btn-green" id="applyBtn" style="margin-bottom:8px;">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    Apply to Job Notes
+  </button>
+  <button type="button" class="m-btn m-btn-secondary" id="regenerateBtn">Regenerate</button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+  var DRAFT_ID = {{ draft.id | tojson }};
+  var JOB_ID   = {{ job.id | tojson }};
+  var _applied = false;
+  var _timer   = null;
+
+  function $$(id){ return document.getElementById(id); }
+
+  function formData() {
+    return {
+      draft_id:             DRAFT_ID,
+      attend_date:          $$('attend_date').value,
+      attend_time:          $$('attend_time').value,
+      is_first_attendance:  $$('vt_new').checked,
+      property_description: $$('property_description').value,
+      calling_card:         $$('calling_card').checked,
+      call_made:            $$('call_made').checked,
+      call_outcome:         $$('call_outcome') ? $$('call_outcome').value : '',
+      voicemail_left:       $$('call_outcome') && $$('call_outcome').value === 'Voicemail' && $$('call_made').checked,
+      sms_sent:             $$('sms_sent').checked,
+      phone_number_used:    $$('phone_number_used') ? $$('phone_number_used').value : '',
+      security_sighted:     $$('security_sighted').checked,
+      security_make_model:  $$('security_make_model').value,
+      security_reg:         $$('security_reg').value.toUpperCase(),
+      security_location:    $$('security_location').value,
+      neighbour_outcome:    $$('extra_notes').value,
+      generated_narrative:  $$('final_narrative') ? $$('final_narrative').value : '',
+    };
+  }
+
+  function doAutosave(leaving) {
+    if (_applied) return;
+    var url = '/jobs/' + JOB_ID + '/update-builder/autosave' + (leaving ? '?leaving=1' : '');
+    var body = JSON.stringify(formData());
+    if (leaving && navigator.sendBeacon) {
+      navigator.sendBeacon(url, new Blob([body], {type:'application/json'}));
+    } else {
+      fetch(url, {method:'POST', body:body, headers:{'Content-Type':'application/json'}});
+    }
+  }
+
+  function updatePhoneRow() {
+    var show = $$('call_made').checked || $$('sms_sent').checked;
+    $$('phone_row').style.display = show ? 'flex' : 'none';
+    $$('call_outcome_row').style.display = $$('call_made').checked ? 'flex' : 'none';
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    $$('call_made').addEventListener('change', updatePhoneRow);
+    $$('sms_sent').addEventListener('change', updatePhoneRow);
+    updatePhoneRow();
+
+    $$('generateBtn').addEventListener('click', generate);
+    $$('applyBtn').addEventListener('click', apply);
+    $$('regenerateBtn').addEventListener('click', generate);
+
+    _timer = setInterval(function(){ doAutosave(false); }, 30000);
+  });
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') doAutosave(true);
+  });
+  window.addEventListener('pagehide', function() { doAutosave(true); });
+
+  function generate() {
+    var btn = $$('generateBtn');
+    btn.textContent = 'Generating\u2026'; btn.disabled = true;
+    fetch('/jobs/' + JOB_ID + '/update-builder/generate', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(formData())
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      btn.textContent = 'Generate AI Update'; btn.disabled = false;
+      if (data.error) { alert(data.error); return; }
+      $$('final_narrative').value = data.narrative || '';
+      $$('narrative_section').style.display = 'block';
+      $$('narrative_section').scrollIntoView({behavior:'smooth'});
+    })
+    .catch(function(){ btn.textContent = 'Generate AI Update'; btn.disabled = false; alert('Network error. Please try again.'); });
+  }
+
+  function apply() {
+    var narrative = $$('final_narrative').value.trim();
+    if (!narrative) { alert('Please generate a narrative first.'); return; }
+    var btn = $$('applyBtn');
+    btn.textContent = 'Saving\u2026'; btn.disabled = true;
+    var payload = formData();
+    payload.final_narrative = narrative;
+    payload.generated_narrative = narrative;
+    fetch('/jobs/' + JOB_ID + '/update-builder/save', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.error) { btn.textContent = 'Apply to Job Notes'; btn.disabled = false; alert(data.error); return; }
+      _applied = true; clearInterval(_timer);
+      window.location.href = '/m/job/' + JOB_ID;
+    })
+    .catch(function(){ btn.textContent = 'Apply to Job Notes'; btn.disabled = false; alert('Save failed. Try again.'); });
+  }
+})();
+</script>
+{% endblock %}

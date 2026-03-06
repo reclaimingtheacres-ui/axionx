@@ -1,0 +1,26 @@
+{% extends "m/layout.html" %}
+{% block title %}New Auction Yard — AxionX{% endblock %}
+{% block header_title %}
+<a href="{{ url_for('m_settings') }}" style="color:var(--muted);margin-right:8px;">
+  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2" style="vertical-align:middle;"><polyline points="15 18 9 12 15 6"/></svg>
+</a>
+New Auction Yard
+{% endblock %}
+
+{% block content %}
+<div class="m-card">
+  <div class="m-card-body">
+    <form method="post" action="{{ url_for('m_auction_yard_new') }}">
+      <div class="m-form-group">
+        <label class="m-label">Name <span style="color:var(--red);">*</span></label>
+        <input type="text" name="name" class="m-input" required>
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Address</label>
+        <input type="text" name="address" class="m-input" autocomplete="street-address">
+      </div>
+      <button type="submit" class="m-btn m-btn-primary">Save Auction Yard</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

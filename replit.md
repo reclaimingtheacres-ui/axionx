@@ -36,6 +36,16 @@ templates/
   report_monthly.html                 Monthly report (admin)
   my_today.html                       Agent daily cue view
   import_jobs.html                    CSV import (admin)
+  m/                    Mobile templates (iOS WebView wrapper)
+    layout.html         Base dark mobile layout (bottom nav, safe-area insets)
+    login.html          Mobile login (standalone, no nav)
+    today.html          Today's schedule (cues + schedules, draft alerts)
+    jobs.html           Jobs list with filter/sort bottom sheet
+    job_detail.html     Read-only job detail (tap-to-call/SMS, assets, notes)
+    update_builder.html Mobile AI update builder (shares backend generate/save endpoints)
+    settings.html       Display prefs + GPS toggles + resource creation links
+    tow_operator_new.html   Create tow operator
+    auction_yard_new.html   Create auction yard
 ```
 
 ## Database Schema

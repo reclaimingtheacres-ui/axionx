@@ -618,6 +618,18 @@ def _migrate_update_builder():
         FOREIGN KEY(job_id) REFERENCES jobs(id)
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS user_mobile_settings (
+        user_id INTEGER PRIMARY KEY,
+        list_sort TEXT NOT NULL DEFAULT 'visit_date',
+        list_dir TEXT NOT NULL DEFAULT 'asc',
+        distance_unit TEXT NOT NULL DEFAULT 'km',
+        gps_foreground INTEGER NOT NULL DEFAULT 1,
+        gps_bg INTEGER NOT NULL DEFAULT 0,
+        gps_interval_mins INTEGER NOT NULL DEFAULT 5,
+        updated_at TEXT
+    )
+    """)
     conn.commit()
     conn.close()
 
@@ -5741,6 +5753,395 @@ def api_job_geocode(job_id: int):
     conn.close()
     return jsonify({"ok": True})
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MOBILE ROUTES  (/m)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def mobile_login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("m_login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.get("/m/login")
+@app.get("/m")
+def m_login():
+    if session.get("user_id"):
+        return redirect(url_for("m_today"))
+    return render_template("m/login.html", error=None, prefill_email="")
+
+
+@app.post("/m/login")
+def m_login_post():
+    email    = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    ip       = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    ip_key   = f"ip:{ip}"
+
+    conn = db()
+    allowed, locked_until = throttle_check(conn, ip_key)
+    if not allowed:
+        conn.close()
+        return render_template("m/login.html",
+                               error=f"Too many failed attempts. Try again after {locked_until} UTC.",
+                               prefill_email=email)
+
+    user = conn.execute("SELECT * FROM users WHERE LOWER(email)=? AND active=1", (email,)).fetchone()
+
+    if not user or not check_password_hash(user["password"], password):
+        throttle_fail(conn, ip_key)
+        conn.commit()
+        conn.close()
+        return render_template("m/login.html", error="Invalid email or password.", prefill_email=email)
+
+    throttle_success(conn, ip_key)
+    conn.commit()
+    conn.close()
+    session.permanent = True
+    session["user_id"]   = user["id"]
+    session["user_name"] = user["full_name"]
+    session["role"]      = user["role"]
+    return redirect(url_for("m_today"))
+
+
+@app.get("/m/logout")
+def m_logout():
+    session.clear()
+    return redirect(url_for("m_login"))
+
+
+@app.get("/m/schedule/today")
+@mobile_login_required
+def m_today():
+    uid   = session.get("user_id")
+    today = datetime.now(_melbourne).date().isoformat()
+    today_display = today[8:10] + "/" + today[5:7] + "/" + today[:4]
+
+    conn = db()
+
+    cues = conn.execute("""
+        SELECT ci.*, j.internal_job_number, j.client_reference, j.display_ref,
+               j.job_address, j.id AS jid,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' LIMIT 1) AS asset_reg
+        FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE ci.due_date = ? AND ci.assigned_user_id = ?
+          AND ci.status IN ('Pending','In Progress')
+        ORDER BY ci.priority DESC, ci.id
+    """, (today, uid)).fetchall()
+
+    schedules = conn.execute("""
+        SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
+               bt.name AS booking_type_name,
+               j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' LIMIT 1) AS asset_reg
+        FROM schedules s
+        JOIN booking_types bt ON bt.id = s.booking_type_id
+        JOIN jobs j ON j.id = s.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE date(s.scheduled_for,'localtime') = ? AND s.assigned_to_user_id = ?
+          AND s.status NOT IN ('Cancelled','Completed')
+        ORDER BY s.scheduled_for
+    """, (today, uid)).fetchall()
+
+    drafts_raw = conn.execute("""
+        SELECT ju.id AS draft_id, ju.job_id, ju.created_at,
+               j.display_ref, j.internal_job_number, j.job_address
+        FROM job_updates ju
+        JOIN jobs j ON j.id = ju.job_id
+        WHERE ju.created_by_user_id = ? AND ju.status = 'draft'
+        ORDER BY ju.updated_at DESC
+    """, (uid,)).fetchall()
+    conn.close()
+
+    draft_job_ids = {d["job_id"] for d in drafts_raw}
+
+    return render_template("m/today.html",
+                           today=today, today_display=today_display,
+                           cues=cues, schedules=schedules,
+                           drafts=drafts_raw, draft_job_ids=draft_job_ids)
+
+
+@app.get("/m/jobs")
+@mobile_login_required
+def m_jobs():
+    uid = session.get("user_id")
+    sort = request.args.get("sort", "visit_date")
+    direction = request.args.get("dir", "asc")
+    status_filter = request.args.get("status_filter", "")
+    dir_sql = "ASC" if direction == "asc" else "DESC"
+
+    role = session.get("role", "")
+    if role in ("admin", "both"):
+        where_clauses = ["1=1"]
+        params = []
+    else:
+        where_clauses = [
+            "(j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.assigned_to_user_id=? AND s.status NOT IN ('Cancelled','Completed')))"
+        ]
+        params = [uid, uid]
+
+    if status_filter:
+        where_clauses.append("j.status = ?")
+        params.append(status_filter)
+    else:
+        where_clauses.append("j.status NOT IN ('Invoiced')")
+
+    where_sql = " AND ".join(where_clauses)
+
+    if sort == "status":
+        order_sql = f"j.status {dir_sql}, j.updated_at DESC"
+    elif sort == "created":
+        order_sql = f"j.created_at {dir_sql}"
+    else:
+        order_sql = f"next_scheduled {dir_sql} NULLS LAST, j.updated_at DESC"
+
+    conn = db()
+    jobs = conn.execute(f"""
+        SELECT j.*,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' LIMIT 1) AS asset_reg,
+               (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE {where_sql}
+        ORDER BY {order_sql}
+    """, params).fetchall()
+
+    draft_job_ids = {r["job_id"] for r in conn.execute(
+        "SELECT job_id FROM job_updates WHERE created_by_user_id=? AND status='draft'", (uid,)
+    ).fetchall()}
+    conn.close()
+
+    return render_template("m/jobs.html", jobs=jobs, draft_job_ids=draft_job_ids,
+                           sort=sort, dir=direction, status_filter=status_filter)
+
+
+@app.get("/m/job/<int:job_id>")
+@mobile_login_required
+def m_job_detail(job_id):
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        abort(404)
+
+    if role not in ("admin", "both"):
+        has_access = job["assigned_user_id"] == uid or conn.execute(
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed')",
+            (job_id, uid)
+        ).fetchone()
+        if not has_access:
+            conn.close()
+            flash("Access denied.", "danger")
+            return redirect(url_for("m_today"))
+
+    customer = None
+    customer_mobile = ""
+    if job["customer_id"]:
+        customer = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone()
+        phone_row = conn.execute(
+            "SELECT phone_number FROM contact_phone_numbers WHERE entity_type='customer' AND entity_id=? AND label='Mobile' LIMIT 1",
+            (job["customer_id"],)
+        ).fetchone()
+        customer_mobile = phone_row["phone_number"] if phone_row else ""
+        if not customer_mobile:
+            phone_row2 = conn.execute(
+                "SELECT phone_number FROM contact_phone_numbers WHERE entity_type='customer' AND entity_id=? LIMIT 1",
+                (job["customer_id"],)
+            ).fetchone()
+            customer_mobile = phone_row2["phone_number"] if phone_row2 else ""
+
+    client      = conn.execute("SELECT * FROM clients WHERE id=?", (job["client_id"],)).fetchone() if job["client_id"] else None
+    _bill_to_id = job["bill_to_client_id"] if "bill_to_client_id" in job.keys() else None
+    bill_client = conn.execute("SELECT * FROM clients WHERE id=?", (_bill_to_id,)).fetchone() if _bill_to_id else None
+    assets      = conn.execute("SELECT * FROM job_items WHERE job_id=? ORDER BY id", (job_id,)).fetchall()
+    notes       = conn.execute("""
+        SELECT jfn.*, u.full_name AS agent_name
+        FROM job_field_notes jfn
+        LEFT JOIN users u ON u.id = jfn.created_by_user_id
+        WHERE jfn.job_id=?
+        ORDER BY jfn.created_at DESC
+        LIMIT 5
+    """, (job_id,)).fetchall()
+
+    has_draft = bool(conn.execute(
+        "SELECT 1 FROM job_updates WHERE job_id=? AND created_by_user_id=? AND status='draft' LIMIT 1",
+        (job_id, uid)
+    ).fetchone())
+    conn.close()
+
+    return render_template("m/job_detail.html",
+                           job=job, customer=customer, customer_mobile=customer_mobile,
+                           client=client, bill_client=bill_client,
+                           assets=assets, notes=notes, has_draft=has_draft)
+
+
+@app.get("/m/job/<int:job_id>/note/new")
+@mobile_login_required
+def m_update_builder(job_id):
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        abort(404)
+
+    if role not in ("admin", "both"):
+        has_access = job["assigned_user_id"] == uid or conn.execute(
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed')",
+            (job_id, uid)
+        ).fetchone()
+        if not has_access:
+            conn.close()
+            flash("Access denied.", "danger")
+            return redirect(url_for("m_today"))
+
+    customer = None
+    customer_mobile = ""
+    if job["customer_id"]:
+        customer = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone()
+        phone_row = conn.execute(
+            "SELECT phone_number FROM contact_phone_numbers WHERE entity_type='customer' AND entity_id=? AND label='Mobile' LIMIT 1",
+            (job["customer_id"],)
+        ).fetchone()
+        customer_mobile = phone_row["phone_number"] if phone_row else ""
+
+    draft = conn.execute(
+        "SELECT * FROM job_updates WHERE job_id=? AND created_by_user_id=? AND status='draft' ORDER BY id DESC LIMIT 1",
+        (job_id, uid)
+    ).fetchone()
+
+    if not draft:
+        ts = now_ts()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO job_updates (job_id, created_by_user_id, status, customer_mobile, created_at, updated_at)
+            VALUES (?, ?, 'draft', ?, ?, ?)
+        """, (job_id, uid, customer_mobile, ts, ts))
+        draft_id = cur.lastrowid
+        conn.commit()
+        draft = conn.execute("SELECT * FROM job_updates WHERE id=?", (draft_id,)).fetchone()
+
+    first_asset = conn.execute(
+        "SELECT * FROM job_items WHERE job_id=? AND item_type='vehicle' LIMIT 1", (job_id,)
+    ).fetchone()
+    asset_make_model = ""
+    asset_reg = ""
+    if first_asset:
+        parts = [p for p in [first_asset["year"], first_asset["make"], first_asset["model"]] if p]
+        asset_make_model = " ".join(parts)
+        asset_reg = first_asset["reg"] or ""
+    conn.close()
+
+    mel_now = datetime.now(_melbourne)
+    return render_template("m/update_builder.html",
+                           job=job, customer=customer, customer_mobile=customer_mobile,
+                           draft=draft,
+                           asset_make_model=asset_make_model,
+                           asset_reg=asset_reg,
+                           now_date=mel_now.strftime("%Y-%m-%d"),
+                           now_time=mel_now.strftime("%H:%M"))
+
+
+@app.get("/m/tow-operators/new")
+@mobile_login_required
+def m_tow_operator_new():
+    return render_template("m/tow_operator_new.html")
+
+
+@app.post("/m/tow-operators/new")
+@mobile_login_required
+def m_tow_operator_new_post():
+    company_name = request.form.get("company_name", "").strip()
+    phone  = request.form.get("phone", "").strip() or None
+    address = request.form.get("address", "").strip() or None
+    if not company_name:
+        flash("Company name is required.", "danger")
+        return redirect(url_for("m_tow_operator_new"))
+    conn = db()
+    conn.execute("INSERT INTO tow_operators (company_name, phone, address, created_at) VALUES (?,?,?,?)",
+                 (company_name, phone, address, now_ts()))
+    conn.commit()
+    conn.close()
+    flash(f"Tow operator \"{company_name}\" added.", "success")
+    return redirect(url_for("m_settings"))
+
+
+@app.get("/m/auction-yards/new")
+@mobile_login_required
+def m_auction_yard_new():
+    return render_template("m/auction_yard_new.html")
+
+
+@app.post("/m/auction-yards/new")
+@mobile_login_required
+def m_auction_yard_new_post():
+    name    = request.form.get("name", "").strip()
+    address = request.form.get("address", "").strip() or None
+    if not name:
+        flash("Auction yard name is required.", "danger")
+        return redirect(url_for("m_auction_yard_new"))
+    conn = db()
+    conn.execute("INSERT INTO auction_yards (name, address, created_at) VALUES (?,?,?)",
+                 (name, address, now_ts()))
+    conn.commit()
+    conn.close()
+    flash(f"Auction yard \"{name}\" added.", "success")
+    return redirect(url_for("m_settings"))
+
+
+@app.get("/m/settings")
+@mobile_login_required
+def m_settings():
+    uid = session.get("user_id")
+    conn = db()
+    row = conn.execute("SELECT * FROM user_mobile_settings WHERE user_id=?", (uid,)).fetchone()
+    conn.close()
+    if row:
+        prefs = dict(row)
+    else:
+        prefs = {"list_sort": "visit_date", "list_dir": "asc", "distance_unit": "km",
+                 "gps_foreground": 1, "gps_bg": 0, "gps_interval_mins": 5}
+    return render_template("m/settings.html", prefs=prefs)
+
+
+@app.post("/m/settings")
+@mobile_login_required
+def m_settings_post():
+    uid = session.get("user_id")
+    list_sort    = request.form.get("list_sort", "visit_date")
+    list_dir     = request.form.get("list_dir", "asc")
+    dist_unit    = request.form.get("distance_unit", "km")
+    gps_fg       = 1 if request.form.get("gps_foreground") else 0
+    gps_bg       = 1 if request.form.get("gps_bg") else 0
+    ts = now_ts()
+    conn = db()
+    conn.execute("""
+        INSERT INTO user_mobile_settings (user_id, list_sort, list_dir, distance_unit, gps_foreground, gps_bg, updated_at)
+        VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            list_sort=excluded.list_sort, list_dir=excluded.list_dir,
+            distance_unit=excluded.distance_unit, gps_foreground=excluded.gps_foreground,
+            gps_bg=excluded.gps_bg, updated_at=excluded.updated_at
+    """, (uid, list_sort, list_dir, dist_unit, gps_fg, gps_bg, ts))
+    conn.commit()
+    conn.close()
+    flash("Preferences saved.", "success")
+    return redirect(url_for("m_settings"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)

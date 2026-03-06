@@ -1,0 +1,107 @@
+{% extends "m/layout.html" %}
+{% block title %}Today — AxionX{% endblock %}
+{% block header_title %}
+  <span>Today</span>
+  <span style="font-size:.75rem;font-weight:400;color:var(--muted);margin-left:6px;">{{ today_display }}</span>
+{% endblock %}
+{% block header_right %}
+<a href="{{ url_for('m_logout') }}" style="color:var(--muted);font-size:.8rem;">Sign out</a>
+{% endblock %}
+
+{% block content %}
+{% set all_items = [] %}
+
+{% if drafts %}
+<div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);border-radius:12px;padding:12px 14px;margin-bottom:14px;">
+  <div style="font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--red);text-transform:uppercase;margin-bottom:6px;">Incomplete Updates</div>
+  {% for d in drafts %}
+  <a href="{{ url_for('m_update_builder', job_id=d.job_id) }}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(248,113,113,.15);color:var(--text);">
+    <div>
+      <div style="font-weight:600;font-size:.9rem;">{{ d.display_ref }}</div>
+      <div style="font-size:.78rem;color:var(--muted);">{{ d.job_address }}</div>
+    </div>
+    <span class="m-badge m-badge-red">URGENT UPDATE</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not cues and not schedules %}
+<div class="m-empty">
+  <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+  <p>No visits scheduled for today</p>
+</div>
+{% else %}
+
+{% if schedules %}
+<div class="m-section-label">Scheduled Visits</div>
+<div class="m-card" style="margin-bottom:16px;">
+{% for s in schedules %}
+{% set has_draft = s.job_id in draft_job_ids %}
+<a href="{{ url_for('m_job_detail', job_id=s.job_id) }}" class="m-list-item">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+        <span style="font-weight:700;font-size:.95rem;">{{ s.display_ref or s.internal_job_number }}</span>
+        {% if has_draft %}<span class="m-badge m-badge-red">URGENT UPDATE</span>{% endif %}
+        <span class="m-badge m-badge-blue">{{ s.booking_type_name }}</span>
+      </div>
+      {% if s.customer_name and s.customer_name.strip() %}
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:2px;">{{ s.customer_name }}</div>
+      {% endif %}
+      <div style="font-size:.82rem;color:var(--text);margin-bottom:3px;">{{ s.job_address }}</div>
+      {% if s.asset_reg %}
+      <div style="font-size:.75rem;color:var(--muted);">Rego: {{ s.asset_reg }}</div>
+      {% endif %}
+    </div>
+    <div style="text-align:right;flex-shrink:0;">
+      {% if s.scheduled_for %}
+      <div style="font-size:.85rem;font-weight:600;color:var(--accent);">
+        {{ s.scheduled_for[11:16] if s.scheduled_for|length > 10 else '' }}
+      </div>
+      {% endif %}
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--muted)" fill="none" stroke-width="2" style="margin-top:4px;"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+  </div>
+</a>
+{% endfor %}
+</div>
+{% endif %}
+
+{% if cues %}
+<div class="m-section-label">Queue Items</div>
+<div class="m-card">
+{% for c in cues %}
+{% set has_draft = c.job_id in draft_job_ids %}
+<a href="{{ url_for('m_job_detail', job_id=c.job_id) }}" class="m-list-item">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+        <span style="font-weight:700;font-size:.95rem;">{{ c.internal_job_number or c.client_reference }}</span>
+        {% if has_draft %}<span class="m-badge m-badge-red">URGENT UPDATE</span>{% endif %}
+        {% if c.priority == 'High' or c.priority == 'Urgent' %}
+        <span class="m-badge m-badge-amber">{{ c.priority }}</span>
+        {% else %}
+        <span class="m-badge m-badge-gray">{{ c.visit_type }}</span>
+        {% endif %}
+      </div>
+      {% if c.customer_name and c.customer_name.strip() %}
+      <div style="font-size:.82rem;color:var(--muted);margin-bottom:2px;">{{ c.customer_name }}</div>
+      {% endif %}
+      <div style="font-size:.82rem;color:var(--text);margin-bottom:3px;">{{ c.job_address }}</div>
+      {% if c.asset_reg %}
+      <div style="font-size:.75rem;color:var(--muted);">Rego: {{ c.asset_reg }}</div>
+      {% endif %}
+      {% if c.time_window_start %}
+      <div style="font-size:.75rem;color:var(--accent);">{{ c.time_window_start }}{% if c.time_window_end %} – {{ c.time_window_end }}{% endif %}</div>
+      {% endif %}
+    </div>
+    <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0;margin-top:4px;"><polyline points="9 18 15 12 9 6"/></svg>
+  </div>
+</a>
+{% endfor %}
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "m/layout.html" %}
+{% block title %}Settings — AxionX{% endblock %}
+{% block header_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="m-section-label">Display Preferences</div>
+<div class="m-card" style="margin-bottom:16px;">
+  <div class="m-card-body">
+    <form method="post" action="{{ url_for('m_settings') }}">
+      <div class="m-form-group">
+        <label class="m-label">Job List Default Sort</label>
+        <select name="list_sort" class="m-select">
+          <option value="visit_date" {% if prefs.list_sort == 'visit_date' %}selected{% endif %}>Next Visit Date</option>
+          <option value="status"     {% if prefs.list_sort == 'status'     %}selected{% endif %}>Status</option>
+          <option value="created"    {% if prefs.list_sort == 'created'    %}selected{% endif %}>Date Added</option>
+        </select>
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Sort Direction</label>
+        <select name="list_dir" class="m-select">
+          <option value="asc"  {% if prefs.list_dir == 'asc'  %}selected{% endif %}>Ascending</option>
+          <option value="desc" {% if prefs.list_dir == 'desc' %}selected{% endif %}>Descending</option>
+        </select>
+      </div>
+      <div class="m-form-group">
+        <label class="m-label">Distance Unit</label>
+        <select name="distance_unit" class="m-select">
+          <option value="km" {% if prefs.distance_unit == 'km' %}selected{% endif %}>Kilometres (km)</option>
+          <option value="mi" {% if prefs.distance_unit == 'mi' %}selected{% endif %}>Miles (mi)</option>
+        </select>
+      </div>
+
+      <div class="m-divider"></div>
+      <div class="m-section-label" style="margin-bottom:12px;">GPS Tracking</div>
+
+      <div class="m-toggle-row">
+        <div>
+          <div class="m-toggle-label">Foreground Tracking</div>
+          <div class="m-toggle-sub">Track location while app is open (every 5 min)</div>
+        </div>
+        <label class="m-toggle">
+          <input type="checkbox" name="gps_foreground" value="1" {% if prefs.gps_foreground %}checked{% endif %}>
+          <span class="m-toggle-slider"></span>
+        </label>
+      </div>
+      <div class="m-toggle-row">
+        <div>
+          <div class="m-toggle-label">Background Tracking</div>
+          <div class="m-toggle-sub">Track location when app is in background</div>
+        </div>
+        <label class="m-toggle">
+          <input type="checkbox" name="gps_bg" value="1" {% if prefs.gps_bg %}checked{% endif %}>
+          <span class="m-toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="m-divider"></div>
+      <button type="submit" class="m-btn m-btn-primary">Save Preferences</button>
+    </form>
+  </div>
+</div>
+
+<div class="m-section-label">Resources</div>
+<div class="m-card" style="margin-bottom:16px;">
+  <a href="{{ url_for('m_tow_operator_new') }}" class="m-list-item" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>Add Tow Operator</span>
+    <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--muted)" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </a>
+  <a href="{{ url_for('m_auction_yard_new') }}" class="m-list-item" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>Add Auction Yard</span>
+    <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--muted)" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </a>
+</div>
+
+<div class="m-section-label">Account</div>
+<div class="m-card">
+  <div class="m-card-body">
+    <div style="font-size:.9rem;color:var(--muted);margin-bottom:12px;">Signed in as <strong style="color:var(--text);">{{ session.get('user_name','') }}</strong></div>
+    <a href="{{ url_for('m_logout') }}" class="m-btn m-btn-secondary">Sign Out</a>
+  </div>
+</div>
+{% endblock %}
