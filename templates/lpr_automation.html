@@ -27,6 +27,83 @@
     regardless of automation settings.
   </div>
 
+  {# ── Open review tasks ── shown prominently when any exist ─────────────── #}
+  {% if open_reviews %}
+  <div class="card mb-4 border-danger" style="border-width:2px;">
+    <div class="card-header py-2 bg-danger text-white d-flex justify-content-between align-items-center">
+      <span class="fw-semibold" style="font-size:.88rem;">
+        &#9888; Open review tasks &mdash; {{ open_reviews | length }} item{{ 's' if open_reviews | length != 1 }}
+      </span>
+      <span class="badge bg-light text-danger">Action required</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle" style="font-size:.82rem;">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">#</th>
+              <th>Review reason</th>
+              <th>Change</th>
+              <th>Scope</th>
+              <th>Created</th>
+              <th class="pe-3 text-center" style="width:120px;">Resolve</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rv in open_reviews %}
+            <tr>
+              <td class="ps-3 text-muted">{{ rv.id }}</td>
+              <td style="max-width:280px;">
+                <div>{{ rv.review_reason | truncate(120, true, '…') }}</div>
+                {% if rv.exp_name %}
+                <div class="text-muted" style="font-size:.74rem;">{{ rv.exp_name | truncate(40, true, '…') }}</div>
+                {% endif %}
+              </td>
+              <td style="font-size:.78rem;">
+                {% if rv.before_values and rv.after_values %}
+                {{ rv.before_values.min_combined_threshold | default('?') }}
+                &rarr; <strong>{{ rv.after_values.min_combined_threshold | default('?') }}</strong>
+                <span class="text-muted">min score</span>
+                {% else %}&mdash;{% endif %}
+              </td>
+              <td><code style="font-size:.76rem;">{{ rv.scope_key }}</code></td>
+              <td class="text-muted" style="font-size:.74rem;">{{ rv.created_at[:16] if rv.created_at else '?' }}</td>
+              <td class="pe-3 text-center">
+                <button class="btn btn-success btn-sm py-0 px-2"
+                        onclick="resolveReview({{ rv.id }}, this)">
+                  Resolve
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Paused scopes banner ────────────────────────────────────────────────── #}
+  {% if paused_scopes %}
+  <div class="alert alert-warning py-2 mb-4 d-flex align-items-start gap-3" style="font-size:.83rem;">
+    <div style="font-size:1.1rem;flex-shrink:0;">&#9646;&#9646;</div>
+    <div class="flex-grow-1">
+      <div class="fw-semibold mb-1">Automation paused &mdash; {{ paused_scopes | length }} scope{{ 's' if paused_scopes | length != 1 }}</div>
+      {% for ps in paused_scopes %}
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <code style="font-size:.76rem;">{{ ps.scope_key }}</code>
+        <span class="text-muted">paused {{ ps.effective_from[:10] if ps.effective_from else '?' }}</span>
+        <span class="text-muted">&mdash; {{ ps.reason_text | truncate(60, true, '…') }}</span>
+        <button class="btn btn-sm btn-outline-secondary py-0 px-2"
+                onclick="resumeScope('{{ ps.scope_key }}', this)">
+          Resume
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="row g-4">
 
     {# ── Left column: settings + dry-run ─────────────────────────────────── #}
@@ -409,6 +486,48 @@
     .catch(function(){
       if (fb) fb.innerHTML = '<span class="text-danger">Network error.</span>';
     });
+  };
+
+  window.resolveReview = function(review_id, btn) {
+    var notes = window.prompt('Resolution notes (optional, operational only):') || '';
+    if (notes === null) return;
+    if (!confirm('Mark review #' + review_id + ' as resolved?\n\nIf this is the last open review for its scope, automation will be automatically resumed.')) return;
+    btn.disabled = true; btn.textContent = 'Resolving\u2026';
+    fetch("{{ url_for('admin_lpr_automation_resolve_review') }}", {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({review_id: review_id, notes: notes})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) { location.reload(); }
+      else {
+        alert('Error: ' + (d.error||'unknown'));
+        btn.disabled = false; btn.textContent = 'Resolve';
+      }
+    })
+    .catch(function(){ alert('Network error.'); btn.disabled = false; btn.textContent = 'Resolve'; });
+  };
+
+  window.resumeScope = function(scope_key, btn) {
+    var notes = window.prompt('Notes for manual resume (optional):') || '';
+    if (notes === null) return;
+    if (!confirm('Manually resume automation for scope "' + scope_key + '"?\n\nAny open review tasks will remain open but automation will re-enable.')) return;
+    btn.disabled = true; btn.textContent = 'Resuming\u2026';
+    fetch("{{ url_for('admin_lpr_automation_resume_scope') }}", {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({scope_key: scope_key, notes: notes})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) { location.reload(); }
+      else {
+        alert('Error: ' + (d.error||'unknown'));
+        btn.disabled = false; btn.textContent = 'Resume';
+      }
+    })
+    .catch(function(){ alert('Network error.'); btn.disabled = false; btn.textContent = 'Resume'; });
   };
 
   window.rollbackAction = function(action_id, btn) {

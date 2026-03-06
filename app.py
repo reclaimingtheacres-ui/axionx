@@ -10978,6 +10978,16 @@ def _try_auto_apply(conn, exp, policy_eval, actor="auto"):
         return {"applied": False, "reason": "Automation disabled",
                 "dry_run_eligible": dry_eligible}
 
+    # Stage 19: check scope pause before doing anything
+    try:
+        _lpr_stage19_ensure(conn)
+        if _is_scope_paused(conn, "global"):
+            return {"applied": False,
+                    "reason": "Automation paused pending review — resolve open review tasks first",
+                    "dry_run_eligible": dry_eligible}
+    except Exception:
+        pass
+
     rec = policy_eval.get("recommendation")
     m   = policy_eval.get("metrics", {})
 
@@ -11073,6 +11083,18 @@ def _try_auto_apply(conn, exp, policy_eval, actor="auto"):
         action_id = act_cur.lastrowid
         conn.commit()
 
+        # Stage 19: notify admins of successful auto-tighten
+        try:
+            _notify_admins(
+                "LPR automation raised patrol threshold",
+                f"Automated threshold tightened from {old_thr} to {new_thr}. "
+                "Outcomes will be monitored — rollback available if performance dips.",
+                "automation_tighten",
+                {"action_id": action_id, "old_threshold": old_thr, "new_threshold": new_thr},
+            )
+        except Exception:
+            pass
+
         return {
             "applied":       True,
             "action_type":   "tighten_threshold",
@@ -11143,6 +11165,33 @@ def _check_automation_monitoring(conn):
             )
             flagged.append(a["id"])
 
+            # Stage 19: create review task, pause scope, notify
+            try:
+                _lpr_stage19_ensure(conn)
+                scope = a["scope"] or "global"
+                _create_review_task(conn, a["id"], scope,
+                                    "Post-change performance may have degraded — " + note)
+                paused = _pause_scope(conn, scope, a["id"],
+                                      "Auto-paused: review_required on action #" + str(a["id"]))
+                conn.commit()
+                _notify_admins(
+                    "LPR automation review required",
+                    "A recent automated threshold change needs review. "
+                    "Auto-tighten has been paused pending office sign-off.",
+                    "automation_review",
+                    {"action_id": a["id"], "scope": scope},
+                )
+                if paused:
+                    _notify_admins(
+                        "LPR automation paused pending review",
+                        "Automated threshold changes are paused for this scope "
+                        "until the open review task is resolved.",
+                        "automation_paused",
+                        {"scope": scope},
+                    )
+            except Exception:
+                pass
+
     if flagged:
         conn.commit()
     return flagged
@@ -11155,6 +11204,7 @@ def _check_automation_monitoring(conn):
 def admin_lpr_automation():
     conn = db()
     _lpr_automation_ensure(conn)
+    _lpr_stage19_ensure(conn)
     _lpr_experiments_ensure(conn)
     _lpr_policy_ensure(conn)
     _lpr_ranking_config_ensure(conn)
@@ -11202,6 +11252,31 @@ def admin_lpr_automation():
         ORDER BY effective_from DESC LIMIT 1
     """).fetchone()
 
+    # Stage 19: open reviews + active pauses
+    open_reviews = [dict(r) for r in conn.execute("""
+        SELECT rv.*, aa.action_type, aa.before_values_json, aa.after_values_json,
+               e.name AS exp_name
+        FROM lpr_automation_reviews rv
+        LEFT JOIN lpr_automation_actions aa ON aa.id = rv.action_id
+        LEFT JOIN lpr_experiments e ON e.id = aa.experiment_id
+        WHERE rv.status='open'
+        ORDER BY rv.id DESC
+        LIMIT 20
+    """).fetchall()]
+    for rv in open_reviews:
+        try:
+            rv["before_values"] = _json.loads(rv["before_values_json"] or "{}")
+            rv["after_values"]  = _json.loads(rv["after_values_json"]  or "{}")
+        except Exception:
+            rv["before_values"] = {}
+            rv["after_values"]  = {}
+
+    paused_scopes = [dict(r) for r in conn.execute("""
+        SELECT * FROM lpr_control_state
+        WHERE control_type='paused' AND active=1
+        ORDER BY effective_from DESC
+    """).fetchall()]
+
     conn.close()
     return render_template(
         "lpr_automation.html",
@@ -11211,6 +11286,8 @@ def admin_lpr_automation():
         recent_actions=recent_actions,
         dry_run_result=dry_run_result,
         active_ranking=dict(active_ranking) if active_ranking else None,
+        open_reviews=open_reviews,
+        paused_scopes=paused_scopes,
     )
 
 
@@ -11352,7 +11429,199 @@ def admin_lpr_automation_rollback():
 
     conn.commit()
     conn.close()
+
+    # Stage 19: notify admins of rollback
+    try:
+        _notify_admins(
+            "LPR automation change rolled back",
+            "An automated threshold change has been rolled back. "
+            "The previous ranking configuration is now active.",
+            "automation_rollback",
+            {"rolled_back_action_id": action_id},
+        )
+    except Exception:
+        pass
+
     return jsonify({"ok": True}), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 19 — Notification and control automation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _lpr_stage19_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_automation_reviews (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_id        INTEGER NOT NULL,
+            scope_key        TEXT    NOT NULL DEFAULT 'global',
+            review_reason    TEXT    NOT NULL,
+            status           TEXT    NOT NULL DEFAULT 'open',
+            assigned_to      INTEGER,
+            created_at       TEXT    NOT NULL,
+            resolved_at      TEXT,
+            resolution_notes TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_control_state (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope_key         TEXT    NOT NULL DEFAULT 'global',
+            control_type      TEXT    NOT NULL DEFAULT 'paused',
+            active            INTEGER NOT NULL DEFAULT 1,
+            effective_from    TEXT    NOT NULL,
+            effective_to      TEXT,
+            trigger_action_id INTEGER,
+            reason_text       TEXT    NOT NULL,
+            created_by        TEXT    NOT NULL DEFAULT 'auto'
+        )
+    """)
+    conn.commit()
+
+
+def _is_scope_paused(conn, scope_key):
+    """Return True if scope_key has an active pause control in lpr_control_state."""
+    row = conn.execute("""
+        SELECT id FROM lpr_control_state
+        WHERE scope_key=? AND control_type='paused' AND active=1
+        LIMIT 1
+    """, (scope_key,)).fetchone()
+    return row is not None
+
+
+def _pause_scope(conn, scope_key, trigger_action_id, reason):
+    """
+    Create a paused control_state record if not already paused.
+    Returns True if a new pause was created.
+    """
+    if _is_scope_paused(conn, scope_key):
+        return False
+    conn.execute("""
+        INSERT INTO lpr_control_state
+            (scope_key, control_type, active, effective_from, trigger_action_id, reason_text, created_by)
+        VALUES (?, 'paused', 1, ?, ?, ?, 'auto')
+    """, (scope_key, now_ts(), trigger_action_id, reason))
+    conn.commit()
+    return True
+
+
+def _resume_scope(conn, scope_key, user_id=None):
+    """
+    Deactivate all active pause records for scope_key.
+    Returns the number of records deactivated.
+    """
+    now = now_ts()
+    conn.execute("""
+        UPDATE lpr_control_state
+        SET active=0, effective_to=?
+        WHERE scope_key=? AND control_type='paused' AND active=1
+    """, (now, scope_key))
+    count = conn.total_changes
+    conn.commit()
+    return count
+
+
+def _create_review_task(conn, action_id, scope_key, reason):
+    """
+    Create an open review task for an automation action.
+    Returns the new review task id.
+    """
+    cur = conn.execute("""
+        INSERT INTO lpr_automation_reviews
+            (action_id, scope_key, review_reason, status, created_at)
+        VALUES (?, ?, ?, 'open', ?)
+    """, (action_id, scope_key, reason, now_ts()))
+    conn.commit()
+    return cur.lastrowid
+
+
+def _open_review_count(conn, scope_key="global"):
+    """Return number of open review tasks for a scope."""
+    return conn.execute("""
+        SELECT COUNT(*) FROM lpr_automation_reviews
+        WHERE scope_key=? AND status='open'
+    """, (scope_key,)).fetchone()[0]
+
+
+# ── Stage 19 routes ──────────────────────────────────────────────────────────
+
+@app.post("/admin/lpr/automation/resolve-review")
+@admin_required
+def admin_lpr_automation_resolve_review():
+    """
+    Resolve an open review task.
+    If no open reviews remain for the scope, automatically resume the scope.
+    """
+    data      = request.get_json(silent=True) or {}
+    review_id = data.get("review_id")
+    notes     = (data.get("notes") or "").strip()[:300]
+    if not review_id:
+        return jsonify({"ok": False, "error": "review_id required"}), 400
+
+    conn = db()
+    _lpr_automation_ensure(conn)
+    _lpr_stage19_ensure(conn)
+
+    review = conn.execute(
+        "SELECT * FROM lpr_automation_reviews WHERE id=?", (review_id,)
+    ).fetchone()
+    if not review:
+        conn.close()
+        return jsonify({"ok": False, "error": "Review not found"}), 404
+    if review["status"] != "open":
+        conn.close()
+        return jsonify({"ok": False, "error": "Review already resolved"}), 400
+
+    now = now_ts()
+    uid = session.get("user_id")
+    conn.execute("""
+        UPDATE lpr_automation_reviews
+        SET status='resolved', resolved_at=?, resolution_notes=?, assigned_to=?
+        WHERE id=?
+    """, (now, notes or None, uid, review_id))
+    conn.commit()
+
+    scope_key    = review["scope_key"]
+    open_reviews = _open_review_count(conn, scope_key)
+    auto_resumed = False
+    if open_reviews == 0:
+        auto_resumed = _resume_scope(conn, scope_key, uid) > 0
+        if auto_resumed:
+            _notify_admins(
+                "LPR automation scope resumed",
+                "All review tasks resolved — automation scope resumed and ready.",
+                "automation_resumed",
+                {"scope_key": scope_key},
+            )
+
+    conn.close()
+    return jsonify({"ok": True, "auto_resumed": auto_resumed}), 200
+
+
+@app.post("/admin/lpr/automation/resume-scope")
+@admin_required
+def admin_lpr_automation_resume_scope():
+    """Manually resume a paused automation scope."""
+    data      = request.get_json(silent=True) or {}
+    scope_key = (data.get("scope_key") or "global").strip()
+    notes     = (data.get("notes") or "").strip()[:200]
+
+    conn = db()
+    _lpr_automation_ensure(conn)
+    _lpr_stage19_ensure(conn)
+
+    uid     = session.get("user_id")
+    resumed = _resume_scope(conn, scope_key, uid)
+    conn.close()
+
+    if resumed:
+        _notify_admins(
+            "LPR automation scope resumed",
+            f"Automation scope manually resumed by office. {notes}".strip(),
+            "automation_resumed",
+            {"scope_key": scope_key},
+        )
+    return jsonify({"ok": True, "resumed": resumed > 0}), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────

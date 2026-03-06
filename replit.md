@@ -718,3 +718,16 @@ Adds structured outcome capture for patrol opportunities, stores prediction-vers
 - **Admin routes**: `GET /admin/lpr/automation`, `POST /admin/lpr/automation/settings`, `POST /admin/lpr/automation/run`, `POST /admin/lpr/automation/rollback`
 - **Template**: `lpr_automation.html` — settings panel (enable/disable, cooldown, max step, min sample), cooldown status badge, active ranking config summary, dry-run card, recent actions table with status badges and per-row rollback buttons
 - **Nav**: ⚡ Automation link added to Patrol Intel, Ranking, Evaluation, and Experiments pages
+
+## Stage 19 — Notification and Control Automation
+
+- **Tables**: `lpr_automation_reviews` (action_id, scope_key, review_reason, status, assigned_to, created_at, resolved_at, resolution_notes); `lpr_control_state` (scope_key, control_type, active, effective_from, effective_to, trigger_action_id, reason_text, created_by)
+- **Control helpers**: `_lpr_stage19_ensure`, `_is_scope_paused`, `_pause_scope` (idempotent), `_resume_scope`, `_create_review_task`, `_open_review_count`
+- **Trigger: review_required** — `_check_automation_monitoring` now also calls `_create_review_task`, `_pause_scope`, and `_notify_admins` (two notifications: "review required" + "automation paused") when an action is flagged; all guarded by try/except so monitoring failures don't break the page load
+- **Trigger: auto-tighten applied** — `_try_auto_apply` now calls `_notify_admins` ("LPR automation raised patrol threshold...") after a successful apply
+- **Trigger: rollback executed** — `admin_lpr_automation_rollback` calls `_notify_admins` ("LPR automation change rolled back...") after commit
+- **Scope pause check** — `_try_auto_apply` checks `_is_scope_paused("global")` after the `active` check; returns blocked with reason if paused
+- **New routes**: `POST /admin/lpr/automation/resolve-review` (marks review resolved; auto-resumes scope + notifies if zero open reviews remain); `POST /admin/lpr/automation/resume-scope` (manual resume + notify)
+- **GET /admin/lpr/automation** — now also queries `lpr_automation_reviews` (open tasks) and `lpr_control_state` (active pauses), passes both to template
+- **Template** (`lpr_automation.html`): red-bordered "Open review tasks" card at top (shown only when reviews exist) with before→after threshold, scope, resolve button + notes prompt; amber "Automation paused" banner listing each paused scope with resume button; `resolveReview()` and `resumeScope()` JS functions with confirm dialogs
+- **Notification messages** (no protected data): "LPR automation raised patrol threshold", "LPR automation review required", "LPR automation paused pending review", "LPR automation change rolled back", "LPR automation scope resumed"
