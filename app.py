@@ -969,6 +969,103 @@ def _parse_instruction_text(text):
                 return val[:max_chars].strip() if val else None
         return None
 
+    # ── Wise Group document detection ──────────────────────────────────────
+    is_wise = bool(re.search(r"WISE\s*GROUP\s*CASE\s*NUMBER", text, re.IGNORECASE))
+
+    if is_wise:
+        wise_case = find_after([r"WISE\s*GROUP\s*CASE\s*NUMBER[:\s]*([A-Za-z0-9\-\/]+)"])
+        wise_client = find_after([r"CLIENT[:\s]+([^\n]{3,80}?)(?:\s*\n|$|\s{2,})"])
+        wise_financier = find_after([r"FINANCIER[:\s]+([^\n]{3,60}?)(?:\s*\n|,\s*|$)"])
+        wise_debtor1 = find_after([
+            r"NAME\s*OF\s*DEBTOR\s*1[:\s]*([A-Za-z][A-Za-z\s,.']{2,60}?)\s*(?:\(D\.?O\.?B|$|\n)",
+        ])
+        wise_dob = find_after([
+            r"NAME\s*OF\s*DEBTOR\s*1[^(]*\(\s*D\.?O\.?B\.?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})",
+        ])
+        wise_addr = find_after([r"Given\s*address[:\s]*([^\n]{5,120})"])
+        wise_mobile = find_after([
+            r"Phone\s*numbers?[^M]*M[:\s]*([+0-9\(\)\s\-]{8,20})",
+            r"\bM[:\s]*([+0-9]{8,12})\b",
+        ])
+        wise_email = find_after([r"Email[:\s]*([^\s@]+@[^\s\n]+)"])
+        wise_deliver = find_after([r"DELIVER\s*VEHICLE\s*TO[:\s]*([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|$)"])
+        wise_account = find_after([r"ACCOUNT\s*NUMBER[:\s]*([A-Za-z0-9\-\/]{4,20})"])
+        wise_loan_type = find_after([r"LOAN\s*TYPE[:\s]*([^\n,]{3,40}?)(?:\s*\n|,|$)"])
+        wise_arrears = find_after([r"ARREARS[:\s]*\$?\s*([0-9,]+\.?\d{0,2})"])
+        wise_costs = find_after([r"COSTS[:\s]*\$?\s*([0-9,]+\.?\d{0,2})"])
+        wise_instalment = find_after([r"INSTALMENT\s*AMOUNT[:\s]*([0-9,]+\.?\d{0,2})"])
+        wise_freq = find_after([r"INSTALMENT\s*FREQUENCY[:\s]*([A-Za-z]{3,12})"])
+        wise_make_model = find_after([r"MAKE[\/\\]MODEL[:\s]*([A-Za-z0-9][A-Za-z0-9 ]{1,40}?)(?:\s*\n|$|\s{2,})"])
+        wise_year_v = find_after([r"(?:^|\n)\s*YEAR[:\s]*([12][0-9]{3})"])
+        wise_rego = find_after([r"REGISTRATION\s*#[:\s]*([A-Za-z0-9]{2,9})"])
+        wise_colour = find_after([r"COLOUR[:\s]*([A-Za-z][A-Za-z ]{1,20}?)(?:\s*\n|$|\s{2,})"])
+        wise_engine = find_after([r"ENGINE\s*#[:\s]*([A-Za-z0-9\-]{5,20})"])
+        wise_vin_v = find_after([r"VIN[\/\\]CHASSIS\s*#[:\s]*([A-HJ-NPR-Z0-9]{11,17})"])
+
+        wise_make = wise_model = None
+        if wise_make_model:
+            parts = wise_make_model.strip().split(None, 1)
+            wise_make = parts[0].title()
+            wise_model = parts[1].title() if len(parts) > 1 else None
+
+        wise_lender = wise_financier or wise_client
+        wise_reg_type = None
+        if wise_loan_type:
+            lt = wise_loan_type.lower().strip()
+            if any(k in lt for k in _UNREGULATED_TYPES):
+                wise_reg_type = "UNREGULATED"
+            elif any(k in lt for k in _REGULATED_TYPES):
+                wise_reg_type = "REGULATED"
+
+        return {
+            "wise_case_number":  wise_case,
+            "client_reference":  wise_case,
+            "contract_number":   None,
+            "account_number":    wise_account,
+            "our_ref":           wise_case,
+            "regulated_type":    wise_reg_type,
+            "lender_name":       wise_lender,
+            "from_name":         wise_client,
+            "deliver_to":        wise_deliver.strip().rstrip(".,") if wise_deliver else None,
+            "costs":             (wise_costs or "").replace(",", "") or None,
+            "instalment_amount": wise_instalment,
+            "payment_frequency": wise_freq,
+            "security_type":     "Vehicle",
+            "customer": {
+                "full_name": wise_debtor1.strip() if wise_debtor1 else None,
+                "company":   None,
+                "dob":       wise_dob,
+                "email":     wise_email,
+                "mobile":    _normalise_phone(wise_mobile),
+            },
+            "job_address_full": wise_addr.strip(" ,") if wise_addr else None,
+            "asset_address":    None,
+            "security": {
+                "year":          wise_year_v,
+                "make":          wise_make,
+                "model":         wise_model,
+                "rego":          wise_rego,
+                "vin":           wise_vin_v,
+                "engine_number": wise_engine,
+                "colour":        wise_colour,
+                "description":   " ".join(filter(None, [wise_year_v, wise_make, wise_model])) or None,
+            },
+            "financials": {
+                "arrears":   (wise_arrears or "").replace(",", "") or None,
+                "due_date":  find_after([r"NEXT\s*DUE\s*DATE[:\s]*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})"]),
+            },
+            "instructions_raw": None,
+            "_confidence": {k: "extracted" for k in [
+                "lender_name", "client_reference", "account_number", "customer_name",
+                "customer_phone", "customer_address", "deliver_to", "rego", "vin",
+                "year", "make", "model", "colour", "engine_number", "regulated_type",
+                "arrears", "costs",
+            ] if locals().get(f"wise_{k.replace('_name','').replace('customer_','').replace('lender_','lender')}") or True},
+            "_filled_count": sum(1 for v in [wise_case, wise_lender, wise_debtor1, wise_rego,
+                                              wise_vin_v, wise_year_v, wise_make, wise_account] if v),
+            "_source": "wise_group",
+        }
+
     # ── Sender / client (FROM: line at top of document) ─────────────────
     from_name = find_after([
         r"^FROM[:\s]+([^\n]{3,60})",
@@ -4525,7 +4622,7 @@ def _rl_pdf_context(conn, rec, job_id):
         "year":                 item.get("year") or "",
         "make":                 item.get("make") or "",
         "model":                item.get("model") or "",
-        "colour":               "",
+        "colour":               item.get("colour") or rec.get("colour") or "",
         "client_name":          rec.get("client_name") or client.get("name") or "",
         "client_reference":     rec.get("client_reference") or job.get("client_job_number") or "",
         "swpi_ref":             rec.get("swpi_ref") or job.get("internal_job_number") or "",
@@ -4688,6 +4785,307 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
                      download_name=filename)
 
 
+# ─────────────────────────── Wise VIR ──────────────────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-vir")
+@login_required
+def repo_lock_wise_vir(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template("wise_vir.html",
+                           rec=rec, job_id=job_id,
+                           agent_name=agent_name,
+                           item_year=d.get("year", ""), item_make=d.get("make", ""),
+                           item_model=d.get("model", ""),
+                           tow_company_name_db=d.get("tow_company_name_db", ""))
+
+
+@app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-vir")
+@login_required
+def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+
+    agent_sig    = request.form.get("agent_sig", "").strip() or None
+    customer_sig = request.form.get("customer_sig", "").strip() or None
+
+    if not agent_sig:
+        flash("Agent signature is required.", "error")
+        conn.close()
+        return redirect(url_for("repo_lock_wise_vir", job_id=job_id, rec_id=rec_id))
+
+    ts = now_ts()
+    conn.execute("""UPDATE repo_lock_records
+                    SET agent_signature=?, customer_signature=?,
+                        agent_signed_at=?, customer_signed_at=?, updated_at=?
+                    WHERE id=?""",
+                 (agent_sig, customer_sig or rec.get("customer_signature"),
+                  ts, (ts if customer_sig else rec.get("customer_signed_at")), ts, rec_id))
+    conn.commit()
+    rec["agent_signature"]    = agent_sig
+    rec["customer_signature"] = customer_sig or rec.get("customer_signature")
+
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    pdf_bytes = _pg.generate_wise_vir_pdf(d, agent_sig=agent_sig,
+                                          customer_sig=rec.get("customer_signature"))
+    safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=f"WiseVIR_{safe_ref}.pdf")
+
+
+# ─────────────────────────── Form 13 ──────────────────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/form-13")
+@login_required
+def repo_lock_form_13(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template("form_13.html",
+                           rec=rec, job_id=job_id,
+                           agent_name=agent_name,
+                           item_year=d.get("year", ""), item_make=d.get("make", ""),
+                           item_model=d.get("model", ""))
+
+
+@app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/form-13")
+@login_required
+def repo_lock_form_13_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+
+    occupant_sig     = request.form.get("occupant_sig", "").strip() or None
+    agent_sig        = request.form.get("agent_sig", "").strip() or None
+    occupant_refused = request.form.get("occupant_refused") == "1"
+
+    if not agent_sig:
+        flash("Agent signature is required.", "error")
+        conn.close()
+        return redirect(url_for("repo_lock_form_13", job_id=job_id, rec_id=rec_id))
+
+    if not occupant_refused and not occupant_sig:
+        flash("Occupier signature is required, or check 'Occupier refused to sign'.", "error")
+        conn.close()
+        return redirect(url_for("repo_lock_form_13", job_id=job_id, rec_id=rec_id))
+
+    ts = now_ts()
+    conn.execute("""UPDATE repo_lock_records
+                    SET agent_signature=?, customer_signature=?,
+                        agent_signed_at=?, updated_at=?
+                    WHERE id=?""",
+                 (agent_sig, occupant_sig or rec.get("customer_signature"), ts, ts, rec_id))
+    conn.commit()
+    rec["agent_signature"]    = agent_sig
+    rec["customer_signature"] = occupant_sig
+
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    pdf_bytes = _pg.generate_form_13_pdf(d, occupant_sig=occupant_sig, agent_sig=agent_sig)
+    safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=f"Form13_{safe_ref}.pdf")
+
+
+# ─────────────────────────── Voluntary Surrender ─────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/voluntary-surrender")
+@login_required
+def repo_lock_voluntary_surrender(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template("voluntary_surrender.html",
+                           rec=rec, job_id=job_id,
+                           agent_name=agent_name,
+                           item_year=d.get("year", ""), item_make=d.get("make", ""),
+                           item_model=d.get("model", ""))
+
+
+@app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/voluntary-surrender")
+@login_required
+def repo_lock_voluntary_surrender_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+
+    customer_sig = request.form.get("customer_sig", "").strip() or None
+    agent_sig    = request.form.get("agent_sig", "").strip() or None
+
+    if not agent_sig:
+        flash("Agent signature is required.", "error")
+        conn.close()
+        return redirect(url_for("repo_lock_voluntary_surrender", job_id=job_id, rec_id=rec_id))
+
+    if not customer_sig:
+        flash("Customer signature is required for voluntary surrender.", "error")
+        conn.close()
+        return redirect(url_for("repo_lock_voluntary_surrender", job_id=job_id, rec_id=rec_id))
+
+    ts = now_ts()
+    conn.execute("""UPDATE repo_lock_records
+                    SET agent_signature=?, customer_signature=?,
+                        agent_signed_at=?, customer_signed_at=?, updated_at=?
+                    WHERE id=?""",
+                 (agent_sig, customer_sig, ts, ts, ts, rec_id))
+    conn.commit()
+    rec["agent_signature"]    = agent_sig
+    rec["customer_signature"] = customer_sig
+
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    pdf_bytes = _pg.generate_voluntary_surrender_pdf(d, customer_sig=customer_sig,
+                                                     agent_sig=agent_sig)
+    safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=f"VoluntarySurrender_{safe_ref}.pdf")
+
+
+# ─────────────────────────── Auction Letter ─────────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/auction-letter")
+@login_required
+def repo_lock_auction_letter(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    download_url = f"/jobs/{job_id}/repo-lock/{rec_id}/auction-letter/pdf"
+    return render_template("letter_preview.html",
+                           rec=rec, job_id=job_id,
+                           agent_name=agent_name,
+                           letter_title="Auction Manager Letter",
+                           letter_type="auction",
+                           addressee_label="Auction House",
+                           addressee=rec.get("deliver_to") or d.get("delivery_address") or "Auction House",
+                           deliver_to_fallback=d.get("delivery_address", ""),
+                           download_url=download_url,
+                           item_year=d.get("year", ""), item_make=d.get("make", ""),
+                           item_model=d.get("model", ""))
+
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/auction-letter/pdf")
+@login_required
+def repo_lock_auction_letter_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    pdf_bytes = _pg.generate_auction_letter_pdf(d)
+    safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=f"AuctionLetter_{safe_ref}.pdf")
+
+
+# ─────────────────────────── Tow Letter ─────────────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/tow-letter")
+@login_required
+def repo_lock_tow_letter(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    download_url = f"/jobs/{job_id}/repo-lock/{rec_id}/tow-letter/pdf"
+    return render_template("letter_preview.html",
+                           rec=rec, job_id=job_id,
+                           agent_name=agent_name,
+                           letter_title="Towing Contractor Letter",
+                           letter_type="tow",
+                           addressee_label="Tow Contractor",
+                           addressee=rec.get("tow_company_name") or d.get("tow_company_name_db") or "Towing Contractor",
+                           deliver_to_fallback=rec.get("deliver_to") or "",
+                           download_url=download_url,
+                           item_year=d.get("year", ""), item_make=d.get("make", ""),
+                           item_model=d.get("model", ""))
+
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/tow-letter/pdf")
+@login_required
+def repo_lock_tow_letter_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+
+    pdf_bytes = _pg.generate_tow_letter_pdf(d)
+    safe_ref  = (d.get("registration") or d.get("swpi_ref") or str(rec_id)).replace("/", "-")
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=f"TowLetter_{safe_ref}.pdf")
+
+
 # ──────────────────────────── Forms Module ────────────────────────────
 
 _FORMS_CATALOGUE = [
@@ -4712,22 +5110,62 @@ _FORMS_CATALOGUE = [
         "generate_url": "/forms/generate?type=transport",
     },
     {
+        "id":          "voluntary_surrender",
+        "name":        "Voluntary Surrender Form — Sec 78(1) NCC",
+        "description": "Customer voluntarily surrenders mortgaged goods under the National Credit Code.",
+        "short":       "Voluntary Surrender",
+        "tags":        ["Repossession", "Surrender", "NCC"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=voluntary_surrender",
+    },
+    {
+        "id":          "form_13",
+        "name":        "Form 13 — Notice to Occupier of Premises",
+        "description": "NCCP Act form required when entering private property to repossess goods under a consumer credit contract.",
+        "short":       "Form 13",
+        "tags":        ["Repossession", "NCCP", "Regulated"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=form_13",
+    },
+    {
+        "id":          "wise_vir",
+        "name":        "Wise Group — Vehicle Inspection Report",
+        "description": "Wise-branded VIR with condition checkboxes for Wise Group repossession jobs.",
+        "short":       "Wise VIR",
+        "tags":        ["Wise Group", "VIR", "Condition Report"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#f59e0b" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=wise_vir",
+    },
+    {
+        "id":          "auction_letter",
+        "name":        "Auction Manager Letter",
+        "description": "Auto-populated letter to the auction house confirming vehicle delivery.",
+        "short":       "Auction Letter",
+        "tags":        ["Letter", "Auction", "Delivery"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=auction_letter",
+    },
+    {
+        "id":          "tow_letter",
+        "name":        "Towing Contractor Letter",
+        "description": "Auto-populated towing instructions letter with collection and delivery details.",
+        "short":       "Tow Letter",
+        "tags":        ["Letter", "Tow", "Transport"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=tow_letter",
+    },
+    {
         "id":          "far",
         "name":        "Field Attendance Report",
         "description": "Document an agent field attendance and observations.",
         "short":       "FAR",
         "tags":        ["Field", "Attendance"],
         "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
-        "available":   False,
-        "generate_url": "#",
-    },
-    {
-        "id":          "voluntary_surrender",
-        "name":        "Voluntary Surrender Form",
-        "description": "Customer voluntary surrender acknowledgement and declaration.",
-        "short":       "Voluntary Surrender",
-        "tags":        ["Repossession", "Surrender"],
-        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
         "available":   False,
         "generate_url": "#",
     },
@@ -4797,9 +5235,17 @@ def forms_generate():
 
         if rl:
             rec_id = rl["id"]
-            proceed_url = (f"/jobs/{job_id}/repo-lock/{rec_id}/vir"
-                           if form_type == "vir"
-                           else f"/jobs/{job_id}/repo-lock/{rec_id}/transport-instructions")
+            _url_map = {
+                "vir":                 f"/jobs/{job_id}/repo-lock/{rec_id}/vir",
+                "transport":           f"/jobs/{job_id}/repo-lock/{rec_id}/transport-instructions",
+                "wise_vir":            f"/jobs/{job_id}/repo-lock/{rec_id}/wise-vir",
+                "form_13":             f"/jobs/{job_id}/repo-lock/{rec_id}/form-13",
+                "voluntary_surrender": f"/jobs/{job_id}/repo-lock/{rec_id}/voluntary-surrender",
+                "auction_letter":      f"/jobs/{job_id}/repo-lock/{rec_id}/auction-letter",
+                "tow_letter":          f"/jobs/{job_id}/repo-lock/{rec_id}/tow-letter",
+            }
+            proceed_url = _url_map.get(form_type,
+                                       f"/jobs/{job_id}/repo-lock/{rec_id}/vir")
             conn.close()
             return render_template("forms_selector.html",
                                    form_type=form_type, form_title=form_title,

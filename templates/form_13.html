@@ -1,0 +1,120 @@
+{% extends "layout.html" %}
+{% block title %}Form 13 — {{ rec.registration or rec.customer_name or ('Job #' ~ job_id) }}{% endblock %}
+
+{% block content %}
+<div style="max-width:860px;margin:0 auto;padding:20px 16px 40px;">
+
+  <div style="margin-bottom:20px;">
+    <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
+    <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Form 13 — Notice to Occupier of Premises</h2>
+    <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">National Consumer Credit Protection Act 2009, Schedule 1</div>
+  </div>
+
+  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.82rem;color:#78350f;">
+    <strong>Important:</strong> A Form 13 is required when entering private property to repossess goods under a <strong>consumer credit contract</strong>. The occupier must sign this form, or a copy must be left at the premises.
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for cat, msg in messages %}
+    <div class="alert alert-{{ 'danger' if cat=='error' else cat }} py-2 px-3 mb-3" style="font-size:.84rem;">{{ msg }}</div>
+  {% endfor %}{% endif %}
+  {% endwith %}
+
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+    <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">FORM 13 — DATA PREVIEW</div>
+    {% macro field_row(label, value) %}<div style="display:flex;border-bottom:1px solid #f3f4f6;padding:6px 16px;font-size:.82rem;"><span style="width:200px;flex-shrink:0;color:#6b7280;font-weight:600;">{{ label }}</span><span style="color:#111;">{{ value or '—' }}</span></div>{% endmacro %}
+    {% macro section(title) %}<div style="background:#f3f4f6;padding:6px 16px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">{{ title }}</div>{% endmacro %}
+
+    {{ section('Creditor Details') }}
+    {{ field_row('Finance Company', rec.finance_company or rec.client_name) }}
+    {{ field_row('Account Number', rec.account_number) }}
+    {{ field_row('Client Reference', rec.client_reference) }}
+    {{ field_row('SWPI Reference', rec.swpi_ref) }}
+    {{ section('Mortgagor / Debtor') }}
+    {{ field_row('Full Name', rec.customer_name) }}
+    {{ field_row('Premises Address', rec.repo_address) }}
+    {{ section('Goods') }}
+    {{ field_row('Year / Make / Model', [item_year, item_make, item_model] | select | join(' ')) }}
+    {{ field_row('Registration', rec.registration) }}
+    {{ field_row('VIN / Chassis', rec.vin) }}
+    {{ section('Agent') }}
+    {{ field_row('Mercantile Agent', agent_name) }}
+    {{ field_row('Date', rec.repo_date) }}
+  </div>
+
+  <form id="form13Form" method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/form-13">
+    <input type="hidden" name="occupant_sig" id="occupantSigData">
+    <input type="hidden" name="agent_sig"    id="agentSigData">
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:20px;">
+      <div style="background:#2563eb;color:#fff;padding:10px 16px;font-weight:700;font-size:.88rem;">SIGNATURES</div>
+
+      <div style="padding:16px;border-bottom:1px solid #f3f4f6;">
+        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:4px;">Occupier / Mortgagor Signature <span style="color:#dc2626;">*</span></div>
+        <div style="font-size:.78rem;color:#6b7280;margin-bottom:8px;">If occupier refuses to sign, note this and leave a copy at premises</div>
+        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
+          <canvas id="occupantCanvas" width="480" height="120" style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+          <button type="button" onclick="clearCanvas('occupantCanvas','occupantSigData','occupantSigned')" style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">Clear</button>
+        </div>
+        <div id="occupantSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Occupier signature is required. If they refuse, use the "No Signature" option below.</div>
+        <input type="hidden" id="occupantSigned" value="0">
+        <div style="margin-top:8px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;color:#374151;cursor:pointer;">
+            <input type="checkbox" id="occupantRefused" name="occupant_refused" value="1" onchange="handleRefusal(this)">
+            Occupier refused to sign — copy left at premises
+          </label>
+        </div>
+      </div>
+
+      <div style="padding:16px;">
+        <div style="font-size:.85rem;font-weight:700;color:#111;margin-bottom:6px;">Agent Signature: {{ agent_name }} <span style="color:#dc2626;">*</span></div>
+        <div style="position:relative;display:inline-block;width:100%;max-width:480px;">
+          <canvas id="agentCanvas" width="480" height="120" style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+          <button type="button" onclick="clearCanvas('agentCanvas','agentSigData','agentSigned')" style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">Clear</button>
+        </div>
+        <div id="agentSigPrompt" style="font-size:.75rem;color:#dc2626;margin-top:4px;display:none;">Agent signature is required.</div>
+        <input type="hidden" id="agentSigned" value="0">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;">
+      <a href="/jobs/{{ job_id }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
+      <button type="submit" id="genBtn" style="padding:11px 24px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;min-width:200px;">
+        <span id="genBtnTxt">Generate &amp; Download Form 13 PDF</span>
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+  function _pos(canvas,e){var r=canvas.getBoundingClientRect();var sx=canvas.width/r.width;var sy=canvas.height/r.height;var src=e.touches?e.touches[0]:e;return{x:(src.clientX-r.left)*sx,y:(src.clientY-r.top)*sy};}
+  var _drawing={};
+  function _init(cid,did,sid){var canvas=document.getElementById(cid);var ctx=canvas.getContext('2d');ctx.strokeStyle='#111827';ctx.lineWidth=2;ctx.lineCap='round';ctx.lineJoin='round';_drawing[cid]=false;
+    function start(e){e.preventDefault();_drawing[cid]=true;var p=_pos(canvas,e);ctx.beginPath();ctx.moveTo(p.x,p.y);}
+    function move(e){if(!_drawing[cid])return;e.preventDefault();var p=_pos(canvas,e);ctx.lineTo(p.x,p.y);ctx.stroke();document.getElementById(sid).value='1';document.getElementById(did).value=canvas.toDataURL('image/png');}
+    function end(){_drawing[cid]=false;}
+    canvas.addEventListener('mousedown',start);canvas.addEventListener('mousemove',move);canvas.addEventListener('mouseup',end);canvas.addEventListener('mouseleave',end);
+    canvas.addEventListener('touchstart',start,{passive:false});canvas.addEventListener('touchmove',move,{passive:false});canvas.addEventListener('touchend',end);}
+  window.clearCanvas=function(cid,did,sid){var canvas=document.getElementById(cid);canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);document.getElementById(sid).value='0';document.getElementById(did).value='';};
+  window.handleRefusal=function(cb){
+    var prompt=document.getElementById('occupantSigPrompt');
+    var canvas=document.getElementById('occupantCanvas');
+    if(cb.checked){canvas.style.borderColor='#d1d5db';prompt.style.display='none';}
+  };
+  _init('occupantCanvas','occupantSigData','occupantSigned');
+  _init('agentCanvas','agentSigData','agentSigned');
+  document.getElementById('form13Form').addEventListener('submit',function(e){
+    var refused=document.getElementById('occupantRefused').checked;
+    var occupantSigned=document.getElementById('occupantSigned').value==='1';
+    var agentSigned=document.getElementById('agentSigned').value==='1';
+    var ok=true;
+    if(!refused && !occupantSigned){document.getElementById('occupantSigPrompt').style.display='block';document.getElementById('occupantCanvas').style.borderColor='#dc2626';ok=false;}
+    if(!agentSigned){document.getElementById('agentSigPrompt').style.display='block';document.getElementById('agentCanvas').style.borderColor='#dc2626';ok=false;}
+    if(!ok){e.preventDefault();document.getElementById('occupantCanvas').scrollIntoView({behavior:'smooth',block:'center'});return;}
+    var btn=document.getElementById('genBtn');btn.disabled=true;document.getElementById('genBtnTxt').textContent='Generating PDF\u2026';});
+})();
+</script>
+{% endblock %}

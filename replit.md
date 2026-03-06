@@ -39,10 +39,12 @@ No explicit user preferences were provided in the original `replit.md` file. The
    - Centralized management of Tow Operators and Auction Yards, accessible to all logged-in users.
    - Utilizes interactive modals for adding, editing, and deleting entries without full page reloads.
 
-**6. Customizable Job Forms:**
-   - "Forms" tab on job detail pages provides pre-defined and custom forms (e.g., Worksheet, VIR).
-   - Forms are auto-populated, editable, and print-ready, supporting dynamic dropdowns for field resources.
-   - Admin-only form builder for creating custom templates.
+**6. Forms Module (`/forms`):**
+   - Grid-based forms dashboard with 7 active form types: SWPI VIR, Transport Instructions, Voluntary Surrender (Sec 78(1) NCC), Form 13 (NCCP Notice to Occupier), Wise Group VIR, Auction Manager Letter, Towing Contractor Letter.
+   - Each form auto-populates from Repo Lock Records; signature forms use canvas-pad capture.
+   - PDF generation via `pdf_gen.py` (ReportLab). Mobile-accessible at `/m/forms`.
+   - PDF functions: `generate_vir_pdf`, `generate_transport_pdf`, `generate_wise_vir_pdf`, `generate_form_13_pdf`, `generate_voluntary_surrender_pdf`, `generate_auction_letter_pdf`, `generate_tow_letter_pdf`.
+   - All form routes under `/jobs/{job_id}/repo-lock/{rec_id}/{form-type}`.
 
 **7. Job Creation Enhancements:**
    - Improved job creation flow with client job number tracking and reference search.
@@ -75,7 +77,7 @@ No explicit user preferences were provided in the original `replit.md` file. The
     - **A/B Experiment Framework:** Supports controlled experiments for LPR features, with deterministic arm assignment and experiment-aware outcome recording.
     - **Policy Engine:** Defines rules for automated decision-making on experiment outcomes (promote, stop, tighten) based on performance metrics and safeguards.
     - **Controlled Automation:** Implements automated actions based on policy decisions, with guardrails, cooldowns, and post-change monitoring to prevent regressions.
-    - **Document Upload / Import Workflow (Web Only):** Supports `.docx`, `.pdf`, `.doc` extraction for autofilling job creation forms. Intelligent parsing identifies key fields and performs client/customer lookups.
+    - **Document Upload / Import Workflow (Web Only):** Supports `.docx`, `.pdf`, `.doc` extraction for autofilling job creation forms. Intelligent parsing identifies key fields and performs client/customer lookups. **Wise Group detection**: documents containing `WISE GROUP CASE NUMBER` trigger a dedicated parser extracting case number, CLIENT, NAME OF DEBTOR 1 (with inline DOB), Given address, phone (H/W/M), FINANCIER, LOAN TYPE (Chattel Mortgage → UNREGULATED), MAKE/MODEL, INSTALMENT AMOUNT/FREQUENCY, ARREARS, COSTS, VIN/CHASSIS, REGISTRATION, COLOUR, ENGINE.
 
 **12. Repo Lock (v2):**
     - Per-security-item repossession record accessible from both desktop and mobile job detail pages.
@@ -84,7 +86,8 @@ No explicit user preferences were provided in the original `replit.md` file. The
     - Mobile: full-screen overlay (`#rlOverlay`) using `<details>` elements; footer has 3 buttons: Cancel, Save Draft, Submit.
     - **Save Draft**: saves fields to `repo_lock_records` with `status='Draft'`; shows amber banner, amber button; does NOT add interactions note.
     - **Submit**: validates (repo_date, agent_name, registration or description required); saves to `repo_lock_records` with `status='Submitted'`, creates `repo_lock_queue` entry (Pending), writes formatted note to `interactions` and `job_field_notes`; shows success panel with Next Steps.
-    - **Next Steps panel** (post-submit): links to VIR (`/jobs/<id>/repo-lock/<rec_id>/vir`) and Transport Instructions (`/jobs/<id>/repo-lock/<rec_id>/transport-instructions`).
+    - **Next Steps panel** (post-submit): links to VIR, Transport Instructions, and the Forms module for all available form types.
+    - **Additional form routes**: `/wise-vir`, `/form-13`, `/voluntary-surrender`, `/auction-letter`, `/auction-letter/pdf`, `/tow-letter`, `/tow-letter/pdf` — all under `/jobs/<id>/repo-lock/<rec_id>/`.
     - `_repo_lock_note(d)` helper builds a formatted plain-text summary of the entire Repo Lock record.
     - Data: `repo_lock_records` (60+ fields, `status`, `submitted_at`, `agent_signature`, `customer_signature`, `tow_signature`, `agent_signed_at`, `customer_signed_at`, `tow_signed_at`), `repo_lock_queue` (tracks Pending/Reviewed/Processed, `submission_count`, reviewer fields).
     - Routes: `GET /jobs/<job_id>/repo-lock/<item_id>` (JSON prefill + status), `POST .../save` (Draft), `POST .../submit` (Submitted + queue + note), `GET/POST .../vir`, `GET/POST .../transport-instructions`.
