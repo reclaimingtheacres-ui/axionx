@@ -16,6 +16,8 @@
       <a href="{{ url_for('admin_lpr_sightings') }}" class="btn btn-sm btn-outline-secondary">← Sightings</a>
       <a href="{{ url_for('admin_lpr_watchlist') }}"  class="btn btn-sm btn-outline-secondary">⚑ Watchlist</a>
       <a href="{{ url_for('admin_lpr_agent_map') }}"  class="btn btn-sm btn-outline-success">👥 Agents</a>
+      <a href="{{ url_for('admin_lpr_patrol_export') }}" class="btn btn-sm btn-outline-secondary"
+         title="Export training CSV for Create ML">⬇ Export CSV</a>
       <form method="POST" action="{{ url_for('admin_lpr_patrol_recompute') }}" style="margin:0;">
         <button type="submit" class="btn btn-sm btn-primary">↺ Recompute</button>
       </form>
@@ -82,11 +84,24 @@
     </div>
   </form>
 
-  {# ── Results count ── #}
-  <div class="d-flex align-items-center justify-content-between mb-3">
+  {# ── Results count + ML model badge ── #}
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <span class="text-muted small">
       Showing <strong>{{ intel | length }}</strong> of <strong>{{ total }}</strong> records
     </span>
+    {% if ml_model_ver %}
+    <span class="badge rounded-pill"
+          style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+                 font-size:.73rem;font-weight:600;padding:4px 10px;">
+      ML model: {{ ml_model_ver }} · 40/60 blend active
+    </span>
+    {% else %}
+    <span class="badge rounded-pill"
+          style="background:#f9fafb;color:#6b7280;border:1px solid #e5e7eb;
+                 font-size:.73rem;font-weight:600;padding:4px 10px;">
+      ML model not yet scored — rule scores only
+    </span>
+    {% endif %}
   </div>
 
   {% if not intel %}
@@ -106,7 +121,9 @@
           <tr>
             <th class="ps-3" style="width:110px;">Plate</th>
             <th style="width:80px;">Priority</th>
-            <th style="width:60px;">Conf.</th>
+            <th style="width:52px;" title="Rule-based confidence score">Rule</th>
+            <th style="width:52px;" title="iOS Core ML prediction score (40/60 blend)">ML</th>
+            <th style="width:72px;" title="Combined score (40% rule + 60% ML, or rule-only if no ML)">Combined</th>
             <th style="width:55px;">Seen</th>
             <th style="width:55px;">Agents</th>
             <th>Day pattern</th>
@@ -119,6 +136,7 @@
         </thead>
         <tbody>
           {% for p in intel %}
+          {% set disp_score = p.combined %}
           <tr>
             <td class="ps-3">
               <div style="display:flex;align-items:center;gap:6px;">
@@ -141,15 +159,37 @@
               {% endif %}
             </td>
 
+            {# Rule score #}
+            <td>
+              <span style="font-size:.8rem;color:var(--muted);">{{ p.rule_score }}</span>
+            </td>
+
+            {# ML score #}
+            <td>
+              {% if p.ml_score is not none %}
+              <span style="font-size:.8rem;color:#1d4ed8;font-weight:600;">{{ p.ml_score }}</span>
+              {% else %}
+              <span style="font-size:.75rem;color:#d1d5db;">—</span>
+              {% endif %}
+            </td>
+
+            {# Combined score with bar #}
             <td>
               <div class="d-flex align-items-center gap-1">
                 <div style="width:36px;height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
-                  <div style="height:100%;width:{{ p.confidence }}%;
-                    background:{% if p.confidence>=75 %}#dc2626{% elif p.confidence>=50 %}#d97706{% elif p.confidence>=30 %}#2563eb{% else %}#9ca3af{% endif %};
+                  <div style="height:100%;width:{{ disp_score }}%;
+                    background:{% if disp_score>=75 %}#dc2626{% elif disp_score>=50 %}#d97706{% elif disp_score>=30 %}#2563eb{% else %}#9ca3af{% endif %};
                     border-radius:4px;"></div>
                 </div>
-                <span style="font-size:.75rem;color:var(--muted);">{{ p.confidence }}</span>
+                <span style="font-size:.75rem;{% if p.ml_score is not none %}color:#1d4ed8;font-weight:600;{% else %}color:var(--muted);{% endif %}">
+                  {{ disp_score }}
+                </span>
               </div>
+              {% if p.ml_score is not none %}
+              <div style="font-size:.68rem;color:#6b7280;margin-top:2px;">
+                {{ p.pred_window }} · {{ p.model_version }}
+              </div>
+              {% endif %}
             </td>
 
             <td class="text-center">

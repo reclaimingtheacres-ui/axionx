@@ -8829,6 +8829,259 @@ def _recompute_patrol_intelligence(conn, registration_filter=None):
     conn.commit()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 13 — ML-assisted prediction refinement
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _lpr_prediction_scores_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_prediction_scores (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            registration_normalised TEXT    NOT NULL UNIQUE,
+            matched_job_id          INTEGER,
+            rule_confidence_score   INTEGER NOT NULL DEFAULT 0,
+            ml_confidence_score     INTEGER,
+            combined_score          INTEGER NOT NULL DEFAULT 0,
+            prediction_window       TEXT    DEFAULT '72h',
+            model_version           TEXT    DEFAULT 'unscored',
+            last_scored_at          TEXT    NOT NULL
+        )
+    """)
+    conn.commit()
+
+
+def _recompute_combined_patrol_scores(conn):
+    """
+    For every plate in lpr_patrol_intelligence, look up any ML score in
+    lpr_prediction_scores.  Where an ML score exists, blend:
+        combined = round(0.40 * rule + 0.60 * ml)
+    Otherwise combined = rule.  Upsert back into lpr_prediction_scores so
+    the admin page and mobile API always have a single combined_score value.
+    """
+    _lpr_prediction_scores_ensure(conn)
+    pi_rows = conn.execute("""
+        SELECT registration_normalised, confidence_score, matched_job_id
+        FROM lpr_patrol_intelligence
+    """).fetchall()
+
+    now = now_ts()
+    for pi in pi_rows:
+        reg        = pi["registration_normalised"]
+        rule_score = pi["confidence_score"]
+        ps = conn.execute(
+            "SELECT ml_confidence_score, model_version, prediction_window "
+            "FROM lpr_prediction_scores WHERE registration_normalised=?", (reg,)
+        ).fetchone()
+
+        ml_score   = ps["ml_confidence_score"]  if ps else None
+        model_ver  = ps["model_version"]         if ps else "unscored"
+        pred_win   = ps["prediction_window"]     if ps else "72h"
+
+        if ml_score is not None:
+            combined = round(0.40 * rule_score + 0.60 * ml_score)
+        else:
+            combined = rule_score
+
+        conn.execute("""
+            INSERT INTO lpr_prediction_scores
+                (registration_normalised, matched_job_id, rule_confidence_score,
+                 ml_confidence_score, combined_score, prediction_window,
+                 model_version, last_scored_at)
+            VALUES (?,?,?,?,?,?,?,?)
+            ON CONFLICT(registration_normalised) DO UPDATE SET
+                matched_job_id        = excluded.matched_job_id,
+                rule_confidence_score = excluded.rule_confidence_score,
+                combined_score        = excluded.combined_score,
+                last_scored_at        = excluded.last_scored_at
+        """, (reg, pi["matched_job_id"], rule_score, ml_score, combined,
+              pred_win, model_ver, now))
+    conn.commit()
+
+
+# ── Admin: training data export ────────────────────────────────────────────────
+
+@app.get("/admin/lpr/patrol/export.csv")
+@admin_required
+def admin_lpr_patrol_export():
+    """
+    Export a clean tabular CSV for Create ML training.
+    Features: only safe operational data (no customer/finance fields).
+    Target: seen_again_72h  (1 if any two sightings of this plate are within
+    72 hours of each other in the 30-day window).
+    """
+    from datetime import timedelta as _td_exp
+    import io as _io
+    import csv as _csv
+
+    cutoff = (datetime.utcnow() - _td_exp(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+    conn   = db()
+    _patrol_intelligence_ensure(conn)
+    _lpr_prediction_scores_ensure(conn)
+    _lpr_sightings_ensure_table(conn)
+
+    pi_rows = conn.execute("""
+        SELECT p.registration_normalised,
+               p.repeat_count_30d, p.distinct_agent_count,
+               p.watchlist_hit, p.result_type,
+               p.likely_day_bucket, p.likely_time_window,
+               p.likely_zone, p.confidence_score
+        FROM lpr_patrol_intelligence p
+    """).fetchall()
+
+    sighting_times = {}
+    raw = conn.execute("""
+        SELECT registration_normalised, created_at
+        FROM lpr_sightings
+        WHERE created_at >= ? AND registration_normalised IS NOT NULL
+        ORDER BY registration_normalised, created_at
+    """, (cutoff,)).fetchall()
+    conn.close()
+
+    for r in raw:
+        reg = r["registration_normalised"]
+        sighting_times.setdefault(reg, []).append(r["created_at"][:19])
+
+    output = _io.StringIO()
+    writer = _csv.DictWriter(output, fieldnames=[
+        "registration_normalised",
+        "repeat_count_30d",
+        "distinct_agent_count",
+        "is_watchlist",
+        "result_type_allocated",
+        "result_type_restricted",
+        "result_type_conflict",
+        "day_bucket_weekday",
+        "day_bucket_weekend",
+        "day_bucket_both",
+        "time_window_morning",
+        "time_window_afternoon",
+        "time_window_evening",
+        "time_window_night",
+        "has_gps_cluster",
+        "rule_confidence_score",
+        "seen_again_72h",
+    ])
+    writer.writeheader()
+
+    for pi in pi_rows:
+        reg     = pi["registration_normalised"]
+        rt      = pi["result_type"] or "no_match"
+        db_val  = pi["likely_day_bucket"] or "unknown"
+        tw_val  = pi["likely_time_window"] or "mixed"
+        has_gps = 1 if pi["likely_zone"] else 0
+
+        times   = sighting_times.get(reg, [])
+        s72h    = 0
+        if len(times) >= 2:
+            parsed = []
+            for t in times:
+                try:
+                    parsed.append(datetime.fromisoformat(t))
+                except Exception:
+                    pass
+            parsed.sort()
+            for i in range(len(parsed) - 1):
+                diff_h = (parsed[i + 1] - parsed[i]).total_seconds() / 3600
+                if diff_h <= 72:
+                    s72h = 1
+                    break
+
+        writer.writerow({
+            "registration_normalised": reg,
+            "repeat_count_30d":        pi["repeat_count_30d"],
+            "distinct_agent_count":    pi["distinct_agent_count"],
+            "is_watchlist":            1 if pi["watchlist_hit"] else 0,
+            "result_type_allocated":   1 if rt == "allocated_match"  else 0,
+            "result_type_restricted":  1 if rt == "restricted_match" else 0,
+            "result_type_conflict":    1 if rt == "conflict"         else 0,
+            "day_bucket_weekday":      1 if db_val == "weekday"  else 0,
+            "day_bucket_weekend":      1 if db_val == "weekend"  else 0,
+            "day_bucket_both":         1 if db_val == "both"     else 0,
+            "time_window_morning":     1 if tw_val == "morning"   else 0,
+            "time_window_afternoon":   1 if tw_val == "afternoon" else 0,
+            "time_window_evening":     1 if tw_val == "evening"   else 0,
+            "time_window_night":       1 if tw_val == "night"     else 0,
+            "has_gps_cluster":         has_gps,
+            "rule_confidence_score":   pi["confidence_score"],
+            "seen_again_72h":          s72h,
+        })
+
+    csv_bytes = output.getvalue().encode("utf-8")
+    resp = make_response(csv_bytes)
+    resp.headers["Content-Type"]        = "text/csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = "attachment; filename=lpr_patrol_training.csv"
+    return resp
+
+
+# ── Mobile: receive ML scores from iOS ────────────────────────────────────────
+
+@app.post("/m/api/lpr/patrol/scores")
+@mobile_login_required
+def m_api_lpr_patrol_scores():
+    """
+    iOS app posts Core ML inference results after running the bundled model.
+    Payload: {model_version, prediction_window, scores: [{registration, ml_score}]}
+    Accepts only authenticated mobile sessions.  No customer data touched.
+    """
+    data          = request.get_json(silent=True) or {}
+    model_version = (data.get("model_version") or "v1.0").strip()[:40]
+    pred_window   = (data.get("prediction_window") or "72h").strip()[:10]
+    scores        = data.get("scores") or []
+
+    if not isinstance(scores, list):
+        return jsonify({"ok": False, "error": "scores must be a list"}), 400
+
+    conn = db()
+    _lpr_prediction_scores_ensure(conn)
+    now  = now_ts()
+    n    = 0
+    for item in scores[:200]:
+        if not isinstance(item, dict):
+            continue
+        reg      = (item.get("registration") or "").strip().upper()
+        ml_score = item.get("ml_score")
+        if not reg or ml_score is None:
+            continue
+        try:
+            ml_score = max(0, min(100, int(float(ml_score))))
+        except (ValueError, TypeError):
+            continue
+
+        existing = conn.execute(
+            "SELECT rule_confidence_score FROM lpr_prediction_scores "
+            "WHERE registration_normalised=?", (reg,)
+        ).fetchone()
+
+        if existing:
+            rule_score = existing["rule_confidence_score"]
+        else:
+            pi = conn.execute(
+                "SELECT confidence_score, matched_job_id "
+                "FROM lpr_patrol_intelligence WHERE registration_normalised=?", (reg,)
+            ).fetchone()
+            rule_score = pi["confidence_score"] if pi else 0
+
+        combined = round(0.40 * rule_score + 0.60 * ml_score)
+
+        conn.execute("""
+            INSERT INTO lpr_prediction_scores
+                (registration_normalised, rule_confidence_score, ml_confidence_score,
+                 combined_score, prediction_window, model_version, last_scored_at)
+            VALUES (?,?,?,?,?,?,?)
+            ON CONFLICT(registration_normalised) DO UPDATE SET
+                ml_confidence_score = excluded.ml_confidence_score,
+                combined_score      = excluded.combined_score,
+                prediction_window   = excluded.prediction_window,
+                model_version       = excluded.model_version,
+                last_scored_at      = excluded.last_scored_at
+        """, (reg, rule_score, ml_score, combined, pred_window, model_version, now))
+        n += 1
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "updated": n}), 200
+
+
 # ── Admin: patrol opportunities ────────────────────────────────────────────────
 
 @app.get("/admin/lpr/patrol")
@@ -8836,6 +9089,7 @@ def _recompute_patrol_intelligence(conn, registration_filter=None):
 def admin_lpr_patrol():
     conn = db()
     _patrol_intelligence_ensure(conn)
+    _lpr_prediction_scores_ensure(conn)
 
     f_priority   = request.args.get("priority",   "")
     f_watchlist  = request.args.get("watchlist",  "")
@@ -8853,7 +9107,7 @@ def admin_lpr_patrol():
         conditions.append("p.watchlist_hit = 1")
     if f_min_conf:
         try:
-            conditions.append("p.confidence_score >= ?")
+            conditions.append("COALESCE(ps.combined_score, p.confidence_score) >= ?")
             params.append(int(f_min_conf))
         except ValueError:
             pass
@@ -8867,14 +9121,21 @@ def admin_lpr_patrol():
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     rows = conn.execute(f"""
-        SELECT p.*
+        SELECT p.*,
+               ps.ml_confidence_score,
+               ps.combined_score,
+               ps.model_version,
+               ps.prediction_window,
+               ps.last_scored_at AS ml_scored_at
         FROM lpr_patrol_intelligence p
+        LEFT JOIN lpr_prediction_scores ps
+               ON ps.registration_normalised = p.registration_normalised
         {where}
         ORDER BY
             CASE p.recommended_patrol_priority
                 WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
                 WHEN 'medium' THEN 3 ELSE 4 END,
-            p.confidence_score DESC
+            COALESCE(ps.combined_score, p.confidence_score) DESC
         LIMIT 200
     """, params).fetchall()
 
@@ -8882,6 +9143,11 @@ def admin_lpr_patrol():
     last_run = conn.execute(
         "SELECT MAX(last_computed_at) AS t FROM lpr_patrol_intelligence"
     ).fetchone()["t"]
+    ml_model_ver = conn.execute(
+        "SELECT model_version FROM lpr_prediction_scores "
+        "WHERE model_version IS NOT NULL AND model_version != 'unscored' "
+        "ORDER BY last_scored_at DESC LIMIT 1"
+    ).fetchone()
     conn.close()
 
     intel = []
@@ -8898,22 +9164,29 @@ def admin_lpr_patrol():
                 factors = json.loads(r["explanation"])
             except Exception:
                 pass
+        ml_score = r["ml_confidence_score"]
+        combined = r["combined_score"] if r["combined_score"] is not None else r["confidence_score"]
         intel.append({
-            "id":           r["id"],
-            "reg":          r["registration_normalised"],
-            "job_id":       r["matched_job_id"],
-            "repeat":       r["repeat_count_30d"],
-            "agents":       r["distinct_agent_count"],
-            "zone":         zone,
-            "day_bucket":   r["likely_day_bucket"] or "unknown",
-            "time_window":  r["likely_time_window"] or "mixed",
-            "confidence":   r["confidence_score"],
-            "priority":     r["recommended_patrol_priority"] or "low",
-            "action":       r["recommended_action"] or "",
-            "factors":      factors,
-            "watchlist":    bool(r["watchlist_hit"]),
-            "result_type":  r["result_type"] or "no_match",
-            "computed_at":  r["last_computed_at"],
+            "id":            r["id"],
+            "reg":           r["registration_normalised"],
+            "job_id":        r["matched_job_id"],
+            "repeat":        r["repeat_count_30d"],
+            "agents":        r["distinct_agent_count"],
+            "zone":          zone,
+            "day_bucket":    r["likely_day_bucket"] or "unknown",
+            "time_window":   r["likely_time_window"] or "mixed",
+            "rule_score":    r["confidence_score"],
+            "ml_score":      ml_score,
+            "combined":      combined,
+            "model_version": r["model_version"] or "unscored",
+            "pred_window":   r["prediction_window"] or "72h",
+            "ml_scored_at":  r["ml_scored_at"],
+            "priority":      r["recommended_patrol_priority"] or "low",
+            "action":        r["recommended_action"] or "",
+            "factors":       factors,
+            "watchlist":     bool(r["watchlist_hit"]),
+            "result_type":   r["result_type"] or "no_match",
+            "computed_at":   r["last_computed_at"],
         })
 
     return render_template(
@@ -8921,6 +9194,7 @@ def admin_lpr_patrol():
         intel=intel, total=total, last_run=last_run,
         f_priority=f_priority, f_watchlist=f_watchlist,
         f_min_conf=f_min_conf, f_result=f_result, f_day_bucket=f_day_bucket,
+        ml_model_ver=ml_model_ver["model_version"] if ml_model_ver else None,
     )
 
 
@@ -8929,10 +9203,12 @@ def admin_lpr_patrol():
 def admin_lpr_patrol_recompute():
     conn = db()
     _patrol_intelligence_ensure(conn)
+    _lpr_prediction_scores_ensure(conn)
     _lpr_sightings_ensure_table(conn)
     _recompute_patrol_intelligence(conn)
+    _recompute_combined_patrol_scores(conn)
     conn.close()
-    flash("Patrol intelligence recomputed from the last 30 days of sightings.", "success")
+    flash("Patrol intelligence and combined scores recomputed from the last 30 days.", "success")
     return redirect(url_for("admin_lpr_patrol"))
 
 
@@ -8943,18 +9219,23 @@ def admin_lpr_patrol_recompute():
 def m_lpr_patrol():
     conn = db()
     _patrol_intelligence_ensure(conn)
+    _lpr_prediction_scores_ensure(conn)
     rows = conn.execute("""
-        SELECT registration_normalised, repeat_count_30d, distinct_agent_count,
-               likely_zone, likely_day_bucket, likely_time_window,
-               confidence_score, recommended_patrol_priority,
-               recommended_action, explanation, watchlist_hit, result_type,
-               last_computed_at
-        FROM lpr_patrol_intelligence
+        SELECT p.registration_normalised, p.repeat_count_30d, p.distinct_agent_count,
+               p.likely_zone, p.likely_day_bucket, p.likely_time_window,
+               p.confidence_score, p.recommended_patrol_priority,
+               p.recommended_action, p.explanation, p.watchlist_hit, p.result_type,
+               p.last_computed_at,
+               ps.ml_confidence_score, ps.combined_score,
+               ps.model_version, ps.prediction_window
+        FROM lpr_patrol_intelligence p
+        LEFT JOIN lpr_prediction_scores ps
+               ON ps.registration_normalised = p.registration_normalised
         ORDER BY
-            CASE recommended_patrol_priority
+            CASE p.recommended_patrol_priority
                 WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
                 WHEN 'medium' THEN 3 ELSE 4 END,
-            confidence_score DESC
+            COALESCE(ps.combined_score, p.confidence_score) DESC
         LIMIT 100
     """).fetchall()
     conn.close()
@@ -8973,19 +9254,25 @@ def m_lpr_patrol():
                 factors = json.loads(r["explanation"])
             except Exception:
                 pass
+        ml_score = r["ml_confidence_score"]
+        combined = r["combined_score"] if r["combined_score"] is not None else r["confidence_score"]
         items.append({
-            "reg":         r["registration_normalised"],
-            "repeat":      r["repeat_count_30d"],
-            "agents":      r["distinct_agent_count"],
-            "zone":        zone,
-            "day_bucket":  r["likely_day_bucket"] or "unknown",
-            "time_window": r["likely_time_window"] or "mixed",
-            "confidence":  r["confidence_score"],
-            "priority":    r["recommended_patrol_priority"] or "low",
-            "action":      r["recommended_action"] or "",
-            "factors":     factors,
-            "watchlist":   bool(r["watchlist_hit"]),
-            "result_type": r["result_type"] or "no_match",
+            "reg":           r["registration_normalised"],
+            "repeat":        r["repeat_count_30d"],
+            "agents":        r["distinct_agent_count"],
+            "zone":          zone,
+            "day_bucket":    r["likely_day_bucket"] or "unknown",
+            "time_window":   r["likely_time_window"] or "mixed",
+            "rule_score":    r["confidence_score"],
+            "ml_score":      ml_score,
+            "combined":      combined,
+            "model_version": r["model_version"] or "unscored",
+            "pred_window":   r["prediction_window"] or "72h",
+            "priority":      r["recommended_patrol_priority"] or "low",
+            "action":        r["recommended_action"] or "",
+            "factors":       factors,
+            "watchlist":     bool(r["watchlist_hit"]),
+            "result_type":   r["result_type"] or "no_match",
         })
     return render_template("mobile/lpr_patrol.html", items=items)
 
@@ -8995,18 +9282,23 @@ def m_lpr_patrol():
 def m_api_lpr_patrol():
     conn = db()
     _patrol_intelligence_ensure(conn)
+    _lpr_prediction_scores_ensure(conn)
     rows = conn.execute("""
-        SELECT registration_normalised, repeat_count_30d, distinct_agent_count,
-               likely_zone, likely_day_bucket, likely_time_window,
-               confidence_score, recommended_patrol_priority,
-               recommended_action, watchlist_hit, result_type,
-               last_computed_at
-        FROM lpr_patrol_intelligence
+        SELECT p.registration_normalised, p.repeat_count_30d, p.distinct_agent_count,
+               p.likely_zone, p.likely_day_bucket, p.likely_time_window,
+               p.confidence_score, p.recommended_patrol_priority,
+               p.recommended_action, p.watchlist_hit, p.result_type,
+               p.last_computed_at,
+               ps.ml_confidence_score, ps.combined_score,
+               ps.model_version, ps.prediction_window
+        FROM lpr_patrol_intelligence p
+        LEFT JOIN lpr_prediction_scores ps
+               ON ps.registration_normalised = p.registration_normalised
         ORDER BY
-            CASE recommended_patrol_priority
+            CASE p.recommended_patrol_priority
                 WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
                 WHEN 'medium' THEN 3 ELSE 4 END,
-            confidence_score DESC
+            COALESCE(ps.combined_score, p.confidence_score) DESC
         LIMIT 100
     """).fetchall()
     conn.close()
@@ -9019,19 +9311,25 @@ def m_api_lpr_patrol():
                 zone = json.loads(r["likely_zone"])
             except Exception:
                 pass
+        ml_score = r["ml_confidence_score"]
+        combined = r["combined_score"] if r["combined_score"] is not None else r["confidence_score"]
         items.append({
-            "registration":  r["registration_normalised"],
-            "repeat_count":  r["repeat_count_30d"],
-            "agent_count":   r["distinct_agent_count"],
-            "zone":          zone,
-            "day_bucket":    r["likely_day_bucket"],
-            "time_window":   r["likely_time_window"],
-            "confidence":    r["confidence_score"],
-            "priority":      r["recommended_patrol_priority"],
-            "action":        r["recommended_action"],
-            "watchlist_hit": bool(r["watchlist_hit"]),
-            "result_type":   r["result_type"],
-            "computed_at":   r["last_computed_at"],
+            "registration":    r["registration_normalised"],
+            "repeat_count":    r["repeat_count_30d"],
+            "agent_count":     r["distinct_agent_count"],
+            "zone":            zone,
+            "day_bucket":      r["likely_day_bucket"],
+            "time_window":     r["likely_time_window"],
+            "confidence":      r["confidence_score"],
+            "ml_score":        ml_score,
+            "combined_score":  combined,
+            "model_version":   r["model_version"] or "unscored",
+            "pred_window":     r["prediction_window"] or "72h",
+            "priority":        r["recommended_patrol_priority"],
+            "action":          r["recommended_action"],
+            "watchlist_hit":   bool(r["watchlist_hit"]),
+            "result_type":     r["result_type"],
+            "computed_at":     r["last_computed_at"],
         })
     return jsonify({"count": len(items), "items": items}), 200
 

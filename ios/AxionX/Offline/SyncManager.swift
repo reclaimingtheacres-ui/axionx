@@ -202,6 +202,10 @@ final class SyncManager: ObservableObject {
                 }
             }
         } catch {}
+
+        // Opportunistic patrol rescoring — runs only when the ML model is bundled
+        // and the 6-hour cooldown has elapsed.  Completely silent; never blocks UI.
+        PatrolPredictionService.shared.runBatchScoringIfNeeded(webView: webView)
     }
 
     // MARK: - Item processing

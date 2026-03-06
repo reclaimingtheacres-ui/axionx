@@ -542,3 +542,75 @@ Automated patrol pattern engine that analyses 30 days of sightings to rank plate
 - `isOnPatrolPage` computed var — `true` when current URL path starts with `/m/lpr/patrol`
 - `navigateToPatrol()` private method — loads `/m/lpr/patrol` using `AppConfig.entryURL` scheme + host
 - **Patrol floating button** — secondary pill button below the Live Scan button, visible on all LPR pages except the patrol page itself. Tapping calls `navigateToPatrol()`. Styled in light-blue to differentiate from the primary scan button.
+
+## LPR Stage 13 — ML-Assisted Patrol Prediction Refinement
+
+### Overview
+
+Adds a Core ML–based prediction layer on top of the Stage 12 rule engine. When the iOS app has a bundled `LPRPatrolModel.mlmodelc`, it runs inference on patrol items and posts scores back to the server. The server blends **40% rule + 60% ML** into a `combined_score`. Until a model is bundled, everything falls back to rule-only scoring with zero UI disruption.
+
+### New DB table: `lpr_prediction_scores`
+
+| Column | Type | Notes |
+|---|---|---|
+| `registration_normalised` | TEXT UNIQUE | Foreign key to `lpr_patrol_intelligence` |
+| `matched_job_id` | INTEGER | Operational link only |
+| `rule_confidence_score` | INTEGER | Snapshot of rule score at scoring time |
+| `ml_confidence_score` | INTEGER | Score from iOS Core ML inference (0–100); NULL if no model |
+| `combined_score` | INTEGER | `round(0.40 × rule + 0.60 × ml)`, or `rule` if no ML |
+| `prediction_window` | TEXT | `72h` (default) |
+| `model_version` | TEXT | `v1.0`, `unscored`, etc. |
+| `last_scored_at` | TEXT | ISO timestamp |
+
+### New backend helpers (app.py)
+
+- `_lpr_prediction_scores_ensure(conn)` — idempotent table creation
+- `_recompute_combined_patrol_scores(conn)` — iterates all patrol intelligence rows, blends any ML score into combined_score, upserts via `ON CONFLICT`
+
+### New routes (app.py)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin/lpr/patrol/export.csv` | Training CSV export (features + `seen_again_72h` label) for Create ML offline training. No customer/finance data. |
+| POST | `/m/api/lpr/patrol/scores` | iOS posts `{model_version, prediction_window, scores: [{registration, ml_score}]}`. Upserts ML scores, recomputes combined. Accepts ≤200 items per request. |
+
+### Updated routes
+
+- `GET /admin/lpr/patrol` — now LEFT JOINs `lpr_prediction_scores`, exposes `rule_score`, `ml_score`, `combined`, `model_version`, `pred_window`. Sorts by combined score.
+- `POST /admin/lpr/patrol/recompute` — also calls `_recompute_combined_patrol_scores` after rule recompute.
+- `GET /m/lpr/patrol` — same join; passes `rule_score`, `ml_score`, `combined`, `model_version`, `pred_window` to template.
+- `GET /m/api/lpr/patrol` — same join; adds `ml_score`, `combined_score`, `model_version`, `pred_window` to each item dict.
+
+### Template updates
+
+- `templates/lpr_patrol.html` — Export CSV button added to action bar; ML model version badge in results count row (shows "40/60 blend active" or "rule scores only"); "Conf." column split into **Rule / ML / Combined** columns; combined score bar uses blue tint when ML scored; model version + prediction window sub-label shown per row.
+- `templates/mobile/lpr_patrol.html` — confidence bar uses `combined` score; ML badge (`ML 72h`) shown when model has scored the plate; new **ML Prediction** row shows "Likely repeat within 72h" / "Lower repeat probability" + (ML%·Rule%·Blend%) breakdown.
+
+### iOS additions
+
+**`ios/AxionX/Services/PatrolPredictionService.swift`** (new)
+- `@MainActor` singleton
+- `loadModel()` — loads `LPRPatrolModel.mlmodelc` from bundle; silently disabled if not present
+- `runBatchScoringIfNeeded(webView:)` — public entry point called from SyncManager; enforces 6-hour cooldown; no-op if model unavailable
+- `runInference(model:item:)` — one-hot encodes patrol API dict, calls `MLDictionaryFeatureProvider`, reads `seen_again_72hProbability["1"]`; falls back to regressor output column
+- `fetchPatrolItems(webView:)` — cookie-authenticated GET `/m/api/lpr/patrol`
+- `uploadScores(scores:webView:)` — cookie-authenticated POST `/m/api/lpr/patrol/scores`
+
+**`ios/AxionX/Offline/SyncManager.swift`** (updated)
+- `refreshRemoteState(webView:)` — after follow-up refresh, calls `PatrolPredictionService.shared.runBatchScoringIfNeeded(webView:)`
+
+**`ios/AxionX.xcodeproj/project.pbxproj`** (updated)
+- PBXBuildFile ID `F100000000000000000039` (build ref)
+- PBXFileReference ID `F100000000000000000038` (file ref)
+- Added to Services group `G100000000000000000006`
+- Added to PBXSourcesBuildPhase `H100000000000000000001`
+- **Next IDs start at `3A`**
+
+### Create ML training workflow
+
+1. Download training CSV from `GET /admin/lpr/patrol/export.csv`
+2. Open Create ML on Mac → New Project → Tabular Classifier
+3. Target: `seen_again_72h`; Features: all remaining columns except `registration_normalised`
+4. Train, export as `LPRPatrolModel.mlmodel`, compile to `LPRPatrolModel.mlmodelc`
+5. Drag `LPRPatrolModel.mlmodelc` into Xcode → AxionX target → retrigger a build
+6. On first app sync, `PatrolPredictionService` runs inference and posts scores; admin page shows "ML model: v1.0 · 40/60 blend active"

@@ -79,6 +79,7 @@ Patrol Intel
           </div>
         </div>
 
+        {% set disp = p.combined %}
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
           <span style="font-size:.7rem;font-weight:700;color:{{ pri_color }};
                        background:{{ pri_bg }};border:1px solid {{ pri_border }};
@@ -88,13 +89,19 @@ Patrol Intel
             {% elif p.priority == 'medium' %}Medium
             {% else %}Low{% endif %}
           </span>
-          {# Confidence bar #}
+          {# Confidence bar — uses combined score when ML is available #}
           <div style="display:flex;align-items:center;gap:5px;">
             <div style="width:48px;height:5px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
-              <div style="height:100%;width:{{ p.confidence }}%;background:{{ pri_color }};border-radius:4px;"></div>
+              <div style="height:100%;width:{{ disp }}%;background:{{ pri_color }};border-radius:4px;"></div>
             </div>
-            <span style="font-size:.7rem;color:var(--muted);">{{ p.confidence }}%</span>
+            <span style="font-size:.7rem;color:var(--muted);">{{ disp }}%</span>
           </div>
+          {# ML badge — shown only when a model has scored this plate #}
+          {% if p.ml_score is not none %}
+          <span style="font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:7px;
+                       background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+                       white-space:nowrap;">ML {{ p.pred_window }}</span>
+          {% endif %}
         </div>
 
       </div>
@@ -130,6 +137,22 @@ Patrol Intel
 
     </div>
   </div>
+
+  {# ML prediction row — visible only when model has scored this plate #}
+  {% if p.ml_score is not none %}
+  <div style="border-top:1px solid var(--line);padding:7px 14px 7px 19px;
+              display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span style="font-size:.68rem;font-weight:700;text-transform:uppercase;
+                 letter-spacing:.04em;color:#1d4ed8;">ML Prediction</span>
+    <span style="font-size:.78rem;color:var(--text);">
+      {% if p.combined >= 50 %}Likely repeat within {{ p.pred_window }}
+      {% else %}Lower repeat probability within {{ p.pred_window }}{% endif %}
+    </span>
+    <span style="font-size:.7rem;color:var(--muted);">
+      (ML {{ p.ml_score }}% · Rule {{ p.rule_score }}% · Blend {{ p.combined }}%)
+    </span>
+  </div>
+  {% endif %}
 
   {# Recommended action #}
   {% if p.action %}
