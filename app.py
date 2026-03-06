@@ -699,16 +699,43 @@ def _extract_text_pdf(path):
     return "\n".join(out)
 
 
+def _find_antiword():
+    import shutil, subprocess as _sp, os as _os
+    found = shutil.which("antiword")
+    if found:
+        return found
+    try:
+        r = _sp.run(["bash", "-lc", "which antiword"], capture_output=True, text=True, timeout=5)
+        candidate = r.stdout.strip()
+        if candidate and _os.path.isfile(candidate):
+            return candidate
+    except Exception:
+        pass
+    return None
+
+
 def _extract_text_doc(path):
-    import subprocess, shutil
-    antiword = shutil.which("antiword") or "/nix/store/2dmscr1xvlnzjn2ip10f72njczhskggs-replit-runtime-path/bin/antiword"
-    result = subprocess.run(
-        [antiword, "-w", "0", path],
-        capture_output=True, text=True, timeout=15
-    )
+    import subprocess
+    antiword = _find_antiword()
+    if not antiword:
+        raise RuntimeError(
+            "Cannot read .doc files: antiword is not available. "
+            "Please save the file as .docx format and try again."
+        )
+    try:
+        result = subprocess.run(
+            [antiword, "-w", "0", path],
+            capture_output=True, text=True, timeout=15
+        )
+    except FileNotFoundError:
+        raise RuntimeError(
+            "Cannot read .doc files: antiword could not be started. "
+            "Please save the file as .docx format and try again."
+        )
     text = result.stdout.strip()
     if not text and result.returncode != 0:
-        raise RuntimeError(f"antiword failed: {result.stderr.strip() or 'unknown error'}")
+        err = result.stderr.strip()
+        raise RuntimeError(f"Could not read the .doc file: {err or 'antiword returned no output'}")
     return text
 
 
