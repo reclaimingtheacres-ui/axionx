@@ -12,37 +12,68 @@
       </p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-      <a href="{{ url_for('admin_lpr_patrol') }}"     class="btn btn-sm btn-outline-secondary">← Patrol Intel</a>
-      <a href="{{ url_for('admin_lpr_ranking') }}"    class="btn btn-sm btn-outline-secondary">⚖ Ranking</a>
-      <a href="{{ url_for('admin_lpr_evaluation') }}" class="btn btn-sm btn-outline-primary">📊 Evaluation</a>
+      <a href="{{ url_for('admin_lpr_patrol') }}"     class="btn btn-sm btn-outline-secondary">&#8592; Patrol Intel</a>
+      <a href="{{ url_for('admin_lpr_ranking') }}"    class="btn btn-sm btn-outline-secondary">&#9878; Ranking</a>
+      <a href="{{ url_for('admin_lpr_evaluation') }}" class="btn btn-sm btn-outline-primary">&#128202; Evaluation</a>
       <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#newExpModal">
         + New experiment
       </button>
     </div>
   </div>
 
-  {# ── Active ranking context ───────────────────────────────────────────────── #}
+  {# ── Active ranking context ──────────────────────────────────────────────── #}
   {% if active_ranking %}
   <div class="alert alert-secondary py-2 mb-4 d-flex align-items-center gap-3"
        style="font-size:.84rem;">
-    <span style="font-size:1.1rem;">⚖</span>
     <div>
       Current live blend (no active experiment):
       <strong>{{ (active_ranking.rule_weight * 100) | int }}% Rule</strong> /
       <strong>{{ (active_ranking.ml_weight * 100) | int }}% ML</strong>,
       min score <strong>{{ active_ranking.min_combined_threshold }}</strong>
       {% if active_ranking.model_version and active_ranking.model_version != '*' %}
-      — model <code>{{ active_ranking.model_version }}</code>
+      &mdash; model <code>{{ active_ranking.model_version }}</code>
       {% endif %}
     </div>
   </div>
   {% endif %}
 
-  {# ── No experiments ──────────────────────────────────────────────────────── #}
+  {# ── Policy rules banner ─────────────────────────────────────────────────── #}
+  {% if policy_rules %}
+  <div class="mb-4 px-3 py-2 rounded"
+       style="background:#f0fdf4;border:1px solid #bbf7d0;font-size:.8rem;">
+    <div class="fw-semibold mb-1" style="color:#15803d;">
+      Active policy rules &mdash; evaluated automatically for each experiment
+    </div>
+    <div class="d-flex flex-wrap gap-3">
+      {% for r in policy_rules %}
+      <div style="color:#374151;">
+        <span class="badge rounded-pill me-1
+          {% if r.recommended_action == 'promote' %}bg-success
+          {% elif r.recommended_action == 'stop'    %}bg-danger
+          {% elif r.recommended_action == 'tighten' %}bg-warning text-dark
+          {% else %}bg-secondary{% endif %}">
+          {{ r.recommended_action | upper }}
+        </span>
+        <strong>{{ r.name }}</strong>
+        &mdash; n&ge;{{ r.min_sample_per_arm }}/arm
+        {% if r.recommended_action == 'promote' %}
+        &middot; pos &Delta;&ge;+{{ r.min_positive_lift }}pp
+        &middot; FP &Delta;&le;+{{ r.max_fp_delta }}pp
+        {% if r.protect_urgent_watchlist %}&middot; urgent/watchlist safeguard on{% endif %}
+        {% else %}
+        &middot; fires when FP &Delta;&gt;+{{ r.max_fp_delta }}pp or NL &Delta;&gt;+{{ r.max_no_locate_delta }}pp
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── No experiments ───────────────────────────────────────────────────────── #}
   {% if not experiments %}
   <div class="card mb-4">
     <div class="card-body text-center py-5 text-muted">
-      <div style="font-size:2.2rem;margin-bottom:10px;">🧪</div>
+      <div style="font-size:2.2rem;margin-bottom:10px;">&#129514;</div>
       <div class="fw-semibold mb-1">No experiments yet</div>
       <div class="small mb-3">
         Click <strong>+ New experiment</strong> to define a challenger blend and start comparing
@@ -55,8 +86,11 @@
   {# ── Experiment cards ────────────────────────────────────────────────────── #}
   {% for e in experiments %}
   {% set is_active = e.status == 'active' %}
+  {% set pol = e.policy %}
   <div class="card mb-4 {{ 'border-primary' if is_active else '' }}"
-       style="{{ 'border-width:2px;' if is_active else 'opacity:.85;' }}">
+       style="{{ 'border-width:2px;' if is_active else 'opacity:.88;' }}">
+
+    {# Card header #}
     <div class="card-header py-2 d-flex align-items-center justify-content-between flex-wrap gap-2">
       <div class="d-flex align-items-center gap-2">
         <span class="fw-bold" style="font-size:.95rem;">{{ e.name }}</span>
@@ -70,47 +104,44 @@
           <span class="badge bg-secondary">{{ e.status | capitalize }}</span>
         {% endif %}
         <span class="text-muted small">
-          #{{ e.id }} · {{ e.assignments_total }} plate{{ 's' if e.assignments_total != 1 }}
-          assigned · started {{ e.start_at[:10] if e.start_at else '?' }}
+          #{{ e.id }} &middot; {{ e.assignments_total }} plate{{ 's' if e.assignments_total != 1 }}
+          assigned &middot; started {{ e.start_at[:10] if e.start_at else '?' }}
         </span>
       </div>
-      {% if is_active %}
+      {# Header action buttons — direct bypass actions #}
       <div class="d-flex gap-2">
-        <button class="btn btn-outline-danger btn-sm py-0 px-2"
-                onclick="stopExperiment({{ e.id }}, this)">Stop</button>
-        <button class="btn btn-outline-primary btn-sm py-0 px-2
-                        {{ '' if e.has_enough_data else 'disabled' }}"
-                title="{{ '' if e.has_enough_data else 'Needs at least 30 outcomes per arm' }}"
-                onclick="promoteExperiment({{ e.id }}, this)">
-          Promote challenger
-        </button>
+        {% if is_active %}
+          <button class="btn btn-outline-danger btn-sm py-0 px-2"
+                  onclick="stopExperiment({{ e.id }}, this)">Stop</button>
+          <button class="btn btn-outline-primary btn-sm py-0 px-2
+                          {{ '' if e.has_enough_data else 'disabled' }}"
+                  title="{{ '' if e.has_enough_data else 'Needs at least 30 outcomes per arm' }}"
+                  onclick="promoteExperiment({{ e.id }}, this)">
+            Promote (bypass)
+          </button>
+        {% elif e.status == 'stopped' %}
+          <button class="btn btn-outline-primary btn-sm py-0 px-2
+                          {{ '' if e.has_enough_data else 'disabled' }}"
+                  title="{{ '' if e.has_enough_data else 'Needs at least 30 outcomes per arm' }}"
+                  onclick="promoteExperiment({{ e.id }}, this)">
+            Promote (bypass)
+          </button>
+          <button class="btn btn-outline-secondary btn-sm py-0 px-2"
+                  onclick="archiveExperiment({{ e.id }}, this)">Archive</button>
+        {% elif e.status not in ['active','promoted'] %}
+          <button class="btn btn-outline-secondary btn-sm py-0 px-2"
+                  onclick="archiveExperiment({{ e.id }}, this)">Archive</button>
+        {% endif %}
       </div>
-      {% elif e.status == 'stopped' %}
-      <div class="d-flex gap-2">
-        <button class="btn btn-outline-primary btn-sm py-0 px-2
-                        {{ '' if e.has_enough_data else 'disabled' }}"
-                title="{{ '' if e.has_enough_data else 'Needs at least 30 outcomes per arm' }}"
-                onclick="promoteExperiment({{ e.id }}, this)">
-          Promote challenger
-        </button>
-        <button class="btn btn-outline-secondary btn-sm py-0 px-2"
-                onclick="archiveExperiment({{ e.id }}, this)">Archive</button>
-      </div>
-      {% elif e.status not in ['active','promoted'] %}
-      <button class="btn btn-outline-secondary btn-sm py-0 px-2"
-              onclick="archiveExperiment({{ e.id }}, this)">Archive</button>
-      {% endif %}
     </div>
 
     <div class="card-body p-3">
 
-      {# ── Config summary ───────────────────────────────────────────────────── #}
+      {# Config summary #}
       <div class="row g-3 mb-3">
         <div class="col-12 col-md-6">
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;">
-            <div class="fw-semibold mb-2" style="font-size:.8rem;color:#374151;">
-              Champion config
-            </div>
+            <div class="fw-semibold mb-2" style="font-size:.8rem;color:#374151;">Champion config</div>
             <div style="font-size:.82rem;display:flex;gap:16px;flex-wrap:wrap;">
               <span>Rule <strong>{{ (e.champion_rule_weight * 100) | int }}%</strong></span>
               <span>ML <strong>{{ (e.champion_ml_weight * 100) | int }}%</strong></span>
@@ -139,142 +170,240 @@
         </div>
       </div>
 
-      {# ── Sample warning ───────────────────────────────────────────────────── #}
-      {% if not e.has_enough_data %}
-      <div class="alert alert-warning py-1 px-3 mb-3" style="font-size:.8rem;">
-        ⚠ Only <strong>{{ e.min_arm_n }}</strong> outcome{{ 's' if e.min_arm_n != 1 }} on the
-        smaller arm — need at least <strong>30</strong> per arm before promotion.
-      </div>
-      {% endif %}
-
-      {# ── Arm comparison table ─────────────────────────────────────────────── #}
+      {# Arm comparison table #}
       {% set cs = e.champion_stats %}
       {% set hs = e.challenger_stats %}
-
       {% if cs.total == 0 and hs.total == 0 %}
       <div class="text-muted small text-center py-3">
-        No outcomes recorded yet for this experiment. Record patrol results to populate the comparison.
+        No outcomes recorded yet. Record patrol results to populate the comparison.
       </div>
       {% else %}
-      <div class="table-responsive">
+      <div class="table-responsive mb-3">
         <table class="table table-sm mb-0 align-middle" style="font-size:.83rem;">
           <thead class="table-light">
             <tr>
               <th class="ps-3">Metric</th>
               <th class="text-center" style="width:130px;">Champion</th>
               <th class="text-center" style="width:130px;">Challenger</th>
-              <th class="pe-3 text-center" style="width:100px;">Δ</th>
+              <th class="pe-3 text-center" style="width:100px;">&Delta;</th>
             </tr>
           </thead>
           <tbody>
-
-            {# Sample size #}
             <tr>
               <td class="ps-3 text-muted">Outcomes (n)</td>
               <td class="text-center fw-bold">{{ cs.total }}</td>
               <td class="text-center fw-bold">{{ hs.total }}</td>
-              <td class="text-center text-muted">—</td>
+              <td class="text-center text-muted">&mdash;</td>
             </tr>
-
-            {# Positive rate #}
             {% set pos_delta = hs.pos_rate - cs.pos_rate %}
             <tr>
               <td class="ps-3">Positive rate</td>
+              <td class="text-center"><span style="color:#16a34a;font-weight:600;">{{ cs.pos_rate }}%</span></td>
+              <td class="text-center"><span style="color:#16a34a;font-weight:600;">{{ hs.pos_rate }}%</span></td>
               <td class="text-center">
-                <span style="color:#16a34a;font-weight:600;">{{ cs.pos_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="color:#16a34a;font-weight:600;">{{ hs.pos_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="font-weight:700;
-                  color:{% if pos_delta > 2 %}#16a34a{% elif pos_delta < -2 %}#dc2626{% else %}#6b7280{% endif %};">
+                <span style="font-weight:700;color:{% if pos_delta > 2 %}#16a34a{% elif pos_delta < -2 %}#dc2626{% else %}#6b7280{% endif %};">
                   {{ '+' if pos_delta > 0 else '' }}{{ pos_delta | round(1) }}%
                 </span>
               </td>
             </tr>
-
-            {# False positive rate #}
             {% set fp_delta = hs.fp_rate - cs.fp_rate %}
             <tr>
               <td class="ps-3">False positive rate</td>
+              <td class="text-center"><span style="color:#dc2626;font-weight:600;">{{ cs.fp_rate }}%</span></td>
+              <td class="text-center"><span style="color:#dc2626;font-weight:600;">{{ hs.fp_rate }}%</span></td>
               <td class="text-center">
-                <span style="color:#dc2626;font-weight:600;">{{ cs.fp_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="color:#dc2626;font-weight:600;">{{ hs.fp_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="font-weight:700;
-                  color:{% if fp_delta < -2 %}#16a34a{% elif fp_delta > 2 %}#dc2626{% else %}#6b7280{% endif %};">
+                <span style="font-weight:700;color:{% if fp_delta < -2 %}#16a34a{% elif fp_delta > 2 %}#dc2626{% else %}#6b7280{% endif %};">
                   {{ '+' if fp_delta > 0 else '' }}{{ fp_delta | round(1) }}%
                 </span>
               </td>
             </tr>
-
-            {# No-locate rate #}
             {% set nl_delta = hs.nl_rate - cs.nl_rate %}
             <tr>
               <td class="ps-3">No-locate rate</td>
+              <td class="text-center"><span style="color:#d97706;font-weight:600;">{{ cs.nl_rate }}%</span></td>
+              <td class="text-center"><span style="color:#d97706;font-weight:600;">{{ hs.nl_rate }}%</span></td>
               <td class="text-center">
-                <span style="color:#d97706;font-weight:600;">{{ cs.nl_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="color:#d97706;font-weight:600;">{{ hs.nl_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="font-weight:700;
-                  color:{% if nl_delta < -2 %}#16a34a{% elif nl_delta > 2 %}#dc2626{% else %}#6b7280{% endif %};">
+                <span style="font-weight:700;color:{% if nl_delta < -2 %}#16a34a{% elif nl_delta > 2 %}#dc2626{% else %}#6b7280{% endif %};">
                   {{ '+' if nl_delta > 0 else '' }}{{ nl_delta | round(1) }}%
                 </span>
               </td>
             </tr>
-
-            {# Recovery rate #}
             {% set rec_delta = hs.rec_rate - cs.rec_rate %}
             <tr>
               <td class="ps-3">Recovery rate</td>
+              <td class="text-center"><span style="font-weight:600;">{{ cs.rec_rate }}%</span></td>
+              <td class="text-center"><span style="font-weight:600;">{{ hs.rec_rate }}%</span></td>
               <td class="text-center">
-                <span style="font-weight:600;">{{ cs.rec_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="font-weight:600;">{{ hs.rec_rate }}%</span>
-              </td>
-              <td class="text-center">
-                <span style="font-weight:700;
-                  color:{% if rec_delta > 2 %}#16a34a{% elif rec_delta < -2 %}#dc2626{% else %}#6b7280{% endif %};">
+                <span style="font-weight:700;color:{% if rec_delta > 2 %}#16a34a{% elif rec_delta < -2 %}#dc2626{% else %}#6b7280{% endif %};">
                   {{ '+' if rec_delta > 0 else '' }}{{ rec_delta | round(1) }}%
                 </span>
               </td>
             </tr>
-
           </tbody>
         </table>
       </div>
+      {% endif %}
 
-      {# ── Interpretation hint ──────────────────────────────────────────────── #}
-      {% if e.has_enough_data %}
-        {% set challenger_better = hs.pos_rate > cs.pos_rate and hs.fp_rate <= cs.fp_rate + 3 %}
-        {% if challenger_better %}
-        <div class="alert alert-success py-1 px-3 mt-2 mb-0" style="font-size:.8rem;">
-          The challenger shows higher positive rate with acceptable FP rate —
-          consider promoting.
+      {# ── Policy analysis panel ────────────────────────────────────────────── #}
+      {% if pol %}
+      {% set rec = pol.recommendation %}
+      {% set m   = pol.metrics %}
+
+      {# Recommendation badge colours #}
+      {% if rec == 'promote' %}
+        {% set rec_bg    = '#f0fdf4' %}
+        {% set rec_bdr   = '#86efac' %}
+        {% set rec_color = '#15803d' %}
+        {% set rec_label = 'Recommend: Promote challenger' %}
+      {% elif rec == 'stop' %}
+        {% set rec_bg    = '#fef2f2' %}
+        {% set rec_bdr   = '#fca5a5' %}
+        {% set rec_color = '#b91c1c' %}
+        {% set rec_label = 'Recommend: Stop experiment' %}
+      {% elif rec == 'tighten' %}
+        {% set rec_bg    = '#fffbeb' %}
+        {% set rec_bdr   = '#fde68a' %}
+        {% set rec_color = '#b45309' %}
+        {% set rec_label = 'Recommend: Tighten challenger threshold' %}
+      {% elif rec == 'insufficient_sample' %}
+        {% set rec_bg    = '#f9fafb' %}
+        {% set rec_bdr   = '#d1d5db' %}
+        {% set rec_color = '#6b7280' %}
+        {% set rec_label = 'Insufficient sample — continue collecting' %}
+      {% else %}
+        {% set rec_bg    = '#f0f9ff' %}
+        {% set rec_bdr   = '#bae6fd' %}
+        {% set rec_color = '#0369a1' %}
+        {% set rec_label = 'Continue — no clear signal yet' %}
+      {% endif %}
+
+      <div class="rounded mb-3 p-3"
+           style="background:{{ rec_bg }};border:1px solid {{ rec_bdr }};">
+
+        {# Recommendation headline #}
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+          <div class="fw-semibold" style="color:{{ rec_color }};font-size:.88rem;">
+            &#128202; Policy analysis &mdash; <strong>{{ rec_label }}</strong>
+          </div>
+          <div class="text-muted" style="font-size:.75rem;">
+            n=<strong>{{ m.min_n }}</strong> (smaller arm) &middot;
+            pos &Delta; <strong>{{ '+' if m.pos_lift >= 0 else '' }}{{ m.pos_lift }}pp</strong> &middot;
+            FP &Delta; <strong>{{ '+' if m.fp_delta >= 0 else '' }}{{ m.fp_delta }}pp</strong> &middot;
+            NL &Delta; <strong>{{ '+' if m.nl_delta >= 0 else '' }}{{ m.nl_delta }}pp</strong>
+          </div>
         </div>
-        {% elif hs.fp_rate > cs.fp_rate + 5 %}
-        <div class="alert alert-danger py-1 px-3 mt-2 mb-0" style="font-size:.8rem;">
-          The challenger has a materially higher FP rate than the champion —
-          consider stopping this experiment.
-        </div>
-        {% else %}
-        <div class="alert alert-secondary py-1 px-3 mt-2 mb-0" style="font-size:.8rem;">
-          No clear winner yet — continue collecting outcomes before making a decision.
+
+        {# Fired rules detail #}
+        {% if pol.rules_fired %}
+        <div class="mb-2">
+          {% for fr in pol.rules_fired %}
+          <div class="d-flex align-items-start gap-2 mb-1" style="font-size:.8rem;">
+            <span class="badge rounded-pill mt-1 flex-shrink-0
+              {% if fr.passed and fr.action == 'promote' %}bg-success
+              {% elif fr.passed and fr.action == 'stop'    %}bg-danger
+              {% elif fr.passed and fr.action == 'tighten' %}bg-warning text-dark
+              {% elif fr.passed %}bg-info
+              {% else %}bg-light text-muted border{% endif %}"
+              style="font-size:.7rem;">
+              {{ fr.rule.name | truncate(30, true, '…') }}
+            </span>
+            <div style="color:#374151;">
+              {% if fr.passed %}
+                <span style="color:{{ rec_color }};font-weight:600;">FIRED</span> &mdash;
+              {% else %}
+                <span class="text-muted">did not fire</span> &mdash;
+              {% endif %}
+              {{ fr.reasons | join('; ') }}
+            </div>
+          </div>
+          {% endfor %}
         </div>
         {% endif %}
+
+        {# Urgent/watchlist subset info if available #}
+        {% set pc = m.protected_champion %}
+        {% set ph = m.protected_challenger %}
+        {% if pc.total > 0 or ph.total > 0 %}
+        <div class="mb-2 pt-1" style="border-top:1px solid {{ rec_bdr }};font-size:.78rem;color:#6b7280;">
+          Urgent/watchlist subset &mdash;
+          champion: n={{ pc.total }}, pos {{ pc.pos_rate }}%, FP {{ pc.fp_rate }}% &middot;
+          challenger: n={{ ph.total }}, pos {{ ph.pos_rate }}%, FP {{ ph.fp_rate }}%
+        </div>
+        {% endif %}
+
+        {# Decision actions — only for active or stopped experiments #}
+        {% if e.status in ['active','stopped'] %}
+        <div class="pt-2" style="border-top:1px solid {{ rec_bdr }};">
+          <div class="fw-semibold mb-2" style="font-size:.8rem;color:#374151;">
+            Office decision &mdash; approval required before any action is applied
+          </div>
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-8">
+              <label class="form-label small mb-1" for="pol-notes-{{ e.id }}">
+                Notes (optional, operational only)
+              </label>
+              <input type="text" id="pol-notes-{{ e.id }}"
+                     class="form-control form-control-sm"
+                     maxlength="300" placeholder="e.g. Approved at team review 2026-03-06">
+            </div>
+            <div class="col-12 col-md-4">
+              <div id="pol-fb-{{ e.id }}" class="mb-1" style="font-size:.78rem;min-height:1.2em;"></div>
+            </div>
+          </div>
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            {% if pol.can_promote %}
+            <button class="btn btn-sm btn-success"
+                    onclick="policyDecide({{ e.id }}, 'approved_promote', this)">
+              &#10003; Approve &amp; Promote challenger
+            </button>
+            {% endif %}
+            {% if pol.can_stop %}
+            <button class="btn btn-sm btn-danger"
+                    onclick="policyDecide({{ e.id }}, 'approved_stop', this)">
+              &#9632; Approve &amp; Stop experiment
+            </button>
+            {% endif %}
+            <button class="btn btn-sm btn-outline-secondary"
+                    onclick="policyDecide({{ e.id }}, 'deferred', this)">
+              Defer decision
+            </button>
+            <button class="btn btn-sm btn-outline-danger"
+                    onclick="policyDecide({{ e.id }}, 'rejected', this)">
+              Reject recommendation
+            </button>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
       {% endif %}
+      {# /policy panel #}
+
+      {# Recent decision history #}
+      {% if e.recent_decisions %}
+      <div class="mt-1 mb-2">
+        <div class="fw-semibold mb-1" style="font-size:.78rem;color:#6b7280;">
+          Recent policy decisions
+        </div>
+        {% for d in e.recent_decisions %}
+        <div class="d-flex gap-2 align-items-center mb-1" style="font-size:.77rem;">
+          <span class="badge
+            {% if d.decision_status == 'approved' %}bg-success
+            {% elif d.decision_status == 'rejected' %}bg-danger
+            {% elif d.decision_status == 'deferred' %}bg-warning text-dark
+            {% else %}bg-secondary{% endif %}">
+            {{ d.decision_status | upper }}
+          </span>
+          <span style="color:#374151;">{{ d.recommended_action | upper }}</span>
+          {% if d.decided_at %}<span class="text-muted">{{ d.decided_at[:10] }}</span>{% endif %}
+          {% if d.notes_safe %}<span class="text-muted">&mdash; {{ d.notes_safe }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
       {% endif %}
 
       {% if e.notes_safe %}
-      <div class="mt-3 small text-muted" style="font-size:.78rem;">
+      <div class="mt-2 small text-muted" style="font-size:.78rem;">
         <strong>Notes:</strong> {{ e.notes_safe }}
       </div>
       {% endif %}
@@ -296,7 +425,7 @@
       <div class="modal-body">
 
         <div class="alert alert-info py-2 mb-3" style="font-size:.82rem;">
-          Only one experiment can run at a time. Plates will be assigned deterministically
+          Only one experiment can run at a time. Plates are assigned deterministically
           to arms and stay in that arm for the life of the experiment.
           No customer or financial data should appear in experiment names or notes.
         </div>
@@ -317,14 +446,12 @@
                 <div class="col-4">
                   <label class="form-label small mb-1">Rule %</label>
                   <input id="ne-c-rw" type="number" class="form-control form-control-sm"
-                         min="0" max="100" step="5" value="40"
-                         oninput="updateSums()">
+                         min="0" max="100" step="5" value="40" oninput="updateSums()">
                 </div>
                 <div class="col-4">
                   <label class="form-label small mb-1">ML %</label>
                   <input id="ne-c-mw" type="number" class="form-control form-control-sm"
-                         min="0" max="100" step="5" value="60"
-                         oninput="updateSums()">
+                         min="0" max="100" step="5" value="60" oninput="updateSums()">
                 </div>
                 <div class="col-4">
                   <label class="form-label small mb-1">Min score</label>
@@ -347,14 +474,12 @@
                 <div class="col-4">
                   <label class="form-label small mb-1">Rule %</label>
                   <input id="ne-ch-rw" type="number" class="form-control form-control-sm"
-                         min="0" max="100" step="5" value="30"
-                         oninput="updateSums()">
+                         min="0" max="100" step="5" value="30" oninput="updateSums()">
                 </div>
                 <div class="col-4">
                   <label class="form-label small mb-1">ML %</label>
                   <input id="ne-ch-mw" type="number" class="form-control form-control-sm"
-                         min="0" max="100" step="5" value="70"
-                         oninput="updateSums()">
+                         min="0" max="100" step="5" value="70" oninput="updateSums()">
                 </div>
                 <div class="col-4">
                   <label class="form-label small mb-1">Min score</label>
@@ -375,8 +500,7 @@
         <div class="row g-3 mb-3">
           <div class="col-12 col-md-4">
             <label class="form-label small fw-semibold" for="ne-split">
-              Traffic to challenger %
-              <span class="text-muted fw-normal">(5–50)</span>
+              Traffic to challenger % <span class="text-muted fw-normal">(5&ndash;50)</span>
             </label>
             <input id="ne-split" type="number" class="form-control form-control-sm"
                    min="5" max="50" step="5" value="20">
@@ -386,7 +510,7 @@
           </div>
           <div class="col-12 col-md-8">
             <label class="form-label small fw-semibold" for="ne-notes">
-              Notes <span class="text-muted fw-normal">(operational only — no customer data)</span>
+              Notes <span class="text-muted fw-normal">(operational only &mdash; no customer data)</span>
             </label>
             <input id="ne-notes" type="text" class="form-control form-control-sm"
                    maxlength="300" placeholder="e.g. Testing higher ML weight after v1.0 deployment">
@@ -418,7 +542,7 @@
       var mw  = parseInt(document.getElementById(p[1]).value) || 0;
       var el  = document.getElementById(p[2]);
       var sum = rw + mw;
-      el.textContent = 'Sum: ' + sum + '%' + (sum !== 100 ? ' — must equal 100%' : ' ✓');
+      el.textContent = 'Sum: ' + sum + '%' + (sum !== 100 ? ' \u2014 must equal 100%' : ' \u2713');
       el.style.color = sum === 100 ? '#16a34a' : '#dc2626';
     });
   }
@@ -443,7 +567,7 @@
       return;
     }
 
-    btn.disabled = true; btn.textContent = 'Creating…';
+    btn.disabled = true; btn.textContent = 'Creating\u2026';
     fetch("{{ url_for('admin_lpr_experiments_create') }}", {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
@@ -464,7 +588,7 @@
     .then(function(r){ return r.json(); })
     .then(function(d){
       if (d.ok) {
-        fb.innerHTML = '<span class="text-success fw-semibold">Created — reloading…</span>';
+        fb.innerHTML = '<span class="text-success fw-semibold">Created \u2014 reloading\u2026</span>';
         setTimeout(function(){ location.reload(); }, 800);
       } else {
         fb.innerHTML = '<span class="text-danger">Error: ' + (d.error||'unknown') + '</span>';
@@ -477,17 +601,19 @@
     });
   };
 
-  function postAction(url, exp_id, btn, label) {
+  function postAction(url, payload, btn, onSuccess) {
     btn.disabled = true;
     fetch(url, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({experiment_id: exp_id})
+      body: JSON.stringify(payload)
     })
     .then(function(r){ return r.json(); })
     .then(function(d){
-      if (d.ok) { location.reload(); }
-      else {
+      if (d.ok) {
+        if (onSuccess) onSuccess(d);
+        else location.reload();
+      } else {
         alert('Error: ' + (d.error||'unknown'));
         btn.disabled = false;
       }
@@ -499,18 +625,49 @@
   }
 
   window.stopExperiment = function(id, btn) {
-    if (!confirm('Stop this experiment? Plates already assigned will be scored using their arm config until you run a recompute.')) return;
-    postAction("{{ url_for('admin_lpr_experiments_stop') }}", id, btn);
+    if (!confirm('Stop this experiment? Plates already assigned will keep their arm stamps until next recompute.')) return;
+    postAction("{{ url_for('admin_lpr_experiments_stop') }}", {experiment_id: id}, btn);
   };
 
   window.promoteExperiment = function(id, btn) {
-    if (!confirm('Promote the challenger config as the new ranking default? This ends the experiment and creates a new ranking config entry.')) return;
-    postAction("{{ url_for('admin_lpr_experiments_promote') }}", id, btn);
+    if (!confirm('Promote challenger directly? This bypasses the policy approval workflow and immediately replaces the live ranking config.')) return;
+    postAction("{{ url_for('admin_lpr_experiments_promote') }}", {experiment_id: id}, btn);
   };
 
   window.archiveExperiment = function(id, btn) {
-    if (!confirm('Archive this experiment? It will no longer appear in the main list.')) return;
-    postAction("{{ url_for('admin_lpr_experiments_archive') }}", id, btn);
+    if (!confirm('Archive this experiment?')) return;
+    postAction("{{ url_for('admin_lpr_experiments_archive') }}", {experiment_id: id}, btn);
+  };
+
+  window.policyDecide = function(id, decision, btn) {
+    var labels = {
+      approved_promote: 'approve and promote the challenger',
+      approved_stop:    'approve and stop this experiment',
+      rejected:         'reject this recommendation',
+      deferred:         'defer this decision',
+    };
+    var confirmMsg = 'Confirm: ' + (labels[decision] || decision) + '?';
+    if (decision === 'approved_promote') {
+      confirmMsg += '\n\nThis will immediately replace the live patrol ranking config.';
+    }
+    if (!confirm(confirmMsg)) return;
+
+    var notes = '';
+    var notesEl = document.getElementById('pol-notes-' + id);
+    if (notesEl) notes = notesEl.value.trim();
+
+    var fb = document.getElementById('pol-fb-' + id);
+    if (fb) fb.innerHTML = '<span class="text-muted">Saving\u2026</span>';
+
+    postAction(
+      "{{ url_for('admin_lpr_experiments_policy_decide') }}",
+      {experiment_id: id, decision: decision, notes: notes},
+      btn,
+      function(d) {
+        if (fb) fb.innerHTML = '<span class="text-success fw-semibold">Saved \u2014 reloading\u2026</span>';
+        setTimeout(function(){ location.reload(); }, 700);
+      }
+    );
   };
 
 })();

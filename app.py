@@ -10241,6 +10241,254 @@ def admin_lpr_ranking_rollback():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Stage 17 — Policy engine helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+import json as _json
+
+
+def _lpr_policy_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_policy_rules (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                     TEXT    NOT NULL,
+            active                   INTEGER NOT NULL DEFAULT 1,
+            scope                    TEXT    NOT NULL DEFAULT 'all',
+            min_sample_per_arm       INTEGER NOT NULL DEFAULT 50,
+            min_positive_lift        REAL    NOT NULL DEFAULT 5.0,
+            max_fp_delta             REAL    NOT NULL DEFAULT 3.0,
+            max_no_locate_delta      REAL    NOT NULL DEFAULT 5.0,
+            protect_urgent_watchlist INTEGER NOT NULL DEFAULT 1,
+            recommended_action       TEXT    NOT NULL DEFAULT 'promote',
+            priority                 INTEGER NOT NULL DEFAULT 1,
+            created_by               INTEGER,
+            created_at               TEXT    NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_policy_decisions (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            experiment_id      INTEGER NOT NULL,
+            rule_id            INTEGER,
+            recommended_action TEXT    NOT NULL,
+            reason_text        TEXT    NOT NULL,
+            metrics_snapshot   TEXT    NOT NULL,
+            decision_status    TEXT    NOT NULL DEFAULT 'pending',
+            decided_by         INTEGER,
+            decided_at         TEXT,
+            applied_config_id  INTEGER,
+            notes_safe         TEXT,
+            created_at         TEXT    NOT NULL
+        )
+    """)
+    # Seed default rules if table is empty
+    n = conn.execute("SELECT COUNT(*) FROM lpr_policy_rules").fetchone()[0]
+    if n == 0:
+        now = now_ts()
+        rows = [
+            ("Promote — primary threshold", 1, "all",
+             50, 5.0, 3.0, 5.0, 1, "promote", 1, now),
+            ("Stop — high FP or no-locate drift", 1, "all",
+             30, -99.0, 8.0, 8.0, 0, "stop", 2, now),
+            ("Tighten threshold — moderate drift", 1, "all",
+             30, -99.0, 3.0, 5.0, 0, "tighten", 3, now),
+        ]
+        for r in rows:
+            conn.execute("""
+                INSERT INTO lpr_policy_rules
+                    (name, active, scope, min_sample_per_arm, min_positive_lift,
+                     max_fp_delta, max_no_locate_delta, protect_urgent_watchlist,
+                     recommended_action, priority, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """, r)
+    conn.commit()
+
+
+def _exp_arm_stats_protected(conn, exp_id, arm):
+    """
+    Outcome stats restricted to urgent/high-priority or watchlisted plates only.
+    Used by the policy engine safeguard check.
+    """
+    POS = ("'confirmed_present','repeat_area_confirmed',"
+           "'recovery_progressed','recovery_completed','followup_required'")
+    row = conn.execute(f"""
+        SELECT COUNT(*)  AS total,
+               SUM(CASE WHEN r.actual_outcome IN ({POS})         THEN 1 ELSE 0 END) AS pos_count,
+               SUM(CASE WHEN r.actual_outcome = 'false_positive' THEN 1 ELSE 0 END) AS fp_count
+        FROM lpr_experiment_results r
+        JOIN lpr_patrol_intelligence p
+          ON p.registration_normalised = r.registration_normalised
+        WHERE r.experiment_id=? AND r.arm=?
+          AND (p.watchlist_hit=1
+               OR p.recommended_patrol_priority IN ('urgent','high'))
+    """, (exp_id, arm)).fetchone()
+    total = row["total"] or 0
+    def pct(n): return round(100 * n / total, 1) if total else 0.0
+    return {
+        "total":     total,
+        "pos_count": row["pos_count"] or 0,
+        "fp_count":  row["fp_count"]  or 0,
+        "pos_rate":  pct(row["pos_count"] or 0),
+        "fp_rate":   pct(row["fp_count"]  or 0),
+    }
+
+
+def _evaluate_experiment_policy(conn, exp):
+    """
+    Run all active policy rules against a single experiment dict.
+    Returns a structured evaluation dict — pure read, no side effects.
+    """
+    _lpr_policy_ensure(conn)
+
+    exp_id = exp["id"]
+    cs = _exp_arm_stats(conn, exp_id, "champion")
+    hs = _exp_arm_stats(conn, exp_id, "challenger")
+
+    pos_lift = round(hs["pos_rate"] - cs["pos_rate"], 1)
+    fp_delta = round(hs["fp_rate"]  - cs["fp_rate"],  1)
+    nl_delta = round(hs["nl_rate"]  - cs["nl_rate"],  1)
+    min_n    = min(cs["total"], hs["total"])
+
+    prot_cs = _exp_arm_stats_protected(conn, exp_id, "champion")
+    prot_hs = _exp_arm_stats_protected(conn, exp_id, "challenger")
+
+    metrics = {
+        "champion":           cs,
+        "challenger":         hs,
+        "pos_lift":           pos_lift,
+        "fp_delta":           fp_delta,
+        "nl_delta":           nl_delta,
+        "min_n":              min_n,
+        "protected_champion": prot_cs,
+        "protected_challenger": prot_hs,
+    }
+
+    rules = conn.execute("""
+        SELECT * FROM lpr_policy_rules WHERE active=1 ORDER BY priority ASC
+    """).fetchall()
+
+    pending_decision = conn.execute("""
+        SELECT id, recommended_action, decision_status, reason_text
+        FROM lpr_policy_decisions
+        WHERE experiment_id=? AND decision_status='pending'
+        ORDER BY id DESC LIMIT 1
+    """, (exp_id,)).fetchone()
+
+    last_decision = conn.execute("""
+        SELECT id, recommended_action, decision_status, decided_at, notes_safe
+        FROM lpr_policy_decisions
+        WHERE experiment_id=?
+        ORDER BY id DESC LIMIT 1
+    """, (exp_id,)).fetchone()
+
+    fired_rules   = []
+    recommendation = None
+    can_promote   = False
+    can_stop      = False
+
+    for rule in rules:
+        action  = rule["recommended_action"]
+        n_ok    = min_n >= rule["min_sample_per_arm"]
+        lift_ok = pos_lift >= rule["min_positive_lift"]
+        fp_ok   = fp_delta <= rule["max_fp_delta"]
+        nl_ok   = nl_delta <= rule["max_no_locate_delta"]
+
+        if action == "promote":
+            urgent_ok     = True
+            urgent_reasons = []
+            if rule["protect_urgent_watchlist"]:
+                p_n_ok = prot_cs["total"] >= 10 and prot_hs["total"] >= 5
+                if p_n_ok:
+                    p_lift = prot_hs["pos_rate"] - prot_cs["pos_rate"]
+                    p_fp   = prot_hs["fp_rate"]  - prot_cs["fp_rate"]
+                    if p_fp > rule["max_fp_delta"]:
+                        urgent_ok = False
+                        urgent_reasons.append(
+                            f"Urgent/watchlist FP Δ {p_fp:+.1f}pp exceeds +{rule['max_fp_delta']:.1f}pp")
+                    if p_lift < -5.0:
+                        urgent_ok = False
+                        urgent_reasons.append(
+                            f"Urgent/watchlist positive rate dropped {p_lift:.1f}pp")
+
+            fired   = n_ok and lift_ok and fp_ok and nl_ok and urgent_ok
+            reasons = []
+            if not n_ok:    reasons.append(
+                f"Need ≥{rule['min_sample_per_arm']} outcomes per arm (have {min_n})")
+            if not lift_ok: reasons.append(
+                f"Positive lift {pos_lift:+.1f}pp < required {rule['min_positive_lift']:+.1f}pp")
+            if not fp_ok:   reasons.append(
+                f"FP Δ {fp_delta:+.1f}pp exceeds max +{rule['max_fp_delta']:.1f}pp")
+            if not nl_ok:   reasons.append(
+                f"No-locate Δ {nl_delta:+.1f}pp exceeds max +{rule['max_no_locate_delta']:.1f}pp")
+            reasons.extend(urgent_reasons)
+            if fired:
+                reasons.append(
+                    f"All promote conditions met: pos Δ={pos_lift:+.1f}pp, "
+                    f"FP Δ={fp_delta:+.1f}pp, n={min_n}")
+
+            fired_rules.append({
+                "rule": dict(rule), "action": "promote",
+                "passed": fired, "reasons": reasons,
+            })
+            if fired and recommendation is None:
+                recommendation = "promote"
+                can_promote    = True
+
+        elif action == "stop":
+            fp_breach = fp_delta > rule["max_fp_delta"]
+            nl_breach = nl_delta > rule["max_no_locate_delta"]
+            fired = n_ok and (fp_breach or nl_breach)
+            reasons = []
+            if fp_breach: reasons.append(
+                f"FP Δ {fp_delta:+.1f}pp exceeds stop threshold +{rule['max_fp_delta']:.1f}pp")
+            if nl_breach: reasons.append(
+                f"No-locate Δ {nl_delta:+.1f}pp exceeds stop threshold +{rule['max_no_locate_delta']:.1f}pp")
+            if not n_ok:  reasons.append(
+                f"Insufficient sample ({min_n} < {rule['min_sample_per_arm']})")
+            if not reasons: reasons.append("FP and no-locate within acceptable bounds")
+
+            fired_rules.append({
+                "rule": dict(rule), "action": "stop",
+                "passed": fired, "reasons": reasons,
+            })
+            if fired and recommendation is None:
+                recommendation = "stop"
+                can_stop = True
+
+        elif action == "tighten":
+            fp_mod = fp_delta > rule["max_fp_delta"]
+            nl_mod = nl_delta > rule["max_no_locate_delta"]
+            fired  = n_ok and (fp_mod or nl_mod) and recommendation is None
+            reasons = []
+            if fp_mod: reasons.append(
+                f"Moderate FP Δ {fp_delta:+.1f}pp — consider raising challenger threshold")
+            if nl_mod: reasons.append(
+                f"Moderate no-locate Δ {nl_delta:+.1f}pp — consider raising challenger threshold")
+            if not reasons: reasons.append("Metrics within tighten bounds")
+
+            fired_rules.append({
+                "rule": dict(rule), "action": "tighten",
+                "passed": fired, "reasons": reasons,
+            })
+            if fired and recommendation is None:
+                recommendation = "tighten"
+
+    if recommendation is None:
+        default_sample = rules[0]["min_sample_per_arm"] if rules else 50
+        recommendation = "insufficient_sample" if min_n < default_sample else "continue"
+
+    return {
+        "recommendation":  recommendation,
+        "rules_fired":     fired_rules,
+        "metrics":         metrics,
+        "can_promote":     can_promote,
+        "can_stop":        can_stop,
+        "pending_decision": dict(pending_decision) if pending_decision else None,
+        "last_decision":    dict(last_decision)    if last_decision    else None,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Stage 16 — Experiment admin routes
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -10279,12 +10527,17 @@ def admin_lpr_experiments():
     conn = db()
     _lpr_experiments_ensure(conn)
     _lpr_ranking_config_ensure(conn)
+    _lpr_policy_ensure(conn)
 
     exp_rows = conn.execute("""
         SELECT * FROM lpr_experiments
         ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, created_at DESC
         LIMIT 30
     """).fetchall()
+
+    policy_rules = [dict(r) for r in conn.execute(
+        "SELECT * FROM lpr_policy_rules WHERE active=1 ORDER BY priority"
+    ).fetchall()]
 
     experiments = []
     for e in exp_rows:
@@ -10301,6 +10554,20 @@ def admin_lpr_experiments():
         min_n = min(champion_stats["total"], challenger_stats["total"])
         exp_dict["has_enough_data"]   = min_n >= 30
         exp_dict["min_arm_n"]         = min_n
+
+        if e["status"] in ("active", "stopped"):
+            exp_dict["policy"] = _evaluate_experiment_policy(conn, exp_dict)
+        else:
+            exp_dict["policy"] = None
+
+        recent_decisions = conn.execute("""
+            SELECT id, recommended_action, decision_status, decided_at, notes_safe, created_at
+            FROM lpr_policy_decisions
+            WHERE experiment_id=?
+            ORDER BY id DESC LIMIT 5
+        """, (e["id"],)).fetchall()
+        exp_dict["recent_decisions"] = [dict(d) for d in recent_decisions]
+
         experiments.append(exp_dict)
 
     active_ranking = conn.execute("""
@@ -10315,6 +10582,7 @@ def admin_lpr_experiments():
         "lpr_experiments.html",
         experiments=experiments,
         active_ranking=dict(active_ranking) if active_ranking else None,
+        policy_rules=policy_rules,
     )
 
 
@@ -10450,6 +10718,135 @@ def admin_lpr_experiments_promote():
     conn.commit()
     conn.close()
     return jsonify({"ok": True}), 200
+
+
+@app.post("/admin/lpr/experiments/policy/decide")
+@admin_required
+def admin_lpr_experiments_policy_decide():
+    """
+    Record a human decision on a policy recommendation.
+    decision: 'approved_promote' | 'approved_stop' | 'rejected' | 'deferred'
+    If approved_promote → promotion is executed immediately.
+    If approved_stop    → experiment is stopped immediately.
+    All decisions are written to lpr_policy_decisions for audit.
+    """
+    data       = request.get_json(silent=True) or {}
+    exp_id     = data.get("experiment_id")
+    decision   = data.get("decision")
+    notes      = (data.get("notes") or "").strip()[:300]
+    VALID_DECISIONS = ("approved_promote", "approved_stop", "rejected", "deferred")
+
+    if not exp_id:
+        return jsonify({"ok": False, "error": "experiment_id required"}), 400
+    if decision not in VALID_DECISIONS:
+        return jsonify({"ok": False,
+                        "error": f"decision must be one of: {', '.join(VALID_DECISIONS)}"}), 400
+
+    conn = db()
+    _lpr_experiments_ensure(conn)
+    _lpr_policy_ensure(conn)
+    _lpr_ranking_config_ensure(conn)
+
+    exp = conn.execute("SELECT * FROM lpr_experiments WHERE id=?", (exp_id,)).fetchone()
+    if not exp:
+        conn.close()
+        return jsonify({"ok": False, "error": "Experiment not found"}), 404
+    if exp["status"] not in ("active", "stopped"):
+        conn.close()
+        return jsonify({"ok": False,
+                        "error": "Policy decisions only apply to active or stopped experiments"}), 400
+
+    uid = session.get("user_id")
+    now = now_ts()
+
+    # Evaluate policy for the snapshot
+    policy_eval = _evaluate_experiment_policy(conn, dict(exp))
+    m = policy_eval["metrics"]
+    metrics_snap = _json.dumps({
+        "min_n":                  m["min_n"],
+        "pos_lift":               m["pos_lift"],
+        "fp_delta":               m["fp_delta"],
+        "nl_delta":               m["nl_delta"],
+        "champion_pos_rate":      m["champion"]["pos_rate"],
+        "challenger_pos_rate":    m["challenger"]["pos_rate"],
+        "champion_fp_rate":       m["champion"]["fp_rate"],
+        "challenger_fp_rate":     m["challenger"]["fp_rate"],
+        "champion_total":         m["champion"]["total"],
+        "challenger_total":       m["challenger"]["total"],
+        "policy_recommendation":  policy_eval["recommendation"],
+    })
+
+    action_label_map = {
+        "approved_promote": "promote",
+        "approved_stop":    "stop",
+        "rejected":         policy_eval["recommendation"],
+        "deferred":         policy_eval["recommendation"],
+    }
+    status_map = {
+        "approved_promote": "approved",
+        "approved_stop":    "approved",
+        "rejected":         "rejected",
+        "deferred":         "deferred",
+    }
+
+    # Build plain-English reason from fired rules
+    reason_parts = [r["reasons"][0] for r in policy_eval["rules_fired"] if r["passed"]]
+    reason_text  = "; ".join(reason_parts) if reason_parts else (
+        f"Manual {decision.replace('_', ' ')} — {policy_eval['recommendation']}")
+
+    cur = conn.execute("""
+        INSERT INTO lpr_policy_decisions
+            (experiment_id, rule_id, recommended_action, reason_text,
+             metrics_snapshot, decision_status, decided_by, decided_at,
+             notes_safe, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (
+        exp_id, None,
+        action_label_map[decision],
+        reason_text,
+        metrics_snap,
+        status_map[decision],
+        uid, now, notes or None, now,
+    ))
+    decision_id = cur.lastrowid
+
+    applied_cfg_id = None
+
+    if decision == "approved_promote":
+        conn.execute("""
+            UPDATE lpr_ranking_config SET active=0
+            WHERE model_version='*' AND confidence_band='*' AND priority_band='*'
+        """)
+        cfg_cur = conn.execute("""
+            INSERT INTO lpr_ranking_config
+                (model_version, prediction_window, confidence_band, priority_band,
+                 rule_weight, ml_weight, min_combined_threshold, active, source,
+                 reason, effective_from, created_by, created_at)
+            VALUES (?,?,?,?,?,?,?,1,'policy_approved',?,?,?,?)
+        """, (
+            exp["challenger_model_version"] or "*",
+            "72h", "*", "*",
+            exp["challenger_rule_weight"],
+            exp["challenger_ml_weight"],
+            exp["challenger_threshold"],
+            f"Policy-approved promotion from experiment #{exp_id}: {exp['name']}",
+            now, uid, now,
+        ))
+        applied_cfg_id = cfg_cur.lastrowid
+        conn.execute("UPDATE lpr_experiments SET status='promoted', end_at=? WHERE id=?",
+                     (now, exp_id))
+        conn.execute("UPDATE lpr_policy_decisions SET applied_config_id=? WHERE id=?",
+                     (applied_cfg_id, decision_id))
+
+    elif decision == "approved_stop":
+        conn.execute(
+            "UPDATE lpr_experiments SET status='stopped', end_at=? WHERE id=? AND status='active'",
+            (now, exp_id))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "decision_id": decision_id,
+                    "applied_config_id": applied_cfg_id}), 200
 
 
 @app.post("/admin/lpr/experiments/archive")

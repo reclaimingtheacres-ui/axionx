@@ -678,3 +678,31 @@ Adds structured outcome capture for patrol opportunities, stores prediction-vers
 4. Train, export as `LPRPatrolModel.mlmodel`, compile to `LPRPatrolModel.mlmodelc`
 5. Drag `LPRPatrolModel.mlmodelc` into Xcode → AxionX target → retrigger a build
 6. On first app sync, `PatrolPredictionService` runs inference and posts scores; admin page shows "ML model: v1.0 · 40/60 blend active"
+
+---
+
+## Stage 15 — Adaptive Ranking Config
+
+- **Table**: `lpr_ranking_config` (model_version, confidence_band, priority_band, rule_weight, ml_weight, min_combined_threshold, source, reason, active, effective_from)
+- **Helpers**: `_lpr_ranking_config_ensure`, `_get_active_ranking_config` (4-level fallback), `_score_to_band`, `_run_recalibration` (25-sample min)
+- **Updated**: `_recompute_combined_patrol_scores` stamps `blend_rule_weight`, `blend_ml_weight`, `ranking_config_id` on each score row
+- **Admin routes**: GET `/admin/lpr/ranking`, POST `/admin/lpr/ranking/config`, POST `/admin/lpr/ranking/activate`, POST `/admin/lpr/ranking/recalibrate`
+- **Template**: `templates/lpr_ranking.html`
+
+## Stage 16 — A/B Experiment Framework
+
+- **Tables**: `lpr_experiments`, `lpr_experiment_assignments`, `lpr_experiment_results`; `lpr_prediction_scores` gains `experiment_id` and `experiment_arm` columns
+- **Arm assignment**: deterministic MD5(`"{exp_id}:{reg}"`)[:4] mod 100 vs `traffic_split_pct`; persisted on first contact
+- **Experiment-aware recompute**: uses per-arm blend weights when an experiment is active; falls back to adaptive ranking config
+- **Outcome recording**: both admin and mobile outcome routes detect experiment enrolment and write `lpr_experiment_results`
+- **Admin routes**: GET `/admin/lpr/experiments`, POST create/stop/promote/archive
+- **Template**: `templates/lpr_experiments.html`
+
+## Stage 17 — Policy Engine
+
+- **Tables**: `lpr_policy_rules` (name, scope, min_sample_per_arm, min_positive_lift, max_fp_delta, max_no_locate_delta, protect_urgent_watchlist, recommended_action, priority), `lpr_policy_decisions` (experiment_id, rule_id, recommended_action, reason_text, metrics_snapshot, decision_status, decided_by, decided_at, applied_config_id, notes_safe)
+- **Seeded rules**: Promote (n≥50, pos Δ≥5pp, FP Δ≤3pp, urgent/watchlist safeguard); Stop (n≥30, FP Δ>8pp or NL Δ>8pp); Tighten (n≥30, FP Δ>3pp or NL Δ>5pp)
+- **Helpers**: `_lpr_policy_ensure`, `_exp_arm_stats_protected` (urgent/high watchlist subset), `_evaluate_experiment_policy` (returns recommendation, rules_fired, metrics, can_promote, can_stop, pending_decision, last_decision — pure read)
+- **Admin routes**: GET `/admin/lpr/experiments` now includes policy evaluation per active/stopped experiment; POST `/admin/lpr/experiments/policy/decide` (decision: approved_promote | approved_stop | rejected | deferred — executes action if approved, always writes audit record)
+- **Promotion flow**: policy-approved promotions recorded with `source='policy_approved'` in `lpr_ranking_config`; direct "Promote (bypass)" button retained for manual overrides
+- **Template**: `lpr_experiments.html` updated with policy banner, per-experiment policy analysis panel (recommendation, fired rules, metric deltas, urgent/watchlist subset, approve/reject/defer controls), decision history list
