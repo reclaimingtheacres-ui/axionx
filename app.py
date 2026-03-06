@@ -8906,8 +8906,12 @@ def admin_lpr_patrol_export():
     """
     Export a clean tabular CSV for Create ML training.
     Features: only safe operational data (no customer/finance fields).
-    Target: seen_again_72h  (1 if any two sightings of this plate are within
-    72 hours of each other in the 30-day window).
+    Targets:
+      seen_again_72h   — 1 if any two sightings within 72 h in the 30-day window
+      outcome_label    — real field outcome (confirmed_present, no_locate, etc.)
+                         empty string if no outcome has been recorded yet
+      hours_to_outcome — hours between most-recent sighting and outcome recording;
+                         empty if no outcome recorded
     """
     from datetime import timedelta as _td_exp
     import io as _io
@@ -8917,6 +8921,7 @@ def admin_lpr_patrol_export():
     conn   = db()
     _patrol_intelligence_ensure(conn)
     _lpr_prediction_scores_ensure(conn)
+    _lpr_prediction_outcomes_ensure(conn)
     _lpr_sightings_ensure_table(conn)
 
     pi_rows = conn.execute("""
@@ -8935,11 +8940,35 @@ def admin_lpr_patrol_export():
         WHERE created_at >= ? AND registration_normalised IS NOT NULL
         ORDER BY registration_normalised, created_at
     """, (cutoff,)).fetchall()
+
+    # Most-recent outcome per plate (newest recorded_at wins)
+    outcome_rows = conn.execute("""
+        SELECT o.registration_normalised, o.actual_outcome, o.recorded_at,
+               MAX(s.created_at) AS last_sighting_at
+        FROM lpr_prediction_outcomes o
+        LEFT JOIN lpr_sightings s
+               ON s.registration_normalised = o.registration_normalised
+        GROUP BY o.registration_normalised
+        HAVING o.recorded_at = MAX(o.recorded_at)
+    """).fetchall()
     conn.close()
 
     for r in raw:
         reg = r["registration_normalised"]
         sighting_times.setdefault(reg, []).append(r["created_at"][:19])
+
+    outcome_map = {}
+    for r in outcome_rows:
+        reg = r["registration_normalised"]
+        hours_to = ""
+        if r["last_sighting_at"] and r["recorded_at"]:
+            try:
+                t1 = datetime.fromisoformat(r["last_sighting_at"][:19])
+                t2 = datetime.fromisoformat(r["recorded_at"][:19])
+                hours_to = round((t2 - t1).total_seconds() / 3600, 1)
+            except Exception:
+                pass
+        outcome_map[reg] = (r["actual_outcome"] or "", hours_to)
 
     output = _io.StringIO()
     writer = _csv.DictWriter(output, fieldnames=[
@@ -8960,6 +8989,8 @@ def admin_lpr_patrol_export():
         "has_gps_cluster",
         "rule_confidence_score",
         "seen_again_72h",
+        "outcome_label",
+        "hours_to_outcome",
     ])
     writer.writeheader()
 
@@ -8986,6 +9017,8 @@ def admin_lpr_patrol_export():
                     s72h = 1
                     break
 
+        outcome_label, hours_to = outcome_map.get(reg, ("", ""))
+
         writer.writerow({
             "registration_normalised": reg,
             "repeat_count_30d":        pi["repeat_count_30d"],
@@ -9004,6 +9037,8 @@ def admin_lpr_patrol_export():
             "has_gps_cluster":         has_gps,
             "rule_confidence_score":   pi["confidence_score"],
             "seen_again_72h":          s72h,
+            "outcome_label":           outcome_label,
+            "hours_to_outcome":        hours_to,
         })
 
     csv_bytes = output.getvalue().encode("utf-8")
@@ -9195,6 +9230,7 @@ def admin_lpr_patrol():
         f_priority=f_priority, f_watchlist=f_watchlist,
         f_min_conf=f_min_conf, f_result=f_result, f_day_bucket=f_day_bucket,
         ml_model_ver=ml_model_ver["model_version"] if ml_model_ver else None,
+        outcome_vocab=LPR_OUTCOME_VOCAB,
     )
 
 
@@ -9274,7 +9310,8 @@ def m_lpr_patrol():
             "watchlist":     bool(r["watchlist_hit"]),
             "result_type":   r["result_type"] or "no_match",
         })
-    return render_template("mobile/lpr_patrol.html", items=items)
+    return render_template("mobile/lpr_patrol.html", items=items,
+                           outcome_vocab=LPR_OUTCOME_VOCAB)
 
 
 @app.get("/m/api/lpr/patrol")
@@ -9332,6 +9369,320 @@ def m_api_lpr_patrol():
             "computed_at":     r["last_computed_at"],
         })
     return jsonify({"count": len(items), "items": items}), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 14 — Closed-loop learning: outcome capture, evaluation, training labels
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Outcome vocabulary ────────────────────────────────────────────────────────
+# Labels are operational and objective — no customer or finance data.
+
+LPR_OUTCOME_VOCAB = [
+    ("confirmed_present",    "Confirmed present",    "Plate physically located in predicted area"),
+    ("repeat_area_confirmed","Repeat area confirmed", "Plate resighted in same cluster zone"),
+    ("followup_required",    "Follow-up required",   "Flagged for active recovery action"),
+    ("restricted_only",      "Restricted only",      "Access restricted; plate not recoverable at this time"),
+    ("no_locate",            "No locate",            "Patrol conducted but plate not found"),
+    ("false_positive",       "False positive",       "Prediction was incorrect for this plate"),
+    ("recovery_progressed",  "Recovery progressed",  "Active recovery process initiated"),
+    ("recovery_completed",   "Recovery completed",   "Successful recovery completed"),
+]
+
+LPR_POSITIVE_OUTCOMES = frozenset({
+    "confirmed_present", "repeat_area_confirmed",
+    "recovery_progressed", "recovery_completed", "followup_required",
+})
+
+_LPR_OUTCOME_CODES = frozenset(v[0] for v in LPR_OUTCOME_VOCAB)
+
+
+def _lpr_prediction_outcomes_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_prediction_outcomes (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            registration_normalised TEXT    NOT NULL,
+            matched_job_id          INTEGER,
+            source_type             TEXT    NOT NULL DEFAULT 'patrol',
+            source_id               INTEGER,
+            rule_score              INTEGER,
+            ml_score                INTEGER,
+            combined_score          INTEGER,
+            prediction_window       TEXT,
+            model_version           TEXT,
+            recommended_action      TEXT,
+            actual_outcome          TEXT    NOT NULL,
+            outcome_confidence      INTEGER DEFAULT 80,
+            recorded_by             INTEGER,
+            recorded_at             TEXT    NOT NULL,
+            notes_safe              TEXT
+        )
+    """)
+    conn.commit()
+
+
+# ── Admin: record patrol outcome ───────────────────────────────────────────────
+
+@app.post("/admin/lpr/patrol/outcome")
+@admin_required
+def admin_lpr_patrol_outcome():
+    data    = request.get_json(silent=True) or {}
+    reg     = (data.get("registration") or "").strip().upper()
+    outcome = (data.get("outcome")      or "").strip()
+    notes   = (data.get("notes")        or "").strip()[:500]
+    try:
+        outcome_conf = max(0, min(100, int(data.get("outcome_confidence", 80))))
+    except (ValueError, TypeError):
+        outcome_conf = 80
+
+    if not reg or outcome not in _LPR_OUTCOME_CODES:
+        return jsonify({"ok": False, "error": "Invalid registration or outcome"}), 400
+
+    conn = db()
+    _lpr_prediction_outcomes_ensure(conn)
+    _patrol_intelligence_ensure(conn)
+    _lpr_prediction_scores_ensure(conn)
+
+    pi = conn.execute("""
+        SELECT p.id, p.matched_job_id, p.confidence_score, p.recommended_action,
+               ps.ml_confidence_score, ps.combined_score, ps.model_version, ps.prediction_window
+        FROM lpr_patrol_intelligence p
+        LEFT JOIN lpr_prediction_scores ps
+               ON ps.registration_normalised = p.registration_normalised
+        WHERE p.registration_normalised = ?
+    """, (reg,)).fetchone()
+
+    now = now_ts()
+    uid = session.get("user_id")
+
+    rule_score = pi["confidence_score"]          if pi else None
+    ml_score   = pi["ml_confidence_score"]       if pi else None
+    combined   = (pi["combined_score"] if pi["combined_score"] is not None
+                  else rule_score)               if pi else None
+    job_id     = pi["matched_job_id"]            if pi else None
+    model_ver  = (pi["model_version"] or "unscored") if pi else "unscored"
+    pred_win   = (pi["prediction_window"] or "72h")  if pi else "72h"
+    rec_action = (pi["recommended_action"] or "")    if pi else ""
+    source_id  = pi["id"]                        if pi else None
+
+    conn.execute("""
+        INSERT INTO lpr_prediction_outcomes
+            (registration_normalised, matched_job_id, source_type, source_id,
+             rule_score, ml_score, combined_score, prediction_window,
+             model_version, recommended_action, actual_outcome,
+             outcome_confidence, recorded_by, recorded_at, notes_safe)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (reg, job_id, "patrol", source_id,
+          rule_score, ml_score, combined, pred_win,
+          model_ver, rec_action, outcome,
+          outcome_conf, uid, now, notes or None))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+# ── Mobile: record patrol outcome ──────────────────────────────────────────────
+
+@app.post("/m/api/lpr/patrol/outcome")
+@mobile_login_required
+def m_api_lpr_patrol_outcome():
+    data    = request.get_json(silent=True) or {}
+    reg     = (data.get("registration") or "").strip().upper()
+    outcome = (data.get("outcome")      or "").strip()
+    notes   = (data.get("notes")        or "").strip()[:200]
+
+    if not reg or outcome not in _LPR_OUTCOME_CODES:
+        return jsonify({"ok": False, "error": "Invalid registration or outcome"}), 400
+
+    conn = db()
+    _lpr_prediction_outcomes_ensure(conn)
+    _patrol_intelligence_ensure(conn)
+    _lpr_prediction_scores_ensure(conn)
+
+    pi = conn.execute("""
+        SELECT p.id, p.matched_job_id, p.confidence_score, p.recommended_action,
+               ps.ml_confidence_score, ps.combined_score, ps.model_version, ps.prediction_window
+        FROM lpr_patrol_intelligence p
+        LEFT JOIN lpr_prediction_scores ps
+               ON ps.registration_normalised = p.registration_normalised
+        WHERE p.registration_normalised = ?
+    """, (reg,)).fetchone()
+
+    now = now_ts()
+    uid = session.get("user_id")
+
+    rule_score = pi["confidence_score"]          if pi else None
+    ml_score   = pi["ml_confidence_score"]       if pi else None
+    combined   = (pi["combined_score"] if pi["combined_score"] is not None
+                  else rule_score)               if pi else None
+    job_id     = pi["matched_job_id"]            if pi else None
+    model_ver  = (pi["model_version"] or "unscored") if pi else "unscored"
+    pred_win   = (pi["prediction_window"] or "72h")  if pi else "72h"
+    rec_action = (pi["recommended_action"] or "")    if pi else ""
+    source_id  = pi["id"]                        if pi else None
+
+    conn.execute("""
+        INSERT INTO lpr_prediction_outcomes
+            (registration_normalised, matched_job_id, source_type, source_id,
+             rule_score, ml_score, combined_score, prediction_window,
+             model_version, recommended_action, actual_outcome,
+             outcome_confidence, recorded_by, recorded_at, notes_safe)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (reg, job_id, "patrol_mobile", source_id,
+          rule_score, ml_score, combined, pred_win,
+          model_ver, rec_action, outcome,
+          80, uid, now, notes or None))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+# ── Admin: evaluation dashboard ────────────────────────────────────────────────
+
+@app.get("/admin/lpr/evaluation")
+@admin_required
+def admin_lpr_evaluation():
+    conn = db()
+    _lpr_prediction_outcomes_ensure(conn)
+    _patrol_intelligence_ensure(conn)
+
+    POS = ("'confirmed_present','repeat_area_confirmed',"
+           "'recovery_progressed','recovery_completed','followup_required'")
+
+    overall = conn.execute(f"""
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN actual_outcome IN ({POS}) THEN 1 ELSE 0 END) AS positive_count,
+               SUM(CASE WHEN actual_outcome = 'false_positive'  THEN 1 ELSE 0 END) AS fp_count,
+               SUM(CASE WHEN actual_outcome = 'no_locate'       THEN 1 ELSE 0 END) AS nl_count
+        FROM lpr_prediction_outcomes
+    """).fetchone()
+
+    by_model_rows = conn.execute(f"""
+        SELECT model_version,
+               COUNT(*) AS total,
+               SUM(CASE WHEN actual_outcome IN ({POS}) THEN 1 ELSE 0 END) AS positive_count,
+               SUM(CASE WHEN actual_outcome = 'false_positive'  THEN 1 ELSE 0 END) AS fp_count,
+               ROUND(AVG(combined_score), 1) AS avg_combined
+        FROM lpr_prediction_outcomes
+        GROUP BY model_version
+        ORDER BY MAX(recorded_at) DESC
+    """).fetchall()
+
+    by_band_rows = conn.execute(f"""
+        SELECT
+            CASE
+                WHEN combined_score >= 75 THEN 'urgent'
+                WHEN combined_score >= 50 THEN 'high'
+                WHEN combined_score >= 30 THEN 'medium'
+                ELSE 'low'
+            END AS band,
+            COUNT(*) AS total,
+            SUM(CASE WHEN actual_outcome IN ({POS}) THEN 1 ELSE 0 END) AS positive_count,
+            SUM(CASE WHEN actual_outcome = 'false_positive'  THEN 1 ELSE 0 END) AS fp_count
+        FROM lpr_prediction_outcomes
+        WHERE combined_score IS NOT NULL
+        GROUP BY band
+        ORDER BY MIN(combined_score) DESC
+    """).fetchall()
+
+    by_priority_rows = conn.execute(f"""
+        SELECT p.recommended_patrol_priority AS priority,
+               COUNT(*)  AS total,
+               SUM(CASE WHEN o.actual_outcome IN ({POS}) THEN 1 ELSE 0 END) AS positive_count,
+               SUM(CASE WHEN o.actual_outcome = 'false_positive'  THEN 1 ELSE 0 END) AS fp_count
+        FROM lpr_prediction_outcomes o
+        JOIN lpr_patrol_intelligence p
+          ON p.registration_normalised = o.registration_normalised
+        GROUP BY p.recommended_patrol_priority
+        ORDER BY CASE p.recommended_patrol_priority
+            WHEN 'urgent' THEN 1 WHEN 'high' THEN 2
+            WHEN 'medium' THEN 3 ELSE 4 END
+    """).fetchall()
+
+    recent_rows = conn.execute("""
+        SELECT o.id, o.registration_normalised, o.actual_outcome, o.source_type,
+               o.combined_score, o.model_version, o.recorded_at, o.notes_safe,
+               u.full_name AS recorder_name
+        FROM lpr_prediction_outcomes o
+        LEFT JOIN users u ON u.id = o.recorded_by
+        ORDER BY o.recorded_at DESC
+        LIMIT 30
+    """).fetchall()
+
+    # Outcome totals breakdown for bar chart
+    outcome_counts = conn.execute("""
+        SELECT actual_outcome, COUNT(*) AS n
+        FROM lpr_prediction_outcomes
+        GROUP BY actual_outcome
+        ORDER BY n DESC
+    """).fetchall()
+
+    conn.close()
+
+    def _pct(num, den):
+        return round(100 * num / den, 1) if den else 0
+
+    total = overall["total"] or 0
+
+    by_model = [{
+        "model_version":  r["model_version"] or "unscored",
+        "total":          r["total"],
+        "positive_count": r["positive_count"],
+        "fp_count":       r["fp_count"],
+        "avg_combined":   r["avg_combined"] or 0,
+        "pos_rate":       _pct(r["positive_count"], r["total"]),
+        "fp_rate":        _pct(r["fp_count"],       r["total"]),
+    } for r in by_model_rows]
+
+    band_order = {"urgent": 1, "high": 2, "medium": 3, "low": 4}
+    by_band = sorted([{
+        "band":           r["band"],
+        "total":          r["total"],
+        "positive_count": r["positive_count"],
+        "fp_count":       r["fp_count"],
+        "pos_rate":       _pct(r["positive_count"], r["total"]),
+        "fp_rate":        _pct(r["fp_count"],       r["total"]),
+    } for r in by_band_rows], key=lambda x: band_order.get(x["band"], 5))
+
+    by_priority = [{
+        "priority":       r["priority"] or "low",
+        "total":          r["total"],
+        "positive_count": r["positive_count"],
+        "fp_count":       r["fp_count"],
+        "pos_rate":       _pct(r["positive_count"], r["total"]),
+        "fp_rate":        _pct(r["fp_count"],       r["total"]),
+    } for r in by_priority_rows]
+
+    recent = [{
+        "id":          r["id"],
+        "reg":         r["registration_normalised"],
+        "outcome":     r["actual_outcome"],
+        "source_type": r["source_type"],
+        "combined":    r["combined_score"],
+        "model_ver":   r["model_version"] or "unscored",
+        "recorder":    r["recorder_name"] or "Unknown",
+        "recorded_at": r["recorded_at"],
+        "notes":       r["notes_safe"],
+    } for r in recent_rows]
+
+    outcome_dist = {r["actual_outcome"]: r["n"] for r in outcome_counts}
+
+    return render_template(
+        "lpr_evaluation.html",
+        total=total,
+        positive_count=overall["positive_count"] or 0,
+        fp_count=overall["fp_count"]    or 0,
+        nl_count=overall["nl_count"]    or 0,
+        pos_rate=_pct(overall["positive_count"] or 0, total),
+        fp_rate= _pct(overall["fp_count"]       or 0, total),
+        nl_rate= _pct(overall["nl_count"]       or 0, total),
+        by_model=by_model,
+        by_band=by_band,
+        by_priority=by_priority,
+        recent=recent,
+        outcome_dist=outcome_dist,
+        outcome_vocab=LPR_OUTCOME_VOCAB,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

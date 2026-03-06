@@ -18,6 +18,7 @@
       <a href="{{ url_for('admin_lpr_agent_map') }}"  class="btn btn-sm btn-outline-success">👥 Agents</a>
       <a href="{{ url_for('admin_lpr_patrol_export') }}" class="btn btn-sm btn-outline-secondary"
          title="Export training CSV for Create ML">⬇ Export CSV</a>
+      <a href="{{ url_for('admin_lpr_evaluation') }}" class="btn btn-sm btn-outline-primary">📊 Evaluation</a>
       <form method="POST" action="{{ url_for('admin_lpr_patrol_recompute') }}" style="margin:0;">
         <button type="submit" class="btn btn-sm btn-primary">↺ Recompute</button>
       </form>
@@ -132,6 +133,7 @@
             <th>Recommended action</th>
             <th style="width:60px;">Job</th>
             <th class="text-end pe-3" style="width:80px;">Computed</th>
+            <th style="width:80px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -245,6 +247,19 @@
             <td class="text-end pe-3 text-muted" style="font-size:.75rem;white-space:nowrap;">
               {{ p.computed_at[:10] if p.computed_at else '—' }}
             </td>
+            <td class="pe-2">
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm py-0 px-2"
+                      style="font-size:.7rem;"
+                      data-bs-toggle="modal"
+                      data-bs-target="#outcomeModal"
+                      data-reg="{{ p.reg }}"
+                      data-action="{{ p.action | e }}"
+                      data-priority="{{ p.priority }}"
+                      onclick="prepOutcomeModal(this)">
+                Record
+              </button>
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -254,4 +269,138 @@
   {% endif %}
 
 </div>
+
+{# ── Outcome recording modal ────────────────────────────────────────────────── #}
+<div class="modal fade" id="outcomeModal" tabindex="-1" aria-labelledby="outcomeModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-3">
+        <h6 class="modal-title" id="outcomeModalLabel">Record patrol outcome</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold text-muted mb-1">Plate</label>
+          <div id="om-plate" class="fw-bold" style="font-family:monospace;font-size:1.1rem;"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold text-muted mb-1">Recommended action</label>
+          <div id="om-action" class="small text-muted" style="font-size:.83rem;"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="om-outcome">Actual outcome <span class="text-danger">*</span></label>
+          <select id="om-outcome" class="form-select form-select-sm">
+            <option value="">— select outcome —</option>
+            {% for code, label, desc in outcome_vocab %}
+            <option value="{{ code }}" title="{{ desc }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div id="om-outcome-desc" class="form-text mt-1" style="font-size:.78rem;min-height:1.4em;"></div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="om-confidence">
+            Confidence in this outcome: <span id="om-conf-val">80</span>%
+          </label>
+          <input type="range" id="om-confidence" class="form-range" min="0" max="100" step="5" value="80"
+                 oninput="document.getElementById('om-conf-val').textContent=this.value">
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label small fw-semibold" for="om-notes">
+            Notes <span class="text-muted fw-normal">(operational only — no customer data)</span>
+          </label>
+          <textarea id="om-notes" class="form-control form-control-sm" rows="2" maxlength="500"
+                    placeholder="e.g. observed vehicle 2 km from cluster zone"></textarea>
+        </div>
+
+        <div id="om-feedback" class="mt-2" style="min-height:1.5em;font-size:.83rem;"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="om-submit-btn" onclick="submitOutcome()">Save outcome</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _reg = "";
+
+  var outcomeDescriptions = {
+    {% for code, label, desc in outcome_vocab %}
+    "{{ code }}": "{{ desc }}",
+    {% endfor %}
+  };
+
+  window.prepOutcomeModal = function(btn) {
+    _reg = btn.getAttribute("data-reg") || "";
+    document.getElementById("om-plate").textContent   = _reg;
+    document.getElementById("om-action").textContent  = btn.getAttribute("data-action") || "—";
+    document.getElementById("om-outcome").value       = "";
+    document.getElementById("om-outcome-desc").textContent = "";
+    document.getElementById("om-confidence").value    = "80";
+    document.getElementById("om-conf-val").textContent = "80";
+    document.getElementById("om-notes").value         = "";
+    document.getElementById("om-feedback").textContent = "";
+    document.getElementById("om-submit-btn").disabled = false;
+  };
+
+  document.addEventListener("change", function(e) {
+    if (e.target.id === "om-outcome") {
+      var desc = outcomeDescriptions[e.target.value] || "";
+      document.getElementById("om-outcome-desc").textContent = desc;
+    }
+  });
+
+  window.submitOutcome = function() {
+    var outcome = document.getElementById("om-outcome").value;
+    if (!outcome) {
+      document.getElementById("om-feedback").innerHTML =
+        '<span class="text-danger">Please select an outcome.</span>';
+      return;
+    }
+    var btn = document.getElementById("om-submit-btn");
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+
+    fetch("{{ url_for('admin_lpr_patrol_outcome') }}", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        registration:       _reg,
+        outcome:            outcome,
+        outcome_confidence: parseInt(document.getElementById("om-confidence").value),
+        notes:              document.getElementById("om-notes").value.trim(),
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        document.getElementById("om-feedback").innerHTML =
+          '<span class="text-success fw-semibold">Outcome recorded.</span>';
+        btn.textContent = "Saved";
+        setTimeout(function() {
+          bootstrap.Modal.getInstance(document.getElementById("outcomeModal")).hide();
+        }, 900);
+      } else {
+        document.getElementById("om-feedback").innerHTML =
+          '<span class="text-danger">Error: ' + (d.error || "unknown") + '</span>';
+        btn.disabled = false;
+        btn.textContent = "Save outcome";
+      }
+    })
+    .catch(function() {
+      document.getElementById("om-feedback").innerHTML =
+        '<span class="text-danger">Network error — please try again.</span>';
+      btn.disabled = false;
+      btn.textContent = "Save outcome";
+    });
+  };
+})();
+</script>
 {% endblock %}

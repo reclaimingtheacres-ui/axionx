@@ -1,0 +1,332 @@
+{% extends "layout.html" %}
+{% block title %}Patrol Evaluation{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">Patrol Prediction Evaluation</h2>
+      <p class="text-muted small mb-0">
+        Prediction versus real field outcomes — use this to assess model accuracy and guide retraining
+      </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('admin_lpr_patrol') }}"     class="btn btn-sm btn-outline-secondary">← Patrol Intel</a>
+      <a href="{{ url_for('admin_lpr_patrol_export') }}" class="btn btn-sm btn-outline-secondary">⬇ Export CSV</a>
+    </div>
+  </div>
+
+  {# ── Summary banner ─────────────────────────────────────────────────────── #}
+  {% if total == 0 %}
+  <div class="card mb-4">
+    <div class="card-body text-center py-5 text-muted">
+      <div style="font-size:2.4rem;margin-bottom:12px;">📋</div>
+      <div class="fw-semibold mb-1">No outcomes recorded yet</div>
+      <div class="small">
+        Use the <strong>Record</strong> button on the Patrol Intel page, or submit results from the
+        mobile app, to start building the outcome history.
+      </div>
+    </div>
+  </div>
+
+  {% else %}
+
+  <div class="row g-3 mb-4">
+
+    <div class="col-6 col-md-3">
+      <div class="card h-100">
+        <div class="card-body text-center py-3">
+          <div style="font-size:1.9rem;font-weight:800;color:#111;">{{ total }}</div>
+          <div class="text-muted small mt-1">Outcomes recorded</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+      <div class="card h-100">
+        <div class="card-body text-center py-3">
+          <div style="font-size:1.9rem;font-weight:800;color:#16a34a;">{{ pos_rate }}%</div>
+          <div class="text-muted small mt-1">Positive outcome rate</div>
+          <div class="text-muted" style="font-size:.73rem;">{{ positive_count }} of {{ total }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+      <div class="card h-100">
+        <div class="card-body text-center py-3">
+          <div style="font-size:1.9rem;font-weight:800;color:#dc2626;">{{ fp_rate }}%</div>
+          <div class="text-muted small mt-1">False positive rate</div>
+          <div class="text-muted" style="font-size:.73rem;">{{ fp_count }} of {{ total }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+      <div class="card h-100">
+        <div class="card-body text-center py-3">
+          <div style="font-size:1.9rem;font-weight:800;color:#d97706;">{{ nl_rate }}%</div>
+          <div class="text-muted small mt-1">No-locate rate</div>
+          <div class="text-muted" style="font-size:.73rem;">{{ nl_count }} of {{ total }}</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  {# ── Outcome distribution ─────────────────────────────────────────────────── #}
+  {% if outcome_dist %}
+  <div class="card mb-4">
+    <div class="card-header py-2">
+      <span class="fw-semibold small">Outcome distribution</span>
+    </div>
+    <div class="card-body py-3 px-4">
+      <div class="row g-2">
+        {% for code, label, desc in outcome_vocab %}
+        {% set n = outcome_dist.get(code, 0) %}
+        {% if n > 0 %}
+        <div class="col-12 col-md-6">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:130px;flex-shrink:0;font-size:.8rem;font-weight:600;color:#374151;">{{ label }}</div>
+            <div style="flex:1;background:#f3f4f6;border-radius:4px;height:10px;overflow:hidden;">
+              <div style="height:100%;border-radius:4px;width:{{ [(n * 100 // total), 100] | min }}%;
+                background:{% if code in ['confirmed_present','repeat_area_confirmed','recovery_completed','recovery_progressed'] %}#16a34a
+                {% elif code == 'false_positive' %}#dc2626
+                {% elif code == 'no_locate' %}#d97706
+                {% elif code == 'followup_required' %}#2563eb
+                {% else %}#9ca3af{% endif %};"></div>
+            </div>
+            <span style="font-size:.8rem;font-weight:700;min-width:28px;text-align:right;">{{ n }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Performance by model version ─────────────────────────────────────────── #}
+  {% if by_model %}
+  <div class="card mb-4">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+      <span class="fw-semibold small">Performance by model version</span>
+      <span class="text-muted small">Positive = confirmed / repeat / progressed / completed / followup</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.83rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Model version</th>
+            <th class="text-center">Outcomes</th>
+            <th class="text-center">Positive</th>
+            <th class="text-center">Positive rate</th>
+            <th class="text-center">False positive</th>
+            <th class="text-center pe-3">FP rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in by_model %}
+          <tr>
+            <td class="ps-3">
+              <span class="badge rounded-pill"
+                    style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+                           font-size:.73rem;font-weight:600;">{{ m.model_version }}</span>
+            </td>
+            <td class="text-center">{{ m.total }}</td>
+            <td class="text-center">
+              <span style="color:#16a34a;font-weight:600;">{{ m.positive_count }}</span>
+            </td>
+            <td class="text-center">
+              <div style="display:flex;align-items:center;gap:6px;justify-content:center;">
+                <div style="width:52px;height:7px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
+                  <div style="height:100%;width:{{ m.pos_rate }}%;background:#16a34a;border-radius:4px;"></div>
+                </div>
+                <span style="font-weight:600;color:#16a34a;">{{ m.pos_rate }}%</span>
+              </div>
+            </td>
+            <td class="text-center">
+              <span style="color:#dc2626;font-weight:600;">{{ m.fp_count }}</span>
+            </td>
+            <td class="text-center pe-3">
+              <span style="color:#dc2626;">{{ m.fp_rate }}%</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Performance by confidence band ───────────────────────────────────────── #}
+  {% if by_band %}
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header py-2">
+          <span class="fw-semibold small">Performance by confidence band</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.83rem;">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3">Band</th>
+                <th class="text-center">Outcomes</th>
+                <th class="text-center">Positive rate</th>
+                <th class="text-center pe-3">FP rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in by_band %}
+              {% set band_color =
+                '#dc2626' if b.band == 'urgent' else
+                '#d97706' if b.band == 'high'   else
+                '#2563eb' if b.band == 'medium'  else
+                '#9ca3af' %}
+              <tr>
+                <td class="ps-3">
+                  <span style="font-size:.8rem;font-weight:700;color:{{ band_color }};">
+                    {{ b.band | capitalize }}
+                  </span>
+                </td>
+                <td class="text-center">{{ b.total }}</td>
+                <td class="text-center">
+                  <div style="display:flex;align-items:center;gap:5px;justify-content:center;">
+                    <div style="width:40px;height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
+                      <div style="height:100%;width:{{ b.pos_rate }}%;background:#16a34a;border-radius:4px;"></div>
+                    </div>
+                    <span style="color:#16a34a;font-weight:600;">{{ b.pos_rate }}%</span>
+                  </div>
+                </td>
+                <td class="text-center pe-3" style="color:#dc2626;">{{ b.fp_rate }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {# ── Performance by priority band ─────────────────────────────────────── #}
+    {% if by_priority %}
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header py-2">
+          <span class="fw-semibold small">Performance by patrol priority</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.83rem;">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-3">Priority</th>
+                <th class="text-center">Outcomes</th>
+                <th class="text-center">Positive rate</th>
+                <th class="text-center pe-3">FP rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pri in by_priority %}
+              {% set pri_color =
+                '#dc2626' if pri.priority == 'urgent' else
+                '#d97706' if pri.priority == 'high'   else
+                '#2563eb' if pri.priority == 'medium'  else
+                '#9ca3af' %}
+              <tr>
+                <td class="ps-3">
+                  {% if pri.priority == 'urgent' %}
+                    <span class="badge bg-danger">Urgent</span>
+                  {% elif pri.priority == 'high' %}
+                    <span class="badge bg-warning text-dark">High</span>
+                  {% elif pri.priority == 'medium' %}
+                    <span class="badge bg-info text-dark">Medium</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Low</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">{{ pri.total }}</td>
+                <td class="text-center">
+                  <div style="display:flex;align-items:center;gap:5px;justify-content:center;">
+                    <div style="width:40px;height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
+                      <div style="height:100%;width:{{ pri.pos_rate }}%;background:#16a34a;border-radius:4px;"></div>
+                    </div>
+                    <span style="color:#16a34a;font-weight:600;">{{ pri.pos_rate }}%</span>
+                  </div>
+                </td>
+                <td class="text-center pe-3" style="color:#dc2626;">{{ pri.fp_rate }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── Recent outcomes ──────────────────────────────────────────────────────── #}
+  {% if recent %}
+  <div class="card mb-4">
+    <div class="card-header py-2">
+      <span class="fw-semibold small">Recent outcomes (last 30)</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3" style="width:100px;">Plate</th>
+            <th>Outcome</th>
+            <th style="width:55px;">Score</th>
+            <th style="width:70px;">Model</th>
+            <th style="width:70px;">Source</th>
+            <th>Recorded by</th>
+            <th style="width:90px;">Date</th>
+            <th class="pe-3">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in recent %}
+          {% set is_positive = r.outcome in ['confirmed_present','repeat_area_confirmed','recovery_progressed','recovery_completed','followup_required'] %}
+          {% set is_fp       = r.outcome == 'false_positive' %}
+          <tr>
+            <td class="ps-3">
+              <span style="font-family:monospace;font-weight:700;">{{ r.reg }}</span>
+            </td>
+            <td>
+              <span style="font-size:.78rem;font-weight:600;
+                color:{% if is_positive %}#16a34a{% elif is_fp %}#dc2626{% else %}#d97706{% endif %};">
+                {{ r.outcome | replace('_',' ') | title }}
+              </span>
+            </td>
+            <td class="text-center">
+              <span style="font-size:.78rem;color:var(--muted);">{{ r.combined if r.combined is not none else '—' }}</span>
+            </td>
+            <td>
+              <span style="font-size:.72rem;color:#6b7280;">{{ r.model_ver }}</span>
+            </td>
+            <td>
+              <span class="badge bg-secondary" style="font-size:.68rem;">
+                {{ 'Mobile' if r.source_type == 'patrol_mobile' else 'Admin' }}
+              </span>
+            </td>
+            <td style="color:var(--muted);">{{ r.recorder }}</td>
+            <td style="white-space:nowrap;color:var(--muted);font-size:.75rem;">
+              {{ r.recorded_at[:10] if r.recorded_at else '—' }}
+            </td>
+            <td class="pe-3" style="color:var(--muted);font-size:.78rem;max-width:200px;">
+              {{ r.notes or '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}{# end total > 0 #}
+
+</div>
+{% endblock %}

@@ -190,9 +190,123 @@ Patrol Intel
   </div>
   {% endif %}
 
+  {# ── Record result section ──────────────────────────────────────────────── #}
+  {% set ci = loop.index %}
+  <div style="border-top:1px solid var(--line);padding:9px 14px;">
+    <button type="button"
+            id="rec-btn-{{ ci }}"
+            onclick="toggleResult('{{ ci }}')"
+            style="font-size:.78rem;font-weight:600;color:var(--accent);
+                   background:none;border:1px solid var(--accent);border-radius:8px;
+                   padding:4px 14px;cursor:pointer;width:100%;">
+      Record result
+    </button>
+
+    <div id="rec-panel-{{ ci }}" style="display:none;margin-top:10px;">
+      <div style="font-size:.73rem;font-weight:700;text-transform:uppercase;
+                  letter-spacing:.04em;color:var(--muted);margin-bottom:8px;">
+        What did you find for {{ p.reg }}?
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">
+        {% for code, label, desc in outcome_vocab %}
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;
+                      padding:7px 10px;border-radius:8px;border:1px solid var(--line);
+                      background:var(--card2);font-size:.82rem;line-height:1.35;">
+          <input type="radio"
+                 name="outcome-{{ ci }}"
+                 value="{{ code }}"
+                 style="margin-top:2px;flex-shrink:0;">
+          <span>
+            <span style="font-weight:600;">{{ label }}</span>
+            <span style="display:block;font-size:.74rem;color:var(--muted);margin-top:1px;">{{ desc }}</span>
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <textarea id="rec-notes-{{ ci }}"
+                placeholder="Optional notes (operational only)"
+                maxlength="200"
+                style="width:100%;font-size:.8rem;border:1px solid var(--line);border-radius:8px;
+                       padding:7px 10px;resize:vertical;min-height:56px;margin-bottom:8px;
+                       background:var(--card2);color:var(--text);box-sizing:border-box;">
+      </textarea>
+
+      <button type="button"
+              id="rec-submit-{{ ci }}"
+              onclick="submitResult('{{ ci }}','{{ p.reg }}')"
+              style="font-size:.82rem;font-weight:600;color:#fff;background:var(--accent);
+                     border:none;border-radius:8px;padding:7px 0;width:100%;cursor:pointer;">
+        Submit result
+      </button>
+
+      <div id="rec-feedback-{{ ci }}"
+           style="margin-top:6px;font-size:.78rem;min-height:1.2em;"></div>
+    </div>
+  </div>
+
 </div>
 {% endfor %}
 </div>
+
+<script>
+function toggleResult(idx) {
+  var panel = document.getElementById('rec-panel-' + idx);
+  var btn   = document.getElementById('rec-btn-' + idx);
+  if (!panel) return;
+  var showing = panel.style.display !== 'none';
+  panel.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? 'Record result' : 'Cancel';
+}
+
+function submitResult(idx, reg) {
+  var radios = document.getElementsByName('outcome-' + idx);
+  var outcome = '';
+  for (var i = 0; i < radios.length; i++) {
+    if (radios[i].checked) { outcome = radios[i].value; break; }
+  }
+  var fb   = document.getElementById('rec-feedback-' + idx);
+  var sbtn = document.getElementById('rec-submit-' + idx);
+  if (!outcome) {
+    fb.style.color = '#dc2626';
+    fb.textContent = 'Please select an outcome.';
+    return;
+  }
+  sbtn.disabled = true;
+  sbtn.textContent = 'Submitting…';
+  var notes = (document.getElementById('rec-notes-' + idx).value || '').trim();
+
+  fetch('/m/api/lpr/patrol/outcome', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({registration: reg, outcome: outcome, notes: notes})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+      fb.style.color = '#16a34a';
+      fb.textContent = 'Result saved.';
+      sbtn.textContent = 'Saved';
+      var btn = document.getElementById('rec-btn-' + idx);
+      if (btn) { btn.textContent = 'Result recorded'; btn.style.color = '#16a34a';
+                 btn.style.borderColor = '#16a34a'; }
+      document.getElementById('rec-panel-' + idx).style.display = 'none';
+    } else {
+      fb.style.color = '#dc2626';
+      fb.textContent = 'Error: ' + (d.error || 'unknown');
+      sbtn.disabled = false;
+      sbtn.textContent = 'Submit result';
+    }
+  })
+  .catch(function() {
+    fb.style.color = '#dc2626';
+    fb.textContent = 'Network error — try again.';
+    sbtn.disabled = false;
+    sbtn.textContent = 'Submit result';
+  });
+}
+</script>
 
 <div style="text-align:center;padding:20px 16px;color:var(--muted);font-size:.75rem;">
   Patrol intelligence updates when office runs a recompute. Plates seen fewer than twice in 30 days are not shown.

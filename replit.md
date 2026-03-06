@@ -606,6 +606,70 @@ Adds a Core ML–based prediction layer on top of the Stage 12 rule engine. When
 - Added to PBXSourcesBuildPhase `H100000000000000000001`
 - **Next IDs start at `3A`**
 
+## LPR Stage 14 — Closed-Loop Learning
+
+### Overview
+
+Adds structured outcome capture for patrol opportunities, stores prediction-versus-outcome history, adds an admin evaluation dashboard, and extends the training export with real field labels so future Create ML models train against actual success, not just repeat sightings.
+
+### New DB table: `lpr_prediction_outcomes`
+
+| Column | Type | Notes |
+|---|---|---|
+| `registration_normalised` | TEXT | Plate (operational only) |
+| `matched_job_id` | INTEGER | Operational link |
+| `source_type` | TEXT | `patrol` (admin) or `patrol_mobile` (agent) |
+| `source_id` | INTEGER | `lpr_patrol_intelligence.id` |
+| `rule_score` / `ml_score` / `combined_score` | INTEGER | Snapshot of scores at recording time |
+| `prediction_window` | TEXT | e.g. `72h` |
+| `model_version` | TEXT | e.g. `v1.0` |
+| `recommended_action` | TEXT | Snapshot of recommendation |
+| `actual_outcome` | TEXT | Controlled vocabulary code (see below) |
+| `outcome_confidence` | INTEGER | Admin/agent confidence 0–100 (default 80) |
+| `recorded_by` | INTEGER | User ID |
+| `recorded_at` | TEXT | ISO timestamp |
+| `notes_safe` | TEXT | Operational notes; no customer/finance data |
+
+### Outcome vocabulary (LPR_OUTCOME_VOCAB)
+
+| Code | Label | Description |
+|---|---|---|
+| `confirmed_present` | Confirmed present | Plate physically located in predicted area |
+| `repeat_area_confirmed` | Repeat area confirmed | Plate resighted in same cluster zone |
+| `followup_required` | Follow-up required | Flagged for active recovery action |
+| `restricted_only` | Restricted only | Access restricted at this time |
+| `no_locate` | No locate | Patrol conducted but plate not found |
+| `false_positive` | False positive | Prediction was incorrect |
+| `recovery_progressed` | Recovery progressed | Active recovery initiated |
+| `recovery_completed` | Recovery completed | Successful recovery completed |
+
+**Positive outcomes:** `confirmed_present`, `repeat_area_confirmed`, `recovery_progressed`, `recovery_completed`, `followup_required`
+
+### New backend helpers (app.py)
+
+- `LPR_OUTCOME_VOCAB` — list of (code, label, desc) tuples
+- `LPR_POSITIVE_OUTCOMES` — frozenset of positive outcome codes
+- `_LPR_OUTCOME_CODES` — frozenset of all valid codes
+- `_lpr_prediction_outcomes_ensure(conn)` — idempotent table creation
+
+### New routes (app.py)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/admin/lpr/patrol/outcome` | admin | JSON `{registration, outcome, outcome_confidence, notes}`. Records outcome for a patrol plate. Returns `{ok: true}`. |
+| POST | `/m/api/lpr/patrol/outcome` | mobile | Same payload, 200 char notes limit. Source type = `patrol_mobile`. |
+| GET | `/admin/lpr/evaluation` | admin | Evaluation dashboard: summary banner, outcome distribution bar chart, performance by model version table, performance by confidence band, performance by priority band, recent 30 outcomes table. |
+
+### Updated route
+
+- `GET /admin/lpr/patrol/export.csv` — now also LEFT JOINs `lpr_prediction_outcomes` to add `outcome_label` and `hours_to_outcome` columns. Rows without a recorded outcome have empty strings for both new columns.
+
+### Template updates
+
+- `templates/lpr_patrol.html` — "📊 Evaluation" nav button; new empty "Outcome" column header; per-row **Record** button that opens a Bootstrap modal; modal contains: plate display, recommended action, outcome select (full vocab + description), confidence slider (0–100, default 80), notes textarea; AJAX POST to `/admin/lpr/patrol/outcome`; success feedback closes modal after 0.9 s.
+- `templates/mobile/lpr_patrol.html` — per-card "**Record result**" button at the bottom of each card; expands a panel with full outcome radio list (label + description per option), optional notes textarea, Submit button; fetch POST to `/m/api/lpr/patrol/outcome`; on success the button turns green and shows "Result recorded".
+- `templates/lpr_evaluation.html` — new admin evaluation page (extends layout.html).
+
 ### Create ML training workflow
 
 1. Download training CSV from `GET /admin/lpr/patrol/export.csv`
