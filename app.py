@@ -509,9 +509,30 @@ def init_db():
             phone TEXT,
             address TEXT,
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            contact_name TEXT,
+            mobile TEXT,
+            other_phone TEXT,
+            email TEXT,
+            suburb TEXT,
+            state TEXT,
+            postcode TEXT,
+            notes TEXT,
+            created_by_user_id INTEGER
         )
     """)
+    for col, defn in [
+        ("contact_name",       "TEXT"),
+        ("mobile",             "TEXT"),
+        ("other_phone",        "TEXT"),
+        ("email",              "TEXT"),
+        ("suburb",             "TEXT"),
+        ("state",              "TEXT"),
+        ("postcode",           "TEXT"),
+        ("notes",              "TEXT"),
+        ("created_by_user_id", "INTEGER"),
+    ]:
+        add_column_if_missing(cur, "tow_operators", col, defn)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS auction_yards (
@@ -519,9 +540,31 @@ def init_db():
             name TEXT NOT NULL,
             address TEXT,
             active INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            contact_name TEXT,
+            mobile TEXT,
+            other_phone TEXT,
+            email TEXT,
+            suburb TEXT,
+            state TEXT,
+            postcode TEXT,
+            notes TEXT,
+            created_by_user_id INTEGER
         )
     """)
+    for col, defn in [
+        ("contact_name",       "TEXT"),
+        ("mobile",             "TEXT"),
+        ("phone",              "TEXT"),
+        ("other_phone",        "TEXT"),
+        ("email",              "TEXT"),
+        ("suburb",             "TEXT"),
+        ("state",              "TEXT"),
+        ("postcode",           "TEXT"),
+        ("notes",              "TEXT"),
+        ("created_by_user_id", "INTEGER"),
+    ]:
+        add_column_if_missing(cur, "auction_yards", col, defn)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS form_templates (
@@ -633,9 +676,11 @@ def _migrate_update_builder():
         quick_status TEXT NOT NULL DEFAULT ''
     )
     """)
-    add_column_if_missing(cur, "user_mobile_settings", "job_scope",       "TEXT NOT NULL DEFAULT 'mine'")
-    add_column_if_missing(cur, "user_mobile_settings", "show_completed",  "TEXT NOT NULL DEFAULT 'week'")
-    add_column_if_missing(cur, "user_mobile_settings", "quick_status",    "TEXT NOT NULL DEFAULT ''")
+    add_column_if_missing(cur, "user_mobile_settings", "job_scope",              "TEXT NOT NULL DEFAULT 'mine'")
+    add_column_if_missing(cur, "user_mobile_settings", "show_completed",         "TEXT NOT NULL DEFAULT 'week'")
+    add_column_if_missing(cur, "user_mobile_settings", "quick_status",           "TEXT NOT NULL DEFAULT ''")
+    add_column_if_missing(cur, "user_mobile_settings", "mobile_default_view",    "TEXT NOT NULL DEFAULT 'schedule'")
+    add_column_if_missing(cur, "user_mobile_settings", "show_status_on_visits",  "INTEGER NOT NULL DEFAULT 1")
     conn.commit()
     conn.close()
 
@@ -6231,51 +6276,145 @@ def m_update_builder(job_id):
                            now_time=mel_now.strftime("%H:%M"))
 
 
+@app.get("/m/tow-operators")
+@mobile_login_required
+def m_tow_operators_list():
+    conn = db()
+    rows = conn.execute(
+        "SELECT * FROM tow_operators WHERE active=1 ORDER BY company_name"
+    ).fetchall()
+    conn.close()
+    return render_template("mobile/tow_operators.html", items=rows)
+
+
 @app.get("/m/tow-operators/new")
 @mobile_login_required
 def m_tow_operator_new():
-    return render_template("m/tow_operator_new.html")
+    return render_template("mobile/tow_operator_form.html", item=None, form={})
 
 
 @app.post("/m/tow-operators/new")
 @mobile_login_required
 def m_tow_operator_new_post():
-    company_name = request.form.get("company_name", "").strip()
-    phone  = request.form.get("phone", "").strip() or None
-    address = request.form.get("address", "").strip() or None
+    uid = session.get("user_id")
+    f = request.form
+    company_name = f.get("company_name", "").strip()
     if not company_name:
         flash("Company name is required.", "danger")
-        return redirect(url_for("m_tow_operator_new"))
+        return render_template("mobile/tow_operator_form.html", item=None, form=f)
     conn = db()
-    conn.execute("INSERT INTO tow_operators (company_name, phone, address, created_at) VALUES (?,?,?,?)",
-                 (company_name, phone, address, now_ts()))
+    cur = conn.execute("""
+        INSERT INTO tow_operators
+            (company_name, contact_name, mobile, phone, other_phone, email,
+             address, suburb, state, postcode, notes, created_at, created_by_user_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        company_name,
+        f.get("contact_name","").strip() or None,
+        f.get("mobile","").strip() or None,
+        f.get("phone","").strip() or None,
+        f.get("other_phone","").strip() or None,
+        f.get("email","").strip() or None,
+        f.get("address","").strip() or None,
+        f.get("suburb","").strip() or None,
+        f.get("state","").strip() or None,
+        f.get("postcode","").strip() or None,
+        f.get("notes","").strip() or None,
+        now_ts(), uid,
+    ))
+    new_id = cur.lastrowid
     conn.commit()
     conn.close()
+    try:
+        _log_audit(uid, "create", "tow_operator", new_id)
+    except Exception:
+        pass
     flash(f"Tow operator \"{company_name}\" added.", "success")
-    return redirect(url_for("m_settings"))
+    return redirect(url_for("m_tow_operators_list"))
+
+
+@app.get("/m/auction-yards")
+@mobile_login_required
+def m_auction_yards_list():
+    conn = db()
+    rows = conn.execute(
+        "SELECT * FROM auction_yards WHERE active=1 ORDER BY name"
+    ).fetchall()
+    conn.close()
+    return render_template("mobile/auction_yards.html", items=rows)
 
 
 @app.get("/m/auction-yards/new")
 @mobile_login_required
 def m_auction_yard_new():
-    return render_template("m/auction_yard_new.html")
+    return render_template("mobile/auction_yard_form.html", item=None, form={})
 
 
 @app.post("/m/auction-yards/new")
 @mobile_login_required
 def m_auction_yard_new_post():
-    name    = request.form.get("name", "").strip()
-    address = request.form.get("address", "").strip() or None
+    uid = session.get("user_id")
+    f = request.form
+    name = f.get("name", "").strip()
     if not name:
-        flash("Auction yard name is required.", "danger")
-        return redirect(url_for("m_auction_yard_new"))
+        flash("Yard name is required.", "danger")
+        return render_template("mobile/auction_yard_form.html", item=None, form=f)
     conn = db()
-    conn.execute("INSERT INTO auction_yards (name, address, created_at) VALUES (?,?,?)",
-                 (name, address, now_ts()))
+    cur = conn.execute("""
+        INSERT INTO auction_yards
+            (name, contact_name, mobile, phone, other_phone, email,
+             address, suburb, state, postcode, notes, created_at, created_by_user_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        name,
+        f.get("contact_name","").strip() or None,
+        f.get("mobile","").strip() or None,
+        f.get("phone","").strip() or None,
+        f.get("other_phone","").strip() or None,
+        f.get("email","").strip() or None,
+        f.get("address","").strip() or None,
+        f.get("suburb","").strip() or None,
+        f.get("state","").strip() or None,
+        f.get("postcode","").strip() or None,
+        f.get("notes","").strip() or None,
+        now_ts(), uid,
+    ))
+    new_id = cur.lastrowid
     conn.commit()
     conn.close()
+    try:
+        _log_audit(uid, "create", "auction_yard", new_id)
+    except Exception:
+        pass
     flash(f"Auction yard \"{name}\" added.", "success")
-    return redirect(url_for("m_settings"))
+    return redirect(url_for("m_auction_yards_list"))
+
+
+def _log_audit(user_id, action, record_type, record_id):
+    """Lightweight audit helper for mobile create actions."""
+    conn = db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS mobile_audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER, action TEXT, record_type TEXT,
+            record_id INTEGER, created_at TEXT
+        )
+    """)
+    conn.execute(
+        "INSERT INTO mobile_audit_log (user_id, action, record_type, record_id, created_at) VALUES (?,?,?,?,?)",
+        (user_id, action, record_type, record_id, now_ts())
+    )
+    conn.commit()
+    conn.close()
+
+
+def _default_prefs():
+    return {
+        "list_sort": "visit_date", "list_dir": "asc", "distance_unit": "km",
+        "gps_foreground": 1, "gps_bg": 0, "gps_interval_mins": 5,
+        "job_scope": "mine", "show_completed": "week",
+        "mobile_default_view": "schedule", "show_status_on_visits": 1,
+    }
 
 
 @app.get("/m/settings")
@@ -6285,33 +6424,44 @@ def m_settings():
     conn = db()
     row = conn.execute("SELECT * FROM user_mobile_settings WHERE user_id=?", (uid,)).fetchone()
     conn.close()
-    if row:
-        prefs = dict(row)
-    else:
-        prefs = {"list_sort": "visit_date", "list_dir": "asc", "distance_unit": "km",
-                 "gps_foreground": 1, "gps_bg": 0, "gps_interval_mins": 5}
-    return render_template("m/settings.html", prefs=prefs)
+    prefs = {**_default_prefs(), **(dict(row) if row else {})}
+    return render_template("mobile/settings.html", prefs=prefs)
 
 
 @app.post("/m/settings")
 @mobile_login_required
 def m_settings_post():
     uid = session.get("user_id")
-    list_sort    = request.form.get("list_sort", "visit_date")
-    list_dir     = request.form.get("list_dir", "asc")
-    dist_unit    = request.form.get("distance_unit", "km")
-    gps_fg       = 1 if request.form.get("gps_foreground") else 0
-    gps_bg       = 1 if request.form.get("gps_bg") else 0
+    f = request.form
     ts = now_ts()
     conn = db()
     conn.execute("""
-        INSERT INTO user_mobile_settings (user_id, list_sort, list_dir, distance_unit, gps_foreground, gps_bg, updated_at)
-        VALUES (?,?,?,?,?,?,?)
+        INSERT INTO user_mobile_settings
+            (user_id, list_sort, list_dir, distance_unit, gps_foreground, gps_bg, gps_interval_mins,
+             job_scope, show_completed, mobile_default_view, show_status_on_visits, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(user_id) DO UPDATE SET
             list_sort=excluded.list_sort, list_dir=excluded.list_dir,
             distance_unit=excluded.distance_unit, gps_foreground=excluded.gps_foreground,
-            gps_bg=excluded.gps_bg, updated_at=excluded.updated_at
-    """, (uid, list_sort, list_dir, dist_unit, gps_fg, gps_bg, ts))
+            gps_bg=excluded.gps_bg, gps_interval_mins=excluded.gps_interval_mins,
+            job_scope=excluded.job_scope, show_completed=excluded.show_completed,
+            mobile_default_view=excluded.mobile_default_view,
+            show_status_on_visits=excluded.show_status_on_visits,
+            updated_at=excluded.updated_at
+    """, (
+        uid,
+        f.get("list_sort", "visit_date"),
+        f.get("list_dir", "asc"),
+        f.get("distance_unit", "km"),
+        1 if f.get("gps_foreground") else 0,
+        1 if f.get("gps_bg") else 0,
+        int(f.get("gps_interval_mins", 5)),
+        f.get("job_scope", "mine"),
+        f.get("show_completed", "week"),
+        f.get("mobile_default_view", "schedule"),
+        1 if f.get("show_status_on_visits") else 0,
+        ts,
+    ))
     conn.commit()
     conn.close()
     flash("Preferences saved.", "success")

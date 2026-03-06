@@ -1,0 +1,67 @@
+{% extends "mobile/base.html" %}
+{% block title %}Tow Operators — AxionX{% endblock %}
+{% block header_title %}Tow Operators{% endblock %}
+{% block header_right %}
+<a href="{{ url_for('m_tow_operator_new') }}" style="color:var(--accent);font-size:.85rem;font-weight:600;padding:4px 8px;text-decoration:none;">+ Add</a>
+{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}{% for cat, msg in messages %}
+<div class="m-flash m-flash-{{ cat }}" style="margin:10px 12px 0;">{{ msg }}</div>
+{% endfor %}{% endif %}
+{% endwith %}
+
+{% if not items %}
+<div class="m-empty">
+  <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.5"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 5v4h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+  <p>No tow operators added yet</p>
+  <a href="{{ url_for('m_tow_operator_new') }}" class="m-btn m-btn-primary" style="display:inline-block;margin-top:8px;width:auto;padding:10px 24px;">Add First Operator</a>
+</div>
+{% else %}
+<div style="padding-bottom:8px;">
+  {% for op in items %}
+  <div style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;margin:8px 12px;padding:14px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:.92rem;margin-bottom:3px;">{{ op.company_name }}</div>
+        {% if op.contact_name %}
+        <div style="font-size:.8rem;color:#374151;margin-bottom:2px;">{{ op.contact_name }}</div>
+        {% endif %}
+        {% if op.address or op.suburb %}
+        <div style="font-size:.78rem;color:#6b7280;margin-bottom:4px;">
+          {{ [op.address, op.suburb, op.state, op.postcode] | select | join(', ') }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% if op.mobile or op.phone or op.other_phone %}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+      {% if op.mobile %}
+      <a href="tel:{{ op.mobile }}" style="display:flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#2563eb;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        {{ op.mobile }}
+      </a>
+      {% endif %}
+      {% if op.phone %}
+      <a href="tel:{{ op.phone }}" style="display:flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        {{ op.phone }}
+      </a>
+      {% endif %}
+      {% if op.other_phone %}
+      <a href="tel:{{ op.other_phone }}" style="display:flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;text-decoration:none;">
+        Other: {{ op.other_phone }}
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if op.notes %}
+    <div style="font-size:.76rem;color:#6b7280;margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;">{{ op.notes }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

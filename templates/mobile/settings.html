@@ -1,0 +1,173 @@
+{% extends "mobile/base.html" %}
+{% block title %}Settings — AxionX{% endblock %}
+{% block header_title %}Settings{% endblock %}
+
+{% block extra_head %}
+<style>
+.set-card { background: #fff; border-radius: 14px; border: 1px solid #e5e7eb; margin: 0 12px 16px; overflow: hidden; }
+.set-card-header { padding: 12px 16px 10px; border-bottom: 1px solid #f3f4f6; }
+.set-card-title { font-size: .72rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #9ca3af; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #f3f4f6; }
+.set-row:last-child { border-bottom: none; }
+.set-label { font-size: .88rem; font-weight: 500; color: #111; }
+.set-sub { font-size: .74rem; color: #9ca3af; margin-top: 1px; }
+.set-select { background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 28px 7px 10px; font-size: .82rem; color: #111; -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; min-width: 130px; }
+.m-toggle { position: relative; display: inline-block; width: 44px; height: 26px; }
+.m-toggle input { opacity: 0; width: 0; height: 0; }
+.m-toggle-slider { position: absolute; inset: 0; background: #d1d5db; border-radius: 26px; cursor: pointer; transition: .2s; }
+.m-toggle-slider:before { content: ''; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+.m-toggle input:checked + .m-toggle-slider { background: #2563eb; }
+.m-toggle input:checked + .m-toggle-slider:before { transform: translateX(18px); }
+.set-menu-item { display: flex; align-items: center; justify-content: space-between; padding: 15px 16px; border-bottom: 1px solid #f3f4f6; text-decoration: none; color: #111; }
+.set-menu-item:last-child { border-bottom: none; }
+.set-menu-label { font-size: .9rem; font-weight: 500; }
+.set-menu-sub { font-size: .75rem; color: #9ca3af; margin-top: 1px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+{% for cat, msg in messages %}
+<div class="m-flash m-flash-{{ cat }}" style="margin:10px 12px 0;">{{ msg }}</div>
+{% endfor %}
+{% endif %}
+{% endwith %}
+
+<form method="post" action="{{ url_for('m_settings_post') }}">
+
+{# ── Display Preferences ── #}
+<div style="padding: 18px 12px 6px;">
+  <div class="set-card-title">Display Preferences</div>
+</div>
+<div class="set-card">
+  <div class="set-row">
+    <div><div class="set-label">Display Jobs By</div><div class="set-sub">Default sort for job list</div></div>
+    <select name="list_sort" class="set-select">
+      <option value="visit_date" {{ 'selected' if prefs.list_sort == 'visit_date' }}>Visit Date</option>
+      <option value="status"     {{ 'selected' if prefs.list_sort == 'status'     }}>Status</option>
+      <option value="distance"   {{ 'selected' if prefs.list_sort == 'distance'   }}>Distance</option>
+      <option value="created"    {{ 'selected' if prefs.list_sort == 'created'    }}>Date Added</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <div><div class="set-label">Sort Order</div></div>
+    <select name="list_dir" class="set-select">
+      <option value="asc"  {{ 'selected' if prefs.list_dir == 'asc'  }}>Ascending</option>
+      <option value="desc" {{ 'selected' if prefs.list_dir == 'desc' }}>Descending</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <div><div class="set-label">Job Scope Default</div><div class="set-sub">Which jobs to show</div></div>
+    <select name="job_scope" class="set-select">
+      <option value="mine"        {{ 'selected' if prefs.job_scope == 'mine'        }}>Mine</option>
+      <option value="scheduled"   {{ 'selected' if prefs.job_scope == 'scheduled'   }}>Scheduled</option>
+      <option value="unscheduled" {{ 'selected' if prefs.job_scope == 'unscheduled' }}>Unscheduled</option>
+      <option value="all"         {{ 'selected' if prefs.job_scope == 'all'         }}>All</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <div><div class="set-label">Show Completed Jobs</div><div class="set-sub">How far back to show</div></div>
+    <select name="show_completed" class="set-select">
+      <option value="none"  {{ 'selected' if prefs.show_completed == 'none'  }}>None</option>
+      <option value="day"   {{ 'selected' if prefs.show_completed == 'day'   }}>Today</option>
+      <option value="week"  {{ 'selected' if prefs.show_completed == 'week'  }}>Past Week</option>
+      <option value="month" {{ 'selected' if prefs.show_completed == 'month' }}>Past Month</option>
+      <option value="all"   {{ 'selected' if prefs.show_completed == 'all'   }}>All Time</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <div><div class="set-label">Distance Unit</div></div>
+    <select name="distance_unit" class="set-select">
+      <option value="km" {{ 'selected' if prefs.distance_unit == 'km' }}>Kilometres</option>
+      <option value="mi" {{ 'selected' if prefs.distance_unit == 'mi' }}>Miles</option>
+    </select>
+  </div>
+  <div class="set-row">
+    <div><div class="set-label">Show Status on Visits</div><div class="set-sub">Display job status in schedule view</div></div>
+    <label class="m-toggle">
+      <input type="checkbox" name="show_status_on_visits" value="1" {{ 'checked' if prefs.show_status_on_visits }}>
+      <span class="m-toggle-slider"></span>
+    </label>
+  </div>
+</div>
+
+{# ── GPS Tracking ── #}
+<div style="padding: 4px 12px 6px;">
+  <div class="set-card-title">GPS Tracking</div>
+</div>
+<div class="set-card">
+  <div class="set-row">
+    <div>
+      <div class="set-label">Foreground Tracking</div>
+      <div class="set-sub">Track location while app is open</div>
+    </div>
+    <label class="m-toggle">
+      <input type="checkbox" name="gps_foreground" value="1" {{ 'checked' if prefs.gps_foreground }}>
+      <span class="m-toggle-slider"></span>
+    </label>
+  </div>
+  <div class="set-row">
+    <div>
+      <div class="set-label">Background Tracking</div>
+      <div class="set-sub">Track when app is in background</div>
+    </div>
+    <label class="m-toggle">
+      <input type="checkbox" name="gps_bg" value="1" {{ 'checked' if prefs.gps_bg }}>
+      <span class="m-toggle-slider"></span>
+    </label>
+  </div>
+  <div class="set-row">
+    <div><div class="set-label">Update Frequency</div><div class="set-sub">How often to send location</div></div>
+    <select name="gps_interval_mins" class="set-select">
+      {% for mins, label in [(1,'1 minute'),(2,'2 minutes'),(5,'5 minutes'),(10,'10 minutes'),(15,'15 minutes')] %}
+      <option value="{{ mins }}" {{ 'selected' if prefs.gps_interval_mins == mins }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+{# ── Save ── #}
+<div style="padding: 0 12px 6px;">
+  <button type="submit" class="m-btn m-btn-primary">Save Preferences</button>
+</div>
+
+</form>
+
+{# ── Resources ── #}
+<div style="padding: 18px 12px 6px;">
+  <div class="set-card-title">Resources</div>
+</div>
+<div class="set-card">
+  <a href="{{ url_for('m_tow_operators_list') }}" class="set-menu-item">
+    <div>
+      <div class="set-menu-label">Tow Operators</div>
+      <div class="set-menu-sub">View and add tow operators</div>
+    </div>
+    <svg viewBox="0 0 24 24" width="16" height="16" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+  </a>
+  <a href="{{ url_for('m_auction_yards_list') }}" class="set-menu-item">
+    <div>
+      <div class="set-menu-label">Auction Yards</div>
+      <div class="set-menu-sub">View and add auction yards</div>
+    </div>
+    <svg viewBox="0 0 24 24" width="16" height="16" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+  </a>
+</div>
+
+{# ── Account ── #}
+<div style="padding: 4px 12px 6px;">
+  <div class="set-card-title">Account</div>
+</div>
+<div class="set-card" style="margin-bottom:24px;">
+  <div style="padding:14px 16px;">
+    <div style="font-size:.85rem;color:#6b7280;margin-bottom:12px;">
+      Signed in as <strong style="color:#111;">{{ session.get('user_name','') }}</strong>
+      <span style="margin-left:6px;font-size:.72rem;background:#f3f4f6;padding:2px 7px;border-radius:10px;color:#6b7280;">{{ session.get('role','') | title }}</span>
+    </div>
+    <a href="{{ url_for('m_logout') }}" class="m-btn m-btn-secondary">Sign Out</a>
+  </div>
+</div>
+
+{% endblock %}

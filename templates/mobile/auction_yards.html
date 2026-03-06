@@ -1,0 +1,63 @@
+{% extends "mobile/base.html" %}
+{% block title %}Auction Yards — AxionX{% endblock %}
+{% block header_title %}Auction Yards{% endblock %}
+{% block header_right %}
+<a href="{{ url_for('m_auction_yard_new') }}" style="color:var(--accent);font-size:.85rem;font-weight:600;padding:4px 8px;text-decoration:none;">+ Add</a>
+{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}{% for cat, msg in messages %}
+<div class="m-flash m-flash-{{ cat }}" style="margin:10px 12px 0;">{{ msg }}</div>
+{% endfor %}{% endif %}
+{% endwith %}
+
+{% if not items %}
+<div class="m-empty">
+  <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+  <p>No auction yards added yet</p>
+  <a href="{{ url_for('m_auction_yard_new') }}" class="m-btn m-btn-primary" style="display:inline-block;margin-top:8px;width:auto;padding:10px 24px;">Add First Yard</a>
+</div>
+{% else %}
+<div style="padding-bottom:8px;">
+  {% for yard in items %}
+  <div style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;margin:8px 12px;padding:14px;">
+    <div style="font-weight:700;font-size:.92rem;margin-bottom:3px;">{{ yard.name }}</div>
+    {% if yard.contact_name %}
+    <div style="font-size:.8rem;color:#374151;margin-bottom:2px;">{{ yard.contact_name }}</div>
+    {% endif %}
+    {% if yard.address or yard.suburb %}
+    <div style="font-size:.78rem;color:#6b7280;margin-bottom:4px;">
+      {{ [yard.address, yard.suburb, yard.state, yard.postcode] | select | join(', ') }}
+    </div>
+    {% endif %}
+    {% if yard.mobile or yard.phone or yard.other_phone %}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+      {% if yard.mobile %}
+      <a href="tel:{{ yard.mobile }}" style="display:flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#2563eb;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        {{ yard.mobile }}
+      </a>
+      {% endif %}
+      {% if yard.phone %}
+      <a href="tel:{{ yard.phone }}" style="display:flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        {{ yard.phone }}
+      </a>
+      {% endif %}
+      {% if yard.other_phone %}
+      <a href="tel:{{ yard.other_phone }}" style="display:flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;text-decoration:none;">
+        Other: {{ yard.other_phone }}
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if yard.notes %}
+    <div style="font-size:.76rem;color:#6b7280;margin-top:8px;padding-top:8px;border-top:1px solid #f3f4f6;">{{ yard.notes }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

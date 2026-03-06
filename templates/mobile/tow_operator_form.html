@@ -1,0 +1,110 @@
+{% extends "mobile/base.html" %}
+{% block title %}Add Tow Operator — AxionX{% endblock %}
+{% block header_title %}Add Tow Operator{% endblock %}
+{% block header_right %}
+<a href="{{ url_for('m_tow_operators_list') }}" style="color:#6b7280;font-size:.85rem;padding:4px 8px;text-decoration:none;">Cancel</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.form-card { background:#fff;border-radius:14px;border:1px solid #e5e7eb;margin:0 12px 14px;overflow:hidden; }
+.form-section { padding:10px 16px 4px;font-size:.68rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#9ca3af; }
+.form-field { padding:3px 16px 12px; }
+.form-label { display:block;font-size:.78rem;font-weight:600;color:#374151;margin-bottom:5px; }
+.form-label .req { color:#dc2626; }
+.form-input { width:100%;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;font-size:.9rem;color:#111;outline:none;-webkit-appearance:none;box-sizing:border-box; }
+.form-input:focus { border-color:#2563eb;background:#fff; }
+textarea.form-input { resize:vertical;min-height:80px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}{% for cat, msg in messages %}
+<div class="m-flash m-flash-{{ cat }}" style="margin:10px 12px 0;">{{ msg }}</div>
+{% endfor %}{% endif %}
+{% endwith %}
+
+<form method="post" action="{{ url_for('m_tow_operator_new_post') }}" style="padding-top:12px;">
+
+  <div class="form-card">
+    <div class="form-section">Company Details</div>
+    <div class="form-field">
+      <label class="form-label">Company Name <span class="req">*</span></label>
+      <input class="form-input" type="text" name="company_name" value="{{ form.get('company_name','') }}"
+             placeholder="Company name" required autocomplete="organization">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Contact Name</label>
+      <input class="form-input" type="text" name="contact_name" value="{{ form.get('contact_name','') }}"
+             placeholder="Primary contact" autocomplete="name">
+    </div>
+  </div>
+
+  <div class="form-card">
+    <div class="form-section">Contact Numbers</div>
+    <div class="form-field">
+      <label class="form-label">Mobile</label>
+      <input class="form-input" type="tel" name="mobile" value="{{ form.get('mobile','') }}"
+             placeholder="Mobile number" inputmode="tel" autocomplete="tel">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Phone</label>
+      <input class="form-input" type="tel" name="phone" value="{{ form.get('phone','') }}"
+             placeholder="Office / landline" inputmode="tel">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Other Phone</label>
+      <input class="form-input" type="tel" name="other_phone" value="{{ form.get('other_phone','') }}"
+             placeholder="After-hours or alternate" inputmode="tel">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Email</label>
+      <input class="form-input" type="email" name="email" value="{{ form.get('email','') }}"
+             placeholder="Email address" inputmode="email" autocomplete="email">
+    </div>
+  </div>
+
+  <div class="form-card">
+    <div class="form-section">Address</div>
+    <div class="form-field">
+      <label class="form-label">Street Address</label>
+      <input class="form-input" type="text" name="address" value="{{ form.get('address','') }}"
+             placeholder="Street address" autocomplete="street-address">
+    </div>
+    <div class="form-field">
+      <label class="form-label">Suburb</label>
+      <input class="form-input" type="text" name="suburb" value="{{ form.get('suburb','') }}"
+             placeholder="Suburb" autocomplete="address-level2">
+    </div>
+    <div style="display:flex;gap:10px;padding:3px 16px 12px;">
+      <div style="flex:1;">
+        <label class="form-label">State</label>
+        <select class="form-input" name="state" style="padding:11px 14px;">
+          {% for s in ['','NSW','VIC','QLD','WA','SA','TAS','ACT','NT'] %}
+          <option value="{{ s }}" {{ 'selected' if form.get('state','') == s }}>{{ s or '—' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;">
+        <label class="form-label">Postcode</label>
+        <input class="form-input" type="text" name="postcode" value="{{ form.get('postcode','') }}"
+               placeholder="0000" inputmode="numeric" maxlength="4">
+      </div>
+    </div>
+  </div>
+
+  <div class="form-card">
+    <div class="form-section">Notes</div>
+    <div class="form-field">
+      <textarea class="form-input" name="notes" placeholder="Any relevant notes…">{{ form.get('notes','') }}</textarea>
+    </div>
+  </div>
+
+  <div style="padding:0 12px 28px;">
+    <button type="submit" class="m-btn m-btn-primary">Save Tow Operator</button>
+  </div>
+
+</form>
+{% endblock %}
