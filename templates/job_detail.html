@@ -2598,6 +2598,57 @@ function axCopyVin(btn) {
       </div>
       <form method="post" action="/jobs/{{ job.id }}/documents/upload" enctype="multipart/form-data">
         <div class="modal-body">
+
+          <!-- ── Job Data Status ──────────────────────────────────────────── -->
+          <div class="mb-3 p-2" style="background:var(--bg);border:1px solid var(--line);border-radius:10px">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="small fw-bold" style="color:var(--muted);letter-spacing:.05em">JOB DATA STATUS</span>
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm"
+                      style="font-size:.72rem;padding:2px 8px"
+                      onclick="adocOpenEditJob()">Edit Job Details</button>
+            </div>
+            <div class="row g-2">
+              <!-- Customer -->
+              <div class="col-6">
+                <div style="font-size:.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em">CUSTOMER</div>
+                {% if job_linked_customers %}
+                  <div class="small fw-semibold" style="color:#16a34a">
+                    ✓ {{ job_linked_customers[0].first_name }} {{ job_linked_customers[0].last_name }}
+                  </div>
+                {% else %}
+                  <div class="small fw-semibold" style="color:#d97706">⚠ Not linked</div>
+                {% endif %}
+              </div>
+              <!-- Client -->
+              <div class="col-6">
+                <div style="font-size:.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em">CLIENT</div>
+                {% if job.client_name %}
+                  <div class="small fw-semibold" style="color:#16a34a">✓ {{ job.client_name }}</div>
+                {% else %}
+                  <div class="small fw-semibold" style="color:#d97706">⚠ Not set</div>
+                {% endif %}
+              </div>
+              <!-- Lender -->
+              <div class="col-12" style="border-top:1px solid var(--line);padding-top:6px;margin-top:2px">
+                <div style="font-size:.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em">LENDER</div>
+                {% if job.lender_name %}
+                  <div class="small fw-semibold" style="color:var(--text)">
+                    {{ job.lender_name }}{% if job.account_number %} · Acct {{ job.account_number }}{% endif %}{% if job.regulation_type %} · {{ job.regulation_type }}{% endif %}
+                  </div>
+                {% else %}
+                  <div class="small" style="color:var(--muted)">— Not entered</div>
+                {% endif %}
+                {% if not job_linked_customers or not job.client_name or not job.lender_name %}
+                  <div class="mt-1" style="font-size:.72rem;color:#d97706">
+                    Fields marked ⚠ will be blank in generated documents. Use <strong>Edit Job Details</strong> above to fill them in before uploading.
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Upload Fields ─────────────────────────────────────────────── -->
           <div class="mb-3">
             <label class="form-label small fw-semibold">Document Type</label>
             <select class="form-select" name="doc_type">
@@ -2620,6 +2671,12 @@ function axCopyVin(btn) {
             <label class="form-label small fw-semibold">Notes <span style="color:var(--muted);font-weight:400">(optional)</span></label>
             <textarea class="form-control" name="notes" rows="2" placeholder="Any notes about this document…"></textarea>
           </div>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="also_save_note" id="adocAlsoNote" value="1" checked>
+            <label class="form-check-label small" for="adocAlsoNote" style="color:var(--muted)">
+              Also save a copy reference in Notes &amp; Docs
+            </label>
+          </div>
         </div>
         <div class="modal-footer" style="border-top:1px solid var(--line)">
           <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -2629,6 +2686,15 @@ function axCopyVin(btn) {
     </div>
   </div>
 </div>
+
+<script>
+function adocOpenEditJob() {
+  bootstrap.Modal.getInstance(document.getElementById('addDocModal')).hide();
+  setTimeout(function() {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('editJobModal')).show();
+  }, 350);
+}
+</script>
 
 <!-- ── Add Booking Modal ──────────────────────────────────────────────── -->
 <div class="modal fade" id="addBookingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">

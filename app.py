@@ -3962,6 +3962,7 @@ def job_document_upload(job_id: int):
     doc_type = (request.form.get("doc_type") or "Other").strip()
     title = (request.form.get("title") or "").strip()
     notes = (request.form.get("notes") or "").strip()
+    also_save_note = request.form.get("also_save_note") == "1"
     files = request.files.getlist("file")
 
     valid_files = [f for f in files if f and f.filename]
@@ -3973,12 +3974,13 @@ def job_document_upload(job_id: int):
     cur = conn.cursor()
     uploaded = 0
     skipped = []
+    ts = now_ts()
     for file in valid_files:
         if not allowed_file(file.filename):
             skipped.append(file.filename)
             continue
         original_filename = secure_filename(file.filename)
-        ts_safe = now_ts().replace(":", "").replace("-", "").replace(" ", "")
+        ts_safe = ts.replace(":", "").replace("-", "").replace(" ", "")
         stored_filename = f"job_{job_id}_{ts_safe}_{original_filename}"
         mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
         file_size = upload_to_blob(file, stored_filename)
@@ -3988,10 +3990,30 @@ def job_document_upload(job_id: int):
                  mime_type, file_size, uploaded_by_user_id, uploaded_at, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (job_id, doc_type, title or None, original_filename, stored_filename,
-              mime_type, file_size, session.get("user_id"), now_ts(), notes or None))
+              mime_type, file_size, session.get("user_id"), ts, notes or None))
         doc_id = cur.lastrowid
         audit("job_document", doc_id, "create", "Job document uploaded",
               {"job_id": job_id, "doc_type": doc_type, "filename": original_filename})
+
+        # Also save a reference in Notes & Docs so it appears in the notes tab
+        if also_save_note:
+            note_parts = [f"Document uploaded: {doc_type}"]
+            if title:
+                note_parts.append(f"— {title}")
+            note_parts.append(f"({original_filename})")
+            if notes:
+                note_parts.append(f"\n{notes}")
+            note_text = " ".join(note_parts)
+            cur.execute("""
+                INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (job_id, session.get("user_id"), note_text, ts))
+            note_id = cur.lastrowid
+            cur.execute("""
+                INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                VALUES (?, ?, ?, ?)
+            """, (note_id, original_filename, stored_filename, ts))
+
         uploaded += 1
     conn.commit()
     conn.close()
