@@ -62,7 +62,8 @@
               same as contract number
             </span>
           </label>
-          <input class="form-control" name="client_job_number" id="client_job_number" placeholder="e.g., CJN-001" oninput="this.value=this.value.replace(/\s/g,'')">
+          <input class="form-control" name="client_job_number" id="client_job_number" placeholder="e.g., CJN-001" oninput="this.value=this.value.replace(/\s/g,'')"
+                 value="{{ prefill_client_job_number or '' }}">
         </div>
       </div>
 
@@ -405,7 +406,7 @@
   }
 
   makeTypeahead({ searchId:'client_search',   hiddenId:'client_id_val',     dropId:'client_dropdown',
-                  data:CLIENT_DATA,   preselect:{{ new_client_id | tojson }} });
+                  data:CLIENT_DATA,   preselect:{{ (new_client_id or autofill_client_id) | tojson }} });
   makeTypeahead({ searchId:'customer_search', hiddenId:'customer_id_val',    dropId:'customer_dropdown',
                   data:CUSTOMER_DATA, preselect:{{ new_customer_id | tojson }},
                   onSelect: function(item) {
@@ -637,7 +638,8 @@ function submitNewJobType() {
             </div>
             <div class="col-12 col-md-3">
               <label class="form-label">Costs</label>
-              <input class="form-control" name="costs" form="newJobForm" placeholder="$0.00">
+              <input class="form-control" name="costs" form="newJobForm" placeholder="$0.00"
+                     value="{{ prefill_costs or '' }}">
             </div>
             <div class="col-12 col-md-3">
               <label class="form-label">MMP</label>
@@ -735,7 +737,8 @@ function submitNewJobType() {
                    id="deliver_to_input"
                    list="deliver_to_list"
                    placeholder="Type auction yard name…"
-                   autocomplete="off">
+                   autocomplete="off"
+                   value="{{ prefill_deliver_to or '' }}">
             <datalist id="deliver_to_list">
               {% for yard in auction_yards %}<option value="{{ yard.name }}">{% endfor %}
             </datalist>
