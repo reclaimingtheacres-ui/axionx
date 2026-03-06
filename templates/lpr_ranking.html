@@ -1,0 +1,472 @@
+{% extends "layout.html" %}
+{% block title %}Patrol Ranking Config{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">Adaptive Patrol Ranking</h2>
+      <p class="text-muted small mb-0">
+        Version-aware rule/ML blending driven by real field outcomes
+      </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('admin_lpr_patrol') }}"     class="btn btn-sm btn-outline-secondary">← Patrol Intel</a>
+      <a href="{{ url_for('admin_lpr_evaluation') }}" class="btn btn-sm btn-outline-primary">📊 Evaluation</a>
+    </div>
+  </div>
+
+  {# ── Data banner ─────────────────────────────────────────────────────────── #}
+  {% if outcome_total < 25 %}
+  <div class="alert alert-warning py-2 mb-4 d-flex align-items-center gap-2"
+       style="font-size:.85rem;">
+    <span style="font-size:1.2rem;">⚠</span>
+    <div>
+      <strong>{{ outcome_total }} outcome{{ 's' if outcome_total != 1 }} recorded</strong> —
+      at least <strong>25</strong> labelled outcomes are required per model/band combination before
+      the system can auto-calibrate. Keep recording results on the Patrol Intel page to build up evidence.
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Active configuration ────────────────────────────────────────────────── #}
+  <div class="card mb-4">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+      <span class="fw-semibold small">Active blend configuration</span>
+      <span class="text-muted small">
+        Most specific match wins — wildcard (<code>*</code>) = all values
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.83rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3" style="width:110px;">Model</th>
+            <th style="width:85px;">Conf band</th>
+            <th style="width:85px;">Priority</th>
+            <th class="text-center" style="width:70px;">Rule %</th>
+            <th class="text-center" style="width:70px;">ML %</th>
+            <th class="text-center" style="width:80px;">Min threshold</th>
+            <th style="width:65px;">Source</th>
+            <th>Reason</th>
+            <th style="width:85px;">Since</th>
+            <th class="pe-3" style="width:70px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in active_configs %}
+          {% set is_default = c.source == 'default' %}
+          <tr>
+            <td class="ps-3">
+              {% if c.model_version == '*' %}
+                <span class="text-muted fst-italic">any</span>
+              {% else %}
+                <span class="badge rounded-pill"
+                      style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+                             font-size:.72rem;font-weight:600;">{{ c.model_version }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if c.confidence_band == '*' %}
+                <span class="text-muted fst-italic">any</span>
+              {% else %}
+                {% set bc = {'urgent':'#dc2626','high':'#d97706','medium':'#2563eb','low':'#6b7280'} %}
+                <span style="font-weight:700;font-size:.8rem;color:{{ bc.get(c.confidence_band,'#374151') }};">
+                  {{ c.confidence_band | capitalize }}
+                </span>
+              {% endif %}
+            </td>
+            <td>
+              {% if c.priority_band == '*' %}
+                <span class="text-muted fst-italic">any</span>
+              {% else %}
+                {{ c.priority_band | capitalize }}
+              {% endif %}
+            </td>
+            <td class="text-center">
+              <span class="fw-bold">{{ (c.rule_weight * 100) | int }}%</span>
+            </td>
+            <td class="text-center">
+              <span class="fw-bold" style="color:#2563eb;">{{ (c.ml_weight * 100) | int }}%</span>
+            </td>
+            <td class="text-center">{{ c.min_combined_threshold }}</td>
+            <td>
+              {% if c.source == 'default' %}
+                <span class="badge bg-secondary" style="font-size:.68rem;">Default</span>
+              {% elif c.source == 'auto' %}
+                <span class="badge bg-info text-dark" style="font-size:.68rem;">Auto</span>
+              {% else %}
+                <span class="badge bg-warning text-dark" style="font-size:.68rem;">Manual</span>
+              {% endif %}
+            </td>
+            <td style="font-size:.78rem;color:var(--muted);max-width:260px;">
+              {{ c.reason or '—' }}
+            </td>
+            <td style="font-size:.73rem;color:var(--muted);white-space:nowrap;">
+              {{ c.effective_from[:10] if c.effective_from else '—' }}
+            </td>
+            <td class="pe-3">
+              {% if not is_default %}
+              <button class="btn btn-outline-danger btn-sm py-0 px-2"
+                      style="font-size:.7rem;"
+                      onclick="rollbackConfig({{ c.id }}, this)">
+                Rollback
+              </button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Recommendations ─────────────────────────────────────────────────────── #}
+  {% if recommendations %}
+  <div class="card mb-4">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+      <span class="fw-semibold small">Calibration analysis</span>
+      {% set actionable = recommendations | selectattr('action','in',['increase_ml','decrease_ml']) | list %}
+      {% if actionable %}
+      <button class="btn btn-sm btn-primary py-0 px-3" id="apply-all-btn" onclick="applyAll()">
+        Apply {{ actionable | length }} recommendation{{ 's' if actionable | length != 1 }}
+      </button>
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.82rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Model</th>
+            <th>Conf band</th>
+            <th class="text-center">Outcomes</th>
+            <th class="text-center">Pos rate</th>
+            <th class="text-center">FP rate</th>
+            <th class="text-center">Current blend</th>
+            <th class="text-center">Recommended blend</th>
+            <th class="pe-3">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for rec in recommendations %}
+          {% set action_color =
+            '#16a34a' if rec.action == 'increase_ml' else
+            '#dc2626' if rec.action == 'decrease_ml' else
+            '#d97706' if rec.action == 'insufficient_sample' else
+            '#6b7280' %}
+          <tr>
+            <td class="ps-3">
+              {% if rec.model_version == '*' %}
+                <span class="text-muted fst-italic">any</span>
+              {% else %}
+                <span class="badge rounded-pill"
+                      style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+                             font-size:.72rem;font-weight:600;">{{ rec.model_version }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% set bc = {'urgent':'#dc2626','high':'#d97706','medium':'#2563eb','low':'#6b7280'} %}
+              <span style="font-weight:700;font-size:.8rem;color:{{ bc.get(rec.conf_band,'#374151') }};">
+                {{ rec.conf_band | capitalize }}
+              </span>
+            </td>
+            <td class="text-center">
+              {{ rec.total }}
+              {% if rec.total < rec.min_sample %}
+              <span class="text-muted" style="font-size:.7rem;">(need {{ rec.min_sample }})</span>
+              {% endif %}
+            </td>
+            <td class="text-center">
+              <span style="color:#16a34a;font-weight:600;">{{ rec.pos_rate }}%</span>
+            </td>
+            <td class="text-center">
+              <span style="color:#dc2626;font-weight:600;">{{ rec.fp_rate }}%</span>
+            </td>
+            <td class="text-center">
+              <span style="font-size:.78rem;">
+                {{ (rec.current_rule_weight * 100) | int }}R / {{ (rec.current_ml_weight * 100) | int }}ML
+              </span>
+              <span style="font-size:.72rem;color:var(--muted);">(thr {{ rec.current_threshold }})</span>
+            </td>
+            <td class="text-center">
+              {% if rec.new_ml_weight is not none %}
+              <span style="font-weight:700;color:{{ action_color }};font-size:.78rem;">
+                {{ (rec.new_rule_weight * 100) | int }}R / {{ (rec.new_ml_weight * 100) | int }}ML
+              </span>
+              <span style="font-size:.72rem;color:var(--muted);">(thr {{ rec.new_threshold }})</span>
+              {% else %}
+              <span class="text-muted fst-italic" style="font-size:.78rem;">unchanged</span>
+              {% endif %}
+            </td>
+            <td class="pe-3" style="font-size:.78rem;color:var(--muted);max-width:280px;">
+              <span style="color:{{ action_color }};font-weight:600;">
+                {% if rec.action == 'increase_ml' %}↑ Increase ML
+                {% elif rec.action == 'decrease_ml' %}↓ Reduce ML
+                {% elif rec.action == 'insufficient_sample' %}⏳ Need more data
+                {% else %}✓ No change
+                {% endif %}
+              </span>
+              — {{ rec.reason }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card mb-4">
+    <div class="card-body text-center py-5 text-muted">
+      <div style="font-size:2rem;margin-bottom:10px;">📈</div>
+      <div class="fw-semibold mb-1">No calibration data yet</div>
+      <div class="small">Record patrol outcomes to enable analysis.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Manual override ─────────────────────────────────────────────────────── #}
+  <div class="card mb-4">
+    <div class="card-header py-2">
+      <span class="fw-semibold small">Manual override</span>
+    </div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        Manually set blend weights for a specific model version and/or band. Leave fields as
+        <code>*</code> to apply globally. The new config becomes active immediately;
+        the previous config for that scope is deactivated (and can be rolled back from the table above).
+      </p>
+
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-sm-6 col-md-3">
+          <label class="form-label small fw-semibold mb-1" for="ov-model">Model version</label>
+          <input id="ov-model" type="text" class="form-control form-control-sm"
+                 value="*" placeholder="e.g. v1.0 or *">
+        </div>
+        <div class="col-6 col-sm-3 col-md-2">
+          <label class="form-label small fw-semibold mb-1" for="ov-band">Conf band</label>
+          <select id="ov-band" class="form-select form-select-sm">
+            <option value="*">* (all)</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="col-6 col-sm-3 col-md-2">
+          <label class="form-label small fw-semibold mb-1" for="ov-priority">Priority band</label>
+          <select id="ov-priority" class="form-select form-select-sm">
+            <option value="*">* (all)</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="col-4 col-md-1">
+          <label class="form-label small fw-semibold mb-1" for="ov-rw">Rule %</label>
+          <input id="ov-rw" type="number" class="form-control form-control-sm"
+                 min="0" max="100" step="5" value="40">
+        </div>
+        <div class="col-4 col-md-1">
+          <label class="form-label small fw-semibold mb-1" for="ov-mw">ML %</label>
+          <input id="ov-mw" type="number" class="form-control form-control-sm"
+                 min="0" max="100" step="5" value="60">
+        </div>
+        <div class="col-4 col-md-1">
+          <label class="form-label small fw-semibold mb-1" for="ov-thr">Min score</label>
+          <input id="ov-thr" type="number" class="form-control form-control-sm"
+                 min="0" max="100" step="5" value="30">
+        </div>
+        <div class="col-12 col-md-auto flex-grow-1">
+          <label class="form-label small fw-semibold mb-1" for="ov-reason">Reason</label>
+          <input id="ov-reason" type="text" class="form-control form-control-sm"
+                 maxlength="300" placeholder="Why this change was made">
+        </div>
+      </div>
+
+      <div id="ov-sum-check" class="form-text mt-2 mb-3" style="font-size:.78rem;">
+        Rule + ML must sum to 100%. Currently: <span id="ov-sum">100</span>%
+      </div>
+
+      <button class="btn btn-sm btn-warning" id="ov-submit-btn" onclick="submitOverride()">
+        Apply override
+      </button>
+      <span id="ov-feedback" class="ms-3" style="font-size:.83rem;"></span>
+    </div>
+  </div>
+
+  {# ── Configuration history ───────────────────────────────────────────────── #}
+  {% if history %}
+  <div class="card mb-4">
+    <div class="card-header py-2">
+      <span class="fw-semibold small">Configuration history (last 40)</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.8rem;">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3" style="width:40px;">#</th>
+            <th style="width:80px;">Model</th>
+            <th style="width:80px;">Conf band</th>
+            <th style="width:80px;">Priority</th>
+            <th class="text-center" style="width:65px;">Rule %</th>
+            <th class="text-center" style="width:65px;">ML %</th>
+            <th class="text-center" style="width:75px;">Min score</th>
+            <th style="width:60px;">Source</th>
+            <th style="width:60px;">Status</th>
+            <th>Reason</th>
+            <th class="pe-3" style="width:85px;">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in history %}
+          <tr style="{% if not h.active %}opacity:.5;{% endif %}">
+            <td class="ps-3 text-muted">{{ h.id }}</td>
+            <td>
+              {% if h.model_version == '*' %}
+                <span class="text-muted fst-italic">any</span>
+              {% else %}
+                <span style="font-family:monospace;font-size:.78rem;">{{ h.model_version }}</span>
+              {% endif %}
+            </td>
+            <td>{{ h.confidence_band }}</td>
+            <td>{{ h.priority_band }}</td>
+            <td class="text-center">{{ (h.rule_weight * 100) | int }}%</td>
+            <td class="text-center">{{ (h.ml_weight * 100) | int }}%</td>
+            <td class="text-center">{{ h.min_combined_threshold }}</td>
+            <td>
+              {% if h.source == 'default' %}
+                <span class="badge bg-secondary" style="font-size:.65rem;">Default</span>
+              {% elif h.source == 'auto' %}
+                <span class="badge bg-info text-dark" style="font-size:.65rem;">Auto</span>
+              {% else %}
+                <span class="badge bg-warning text-dark" style="font-size:.65rem;">Manual</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if h.active %}
+                <span class="badge bg-success" style="font-size:.65rem;">Active</span>
+              {% else %}
+                <span class="badge bg-secondary" style="font-size:.65rem;opacity:.7;">Inactive</span>
+              {% endif %}
+            </td>
+            <td style="font-size:.75rem;color:var(--muted);max-width:220px;">
+              {{ h.reason or '—' }}
+            </td>
+            <td class="pe-3 text-muted" style="white-space:nowrap;font-size:.73rem;">
+              {{ h.created_at[:10] if h.created_at else '—' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+(function(){
+
+  function updateSum() {
+    var rw = parseInt(document.getElementById('ov-rw').value) || 0;
+    var mw = parseInt(document.getElementById('ov-mw').value) || 0;
+    var el = document.getElementById('ov-sum');
+    el.textContent = rw + mw;
+    el.style.color = (rw + mw === 100) ? '#16a34a' : '#dc2626';
+  }
+  document.getElementById('ov-rw').addEventListener('input', updateSum);
+  document.getElementById('ov-mw').addEventListener('input', updateSum);
+  updateSum();
+
+  window.submitOverride = function() {
+    var rw  = parseInt(document.getElementById('ov-rw').value)  || 0;
+    var mw  = parseInt(document.getElementById('ov-mw').value)  || 0;
+    var thr = parseInt(document.getElementById('ov-thr').value) || 30;
+    var fb  = document.getElementById('ov-feedback');
+    var btn = document.getElementById('ov-submit-btn');
+
+    if (rw + mw !== 100) {
+      fb.innerHTML = '<span class="text-danger">Rule + ML must sum to 100%.</span>';
+      return;
+    }
+    btn.disabled = true; btn.textContent = 'Saving…';
+
+    fetch("{{ url_for('admin_lpr_ranking_config') }}", {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model_version:          document.getElementById('ov-model').value.trim()  || '*',
+        confidence_band:        document.getElementById('ov-band').value,
+        priority_band:          document.getElementById('ov-priority').value,
+        rule_weight:            rw / 100,
+        ml_weight:              mw / 100,
+        min_combined_threshold: thr,
+        reason:                 document.getElementById('ov-reason').value.trim(),
+      })
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.ok) {
+        fb.innerHTML = '<span class="text-success fw-semibold">Override applied — reloading…</span>';
+        setTimeout(function(){ location.reload(); }, 900);
+      } else {
+        fb.innerHTML = '<span class="text-danger">Error: ' + (d.error||'unknown') + '</span>';
+        btn.disabled = false; btn.textContent = 'Apply override';
+      }
+    })
+    .catch(function(){
+      fb.innerHTML = '<span class="text-danger">Network error.</span>';
+      btn.disabled = false; btn.textContent = 'Apply override';
+    });
+  };
+
+  window.applyAll = function() {
+    var btn = document.getElementById('apply-all-btn');
+    if (!btn) return;
+    btn.disabled = true; btn.textContent = 'Applying…';
+
+    fetch("{{ url_for('admin_lpr_ranking_calibrate') }}", {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}'
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.ok) {
+        btn.textContent = 'Applied ' + d.applied + ' change' + (d.applied !== 1 ? 's' : '') + ' — reloading…';
+        setTimeout(function(){ location.reload(); }, 1000);
+      } else {
+        btn.textContent = 'Error — try again';
+        btn.disabled = false;
+      }
+    })
+    .catch(function(){
+      btn.textContent = 'Network error';
+      btn.disabled = false;
+    });
+  };
+
+  window.rollbackConfig = function(configId, btn) {
+    if (!confirm('Roll back this config? The previous config for this scope will be restored.')) return;
+    btn.disabled = true;
+
+    fetch("{{ url_for('admin_lpr_ranking_rollback') }}", {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({config_id: configId})
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.ok) { location.reload(); }
+      else {
+        alert('Rollback failed: ' + (d.error||'unknown'));
+        btn.disabled = false;
+      }
+    })
+    .catch(function(){ alert('Network error.'); btn.disabled = false; });
+  };
+
+})();
+</script>
+{% endblock %}

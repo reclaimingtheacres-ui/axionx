@@ -8847,54 +8847,249 @@ def _lpr_prediction_scores_ensure(conn):
             last_scored_at          TEXT    NOT NULL
         )
     """)
+    add_column_if_missing(conn, "lpr_prediction_scores", "blend_rule_weight", "REAL")
+    add_column_if_missing(conn, "lpr_prediction_scores", "blend_ml_weight",   "REAL")
+    add_column_if_missing(conn, "lpr_prediction_scores", "ranking_config_id", "INTEGER")
     conn.commit()
+
+
+# ── Adaptive ranking config ─────────────────────────────────────────────────────
+
+def _lpr_ranking_config_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lpr_ranking_config (
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            model_version          TEXT    NOT NULL DEFAULT '*',
+            prediction_window      TEXT    NOT NULL DEFAULT '72h',
+            confidence_band        TEXT    NOT NULL DEFAULT '*',
+            priority_band          TEXT    NOT NULL DEFAULT '*',
+            rule_weight            REAL    NOT NULL DEFAULT 0.40,
+            ml_weight              REAL    NOT NULL DEFAULT 0.60,
+            min_combined_threshold INTEGER NOT NULL DEFAULT 30,
+            active                 INTEGER NOT NULL DEFAULT 1,
+            source                 TEXT    NOT NULL DEFAULT 'default',
+            reason                 TEXT,
+            effective_from         TEXT    NOT NULL,
+            created_by             INTEGER,
+            created_at             TEXT    NOT NULL
+        )
+    """)
+    n = conn.execute("SELECT COUNT(*) FROM lpr_ranking_config").fetchone()[0]
+    if n == 0:
+        now = now_ts()
+        conn.execute("""
+            INSERT INTO lpr_ranking_config
+                (model_version, prediction_window, confidence_band, priority_band,
+                 rule_weight, ml_weight, min_combined_threshold, active, source,
+                 reason, effective_from, created_at)
+            VALUES ('*','72h','*','*',0.40,0.60,30,1,'default',
+                    'System default — 40/60 blend',?,?)
+        """, (now, now))
+    conn.commit()
+
+
+def _get_active_ranking_config(conn, model_version, conf_band, pri_band):
+    """
+    Lookup active blend config with fallback hierarchy:
+      1. Exact: model_version=x  conf_band=y  pri_band=z
+      2. Model+conf: model_version=x  conf_band=y  pri_band='*'
+      3. Model only: model_version=x  conf_band='*'  pri_band='*'
+      4. Global default: model_version='*'  conf_band='*'  pri_band='*'
+    Returns (rule_weight, ml_weight, min_combined_threshold, config_id).
+    """
+    candidates = [
+        (model_version, conf_band, pri_band),
+        (model_version, conf_band, "*"),
+        (model_version, "*",       "*"),
+        ("*",           "*",       "*"),
+    ]
+    for mv, cb, pb in candidates:
+        row = conn.execute("""
+            SELECT id, rule_weight, ml_weight, min_combined_threshold
+            FROM lpr_ranking_config
+            WHERE active=1
+              AND model_version=? AND confidence_band=? AND priority_band=?
+            ORDER BY effective_from DESC
+            LIMIT 1
+        """, (mv, cb, pb)).fetchone()
+        if row:
+            return (row["rule_weight"], row["ml_weight"],
+                    row["min_combined_threshold"], row["id"])
+    return (0.40, 0.60, 30, None)
+
+
+def _score_to_band(score):
+    if score is None:
+        return "low"
+    if score >= 75:
+        return "urgent"
+    if score >= 50:
+        return "high"
+    if score >= 30:
+        return "medium"
+    return "low"
+
+
+def _run_recalibration(conn, min_sample=25):
+    """
+    Analyse lpr_prediction_outcomes grouped by model version + confidence band.
+    Returns a list of recommendation dicts. Does NOT persist changes.
+    """
+    _lpr_ranking_config_ensure(conn)
+    _lpr_prediction_outcomes_ensure(conn)
+
+    POS = ("'confirmed_present','repeat_area_confirmed',"
+           "'recovery_progressed','recovery_completed','followup_required'")
+
+    rows = conn.execute(f"""
+        SELECT
+            COALESCE(model_version,'unscored') AS model_version,
+            CASE
+                WHEN combined_score >= 75 THEN 'urgent'
+                WHEN combined_score >= 50 THEN 'high'
+                WHEN combined_score >= 30 THEN 'medium'
+                ELSE 'low'
+            END AS conf_band,
+            COUNT(*) AS total,
+            SUM(CASE WHEN actual_outcome IN ({POS}) THEN 1 ELSE 0 END) AS positive_count,
+            SUM(CASE WHEN actual_outcome = 'false_positive' THEN 1 ELSE 0 END) AS fp_count,
+            SUM(CASE WHEN actual_outcome = 'no_locate'      THEN 1 ELSE 0 END) AS nl_count
+        FROM lpr_prediction_outcomes
+        WHERE combined_score IS NOT NULL
+        GROUP BY model_version, conf_band
+        ORDER BY model_version, conf_band
+    """).fetchall()
+
+    recommendations = []
+    for r in rows:
+        mv   = r["model_version"]
+        band = r["conf_band"]
+        n    = r["total"]
+        pos_n = r["positive_count"]
+        fp_n  = r["fp_count"]
+        pos_rate = pos_n / n if n else 0.0
+        fp_rate  = fp_n  / n if n else 0.0
+
+        cur_rw, cur_mw, cur_thresh, cur_id = _get_active_ranking_config(conn, mv, band, "*")
+
+        if n < min_sample:
+            recommendations.append({
+                "model_version":     mv,
+                "conf_band":         band,
+                "total":             n,
+                "min_sample":        min_sample,
+                "pos_rate":          round(pos_rate * 100, 1),
+                "fp_rate":           round(fp_rate  * 100, 1),
+                "current_rule_weight": cur_rw,
+                "current_ml_weight":   cur_mw,
+                "current_threshold":   cur_thresh,
+                "action":            "insufficient_sample",
+                "reason":            f"Only {n} labelled outcomes — {min_sample} required before any adjustment",
+                "new_rule_weight":   None,
+                "new_ml_weight":     None,
+                "new_threshold":     None,
+            })
+            continue
+
+        new_mw    = cur_mw
+        new_rw    = cur_rw
+        new_thresh = cur_thresh
+        action    = "no_change"
+        reason    = "Performance within acceptable bounds — no adjustment needed"
+
+        if pos_rate >= 0.40 and fp_rate < 0.20:
+            if cur_mw < 0.80:
+                new_mw = round(min(0.80, cur_mw + 0.10), 2)
+                new_rw = round(1.0 - new_mw, 2)
+                action = "increase_ml"
+                reason = (f"Positive rate {round(pos_rate*100,1)}% with acceptable FP rate "
+                          f"{round(fp_rate*100,1)}% — increase ML weight +10%")
+        elif fp_rate >= 0.30 or (fp_rate >= 0.20 and pos_rate < 0.30):
+            if cur_mw > 0.00:
+                new_mw     = round(max(0.00, cur_mw - 0.10), 2)
+                new_rw     = round(1.0 - new_mw, 2)
+                new_thresh = min(75, cur_thresh + 5)
+                action     = "decrease_ml"
+                reason     = (f"FP rate {round(fp_rate*100,1)}% or low positive rate "
+                              f"{round(pos_rate*100,1)}% — reduce ML weight and raise surfacing threshold")
+
+        recommendations.append({
+            "model_version":       mv,
+            "conf_band":           band,
+            "total":               n,
+            "min_sample":          min_sample,
+            "pos_rate":            round(pos_rate * 100, 1),
+            "fp_rate":             round(fp_rate  * 100, 1),
+            "current_rule_weight": cur_rw,
+            "current_ml_weight":   cur_mw,
+            "current_threshold":   cur_thresh,
+            "action":              action,
+            "reason":              reason,
+            "new_rule_weight":     new_rw    if action not in ("no_change", "insufficient_sample") else None,
+            "new_ml_weight":       new_mw    if action not in ("no_change", "insufficient_sample") else None,
+            "new_threshold":       new_thresh if action not in ("no_change", "insufficient_sample") else None,
+        })
+
+    return recommendations
 
 
 def _recompute_combined_patrol_scores(conn):
     """
     For every plate in lpr_patrol_intelligence, look up any ML score in
-    lpr_prediction_scores.  Where an ML score exists, blend:
-        combined = round(0.40 * rule + 0.60 * ml)
-    Otherwise combined = rule.  Upsert back into lpr_prediction_scores so
-    the admin page and mobile API always have a single combined_score value.
+    lpr_prediction_scores.  Blend rule + ML using the adaptive config from
+    lpr_ranking_config (falls back to 40/60 if no active config exists).
+    Stamps blend_rule_weight and blend_ml_weight on each row.
     """
     _lpr_prediction_scores_ensure(conn)
+    _lpr_ranking_config_ensure(conn)
     pi_rows = conn.execute("""
-        SELECT registration_normalised, confidence_score, matched_job_id
-        FROM lpr_patrol_intelligence
+        SELECT p.registration_normalised, p.confidence_score, p.matched_job_id,
+               p.recommended_patrol_priority
+        FROM lpr_patrol_intelligence p
     """).fetchall()
 
     now = now_ts()
     for pi in pi_rows:
         reg        = pi["registration_normalised"]
         rule_score = pi["confidence_score"]
+        pri_band   = pi["recommended_patrol_priority"] or "low"
+
         ps = conn.execute(
             "SELECT ml_confidence_score, model_version, prediction_window "
             "FROM lpr_prediction_scores WHERE registration_normalised=?", (reg,)
         ).fetchone()
 
-        ml_score   = ps["ml_confidence_score"]  if ps else None
-        model_ver  = ps["model_version"]         if ps else "unscored"
-        pred_win   = ps["prediction_window"]     if ps else "72h"
+        ml_score  = ps["ml_confidence_score"] if ps else None
+        model_ver = ps["model_version"]        if ps else "unscored"
+        pred_win  = ps["prediction_window"]    if ps else "72h"
+
+        conf_band = _score_to_band(rule_score)
+        rw, mw, _threshold, cfg_id = _get_active_ranking_config(
+            conn, model_ver, conf_band, pri_band)
 
         if ml_score is not None:
-            combined = round(0.40 * rule_score + 0.60 * ml_score)
+            combined = round(rw * rule_score + mw * ml_score)
         else:
-            combined = rule_score
+            combined  = rule_score
+            rw, mw    = 1.0, 0.0
 
         conn.execute("""
             INSERT INTO lpr_prediction_scores
                 (registration_normalised, matched_job_id, rule_confidence_score,
                  ml_confidence_score, combined_score, prediction_window,
-                 model_version, last_scored_at)
-            VALUES (?,?,?,?,?,?,?,?)
+                 model_version, last_scored_at,
+                 blend_rule_weight, blend_ml_weight, ranking_config_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(registration_normalised) DO UPDATE SET
                 matched_job_id        = excluded.matched_job_id,
                 rule_confidence_score = excluded.rule_confidence_score,
                 combined_score        = excluded.combined_score,
-                last_scored_at        = excluded.last_scored_at
+                last_scored_at        = excluded.last_scored_at,
+                blend_rule_weight     = excluded.blend_rule_weight,
+                blend_ml_weight       = excluded.blend_ml_weight,
+                ranking_config_id     = excluded.ranking_config_id
         """, (reg, pi["matched_job_id"], rule_score, ml_score, combined,
-              pred_win, model_ver, now))
+              pred_win, model_ver, now, rw, mw, cfg_id))
     conn.commit()
 
 
@@ -9683,6 +9878,194 @@ def admin_lpr_evaluation():
         outcome_dist=outcome_dist,
         outcome_vocab=LPR_OUTCOME_VOCAB,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 15 — Adaptive ranking controls
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/lpr/ranking")
+@admin_required
+def admin_lpr_ranking():
+    conn = db()
+    _lpr_ranking_config_ensure(conn)
+    _lpr_prediction_outcomes_ensure(conn)
+
+    # All active configs (most specific first)
+    active_configs = conn.execute("""
+        SELECT id, model_version, prediction_window, confidence_band, priority_band,
+               rule_weight, ml_weight, min_combined_threshold, source, reason,
+               effective_from, created_at, created_by
+        FROM lpr_ranking_config
+        WHERE active=1
+        ORDER BY
+            (CASE WHEN model_version='*'   THEN 1 ELSE 0 END),
+            (CASE WHEN confidence_band='*' THEN 1 ELSE 0 END),
+            (CASE WHEN priority_band='*'   THEN 1 ELSE 0 END),
+            effective_from DESC
+    """).fetchall()
+
+    # Config change history (last 40)
+    history = conn.execute("""
+        SELECT id, model_version, confidence_band, priority_band,
+               rule_weight, ml_weight, min_combined_threshold,
+               active, source, reason, effective_from, created_at,
+               created_by
+        FROM lpr_ranking_config
+        ORDER BY created_at DESC
+        LIMIT 40
+    """).fetchall()
+
+    # Count outcomes available for analysis
+    outcome_total = conn.execute(
+        "SELECT COUNT(*) FROM lpr_prediction_outcomes"
+    ).fetchone()[0]
+
+    conn.close()
+
+    # Compute recommendations (read-only; no side effects)
+    conn2 = db()
+    recommendations = _run_recalibration(conn2, min_sample=25)
+    conn2.close()
+
+    return render_template(
+        "lpr_ranking.html",
+        active_configs=[dict(r) for r in active_configs],
+        history=[dict(r) for r in history],
+        recommendations=recommendations,
+        outcome_total=outcome_total,
+    )
+
+
+@app.post("/admin/lpr/ranking/calibrate")
+@admin_required
+def admin_lpr_ranking_calibrate():
+    """Auto-apply all actionable recommendations (increase_ml / decrease_ml)."""
+    conn = db()
+    _lpr_ranking_config_ensure(conn)
+    recommendations = _run_recalibration(conn, min_sample=25)
+
+    applied = 0
+    now = now_ts()
+    uid = session.get("user_id")
+
+    for rec in recommendations:
+        if rec["action"] not in ("increase_ml", "decrease_ml"):
+            continue
+        mv   = rec["model_version"]
+        band = rec["conf_band"]
+        rw   = rec["new_rule_weight"]
+        mw   = rec["new_ml_weight"]
+        thr  = rec["new_threshold"]
+        reason = rec["reason"]
+
+        # Deactivate any existing configs for this model+band combination
+        conn.execute("""
+            UPDATE lpr_ranking_config SET active=0
+            WHERE model_version=? AND confidence_band=? AND priority_band='*'
+        """, (mv, band))
+
+        conn.execute("""
+            INSERT INTO lpr_ranking_config
+                (model_version, prediction_window, confidence_band, priority_band,
+                 rule_weight, ml_weight, min_combined_threshold, active, source,
+                 reason, effective_from, created_by, created_at)
+            VALUES (?,?,?,?,?,?,?,1,'auto',?,?,?,?)
+        """, (mv, "72h", band, "*", rw, mw, thr, reason, now, uid, now))
+        applied += 1
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "applied": applied}), 200
+
+
+@app.post("/admin/lpr/ranking/config")
+@admin_required
+def admin_lpr_ranking_config():
+    """Manual override: create a new active config row."""
+    data = request.get_json(silent=True) or {}
+    mv   = (data.get("model_version")   or "*").strip()
+    band = (data.get("confidence_band") or "*").strip()
+    pb   = (data.get("priority_band")   or "*").strip()
+
+    valid_bands = {"*", "urgent", "high", "medium", "low"}
+    if band not in valid_bands or pb not in valid_bands:
+        return jsonify({"ok": False, "error": "Invalid band value"}), 400
+
+    try:
+        rw  = round(max(0.0, min(1.0, float(data.get("rule_weight", 0.40)))), 2)
+        mw  = round(max(0.0, min(1.0, float(data.get("ml_weight",   0.60)))), 2)
+        thr = max(0, min(100, int(data.get("min_combined_threshold", 30))))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "Invalid numeric values"}), 400
+
+    if abs(rw + mw - 1.0) > 0.01:
+        return jsonify({"ok": False, "error": "rule_weight + ml_weight must equal 1.0"}), 400
+
+    reason = (data.get("reason") or "Manual admin override").strip()[:300]
+    now = now_ts()
+    uid = session.get("user_id")
+
+    conn = db()
+    _lpr_ranking_config_ensure(conn)
+
+    # Deactivate previous configs for same scope
+    conn.execute("""
+        UPDATE lpr_ranking_config SET active=0
+        WHERE model_version=? AND confidence_band=? AND priority_band=?
+    """, (mv, band, pb))
+
+    conn.execute("""
+        INSERT INTO lpr_ranking_config
+            (model_version, prediction_window, confidence_band, priority_band,
+             rule_weight, ml_weight, min_combined_threshold, active, source,
+             reason, effective_from, created_by, created_at)
+        VALUES (?,?,?,?,?,?,?,1,'manual',?,?,?,?)
+    """, (mv, "72h", band, pb, rw, mw, thr, reason, now, uid, now))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
+
+
+@app.post("/admin/lpr/ranking/rollback")
+@admin_required
+def admin_lpr_ranking_rollback():
+    """Rollback: deactivate the most recent non-default config for a given scope."""
+    data = request.get_json(silent=True) or {}
+    config_id = data.get("config_id")
+    if not config_id:
+        return jsonify({"ok": False, "error": "config_id required"}), 400
+
+    conn = db()
+    _lpr_ranking_config_ensure(conn)
+
+    row = conn.execute(
+        "SELECT * FROM lpr_ranking_config WHERE id=?", (config_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Config not found"}), 404
+    if row["source"] == "default":
+        conn.close()
+        return jsonify({"ok": False, "error": "Cannot roll back the system default config"}), 400
+
+    conn.execute("UPDATE lpr_ranking_config SET active=0 WHERE id=?", (config_id,))
+
+    # Re-activate previous config for the same scope (if any)
+    prev = conn.execute("""
+        SELECT id FROM lpr_ranking_config
+        WHERE model_version=? AND confidence_band=? AND priority_band=?
+          AND id < ? AND id != ?
+        ORDER BY id DESC
+        LIMIT 1
+    """, (row["model_version"], row["confidence_band"], row["priority_band"],
+          config_id, config_id)).fetchone()
+    if prev:
+        conn.execute("UPDATE lpr_ranking_config SET active=1 WHERE id=?", (prev["id"],))
+
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True}), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
