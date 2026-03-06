@@ -4783,6 +4783,9 @@ def cue_create():
     return redirect(url_for("job_queue", date=due_date))
 
 
+_ATTENDANCE_CUE_TYPES = {"New Visit", "Re-attend", "Urgent New Visit", "Re-Attend"}
+
+
 @app.post("/cue/<int:cue_id>/complete")
 @login_required
 def cue_complete(cue_id: int):
@@ -4798,12 +4801,42 @@ def cue_complete(cue_id: int):
     cur.execute("UPDATE cue_items SET status = 'Completed', completed_at = ?, updated_at = ? WHERE id = ?",
                 (ts, ts, cue_id))
     conn.commit()
+    job_id = cue["job_id"]
+    visit_type = (cue["visit_type"] or "").strip()
     conn.close()
 
     audit("cue", cue_id, "status_change", f"Cue {cue_id} marked Completed.")
 
+    if visit_type in _ATTENDANCE_CUE_TYPES:
+        return redirect(url_for("update_builder", job_id=job_id))
+
     referrer = request.referrer or url_for("my_today")
     return redirect(referrer)
+
+
+@app.post("/my/schedule/<int:sched_id>/attended")
+@login_required
+def my_schedule_attended(sched_id: int):
+    conn = db()
+    sched = conn.execute("SELECT * FROM schedules WHERE id=?", (sched_id,)).fetchone()
+    if not sched:
+        conn.close()
+        abort(404)
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    if role not in ("admin", "both") and sched["assigned_to_user_id"] != uid:
+        conn.close()
+        flash("Access denied.", "danger")
+        return redirect(url_for("my_today"))
+    ts = now_ts()
+    conn.execute(
+        "UPDATE schedules SET status='Completed' WHERE id=?",
+        (sched_id,)
+    )
+    conn.commit()
+    conn.close()
+    audit("schedule", sched_id, "status_change", "Schedule marked Attended via My Today.")
+    return redirect(url_for("update_builder", job_id=sched["job_id"]))
 
 
 @app.get("/queue/job-attachments/<int:job_id>")
