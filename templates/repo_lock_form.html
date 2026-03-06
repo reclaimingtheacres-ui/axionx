@@ -1,0 +1,531 @@
+{# Repo Lock Modal — include in job_detail pages. Requires Bootstrap 5. #}
+<div class="modal fade" id="repoLockModal" tabindex="-1" aria-labelledby="repoLockModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-fullscreen-md-down">
+    <div class="modal-content">
+
+      <div class="modal-header" style="background:var(--accent,#2563eb);color:#fff;padding:14px 18px;">
+        <div>
+          <div class="fw-bold" id="repoLockModalLabel" style="font-size:1rem;">Repo Lock</div>
+          <div id="rlItemLabel" style="font-size:.78rem;opacity:.8;margin-top:2px;"></div>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body" style="padding:16px;background:#f9fafb;">
+        <div id="rlSaveBanner" class="alert alert-success py-2 px-3 mb-3 d-none" style="font-size:.85rem;"></div>
+
+        <form id="repoLockForm" novalidate>
+          <input type="hidden" id="rlJobId" name="_job_id">
+          <input type="hidden" id="rlItemId" name="_item_id">
+
+          <div class="accordion" id="rlAccordion">
+
+            {# ── 1. Header Details ── #}
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#rlSec1">
+                  Header Details
+                </button>
+              </h2>
+              <div id="rlSec1" class="accordion-collapse collapse show" data-bs-parent="#rlAccordion">
+                <div class="accordion-body">
+                  <div class="row g-2">
+                    <div class="col-12 col-md-4">
+                      <label class="form-label">Client Name</label>
+                      <input class="form-control form-control-sm" name="client_name" id="rl_client_name">
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <label class="form-label">Client Reference</label>
+                      <input class="form-control form-control-sm" name="client_reference" id="rl_client_reference">
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <label class="form-label">SWPI Reference</label>
+                      <input class="form-control form-control-sm" name="swpi_ref" id="rl_swpi_ref">
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <label class="form-label">Finance Company</label>
+                      <input class="form-control form-control-sm" name="finance_company" id="rl_finance_company">
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <label class="form-label">Repo Date</label>
+                      <input class="form-control form-control-sm" type="date" name="repo_date" id="rl_repo_date">
+                    </div>
+                    <div class="col-6 col-md-2">
+                      <label class="form-label">Start Time</label>
+                      <input class="form-control form-control-sm" type="time" name="start_time" id="rl_start_time">
+                    </div>
+                    <div class="col-6 col-md-2">
+                      <label class="form-label">End Time</label>
+                      <input class="form-control form-control-sm" type="time" name="end_time" id="rl_end_time">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# ── 2. Customer Details ── #}
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#rlSec2">
+                  Customer Details
+                </button>
+              </h2>
+              <div id="rlSec2" class="accordion-collapse collapse" data-bs-parent="#rlAccordion">
+                <div class="accordion-body">
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Customer Name</label>
+                      <input class="form-control form-control-sm" name="customer_name" id="rl_customer_name">
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <label class="form-label">Account Number</label>
+                      <input class="form-control form-control-sm" name="account_number" id="rl_account_number">
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <label class="form-label">Confirmed Contact Number</label>
+                      <input class="form-control form-control-sm" name="contact_number" id="rl_contact_number">
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Surrendered / Repossessed Address</label>
+                      <input class="form-control form-control-sm" name="repo_address" id="rl_repo_address">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# ── 3. Asset Details ── #}
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#rlSec3">
+                  Asset Details
+                </button>
+              </h2>
+              <div id="rlSec3" class="accordion-collapse collapse" data-bs-parent="#rlAccordion">
+                <div class="accordion-body">
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Description</label>
+                      <input class="form-control form-control-sm" name="description" id="rl_description">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Registration</label>
+                      <input class="form-control form-control-sm" name="registration" id="rl_registration">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Rego Expiry</label>
+                      <input class="form-control form-control-sm" type="month" name="rego_expiry" id="rl_rego_expiry">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">VIN / Chassis</label>
+                      <input class="form-control form-control-sm" name="vin" id="rl_vin">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Engine Number</label>
+                      <input class="form-control form-control-sm" name="engine_number" id="rl_engine_number">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Speedometer (km)</label>
+                      <input class="form-control form-control-sm" name="speedometer" id="rl_speedometer" placeholder="e.g. 85000">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Registered?</label>
+                      <select class="form-select form-select-sm" name="registered" id="rl_registered">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>Expired</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Security Insured?</label>
+                      <select class="form-select form-select-sm" name="insured" id="rl_insured">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>Unknown</option>
+                      </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Insured With</label>
+                      <input class="form-control form-control-sm" name="insured_with" id="rl_insured_with" placeholder="Insurer name">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# ── 4. Recovery Details ── #}
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#rlSec4">
+                  Recovery Details
+                </button>
+              </h2>
+              <div id="rlSec4" class="accordion-collapse collapse" data-bs-parent="#rlAccordion">
+                <div class="accordion-body">
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Person Present at Repossession</label>
+                      <input class="form-control form-control-sm" name="person_present" id="rl_person_present">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Keys Obtained?</label>
+                      <select class="form-select form-select-sm" name="keys_obtained" id="rl_keys_obtained" onchange="rlToggleKeys(this.value)">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-3" id="rl_keys_count_wrap" style="display:none;">
+                      <label class="form-label">How Many Keys?</label>
+                      <input class="form-control form-control-sm" name="how_many_keys" id="rl_how_many_keys" type="number" min="1">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Vol. Surrender?</label>
+                      <select class="form-select form-select-sm" name="vol_surrender" id="rl_vol_surrender">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Form 13 Issued?</label>
+                      <select class="form-select form-select-sm" name="form_13" id="rl_form_13" onchange="rlToggleForm13(this.value)">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>N/A</option>
+                      </select>
+                    </div>
+                    <div class="col-12 col-md-6" id="rl_form13_signed_wrap" style="display:none;">
+                      <label class="form-label">Form 13 Signed By</label>
+                      <input class="form-control form-control-sm" name="form_13_signed_by" id="rl_form_13_signed_by">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Repossessed From</label>
+                      <input class="form-control form-control-sm" name="repossessed_from" id="rl_repossessed_from" placeholder="Name / address">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Lien Paid?</label>
+                      <select class="form-select form-select-sm" name="lien_paid" id="rl_lien_paid">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>N/A</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Security Drivable?</label>
+                      <select class="form-select form-select-sm" name="security_drivable" id="rl_security_drivable">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Police Notified?</label>
+                      <select class="form-select form-select-sm" name="police_notified" id="rl_police_notified" onchange="rlTogglePolice(this.value)">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                      </select>
+                    </div>
+                    <div class="col-12 col-md-9" id="rl_station_wrap" style="display:none;">
+                      <label class="form-label">Police Station / Officer</label>
+                      <input class="form-control form-control-sm" name="station_officer" id="rl_station_officer" placeholder="Station name and event number">
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Personal Effects Removed?</label>
+                      <select class="form-select form-select-sm" name="personal_effects_removed" id="rl_personal_effects_removed" onchange="rlToggleEffects(this.value)">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                        <option>N/A</option>
+                      </select>
+                    </div>
+                    <div class="col-12 col-md-5" id="rl_removed_by_wrap" style="display:none;">
+                      <label class="form-label">Removed By</label>
+                      <input class="form-control form-control-sm" name="removed_by_who" id="rl_removed_by_who">
+                    </div>
+                    <div class="col-12" id="rl_effects_list_wrap" style="display:none;">
+                      <label class="form-label">List of Personal Effects</label>
+                      <textarea class="form-control form-control-sm" name="personal_effects_list" id="rl_personal_effects_list" rows="2"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# ── 5. Condition Report ── #}
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#rlSec5">
+                  Condition Report
+                </button>
+              </h2>
+              <div id="rlSec5" class="accordion-collapse collapse" data-bs-parent="#rlAccordion">
+                <div class="accordion-body">
+                  <div class="row g-2">
+                    {% for fname, lbl in [
+                        ("tyres","Tyres"),("body","Body"),("duco","Duco"),
+                        ("interior","Interior"),("engine_condition","Engine"),
+                        ("transmission","Transmission"),("fuel_level","Fuel Level")
+                    ] %}
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">{{ lbl }}</label>
+                      <select class="form-select form-select-sm" name="{{ fname }}" id="rl_{{ fname }}">
+                        <option value="">— Select —</option>
+                        <option>Good</option>
+                        <option>Fair</option>
+                        <option>Poor</option>
+                        {% if fname == "fuel_level" %}
+                        <option>Empty</option>
+                        <option>1/4</option>
+                        <option>1/2</option>
+                        <option>3/4</option>
+                        <option>Full</option>
+                        {% endif %}
+                      </select>
+                    </div>
+                    {% endfor %}
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Any Damage?</label>
+                      <select class="form-select form-select-sm" name="any_damage" id="rl_any_damage" onchange="rlToggleDamage(this.value)">
+                        <option value="">— Select —</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                      </select>
+                    </div>
+                    <div class="col-12" id="rl_damage_list_wrap" style="display:none;">
+                      <label class="form-label">Describe Damage</label>
+                      <textarea class="form-control form-control-sm" name="damage_list" id="rl_damage_list" rows="2"></textarea>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# ── 6. Tow & Delivery ── #}
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#rlSec6">
+                  Tow &amp; Delivery
+                </button>
+              </h2>
+              <div id="rlSec6" class="accordion-collapse collapse" data-bs-parent="#rlAccordion">
+                <div class="accordion-body">
+                  <div class="row g-2">
+                    <div class="col-12 col-md-5">
+                      <label class="form-label">Tow Company</label>
+                      <select class="form-select form-select-sm" name="tow_company_id" id="rl_tow_company_id" onchange="rlTowChanged(this)">
+                        <option value="">— Select or enter manually —</option>
+                      </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                      <label class="form-label">Tow Company Name (manual)</label>
+                      <input class="form-control form-control-sm" name="tow_company_name" id="rl_tow_company_name" placeholder="If not in list">
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <label class="form-label">Tow Costs</label>
+                      <input class="form-control form-control-sm" name="tow_costs" id="rl_tow_costs" placeholder="e.g. $220.00">
+                    </div>
+                    <div class="col-12 col-md-5">
+                      <label class="form-label">Deliver To</label>
+                      <input class="form-control form-control-sm" name="deliver_to" id="rl_deliver_to">
+                    </div>
+                    <div class="col-12 col-md-5">
+                      <label class="form-label">Delivery Address</label>
+                      <input class="form-control form-control-sm" name="delivery_address" id="rl_delivery_address">
+                    </div>
+                    <div class="col-12 col-md-2">
+                      <label class="form-label">Expected Delivery</label>
+                      <input class="form-control form-control-sm" type="date" name="expected_delivery_date" id="rl_expected_delivery_date">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {# ── 7. Final Notes ── #}
+            <div class="accordion-item">
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#rlSec7">
+                  Final Notes
+                </button>
+              </h2>
+              <div id="rlSec7" class="accordion-collapse collapse" data-bs-parent="#rlAccordion">
+                <div class="accordion-body">
+                  <div class="row g-2">
+                    <div class="col-12">
+                      <label class="form-label">Customer's Intention</label>
+                      <textarea class="form-control form-control-sm" name="customers_intention" id="rl_customers_intention" rows="2" placeholder="e.g. Will redeem, dispute, etc."></textarea>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Other Important Information</label>
+                      <textarea class="form-control form-control-sm" name="other_info" id="rl_other_info" rows="2"></textarea>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Agent</label>
+                      <input class="form-control form-control-sm" name="agent_name" id="rl_agent_name">
+                      <input type="hidden" name="agent_user_id" id="rl_agent_user_id">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>{# /accordion #}
+        </form>
+      </div>
+
+      <div class="modal-footer" style="padding:12px 16px;gap:8px;">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm" id="rlSaveBtn"
+                style="background:#dc2626;color:#fff;border:0;min-width:120px;"
+                onclick="rlSubmit()">
+          <span id="rlSaveBtnText">Save Repo Lock</span>
+          <span id="rlSaveBtnSpinner" class="spinner-border spinner-border-sm ms-1 d-none" role="status"></span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var _rlTowOps = [];
+
+  window.openRepoLock = function(jobId, itemId) {
+    document.getElementById("rlJobId").value  = jobId;
+    document.getElementById("rlItemId").value = itemId;
+    document.getElementById("rlSaveBanner").classList.add("d-none");
+
+    fetch("/jobs/" + jobId + "/repo-lock/" + itemId)
+      .then(r => r.json())
+      .then(function(data) {
+        if (!data.ok) { alert("Could not load repo lock data."); return; }
+
+        document.getElementById("rlItemLabel").textContent = data.item_label || "";
+
+        var sel = document.getElementById("rl_tow_company_id");
+        sel.innerHTML = '<option value="">— Select or enter manually —</option>';
+        _rlTowOps = data.tow_ops || [];
+        _rlTowOps.forEach(function(t) {
+          var o = document.createElement("option");
+          o.value = t.id; o.textContent = t.name;
+          sel.appendChild(o);
+        });
+
+        var src = (data.has_rec && data.existing && Object.keys(data.existing).length)
+                    ? data.existing : data.prefill;
+
+        var fields = [
+          "client_name","client_reference","swpi_ref","finance_company","repo_date",
+          "start_time","end_time","customer_name","account_number","repo_address",
+          "contact_number","description","registration","rego_expiry","registered",
+          "insured","insured_with","vin","engine_number","speedometer","person_present",
+          "keys_obtained","how_many_keys","vol_surrender","form_13","form_13_signed_by",
+          "repossessed_from","lien_paid","security_drivable","police_notified",
+          "station_officer","personal_effects_removed","removed_by_who",
+          "personal_effects_list","tyres","body","duco","interior","engine_condition",
+          "transmission","fuel_level","any_damage","damage_list","tow_company_id",
+          "tow_company_name","tow_costs","deliver_to","delivery_address",
+          "expected_delivery_date","customers_intention","other_info","agent_name",
+          "agent_user_id"
+        ];
+        fields.forEach(function(f) {
+          var el = document.getElementById("rl_" + f);
+          if (!el) return;
+          var v = src[f];
+          if (v == null) v = "";
+          el.value = v;
+        });
+
+        rlToggleKeys(document.getElementById("rl_keys_obtained").value);
+        rlToggleForm13(document.getElementById("rl_form_13").value);
+        rlTogglePolice(document.getElementById("rl_police_notified").value);
+        rlToggleEffects(document.getElementById("rl_personal_effects_removed").value);
+        rlToggleDamage(document.getElementById("rl_any_damage").value);
+
+        var saveBtn = document.getElementById("rlSaveBtn");
+        var btnTxt  = document.getElementById("rlSaveBtnText");
+        if (data.has_rec) {
+          saveBtn.style.background = "#2563eb";
+          btnTxt.textContent = "Update Repo Lock";
+        } else {
+          saveBtn.style.background = "#dc2626";
+          btnTxt.textContent = "Save Repo Lock";
+        }
+
+        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("repoLockModal"));
+        modal.show();
+      })
+      .catch(function(e) { console.error(e); alert("Error loading form."); });
+  };
+
+  window.rlSubmit = function() {
+    var jobId  = document.getElementById("rlJobId").value;
+    var itemId = document.getElementById("rlItemId").value;
+    var form   = document.getElementById("repoLockForm");
+    var data   = new FormData(form);
+
+    var btn = document.getElementById("rlSaveBtn");
+    var spinner = document.getElementById("rlSaveBtnSpinner");
+    btn.disabled = true;
+    spinner.classList.remove("d-none");
+
+    fetch("/jobs/" + jobId + "/repo-lock/" + itemId + "/save", {
+      method: "POST",
+      body: data
+    })
+    .then(r => r.json())
+    .then(function(res) {
+      btn.disabled = false;
+      spinner.classList.add("d-none");
+      if (!res.ok) { alert("Save failed."); return; }
+
+      var banner = document.getElementById("rlSaveBanner");
+      banner.textContent = res.is_new ? "Repo Lock saved." : "Repo Lock updated.";
+      banner.classList.remove("d-none");
+
+      document.getElementById("rlSaveBtnText").textContent = "Update Repo Lock";
+      document.getElementById("rlSaveBtn").style.background = "#2563eb";
+
+      var btn2 = document.querySelector('[data-rl-item="' + itemId + '"]');
+      if (btn2) {
+        btn2.textContent = "Repo Lock \u2713";
+        btn2.style.background = "#16a34a";
+      }
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      spinner.classList.add("d-none");
+      console.error(e);
+      alert("Save error.");
+    });
+  };
+
+  window.rlToggleKeys = function(v) {
+    document.getElementById("rl_keys_count_wrap").style.display = (v === "Yes") ? "" : "none";
+  };
+  window.rlToggleForm13 = function(v) {
+    document.getElementById("rl_form13_signed_wrap").style.display = (v === "Yes") ? "" : "none";
+  };
+  window.rlTogglePolice = function(v) {
+    document.getElementById("rl_station_wrap").style.display = (v === "Yes") ? "" : "none";
+  };
+  window.rlToggleEffects = function(v) {
+    var show = (v === "Yes");
+    document.getElementById("rl_removed_by_wrap").style.display = show ? "" : "none";
+    document.getElementById("rl_effects_list_wrap").style.display = show ? "" : "none";
+  };
+  window.rlToggleDamage = function(v) {
+    document.getElementById("rl_damage_list_wrap").style.display = (v === "Yes") ? "" : "none";
+  };
+  window.rlTowChanged = function(sel) {
+    if (sel.value) document.getElementById("rl_tow_company_name").value = "";
+  };
+})();
+</script>

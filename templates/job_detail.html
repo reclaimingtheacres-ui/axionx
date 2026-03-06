@@ -410,6 +410,12 @@
                               data-rego="{{ item.reg or '' }}"
                               data-vin="{{ item.vin or '' }}">VicRoads</button>
                     {% endif %}
+                    <button type="button" class="btn btn-sm"
+                            style="background:{% if item.id in repo_lock_map %}#16a34a{% else %}#dc2626{% endif %};color:#fff;border:0;white-space:nowrap"
+                            data-rl-item="{{ item.id }}"
+                            onclick="openRepoLock({{ job.id }}, {{ item.id }})">
+                      Repo Lock{% if item.id in repo_lock_map %} ✓{% endif %}
+                    </button>
                     {% if session.get('role') == 'admin' %}
                     <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
                       <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove this item?')">Remove</button>
@@ -1924,6 +1930,7 @@ document.addEventListener('click', function(e) {
 </div><!-- /page flex wrapper -->
 {% endblock %}
 {% block modals %}
+{% include 'repo_lock_form.html' %}
 <!-- ── Edit Job Modal ──────────────────────────────────────────────────── -->
 {% if session.get('role') == 'admin' %}
 <div class="modal fade" id="editJobModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">

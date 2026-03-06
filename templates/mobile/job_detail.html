@@ -192,8 +192,17 @@
   <div class="m-card-header">Security / Assets</div>
   {% for asset in assets %}
   <div class="m-card-body" style="{% if not loop.last %}border-bottom:1px solid var(--line);{% endif %}">
-    <div style="font-weight:600;margin-bottom:8px;font-size:.95rem;">
-      {{ asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
+      <div style="font-weight:600;font-size:.95rem;">
+        {{ asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}
+      </div>
+      <button type="button"
+              style="flex-shrink:0;padding:5px 10px;border:0;border-radius:8px;font-size:.75rem;font-weight:600;cursor:pointer;
+                     background:{% if asset.id in repo_lock_map %}#16a34a{% else %}#dc2626{% endif %};color:#fff;"
+              data-rl-item="{{ asset.id }}"
+              onclick="openRepoLock({{ job.id }}, {{ asset.id }})">
+        Repo Lock{% if asset.id in repo_lock_map %} ✓{% endif %}
+      </button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:.83rem;">
       {% if asset.year or asset.make or asset.model %}
@@ -235,4 +244,262 @@
   </a>
 </div>
 
+{% endblock %}
+{% block extra_scripts %}
+<div id="rlOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9000;background:#f9fafb;overflow:hidden;flex-direction:column;">
+  <div style="flex-shrink:0;background:#2563eb;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <div style="font-weight:700;font-size:.95rem;">Repo Lock</div>
+      <div id="rlmItemLabel" style="font-size:.72rem;opacity:.8;margin-top:2px;"></div>
+    </div>
+    <button onclick="rlmClose()" style="background:transparent;border:0;color:#fff;font-size:1.4rem;line-height:1;padding:4px 8px;cursor:pointer;">&#x2715;</button>
+  </div>
+  <div id="rlmBanner" style="display:none;background:#d1fae5;border-bottom:1px solid #6ee7b7;color:#065f46;padding:10px 16px;font-size:.82rem;font-weight:600;flex-shrink:0;"></div>
+  <div style="flex:1;overflow-y:auto;padding:14px 16px 80px;-webkit-overflow-scrolling:touch;">
+    <form id="rlmForm" novalidate>
+      <input type="hidden" id="rlmJobId">
+      <input type="hidden" id="rlmItemId">
+
+      <details open style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Header Details</summary>
+        <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Client Name</label><input type="text" name="client_name" id="rlm_client_name" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Client Reference</label><input type="text" name="client_reference" id="rlm_client_reference" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">SWPI Reference</label><input type="text" name="swpi_ref" id="rlm_swpi_ref" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Finance Company</label><input type="text" name="finance_company" id="rlm_finance_company" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Repo Date</label><input type="date" name="repo_date" id="rlm_repo_date" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Start Time</label><input type="time" name="start_time" id="rlm_start_time" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">End Time</label><input type="time" name="end_time" id="rlm_end_time" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          </div>
+        </div>
+      </details>
+
+      <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Customer Details</summary>
+        <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Customer Name</label><input type="text" name="customer_name" id="rlm_customer_name" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Account Number</label><input type="text" name="account_number" id="rlm_account_number" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Confirmed Contact Number</label><input type="tel" name="contact_number" id="rlm_contact_number" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Surrendered / Repossessed Address</label><input type="text" name="repo_address" id="rlm_repo_address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+        </div>
+      </details>
+
+      <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Asset Details</summary>
+        <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Description</label><input type="text" name="description" id="rlm_description" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Registration</label><input type="text" name="registration" id="rlm_registration" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Rego Expiry</label><input type="month" name="rego_expiry" id="rlm_rego_expiry" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          </div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">VIN / Chassis</label><input type="text" name="vin" id="rlm_vin" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engine Number</label><input type="text" name="engine_number" id="rlm_engine_number" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Speedometer (km)</label><input type="number" name="speedometer" id="rlm_speedometer" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Registered?</label><select name="registered" id="rlm_registered" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>Expired</option></select></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Insured?</label><select name="insured" id="rlm_insured" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>Unknown</option></select></div>
+          </div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Insured With</label><input type="text" name="insured_with" id="rlm_insured_with" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+        </div>
+      </details>
+
+      <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Recovery Details</summary>
+        <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Person Present</label><input type="text" name="person_present" id="rlm_person_present" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Keys Obtained?</label><select name="keys_obtained" id="rlm_keys_obtained" onchange="rlmToggle('rlm_keys_count_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
+          <div id="rlm_keys_count_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">How Many Keys?</label><input type="number" min="1" name="how_many_keys" id="rlm_how_many_keys" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Vol. Surrender?</label><select name="vol_surrender" id="rlm_vol_surrender" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Form 13 Issued?</label><select name="form_13" id="rlm_form_13" onchange="rlmToggle('rlm_form13_signed_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option></select></div>
+          <div id="rlm_form13_signed_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Form 13 Signed By</label><input type="text" name="form_13_signed_by" id="rlm_form_13_signed_by" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Repossessed From</label><input type="text" name="repossessed_from" id="rlm_repossessed_from" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Lien Paid?</label><select name="lien_paid" id="rlm_lien_paid" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option></select></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Drivable?</label><select name="security_drivable" id="rlm_security_drivable" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
+          </div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Police Notified?</label><select name="police_notified" id="rlm_police_notified" onchange="rlmToggle('rlm_station_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
+          <div id="rlm_station_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Police Station / Officer</label><input type="text" name="station_officer" id="rlm_station_officer" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Personal Effects Removed?</label><select name="personal_effects_removed" id="rlm_personal_effects_removed" onchange="rlmToggleEffects(this.value)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option></select></div>
+          <div id="rlm_removed_by_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Removed By</label><input type="text" name="removed_by_who" id="rlm_removed_by_who" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div id="rlm_effects_list_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">List of Personal Effects</label><textarea name="personal_effects_list" id="rlm_personal_effects_list" rows="3" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea></div>
+        </div>
+      </details>
+
+      <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Condition Report</summary>
+        <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tyres</label><select name="tyres" id="rlm_tyres" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Body</label><select name="body" id="rlm_body" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Duco</label><select name="duco" id="rlm_duco" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Interior</label><select name="interior" id="rlm_interior" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Engine</label><select name="engine_condition" id="rlm_engine_condition" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Transmission</label><select name="transmission" id="rlm_transmission" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
+          </div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Fuel Level</label><select name="fuel_level" id="rlm_fuel_level" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Empty</option><option>1/4</option><option>1/2</option><option>3/4</option><option>Full</option></select></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Any Damage?</label><select name="any_damage" id="rlm_any_damage" onchange="rlmToggle('rlm_damage_list_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
+          <div id="rlm_damage_list_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Describe Damage</label><textarea name="damage_list" id="rlm_damage_list" rows="3" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea></div>
+        </div>
+      </details>
+
+      <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Tow &amp; Delivery</summary>
+        <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Company</label><select name="tow_company_id" id="rlm_tow_company_id" onchange="if(this.value)document.getElementById('rlm_tow_company_name').value=''" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select or enter manually —</option></select></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Company Name (manual)</label><input type="text" name="tow_company_name" id="rlm_tow_company_name" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Costs</label><input type="text" name="tow_costs" id="rlm_tow_costs" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Deliver To</label><input type="text" name="deliver_to" id="rlm_deliver_to" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Delivery Address</label><input type="text" name="delivery_address" id="rlm_delivery_address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Expected Delivery Date</label><input type="date" name="expected_delivery_date" id="rlm_expected_delivery_date" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+        </div>
+      </details>
+
+      <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Final Notes</summary>
+        <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Customer's Intention</label><textarea name="customers_intention" id="rlm_customers_intention" rows="3" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Other Important Information</label><textarea name="other_info" id="rlm_other_info" rows="3" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Agent</label><input type="text" name="agent_name" id="rlm_agent_name" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"><input type="hidden" name="agent_user_id" id="rlm_agent_user_id"></div>
+        </div>
+      </details>
+
+    </form>
+  </div>
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:12px 16px;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:10px;">
+    <button onclick="rlmClose()" style="flex:1;padding:12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;font-size:.88rem;font-weight:600;cursor:pointer;">Cancel</button>
+    <button id="rlmSaveBtn" onclick="rlmSubmit()" style="flex:2;padding:12px;border:0;border-radius:10px;background:#dc2626;color:#fff;font-size:.88rem;font-weight:700;cursor:pointer;">
+      <span id="rlmSaveTxt">Save Repo Lock</span>
+    </button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var _rlmFields = [
+    "client_name","client_reference","swpi_ref","finance_company","repo_date",
+    "start_time","end_time","customer_name","account_number","repo_address",
+    "contact_number","description","registration","rego_expiry","registered",
+    "insured","insured_with","vin","engine_number","speedometer","person_present",
+    "keys_obtained","how_many_keys","vol_surrender","form_13","form_13_signed_by",
+    "repossessed_from","lien_paid","security_drivable","police_notified",
+    "station_officer","personal_effects_removed","removed_by_who",
+    "personal_effects_list","tyres","body","duco","interior","engine_condition",
+    "transmission","fuel_level","any_damage","damage_list","tow_company_id",
+    "tow_company_name","tow_costs","deliver_to","delivery_address",
+    "expected_delivery_date","customers_intention","other_info","agent_name",
+    "agent_user_id"
+  ];
+
+  window.openRepoLock = function(jobId, itemId) {
+    document.getElementById("rlmJobId").value  = jobId;
+    document.getElementById("rlmItemId").value = itemId;
+    document.getElementById("rlmBanner").style.display = "none";
+
+    fetch("/jobs/" + jobId + "/repo-lock/" + itemId)
+      .then(r => r.json())
+      .then(function(data) {
+        if (!data.ok) { alert("Could not load repo lock data."); return; }
+
+        document.getElementById("rlmItemLabel").textContent = data.item_label || "";
+
+        var sel = document.getElementById("rlm_tow_company_id");
+        sel.innerHTML = '<option value="">— Select or enter manually —</option>';
+        (data.tow_ops || []).forEach(function(t) {
+          var o = document.createElement("option");
+          o.value = t.id; o.textContent = t.name;
+          sel.appendChild(o);
+        });
+
+        var src = (data.has_rec && data.existing && Object.keys(data.existing).length)
+                    ? data.existing : data.prefill;
+
+        _rlmFields.forEach(function(f) {
+          var el = document.getElementById("rlm_" + f);
+          if (!el) return;
+          el.value = (src[f] != null) ? src[f] : "";
+        });
+
+        rlmToggle("rlm_keys_count_wrap",    document.getElementById("rlm_keys_obtained").value === "Yes");
+        rlmToggle("rlm_form13_signed_wrap",  document.getElementById("rlm_form_13").value === "Yes");
+        rlmToggle("rlm_station_wrap",        document.getElementById("rlm_police_notified").value === "Yes");
+        rlmToggleEffects(document.getElementById("rlm_personal_effects_removed").value);
+        rlmToggle("rlm_damage_list_wrap",    document.getElementById("rlm_any_damage").value === "Yes");
+
+        var btn = document.getElementById("rlmSaveBtn");
+        var txt = document.getElementById("rlmSaveTxt");
+        if (data.has_rec) {
+          btn.style.background = "#2563eb";
+          txt.textContent = "Update Repo Lock";
+        } else {
+          btn.style.background = "#dc2626";
+          txt.textContent = "Save Repo Lock";
+        }
+
+        var overlay = document.getElementById("rlOverlay");
+        overlay.style.display = "flex";
+      })
+      .catch(function(e) { console.error(e); alert("Error loading form."); });
+  };
+
+  window.rlmClose = function() {
+    document.getElementById("rlOverlay").style.display = "none";
+  };
+
+  window.rlmSubmit = function() {
+    var jobId  = document.getElementById("rlmJobId").value;
+    var itemId = document.getElementById("rlmItemId").value;
+    var btn    = document.getElementById("rlmSaveBtn");
+    var txt    = document.getElementById("rlmSaveTxt");
+    btn.disabled = true;
+    var origTxt = txt.textContent;
+    txt.textContent = "Saving\u2026";
+
+    var fd = new FormData();
+    _rlmFields.forEach(function(f) {
+      var el = document.getElementById("rlm_" + f);
+      if (el) fd.append(f, el.value || "");
+    });
+
+    fetch("/jobs/" + jobId + "/repo-lock/" + itemId + "/save", {
+      method: "POST",
+      body: fd
+    })
+    .then(r => r.json())
+    .then(function(res) {
+      btn.disabled = false;
+      if (!res.ok) { txt.textContent = origTxt; alert("Save failed."); return; }
+
+      var banner = document.getElementById("rlmBanner");
+      banner.textContent = res.is_new ? "Repo Lock saved." : "Repo Lock updated.";
+      banner.style.display = "block";
+
+      btn.style.background = "#2563eb";
+      txt.textContent = "Update Repo Lock";
+
+      var trigger = document.querySelector('[data-rl-item="' + itemId + '"]');
+      if (trigger) {
+        trigger.textContent = "Repo Lock \u2713";
+        trigger.style.background = "#16a34a";
+      }
+    })
+    .catch(function(e) {
+      btn.disabled = false;
+      txt.textContent = origTxt;
+      console.error(e);
+      alert("Save error.");
+    });
+  };
+
+  window.rlmToggle = function(id, show) {
+    document.getElementById(id).style.display = show ? "" : "none";
+  };
+  window.rlmToggleEffects = function(v) {
+    rlmToggle("rlm_removed_by_wrap",    v === "Yes");
+    rlmToggle("rlm_effects_list_wrap",  v === "Yes");
+  };
+})();
+</script>
 {% endblock %}
