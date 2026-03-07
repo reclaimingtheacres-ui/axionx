@@ -130,7 +130,9 @@ def db():
     return conn
 
 
-def add_column_if_missing(cur, table, col, coltype):
+def add_column_if_missing(cur_or_conn, table, col, coltype):
+    import sqlite3 as _sq3
+    cur = cur_or_conn.cursor() if isinstance(cur_or_conn, _sq3.Connection) else cur_or_conn
     cur.execute(f"PRAGMA table_info({table})")
     cols = [r["name"] for r in cur.fetchall()]
     if col not in cols:
