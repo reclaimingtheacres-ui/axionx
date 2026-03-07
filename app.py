@@ -6637,6 +6637,20 @@ def import_jobs():
                 pass
         return None
 
+    def _parse_scheduled_for(date_raw, time_raw):
+        d = _parse_date(date_raw)
+        if not d:
+            return None
+        t = (time_raw or "").strip()
+        if t:
+            try:
+                parsed_t = datetime.strptime(t, "%H:%M").strftime("%H:%M:%S")
+            except ValueError:
+                parsed_t = "09:00:00"
+        else:
+            parsed_t = "09:00:00"
+        return f"{d} {parsed_t}"
+
     STATUS_MAP = {
         "awaiting advice from client": "Awaiting info from client",
         "awaiting info from client":   "Awaiting info from client",
@@ -6652,9 +6666,15 @@ def import_jobs():
 
     imported = 0
     skipped  = 0
-    cust_created = 0
+    cust_created  = 0
+    sched_created = 0
     client_created_names = []
     seen_job_numbers = set()
+
+    new_visit_type_id = conn.execute(
+        "SELECT id FROM booking_types WHERE name = 'New Visit' LIMIT 1"
+    ).fetchone()
+    new_visit_type_id = new_visit_type_id["id"] if new_visit_type_id else 1
 
     for row in reader:
         internal_job_number = (row.get("InternalJobNumber") or "").strip()
@@ -6684,9 +6704,10 @@ def import_jobs():
         raw_status = (row.get("Status") or "New").strip()
         status = STATUS_MAP.get(raw_status.lower(), raw_status)
 
-        job_due_date = _parse_date(row.get("Job Start Date"))
-        job_type     = _extract_job_type(row.get("JobType"))
-        client_id    = _resolve_client(row.get("Bill Client Code"))
+        job_due_date   = _parse_date(row.get("Job Start Date"))
+        scheduled_for  = _parse_scheduled_for(row.get("Job Start Date"), row.get("Job Start Time"))
+        job_type       = _extract_job_type(row.get("JobType"))
+        client_id      = _resolve_client(row.get("Bill Client Code"))
         assigned_uid = _resolve_user(row.get("Staff"))
         description  = (row.get("Job Description") or "").strip() or None
         priority     = (row.get("Priority") or "Normal").strip()
@@ -6771,12 +6792,25 @@ def import_jobs():
                 VALUES (?, ?, 'Debtor', 1, ?)
             """, (job_id, customer_id, now_ts))
 
+        if scheduled_for:
+            exists = cur.execute(
+                "SELECT 1 FROM schedules WHERE job_id = ? AND scheduled_for = ?",
+                (job_id, scheduled_for)
+            ).fetchone()
+            if not exists:
+                cur.execute("""
+                    INSERT INTO schedules
+                        (job_id, booking_type_id, scheduled_for, status, assigned_to_user_id, created_at)
+                    VALUES (?, ?, ?, 'Pending', ?, ?)
+                """, (job_id, new_visit_type_id, scheduled_for, assigned_uid, now_ts))
+                sched_created += 1
+
     conn.commit()
     conn.close()
 
     msg = (
         f"Import complete: {imported} jobs imported, {skipped} skipped (duplicates/blank). "
-        f"{cust_created} new customer(s) created."
+        f"{cust_created} new customer(s) created. {sched_created} schedule(s) created."
     )
     if client_created_names:
         names = ", ".join(client_created_names)
