@@ -198,7 +198,7 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
         x += w
     y -= 12
     _hr(c, y, strong=True)
-    y -= 4
+    y -= 11
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'VIN/CHASSIS:')
@@ -218,7 +218,7 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.drawString(ML + 66, y, _v(data, 'speedometer'))
     y -= 8
     _hr(c, y)
-    y -= 4
+    y -= 11
 
     keys_val  = _v(data, 'keys_obtained')
     how_many  = _v(data, 'how_many_keys')
@@ -273,7 +273,7 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.drawString(ML + 34, y, _trunc(effects_list, 70))
     y -= 8
     _hr(c, y)
-    y -= 4
+    y -= 11
 
     for lbl, field, offset in [
         ('TYRES:', 'tyres', 42), ('BODY:', 'body', 38),
@@ -394,7 +394,7 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.drawString(ML + 126, y, _trunc(_v(data, 'repo_address'), 42))
     y -= 10
     _hr(c, y)
-    y -= 4
+    y -= 11
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'SECURITY DETAILS')
@@ -417,7 +417,7 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.drawString(ML + 28, y, _v(data, 'vin'))
     y -= 10
     _hr(c, y)
-    y -= 4
+    y -= 11
 
     tow_name = _v(data, 'tow_company_name')
     tow_phone = _v(data, 'tow_phone')
