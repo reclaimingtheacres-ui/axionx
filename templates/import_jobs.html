@@ -28,8 +28,9 @@
       </tbody>
     </table>
   </div>
-  <div class="text-muted small">
-    Rows with the same <code>InternalJobNumber</code> (duplicate staff/workgroup rows from GeoOp) are automatically deduplicated — only the first row per job number is imported.
+  <div class="text-muted small mt-2">
+    <strong>Duplicate rows:</strong> Rows with the same <code>InternalJobNumber</code> (e.g. same job assigned to multiple staff/workgroups in GeoOp) are automatically deduplicated — only the first row is imported.<br>
+    <strong>Unknown client codes:</strong> If a <code>Bill Client Code</code> doesn't match any existing client (by initials or name), a new client record is created using the code as its name (e.g. <em>IRS</em>). After importing, go to Clients to update the full name.
   </div>
 </div>
 

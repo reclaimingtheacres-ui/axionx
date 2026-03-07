@@ -6583,7 +6583,16 @@ def import_jobs():
         for n, cid in client_by_name.items():
             if code.lower() in n:
                 return cid
-        return None
+        ts = datetime.now().isoformat(timespec="seconds")
+        cur.execute(
+            "INSERT INTO clients (name, created_at, updated_at) VALUES (?, ?, ?)",
+            (code, ts, ts)
+        )
+        new_id = cur.lastrowid
+        client_by_initials[code] = new_id
+        client_by_name[code.lower()] = new_id
+        client_created_names.append(code)
+        return new_id
 
     def _resolve_user(staff_name):
         if not staff_name:
@@ -6636,6 +6645,7 @@ def import_jobs():
     imported = 0
     skipped  = 0
     cust_created = 0
+    client_created_names = []
     seen_job_numbers = set()
 
     for row in reader:
@@ -6739,11 +6749,17 @@ def import_jobs():
     conn.commit()
     conn.close()
 
-    flash(
+    msg = (
         f"Import complete: {imported} jobs imported, {skipped} skipped (duplicates/blank). "
-        f"{cust_created} new customer(s) created.",
-        "success"
+        f"{cust_created} new customer(s) created."
     )
+    if client_created_names:
+        names = ", ".join(client_created_names)
+        msg += (
+            f" {len(client_created_names)} new client(s) created from unrecognised codes: {names}. "
+            f"Go to Clients to update their full names."
+        )
+    flash(msg, "success")
     return redirect(url_for("import_jobs_form"))
 
 
