@@ -6683,40 +6683,15 @@ def import_jobs():
         description  = (row.get("Job Description") or "").strip() or None
         priority     = (row.get("Priority") or "Normal").strip()
 
-        cur.execute("""
-            INSERT OR IGNORE INTO jobs (
-                internal_job_number, client_reference, display_ref,
-                job_type, visit_type, status, priority,
-                job_address, description,
-                client_id, assigned_user_id,
-                job_due_date,
-                created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            internal_job_number, client_reference, display_ref,
-            job_type, "New Visit", status, priority,
-            job_address, description,
-            client_id, assigned_uid,
-            job_due_date,
-            now_ts, now_ts
-        ))
-
-        if not cur.rowcount:
-            skipped += 1
-            continue
-
-        job_id = cur.lastrowid
-        imported += 1
-
+        # ── Resolve customer BEFORE inserting job so we can set customer_id ──
         cust_email   = (row.get("Customer Email") or "").strip() or None
         cust_company = (row.get("Customer Company") or "").strip() or None
         cust_first   = (row.get("Customer First Name") or "").strip() or None
         cust_last    = (row.get("Customer Last Name") or "").strip() or None
         cust_mobile  = (row.get("Customer Mobile") or "").strip() or None
 
+        customer_id = None
         if cust_first or cust_last or cust_email:
-            customer_id = None
             if cust_email:
                 row2 = cur.execute("SELECT id FROM customers WHERE email = ?", (cust_email,)).fetchone()
                 if row2:
@@ -6741,6 +6716,48 @@ def import_jobs():
                         VALUES ('customer', ?, 'Mobile', ?, ?)
                     """, (customer_id, cust_mobile, now_ts))
 
+        cur.execute("""
+            INSERT OR IGNORE INTO jobs (
+                internal_job_number, client_reference, display_ref,
+                job_type, visit_type, status, priority,
+                job_address, description,
+                client_id, customer_id, assigned_user_id,
+                job_due_date,
+                created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            internal_job_number, client_reference, display_ref,
+            job_type, "New Visit", status, priority,
+            job_address, description,
+            client_id, customer_id, assigned_uid,
+            job_due_date,
+            now_ts, now_ts
+        ))
+
+        if not cur.rowcount:
+            existing = cur.execute(
+                "SELECT id, customer_id, client_id FROM jobs WHERE internal_job_number = ?",
+                (internal_job_number,)
+            ).fetchone()
+            if not existing:
+                skipped += 1
+                continue
+            job_id = existing["id"]
+            patch = {}
+            if customer_id and not existing["customer_id"]:
+                patch["customer_id"] = customer_id
+            if client_id and not existing["client_id"]:
+                patch["client_id"] = client_id
+            if patch:
+                sets = ", ".join(f"{k} = ?" for k in patch)
+                cur.execute(f"UPDATE jobs SET {sets} WHERE id = ?", (*patch.values(), job_id))
+            skipped += 1
+        else:
+            job_id = cur.lastrowid
+            imported += 1
+
+        if customer_id:
             cur.execute("""
                 INSERT OR IGNORE INTO job_customers (job_id, customer_id, role, sort_order, created_at)
                 VALUES (?, ?, 'Debtor', 1, ?)
