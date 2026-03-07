@@ -41,24 +41,29 @@
   padding: 8px 14px; font-size: .78rem; color: #d97706; text-align: center;
 }
 
-/* Job cards */
+/* Flat job list */
 .job-card {
-  display: block; background: #fff; margin: 8px 12px; border-radius: 12px;
-  border: 1px solid #e5e7eb; text-decoration: none; color: #111;
-  overflow: hidden; transition: background .1s;
+  display: block; background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+  text-decoration: none; color: #111;
+  transition: background .12s;
 }
-.job-card:active { background: #f7f8fa; }
-.job-card-inner { padding: 12px 14px; display: flex; align-items: flex-start; gap: 10px; }
-.job-status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+.job-card:first-child { border-top: 1px solid #f0f0f0; }
+.job-card:active { background: #f5f7fa; }
+.job-card-inner { padding: 13px 16px 13px 14px; display: flex; align-items: center; gap: 12px; }
+.job-status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex-shrink: 0; align-self: flex-start; margin-top: 5px;
+}
 .job-main { flex: 1; min-width: 0; }
-.job-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+.job-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
 .job-ref { font-weight: 700; font-size: .9rem; }
-.job-customer { font-size: .8rem; color: #374151; margin-bottom: 2px; }
-.job-addr { font-size: .78rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.job-customer { font-size: .82rem; color: #374151; margin-bottom: 2px; font-weight: 500; }
+.job-addr { font-size: .76rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .job-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .job-date { font-size: .72rem; color: #9ca3af; }
 .job-dist { font-size: .72rem; font-weight: 600; color: #2563eb; }
-.job-chev { flex-shrink: 0; margin-top: 2px; }
+.job-chev { flex-shrink: 0; color: #d1d5db; }
 
 /* Filter bottom sheet */
 .filter-sheet {
@@ -125,7 +130,7 @@
 </div>
 
 {# ── Job list ── #}
-<div id="job-list" style="padding-bottom:8px;">
+<div id="job-list">
   {% if not jobs %}
   <div class="m-empty">
     <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -135,7 +140,15 @@
   {% for j in jobs %}
   {% set has_draft = j.id in draft_job_ids %}
   {% set status_lc = (j.status or '') | lower %}
-  {% set dot_color = '#2563eb' if status_lc in ('active','new') else ('#16a34a' if status_lc == 'in progress' else ('#d97706' if status_lc == 'pending' else ('#dc2626' if status_lc == 'suspended' else '#9ca3af'))) %}
+  {% if status_lc in ('suspended', 'cancelled') %}
+    {% set dot_color = '#dc2626' %}
+  {% elif status_lc in ('active', 'new', 'in progress', 'ready') %}
+    {% set dot_color = '#16a34a' %}
+  {% elif status_lc in ('pending', 'hold action', 'awaiting advice', 'awaiting info', 'urgent') %}
+    {% set dot_color = '#f59e0b' %}
+  {% else %}
+    {% set dot_color = '#9ca3af' %}
+  {% endif %}
   <a class="job-card"
      href="{{ url_for('m_job_detail', job_id=j.id) }}"
      data-id="{{ j.id }}"
