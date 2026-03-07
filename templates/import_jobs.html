@@ -3,17 +3,45 @@
 <h3>Import Jobs from CSV</h3>
 
 <div class="card p-3 mt-3 mb-4">
-  <div class="h6 mb-2">Expected CSV columns</div>
-  <code>InternalJobNumber, ClientReference, JobType, VisitType, Status, Priority, JobAddress, Description</code>
-  <div class="text-muted small mt-2">
-    <strong>InternalJobNumber</strong> is required. All other columns are optional and will fall back to defaults.
-    Rows with a duplicate InternalJobNumber are skipped.
+  <div class="h6 mb-2">GeoOp CSV Export</div>
+  <p class="small text-muted mb-2">
+    Export jobs from GeoOp and upload the CSV directly — no column changes needed.
+    The following GeoOp columns are imported:
+  </p>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered small mb-2">
+      <thead class="table-light">
+        <tr><th>GeoOp Column</th><th>Maps To</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>InternalJobNumber</code></td><td>Job Number</td><td><strong>Required.</strong> Duplicate numbers are skipped.</td></tr>
+        <tr><td><code>ClientReference</code></td><td>Contract Number</td><td></td></tr>
+        <tr><td><code>Job Start Date</code></td><td>Due Date</td><td>Format: 27-Mar-26 or DD/MM/YYYY</td></tr>
+        <tr><td><code>Job Address 1, Job Address 2, Job Address City, Job Address State, Job Address Postcode</code></td><td>Job Address</td><td>Combined into a single address</td></tr>
+        <tr><td><code>JobType</code></td><td>Job Type</td><td>Detects: Repo/Collect, Field Call, Collect Only, Process Serve</td></tr>
+        <tr><td><code>Status</code></td><td>Status</td><td>Mapped to Axion statuses</td></tr>
+        <tr><td><code>Priority</code></td><td>Priority</td><td>Normal, High, Urgent, Low</td></tr>
+        <tr><td><code>Job Description</code></td><td>Description</td><td></td></tr>
+        <tr><td><code>Bill Client Code</code></td><td>Client</td><td>Matched by initials — e.g. RSA → Robert Stack &amp; Associates</td></tr>
+        <tr><td><code>Staff</code></td><td>Assigned Agent</td><td>Matched by first name against Axion users</td></tr>
+        <tr><td><code>Customer First Name, Customer Last Name, Customer Email, Customer Company, Customer Mobile</code></td><td>Customer</td><td>Creates or matches existing customer; linked as Debtor</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="text-muted small">
+    Rows with the same <code>InternalJobNumber</code> (duplicate staff/workgroup rows from GeoOp) are automatically deduplicated — only the first row per job number is imported.
   </div>
 </div>
 
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    <div class="alert alert-{{ cat }}">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
 <form method="post" enctype="multipart/form-data">
   <div class="mb-3">
-    <label class="form-label">CSV File</label>
+    <label class="form-label fw-semibold">CSV File</label>
     <input class="form-control" type="file" name="file" accept=".csv" required>
   </div>
   <button class="btn btn-primary">Upload &amp; Import</button>

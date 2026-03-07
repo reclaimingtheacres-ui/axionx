@@ -6559,11 +6559,84 @@ def import_jobs():
 
     conn = db()
     cur = conn.cursor()
-    reader = csv.DictReader(file.stream.read().decode("utf-8").splitlines())
+
+    # ── Pre-load lookup tables ────────────────────────────────────────────
+    all_clients = conn.execute("SELECT id, name FROM clients").fetchall()
+    all_users   = conn.execute("SELECT id, full_name FROM users WHERE active = 1").fetchall()
+
+    def _client_initials(name):
+        skip = {"and", "&", "the", "of", "for", "pty", "ltd", "inc", "co"}
+        return "".join(w[0].upper() for w in name.split() if w.lower() not in skip and w.isalpha())
+
+    client_by_initials = {}
+    client_by_name     = {}
+    for c in all_clients:
+        client_by_initials[_client_initials(c["name"])] = c["id"]
+        client_by_name[c["name"].lower()] = c["id"]
+
+    def _resolve_client(code):
+        if not code:
+            return None
+        code = code.strip().upper()
+        if code in client_by_initials:
+            return client_by_initials[code]
+        for n, cid in client_by_name.items():
+            if code.lower() in n:
+                return cid
+        return None
+
+    def _resolve_user(staff_name):
+        if not staff_name:
+            return None
+        parts = staff_name.strip().lower().split()
+        for u in all_users:
+            uname = u["full_name"].lower()
+            if any(p in uname for p in parts if len(p) > 2):
+                return u["id"]
+        return None
+
+    def _extract_job_type(raw):
+        raw_lower = (raw or "").lower()
+        if "repo/collect" in raw_lower:
+            return "Repo/Collect"
+        if "collect only" in raw_lower:
+            return "Collect Only"
+        if "field call" in raw_lower:
+            return "Field Call"
+        if "process serve" in raw_lower:
+            return "Process Serve"
+        if "repo only" in raw_lower or "upgraded" in raw_lower:
+            return "Repo/Collect"
+        return "Field Call"
+
+    def _parse_date(raw):
+        if not raw:
+            return None
+        raw = raw.strip()
+        for fmt in ("%d-%b-%y", "%d/%m/%Y", "%Y-%m-%d", "%d-%b-%Y"):
+            try:
+                return datetime.strptime(raw, fmt).date().isoformat()
+            except ValueError:
+                pass
+        return None
+
+    STATUS_MAP = {
+        "awaiting advice from client": "Awaiting info from client",
+        "awaiting info from client":   "Awaiting info from client",
+        "active":     "Active",
+        "new":        "New",
+        "completed":  "Completed",
+        "invoiced":   "Invoiced",
+        "suspended":  "Suspended",
+    }
+
+    now_ts = datetime.now().isoformat(timespec="seconds")
+    reader = csv.DictReader(file.stream.read().decode("utf-8-sig").splitlines())
 
     imported = 0
-    skipped = 0
-    now = datetime.now().isoformat(timespec="seconds")
+    skipped  = 0
+    cust_created = 0
+    seen_job_numbers = set()
 
     for row in reader:
         internal_job_number = (row.get("InternalJobNumber") or "").strip()
@@ -6571,40 +6644,106 @@ def import_jobs():
             skipped += 1
             continue
 
-        client_reference = (row.get("ClientReference") or "").strip()
+        if internal_job_number in seen_job_numbers:
+            skipped += 1
+            continue
+        seen_job_numbers.add(internal_job_number)
+
+        client_reference = (row.get("ClientReference") or "").strip() or None
         display_ref = internal_job_number
         if client_reference:
             display_ref = f"{internal_job_number} ({client_reference})"
+
+        addr_parts = [
+            (row.get("Job Address 1") or "").strip(),
+            (row.get("Job Address 2") or "").strip(),
+            (row.get("Job Address City") or "").strip(),
+            (row.get("Job Address State") or "").strip(),
+            (row.get("Job Address Postcode") or "").strip(),
+        ]
+        job_address = ", ".join(p for p in addr_parts if p) or None
+
+        raw_status = (row.get("Status") or "New").strip()
+        status = STATUS_MAP.get(raw_status.lower(), raw_status)
+
+        job_due_date = _parse_date(row.get("Job Start Date"))
+        job_type     = _extract_job_type(row.get("JobType"))
+        client_id    = _resolve_client(row.get("Bill Client Code"))
+        assigned_uid = _resolve_user(row.get("Staff"))
+        description  = (row.get("Job Description") or "").strip() or None
+        priority     = (row.get("Priority") or "Normal").strip()
 
         cur.execute("""
             INSERT OR IGNORE INTO jobs (
                 internal_job_number, client_reference, display_ref,
                 job_type, visit_type, status, priority,
                 job_address, description,
+                client_id, assigned_user_id,
+                job_due_date,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            internal_job_number,
-            client_reference or None,
-            display_ref,
-            (row.get("JobType") or "Field Call").strip(),
-            (row.get("VisitType") or "New Visit").strip(),
-            (row.get("Status") or "New").strip(),
-            (row.get("Priority") or "Normal").strip(),
-            (row.get("JobAddress") or "").strip() or None,
-            (row.get("Description") or "").strip() or None,
-            now, now
+            internal_job_number, client_reference, display_ref,
+            job_type, "New Visit", status, priority,
+            job_address, description,
+            client_id, assigned_uid,
+            job_due_date,
+            now_ts, now_ts
         ))
-        if cur.rowcount:
-            imported += 1
-        else:
+
+        if not cur.rowcount:
             skipped += 1
+            continue
+
+        job_id = cur.lastrowid
+        imported += 1
+
+        cust_email   = (row.get("Customer Email") or "").strip() or None
+        cust_company = (row.get("Customer Company") or "").strip() or None
+        cust_first   = (row.get("Customer First Name") or "").strip() or None
+        cust_last    = (row.get("Customer Last Name") or "").strip() or None
+        cust_mobile  = (row.get("Customer Mobile") or "").strip() or None
+
+        if cust_first or cust_last or cust_email:
+            customer_id = None
+            if cust_email:
+                row2 = cur.execute("SELECT id FROM customers WHERE email = ?", (cust_email,)).fetchone()
+                if row2:
+                    customer_id = row2["id"]
+            if not customer_id and cust_first and cust_last:
+                row2 = cur.execute(
+                    "SELECT id FROM customers WHERE LOWER(first_name)=? AND LOWER(last_name)=?",
+                    (cust_first.lower(), cust_last.lower())
+                ).fetchone()
+                if row2:
+                    customer_id = row2["id"]
+            if not customer_id:
+                cur.execute("""
+                    INSERT INTO customers (first_name, last_name, company, email, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (cust_first, cust_last, cust_company, cust_email, now_ts, now_ts))
+                customer_id = cur.lastrowid
+                cust_created += 1
+                if cust_mobile:
+                    cur.execute("""
+                        INSERT INTO contact_phone_numbers (entity_type, entity_id, label, phone_number, created_at)
+                        VALUES ('customer', ?, 'Mobile', ?, ?)
+                    """, (customer_id, cust_mobile, now_ts))
+
+            cur.execute("""
+                INSERT OR IGNORE INTO job_customers (job_id, customer_id, role, sort_order, created_at)
+                VALUES (?, ?, 'Debtor', 1, ?)
+            """, (job_id, customer_id, now_ts))
 
     conn.commit()
     conn.close()
 
-    flash(f"Import complete: {imported} imported, {skipped} skipped.", "success")
+    flash(
+        f"Import complete: {imported} jobs imported, {skipped} skipped (duplicates/blank). "
+        f"{cust_created} new customer(s) created.",
+        "success"
+    )
     return redirect(url_for("import_jobs_form"))
 
 
