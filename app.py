@@ -469,6 +469,7 @@ def init_db():
     add_column_if_missing(cur, "jobs", "client_job_number", "TEXT")
     add_column_if_missing(cur, "customers", "role", "TEXT")
     add_column_if_missing(cur, "jobs", "deliver_to", "TEXT")
+    add_column_if_missing(cur, "clients", "nickname", "TEXT")
 
     _default_booking_types = [
         "New Visit", "Re-attend", "Urgent New Visit",
@@ -2016,7 +2017,7 @@ def jobs_list():
 
     sql = """
     SELECT j.*,
-           c.name AS client_name,
+           COALESCE(c.nickname, c.name) AS client_name,
            (cu.first_name || ' ' || cu.last_name) AS customer_name,
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
            COALESCE(u.full_name, (
@@ -2113,7 +2114,7 @@ def jobs_search_reference():
         SELECT j.id, j.display_ref, j.client_reference, j.client_job_number,
                j.status, j.job_type,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
-               c.name AS client_name
+               COALESCE(c.nickname, c.name) AS client_name
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients c ON c.id = j.client_id
@@ -2601,7 +2602,7 @@ def job_detail(job_id: int):
 
     cur.execute("""
     SELECT j.*,
-           c.name AS client_name, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
+           c.name AS client_name, c.nickname AS client_nickname, c.phone AS client_phone, c.email AS client_email, c.address AS client_address,
            (cu.first_name || ' ' || cu.last_name) AS customer_name, cu.last_name AS customer_last_name, cu.company AS customer_company, cu.email AS customer_email, cu.dob AS customer_dob, cu.address AS customer_address,
            u.full_name AS assigned_name, u.email AS assigned_email,
            btc.name AS bill_to_client_name
@@ -3861,10 +3862,11 @@ def client_edit(client_id: int):
 @login_required
 @admin_required
 def client_edit_post(client_id: int):
-    name = request.form.get("name", "").strip()
-    email = request.form.get("email", "").strip()
-    address = request.form.get("address", "").strip()
-    notes = request.form.get("notes", "").strip()
+    name     = request.form.get("name", "").strip()
+    nickname = request.form.get("nickname", "").strip() or None
+    email    = request.form.get("email", "").strip()
+    address  = request.form.get("address", "").strip()
+    notes    = request.form.get("notes", "").strip()
 
     if not name:
         flash("Client name is required.", "danger")
@@ -3876,9 +3878,9 @@ def client_edit_post(client_id: int):
 
     cur.execute("""
         UPDATE clients
-        SET name = ?, email = ?, address = ?, notes = ?, updated_at = ?
+        SET name = ?, nickname = ?, email = ?, address = ?, notes = ?, updated_at = ?
         WHERE id = ?
-    """, (name, email, address, notes, ts, client_id))
+    """, (name, nickname, email, address, notes, ts, client_id))
 
     cur.execute("""
         DELETE FROM contact_phone_numbers
@@ -6561,23 +6563,28 @@ def import_jobs():
     cur = conn.cursor()
 
     # ── Pre-load lookup tables ────────────────────────────────────────────
-    all_clients = conn.execute("SELECT id, name FROM clients").fetchall()
+    all_clients = conn.execute("SELECT id, name, nickname FROM clients").fetchall()
     all_users   = conn.execute("SELECT id, full_name FROM users WHERE active = 1").fetchall()
 
     def _client_initials(name):
         skip = {"and", "&", "the", "of", "for", "pty", "ltd", "inc", "co"}
         return "".join(w[0].upper() for w in name.split() if w.lower() not in skip and w.isalpha())
 
-    client_by_initials = {}
-    client_by_name     = {}
+    client_by_initials  = {}
+    client_by_name      = {}
+    client_by_nickname  = {}
     for c in all_clients:
         client_by_initials[_client_initials(c["name"])] = c["id"]
         client_by_name[c["name"].lower()] = c["id"]
+        if c["nickname"]:
+            client_by_nickname[c["nickname"].strip().upper()] = c["id"]
 
     def _resolve_client(code):
         if not code:
             return None
         code = code.strip().upper()
+        if code in client_by_nickname:
+            return client_by_nickname[code]
         if code in client_by_initials:
             return client_by_initials[code]
         for n, cid in client_by_name.items():
@@ -6591,6 +6598,7 @@ def import_jobs():
         new_id = cur.lastrowid
         client_by_initials[code] = new_id
         client_by_name[code.lower()] = new_id
+        client_by_nickname[code] = new_id
         client_created_names.append(code)
         return new_id
 

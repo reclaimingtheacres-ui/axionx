@@ -258,7 +258,12 @@
           <a href="/clients/{{ job.client_id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;">Edit</a>
         {% endif %}
       </div>
-      <div class="fw-semibold">{{ job.client_name or "—" }}</div>
+      <div class="fw-semibold">
+        {{ job.client_name or "—" }}
+        {% if job.client_nickname %}
+          <span class="badge ms-1 py-0 px-1" style="font-size:.7rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
+        {% endif %}
+      </div>
       {% if job.client_phone %}<div class="small"><a href="tel:{{ job.client_phone }}" style="color:var(--accent)">{{ job.client_phone }}</a></div>{% endif %}
       {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
       {% if job.bill_to_client_name and job.bill_to_client_name != job.client_name %}
