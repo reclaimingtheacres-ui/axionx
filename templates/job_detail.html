@@ -210,13 +210,15 @@
     <div class="ax-card p-3">
       <div class="d-flex justify-content-between align-items-start mb-2">
         <div class="small fw-bold" style="color:var(--muted)">CUSTOMER(S)</div>
-        {% if job.job_address %}
-          <a class="btn btn-outline-secondary btn-sm"
-             target="_blank"
-             href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
-            Open in Maps
-          </a>
-        {% endif %}
+        <div class="d-flex gap-2 align-items-center">
+          {% if job.job_address %}
+            <a class="btn btn-outline-secondary btn-sm"
+               target="_blank"
+               href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
+              Open in Maps
+            </a>
+          {% endif %}
+        </div>
       </div>
 
       {% if job_linked_customers %}
@@ -230,11 +232,16 @@
                 {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
                 {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
               </div>
-              {% if session.get('role') == 'admin' and job_linked_customers|length > 1 %}
-                <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove" style="flex-shrink:0">
-                  <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.7rem;padding:2px 8px">Remove</button>
-                </form>
-              {% endif %}
+              <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
+                {% if session.get('role') == 'admin' %}
+                  <a href="/customers/{{ lc.customer_id }}/edit" class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:2px 8px">Edit</a>
+                {% endif %}
+                {% if session.get('role') == 'admin' and job_linked_customers|length > 1 %}
+                  <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
+                    <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.7rem;padding:2px 8px">Remove</button>
+                  </form>
+                {% endif %}
+              </div>
             </div>
           </div>
         {% endfor %}
@@ -245,7 +252,12 @@
 
     <!-- Client -->
     <div class="ax-card p-3" style="background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.30);">
-      <div class="small fw-bold mb-2" style="color:#2563eb">CLIENT</div>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small fw-bold" style="color:#2563eb">CLIENT</div>
+        {% if session.get('role') == 'admin' and job.client_id %}
+          <a href="/clients/{{ job.client_id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;">Edit</a>
+        {% endif %}
+      </div>
       <div class="fw-semibold">{{ job.client_name or "—" }}</div>
       {% if job.client_phone %}<div class="small"><a href="tel:{{ job.client_phone }}" style="color:var(--accent)">{{ job.client_phone }}</a></div>{% endif %}
       {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
