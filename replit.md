@@ -1,9 +1,7 @@
 # Axion Prototype
 
 ## Overview
-Axion Prototype is a Flask-based field operations management application designed for efficient tracking of jobs, clients, customers, assets, cues, and staff. The system aims to streamline field operations, improve job dispatching, and enhance agent productivity through intelligent automation and mobile integration. Key capabilities include comprehensive job management, role-based access, a dynamic queueing system for tasks, audit logging, monthly reporting, and robust field resource management. The project is focused on delivering a robust, scalable solution for field operations, with a strong emphasis on mobile accessibility and data-driven decision-making.
-
-A core component of Axion is the Licence Plate Recognition (LPR) system, which includes advanced features for real-time plate lookups, watchlist hits, agent dispatch, and predictive patrol intelligence. This system leverages AI/ML to identify high-opportunity patrol areas, refine predictions, and automate aspects of the dispatch process.
+Axion Prototype is a Flask-based field operations management application designed to streamline field operations, improve job dispatching, and enhance agent productivity. It focuses on efficient tracking of jobs, clients, customers, assets, cues, and staff. Key capabilities include comprehensive job management, role-based access, a dynamic queueing system, audit logging, monthly reporting, and robust field resource management. The system also integrates a Licence Plate Recognition (LPR) system with real-time plate lookups, watchlist hits, agent dispatch, and AI/ML-driven predictive patrol intelligence to identify high-opportunity patrol areas and automate dispatch processes. The project emphasizes mobile accessibility and data-driven decision-making.
 
 ## User Preferences
 No explicit user preferences were provided in the original `replit.md` file. The document primarily describes system features and technical implementation details.
@@ -13,132 +11,49 @@ No explicit user preferences were provided in the original `replit.md` file. The
 ### Core Technologies
 - **Backend**: Python 3.11 with Flask 3.0.3
 - **Database**: SQLite (`axion.db`)
-- **Frontend**: Jinja2 templates, Bootstrap 5.3.3 (CDN) for styling, and custom JavaScript for interactivity.
-- **Mobile Wrapper**: Native iOS application (SwiftUI, WKWebView) for an enhanced mobile experience, wrapping mobile web routes.
+- **Frontend**: Jinja2 templates, Bootstrap 5.3.3, and custom JavaScript.
+- **Mobile Wrapper**: Native iOS application (SwiftUI, WKWebView) for mobile web routes.
 
 ### Design Patterns & Features
 
-**1. Role-Based Access Control:**
-   - Differentiates between 'Admin' and 'Agent' roles with tailored access to features like job visibility (all vs. own only), dashboards, cues, assignment boards, reports, and user management.
+**1. Role-Based Access Control:** Differentiates 'Admin' and 'Agent' roles with tailored access to features like job visibility, dashboards, cues, assignment boards, reports, and user management.
 
-**2. Dynamic Queue System (`/queue`):**
-   - Admin-only view presenting 'Overdue', 'Currently Due', and 'Agent Notes — Pending Review' cue items.
-   - Supports email composition and job updates directly from the queue.
-   - Automatically flags agent notes for review by creating specific `cue_item` entries.
+**2. Dynamic Queue System:** Provides an admin-only view of 'Overdue', 'Currently Due', and 'Agent Notes — Pending Review' items, enabling direct email composition and job updates.
 
-**3. Cues System:**
-   - Manages `cue_items` (scheduled tasks) with properties like date, visit type, priority, and agent assignment.
-   - Agents access their daily cues via `/my/today`.
-   - Admins use `/assign` for drag-and-drop cue assignment.
-   - Automatic cue generation for overdue or upcoming schedules.
+**3. Cues System:** Manages `cue_items` (scheduled tasks) with properties like date, visit type, priority, and agent assignment. Supports daily cue access for agents and drag-and-drop assignment for admins, with automatic cue generation for overdue or upcoming schedules.
 
-**4. Audit Log:**
-   - Comprehensive logging of all significant system actions, including cue management and user activities, accessible via the admin dashboard.
+**4. Audit Log:** Logs all significant system actions, accessible via the admin dashboard.
 
-**5. Field Resources Management (`/resources`):**
-   - Centralized management of Tow Operators and Auction Yards, accessible to all logged-in users.
-   - Utilizes interactive modals for adding, editing, and deleting entries without full page reloads.
+**5. Field Resources Management:** Centralized management of Tow Operators and Auction Yards with interactive modals for adding, editing, and deleting entries.
 
-**6. Forms Module (`/forms`):**
-   - Grid-based forms dashboard with 7 active form types: SWPI VIR, Transport Instructions, Voluntary Surrender (Sec 78(1) NCC), Form 13 (NCCP Notice to Occupier), Wise Group VIR, Auction Manager Letter, Towing Contractor Letter.
-   - Each form (VIR, Transport, Wise VIR, Form 13, Voluntary Surrender) is a fully editable HTML form with pre-populated fields from Repo Lock Records; all editable fields are saved back to the DB on submit before PDF generation.
-   - Signature forms use canvas-pad capture (agent + customer/occupier). Signature required validation on all forms.
-   - PDF generation via `pdf_gen.py` (ReportLab). Mobile-accessible at `/m/forms`.
-   - PDF functions: `generate_vir_pdf`, `generate_transport_pdf`, `generate_wise_vir_pdf`, `generate_form_13_pdf`, `generate_voluntary_surrender_pdf`, `generate_auction_letter_pdf`, `generate_tow_letter_pdf`, `generate_repo_pack_pdf` (pypdf merge).
-   - All form routes under `/jobs/{job_id}/repo-lock/{rec_id}/{form-type}`.
-   - **Complete Repo Pack**: GET `/jobs/{job_id}/repo-lock/{rec_id}/repo-pack` merges VIR + Transport + Form 13 (if applicable) + Voluntary Surrender (if applicable) + Wise VIR (if Wise Group) into one PDF.
-   - "Generate Complete Repo Pack" button (purple) shown on forms selector when a repo lock record is found.
-   - New DB columns added on demand: `station_officer`, `personal_effects_removed`, `personal_effects_list`, `make`, `model`, `year`, `colour`, `body_type`, `bumpers`, `glass`, `accessories`, `tow_phone`.
+**6. Forms Module:** Grid-based dashboard for 7 active form types (SWPI VIR, Transport Instructions, Voluntary Surrender, Form 13, Wise VIR, Auction Letter, Tow Letter). Forms are editable HTML with pre-populated fields saving to DB before PDF generation via ReportLab. Signatures captured live via canvas pads — NOT stored in DB. After every PDF is generated, it is auto-saved to job_documents and a note added to job_field_notes. Filename format: "[JobNumber] - [Form Name] - [DD-MM-YYYY].pdf". Complete Repo Pack (GET) merges unsigned reference copies and also attaches to the job.
 
-**7. Job Creation Enhancements:**
-   - Improved job creation flow with client job number tracking and reference search.
-   - "Clone" functionality to quickly pre-fill new job forms from existing job data.
+**7. Job Creation Enhancements:** Improved job creation flow with client job number tracking, reference search, and a "Clone" functionality for pre-filling new job forms.
 
-**8. CSV Job Import (`/import/jobs`):**
-   - Allows admins to upload CSV files to bulk import job data, with duplicate handling.
+**8. CSV Job Import:** Allows bulk import of job data via CSV files, with duplicate handling.
 
-**9. AI Update Builder (`/jobs/<id>/update-builder`):**
-   - Guided form for agents/admins to generate SWPI-style attendance updates using OpenAI (gpt-4o-mini).
-   - Features include auto-filling, fact toggles, AI narrative generation, editable output, address validation, and auto-saving with draft management.
-   - Incorporates logic for "points of contact" and estimated time of arrival (ETA) calculations.
+**9. AI Update Builder:** Guided form using OpenAI (gpt-4o-mini) to generate SWPI-style attendance updates, featuring auto-filling, fact toggles, AI narrative generation, editable output, and address validation.
 
-**10. Geomap & Agent Tracking (`/map`):**
-    - Admin-only map view displaying job pins by status and live agent locations.
-    - Client-side geocoding for jobs without cached coordinates.
-    - Agent GPS tracking (opt-in, silent) with position updates to the backend.
+**10. Geomap & Agent Tracking:** Admin-only map view displaying job pins by status and live agent locations, with client-side geocoding and opt-in GPS tracking for agents.
 
 **11. Licence Plate Recognition (LPR) System:**
-    - **Offline Queue & Background Sync:** Idempotent backend for sighting saves, ensuring no duplicates on retry. iOS-side `OfflineQueue` and `SyncManager` for robust offline data capture and background synchronization.
-    - **Push Notifications & Dispatch:** APNs integration for real-time alerts. Notification triggers for watchlist hits, escalated sightings, proximity alerts, and follow-up assignments. Proximity zone management for admins.
-    - **Dispatch Intelligence:** Calculates human-readable distances and ETAs. Identifies nearest agents and repeat plate sightings. Generates dispatch scores and recommended actions based on various factors.
-    - **Map Upgrade:** Leaflet.markercluster for enhanced visualization of sightings, with custom cluster icons and filtering options.
-    - **Passive Background Location:** iOS `AgentLocationService` with different modes (off-duty, available, active job) for battery-efficient location tracking, capturing battery state and app context. `FieldStatusManager` manages agent availability status.
-    - **Route/ETA Intelligence & Native Dispatch:** Integrates `DispatchManager` in iOS for managing follow-ups, including status transitions, region monitoring for geofences, and deep-linking to Apple Maps. Provides ETA-ranked agent recommendations.
-    - **Patrol Intelligence:** Automated engine ranking plates by patrol opportunity confidence based on 30 days of sightings. Calculates confidence scores using various signals (repeat count, distinct agents, time patterns, watchlist hits).
-    - **ML-Assisted Patrol Prediction:** Core ML integration in iOS for local inference on patrol data, blending rule-based scores with ML predictions for a `combined_score`.
-    - **Closed-Loop Learning:** Captures structured outcomes for patrol opportunities, storing prediction-versus-outcome history. Admin evaluation dashboard provides insights into model performance and outcome distribution.
-    - **Adaptive Ranking Config:** Allows dynamic adjustment of ML/rule weighting, thresholds, and priority bands based on performance.
-    - **A/B Experiment Framework:** Supports controlled experiments for LPR features, with deterministic arm assignment and experiment-aware outcome recording.
-    - **Policy Engine:** Defines rules for automated decision-making on experiment outcomes (promote, stop, tighten) based on performance metrics and safeguards.
-    - **Controlled Automation:** Implements automated actions based on policy decisions, with guardrails, cooldowns, and post-change monitoring to prevent regressions.
-    - **Document Upload / Import Workflow (Web Only):** Supports `.docx`, `.pdf`, `.doc` extraction for autofilling job creation forms. Intelligent parsing identifies key fields and performs client/customer lookups. **Wise Group detection**: documents containing `WISE GROUP CASE NUMBER` trigger a dedicated parser extracting case number, CLIENT, NAME OF DEBTOR 1 (with inline DOB), Given address, phone (H/W/M), FINANCIER, LOAN TYPE (Chattel Mortgage → UNREGULATED), MAKE/MODEL, INSTALMENT AMOUNT/FREQUENCY, ARREARS, COSTS, VIN/CHASSIS, REGISTRATION, COLOUR, ENGINE.
+    - **Offline Queue & Background Sync:** Robust offline data capture and background synchronization for sightings.
+    - **Push Notifications & Dispatch:** APNs integration for real-time alerts on watchlist hits, escalated sightings, and proximity alerts. Includes dispatch intelligence for calculating distances, ETAs, and recommending agents.
+    - **Map Upgrade:** Leaflet.markercluster for enhanced visualization of sightings.
+    - **Passive Background Location:** iOS `AgentLocationService` for battery-efficient location tracking.
+    - **Route/ETA Intelligence & Native Dispatch:** Integrates `DispatchManager` in iOS for managing follow-ups, geofencing, and ETA-ranked agent recommendations.
+    - **Patrol Intelligence:** Automated ranking of plates by patrol opportunity confidence using historical sightings and ML-assisted predictions.
+    - **Closed-Loop Learning:** Captures and analyzes prediction-versus-outcome history for continuous improvement.
+    - **Adaptive Ranking Config & A/B Experiment Framework:** Supports dynamic adjustment of ML/rule weighting and controlled experiments for LPR features.
+    - **Policy Engine & Controlled Automation:** Defines rules for automated decision-making and actions, with safeguards and post-change monitoring.
+    - **Document Upload / Import Workflow (Web Only):** Extracts data from `.docx`, `.pdf`, `.doc` files for autofilling job creation forms, including specific parsing for "Wise Group" cases.
 
-**12. Repo Lock (v2):**
-    - Per-security-item repossession record accessible from both desktop and mobile job detail pages.
-    - Button states: red `#dc2626` = no record, amber `#d97706` = Draft, green `#16a34a` = Submitted/Reviewed.
-    - Desktop: Bootstrap 5 accordion modal (`repoLockModal`) with 7 sections; footer has 3 buttons: Cancel, Save Draft, Submit.
-    - Mobile: full-screen overlay (`#rlOverlay`) using `<details>` elements; footer has 3 buttons: Cancel, Save Draft, Submit.
-    - **Save Draft**: saves fields to `repo_lock_records` with `status='Draft'`; shows amber banner, amber button; does NOT add interactions note.
-    - **Submit**: validates (repo_date, agent_name, registration or description required); saves to `repo_lock_records` with `status='Submitted'`, creates `repo_lock_queue` entry (Pending), writes formatted note to `interactions` and `job_field_notes`; shows success panel with Next Steps.
-    - **Next Steps panel** (post-submit): links to VIR, Transport Instructions, and the Forms module for all available form types.
-    - **Additional form routes**: `/wise-vir`, `/form-13`, `/voluntary-surrender`, `/auction-letter`, `/auction-letter/pdf`, `/tow-letter`, `/tow-letter/pdf` — all under `/jobs/<id>/repo-lock/<rec_id>/`.
-    - `_repo_lock_note(d)` helper builds a formatted plain-text summary of the entire Repo Lock record.
-    - Data: `repo_lock_records` (60+ fields, `status`, `submitted_at`, `agent_signature`, `customer_signature`, `tow_signature`, `agent_signed_at`, `customer_signed_at`, `tow_signed_at`), `repo_lock_queue` (tracks Pending/Reviewed/Processed, `submission_count`, reviewer fields).
-    - Routes: `GET /jobs/<job_id>/repo-lock/<item_id>` (JSON prefill + status), `POST .../save` (Draft), `POST .../submit` (Submitted + queue + note), `GET/POST .../vir`, `GET/POST .../transport-instructions`.
-
-**19b. Forms Module**
-    - Central hub for generating operational SWPI documents. Accessible to all authenticated users.
-    - **Desktop nav**: "Forms" link added to sidebar (between Jobs and Schedule/Map), highlights active on `/forms*`.
-    - **Mobile nav**: "Forms" tab added to bottom nav bar (between Jobs and Map), uses SVG document icon.
-    - **Routes**:
-      - `GET /forms[?job_id=X]` — forms dashboard grid (`templates/forms.html`)
-      - `GET /forms/generate?type=vir|transport[&job_id=X&item_id=Y]` — selector/resolver page (`templates/forms_selector.html`). With both job_id+item_id: checks for RL record and shows green panel with direct proceed button. With job_id only: shows asset picker dropdown. With neither: shows job dropdown + recent submitted RL records list for quick access.
-      - `GET /m/forms[?job_id=X]` — mobile forms dashboard (`templates/mobile/forms.html`)
-    - **Catalogue** (`_FORMS_CATALOGUE`): VIR (available), Transport Instructions (available), Field Attendance Report (coming soon), Voluntary Surrender Form (coming soon). Easily extended with new entries.
-    - **Pre-linking**: passing `?job_id=X` to `/forms` or `/m/forms` shows a blue info banner and threads the job_id through all "Open / Generate" links for that session.
-    - **Repo Lock guard**: if a job+asset is selected but no repo lock record exists, the selector shows an amber warning panel with a direct link to open the Repo Lock form. If repo lock exists, shows green panel and routes to the existing signature/PDF page.
-    - `_forms_job_context(conn, job_id)` helper: returns job dict enriched with `customer_name`.
-    - `_FORMS_META` dict: keyed by form type id for O(1) lookup.
-
-**19c. Repo Lock PDF Workflow (VIR + Transport Instructions)**
-    - `pdf_gen.py`: ReportLab-based PDF generator for A4 documents. `generate_vir_pdf(data, agent_sig, customer_sig)` produces Vehicle Condition Report / Repossession Receipt; `generate_transport_pdf(data, agent_sig, tow_sig)` produces Transport Instructions / Tow Receipt.
-    - PDFs include: SWPI logo, company details header, blue section headers, alternating row backgrounds, full data from Repo Lock record + related tables, and signature boxes rendered from base64 canvas PNG data.
-    - `_rl_pdf_context(conn, rec, job_id)`: helper that joins `jobs`, `job_items`, `clients`, `customers`, `tow_operators`, `users` to build a complete data dict for PDF generation.
-    - **VIR page** (`templates/repo_lock_vir.html`): standalone signature capture page with data summary, agent (required) + customer (optional) canvas signature pads, clear buttons, touch support. POST generates and streams PDF as attachment.
-    - **Transport page** (`templates/repo_lock_transport.html`): standalone signature capture page with data summary, agent (required — reuses VIR sig if already captured) + tow operator (optional) canvas signature pads. POST generates and streams PDF as attachment.
-    - Signatures stored as base64 PNG in `repo_lock_records` (6 new columns). PDF filename uses registration number or SWPI ref.
+**12. Repo Lock (v2):** Per-security-item repossession record accessible on desktop and mobile. Features draft saving and submission workflows, generating formatted notes and linking to PDF generation for VIR, Transport Instructions, and other forms. Includes signature capture and PDF generation via `pdf_gen.py`.
 
 ## External Dependencies
 
-- **Database**: SQLite (local `axion.db` file)
-- **Frontend Libraries**:
-    - Bootstrap 5.3.3 (via CDN)
-    - Google Maps API (for `/map` and mobile map views)
-    - Leaflet.js and Leaflet.markercluster (for `/admin/lpr-sightings-map`)
-- **Backend Libraries**:
-    - Flask (Python web framework)
-    - `python-docx` (for `.docx` document parsing)
-    - `pypdf` (for `.pdf` document parsing)
-    - `httpx[http2]` and `PyJWT` (for APNs delivery)
-    - `antiword` (external binary, for `.doc` document parsing)
-- **AI Services**:
-    - OpenAI (gpt-4o-mini) for AI Update Builder (leveraging Replit's built-in access or configurable user API key)
-    - Apple Core ML (for iOS-side patrol prediction inference)
-- **Mobile-Specific (iOS)**:
-    - WKWebView (for displaying web content within the native app)
-    - SwiftUI (for native UI components)
-    - CoreLocation (for GPS tracking and geofencing)
-    - NWPathMonitor (for network connectivity monitoring)
-    - UNUserNotificationCenter (for push notifications)
-    - BackgroundTasks (for background app refresh)
-    - MapKit (for ETA calculations in DispatchSheet)
+- **Database**: SQLite
+- **Frontend Libraries**: Bootstrap 5.3.3, Google Maps API, Leaflet.js, Leaflet.markercluster
+- **Backend Libraries**: Flask, `python-docx`, `pypdf`, `httpx[http2]`, `PyJWT`, `antiword` (external binary)
+- **AI Services**: OpenAI (gpt-4o-mini), Apple Core ML
+- **Mobile-Specific (iOS)**: WKWebView, SwiftUI, CoreLocation, NWPathMonitor, UNUserNotificationCenter, BackgroundTasks, MapKit
