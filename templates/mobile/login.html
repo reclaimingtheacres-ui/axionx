@@ -4,60 +4,153 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d1827">
 <meta name="color-scheme" content="light">
 <title>AxionX — Sign In</title>
 <style>
 :root { --accent: #2563eb; --line: #e5e7eb; --red: #dc2626; --muted: #6b7280; }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  background: #ffffff; color: #111111;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+html {
+  height: 100%;
+}
+
+body {
   min-height: 100dvh;
-  padding: env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-tap-highlight-color: transparent;
   color-scheme: light;
+  /* Full-screen launch background */
+  background-image: url('/static/images/axionx-launch-bg.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  /* Layout */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(env(safe-area-inset-top,20px) + 16px)
+           env(safe-area-inset-right,0px)
+           calc(env(safe-area-inset-bottom,0px) + 24px)
+           env(safe-area-inset-left,0px);
+  position: relative;
 }
-body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; background: #f7f8fa; }
-.brand { text-align: center; margin-bottom: 32px; }
-.brand-logo { font-size: 1.9rem; font-weight: 800; letter-spacing: .02em; color: var(--accent); }
-.brand-sub { font-size: .72rem; color: var(--muted); letter-spacing: .15em; text-transform: uppercase; margin-top: 4px; }
+
+/* Dark blue overlay — improves contrast without hiding the artwork */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 16, 36, 0.52);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Everything above the overlay */
+.brand, .card { position: relative; z-index: 1; }
+
+/* ── Brand / logo area ── */
+.brand {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.brand-logo {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+  color: #ffffff;
+  text-shadow: 0 2px 12px rgba(37,99,235,.5);
+}
+.brand-sub {
+  font-size: .72rem;
+  color: rgba(255,255,255,.6);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  margin-top: 5px;
+}
+
+/* ── Login card ── */
 .card {
-  background: #ffffff; border: 1px solid var(--line);
-  border-radius: 16px; padding: 28px 24px;
-  width: 100%; max-width: 360px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 20px;
+  padding: 28px 24px 24px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.2);
 }
-label { display: block; font-size: .72rem; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; }
+
+label {
+  display: block;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
 input {
-  width: 100%; background: #f7f8fa; border: 1px solid var(--line);
-  border-radius: 10px; color: #111111; font-size: 1rem; padding: 13px 14px;
-  outline: none; transition: border-color .15s, box-shadow .15s;
-  -webkit-appearance: none; min-height: 48px;
+  width: 100%;
+  background: #f7f8fa;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: #111111;
+  font-size: 1rem;
+  padding: 13px 14px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none;
+  min-height: 48px;
 }
-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.1); background: #ffffff; }
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+  background: #ffffff;
+}
+
 .fg { margin-bottom: 16px; }
+
 .submit-btn {
-  width: 100%; background: var(--accent); color: #ffffff;
-  border: none; border-radius: 12px; font-size: 1rem; font-weight: 700;
-  padding: 14px; cursor: pointer; margin-top: 6px;
-  -webkit-appearance: none; min-height: 50px;
+  width: 100%;
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 14px;
+  cursor: pointer;
+  margin-top: 6px;
+  -webkit-appearance: none;
+  min-height: 50px;
   transition: opacity .15s, transform .1s;
+  box-shadow: 0 4px 14px rgba(37,99,235,.35);
 }
 .submit-btn:active { opacity: .85; transform: scale(.98); }
+
 .err {
-  background: #fef2f2; color: var(--red);
-  border: 1px solid #fecaca; border-radius: 10px;
-  padding: 11px 14px; font-size: .88rem; margin-bottom: 16px; line-height: 1.4;
+  background: #fef2f2;
+  color: var(--red);
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: .88rem;
+  margin-bottom: 16px;
+  line-height: 1.4;
 }
 </style>
 </head>
 <body>
+
 <div class="brand">
   <div class="brand-logo">AxionX</div>
   <div class="brand-sub">Field Operations</div>
 </div>
+
 <div class="card">
   {% if error %}<div class="err">{{ error }}</div>{% endif %}
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -78,5 +171,6 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,
     <button type="submit" class="submit-btn">Sign In</button>
   </form>
 </div>
+
 </body>
 </html>
