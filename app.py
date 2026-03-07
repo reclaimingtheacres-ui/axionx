@@ -6732,7 +6732,7 @@ def import_jobs():
                 cur.execute("""
                     INSERT INTO customers (first_name, last_name, company, email, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (cust_first, cust_last, cust_company, cust_email, now_ts, now_ts))
+                """, (cust_first or "", cust_last or "", cust_company, cust_email, now_ts, now_ts))
                 customer_id = cur.lastrowid
                 cust_created += 1
                 if cust_mobile:
