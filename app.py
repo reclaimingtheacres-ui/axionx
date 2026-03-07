@@ -4371,7 +4371,8 @@ def repo_lock_get(job_id: int, item_id: int):
 
     client = conn.execute("SELECT * FROM clients WHERE id=?", (job["client_id"],)).fetchone() if job["client_id"] else None
     customer = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone() if job["customer_id"] else None
-    tow_ops = conn.execute("SELECT id, company_name FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
+    tow_ops = conn.execute("SELECT id, company_name, phone, mobile FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
+    auction_yards = conn.execute("SELECT id, name, address FROM auction_yards WHERE active=1 ORDER BY name").fetchall()
     user = conn.execute("SELECT full_name FROM users WHERE id=?", (session.get("user_id"),)).fetchone()
     conn.close()
 
@@ -4426,7 +4427,8 @@ def repo_lock_get(job_id: int, item_id: int):
         "queue_id":  queue_id,
         "prefill":   prefill,
         "existing":  existing,
-        "tow_ops":   [{"id": t["id"], "name": t["company_name"]} for t in tow_ops],
+        "tow_ops":   [{"id": t["id"], "name": t["company_name"], "phone": t["phone"] or t["mobile"] or ""} for t in tow_ops],
+        "auction_yards": [{"id": y["id"], "name": y["name"], "address": y["address"] or ""} for y in auction_yards],
         "item_label": (item["reg"] or item["description"] or f"Item #{item_id}"),
     })
 

@@ -371,7 +371,7 @@
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Description</label><input type="text" name="description" id="rlm_description" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
             <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Registration</label><input type="text" name="registration" id="rlm_registration" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
-            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Rego Expiry</label><input type="month" name="rego_expiry" id="rlm_rego_expiry" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+            <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Rego Expiry</label><input type="date" name="rego_expiry" id="rlm_rego_expiry" onchange="rlmRegoExpiryChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           </div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">VIN / Chassis</label><input type="text" name="vin" id="rlm_vin" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
@@ -393,8 +393,9 @@
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Keys Obtained?</label><select name="keys_obtained" id="rlm_keys_obtained" onchange="rlmToggle('rlm_keys_count_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
           <div id="rlm_keys_count_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">How Many Keys?</label><input type="number" min="1" name="how_many_keys" id="rlm_how_many_keys" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Vol. Surrender?</label><select name="vol_surrender" id="rlm_vol_surrender" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
-          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Form 13 Issued?</label><select name="form_13" id="rlm_form_13" onchange="rlmToggle('rlm_form13_signed_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option></select></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Form 13 Issued?</label><select name="form_13" id="rlm_form_13" onchange="rlmToggleForm13(this.value)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option></select></div>
           <div id="rlm_form13_signed_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Form 13 Signed By</label><input type="text" name="form_13_signed_by" id="rlm_form_13_signed_by" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div id="rlm_form13_btn_wrap" style="display:none;margin-bottom:10px;"><a id="rlm_form13_link" href="#" target="_blank" style="display:inline-block;padding:10px 14px;background:#2563eb;color:#fff;border-radius:8px;font-size:.82rem;font-weight:700;text-decoration:none;">&#x1F4CB; Complete Form 13</a></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Repossessed From</label><input type="text" name="repossessed_from" id="rlm_repossessed_from" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
             <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Lien Paid?</label><select name="lien_paid" id="rlm_lien_paid" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option><option>N/A</option></select></div>
@@ -420,17 +421,23 @@
             <div><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Transmission</label><select name="transmission" id="rlm_transmission" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
           </div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Fuel Level</label><select name="fuel_level" id="rlm_fuel_level" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Empty</option><option>1/4</option><option>1/2</option><option>3/4</option><option>Full</option></select></div>
-          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Any Damage?</label><select name="any_damage" id="rlm_any_damage" onchange="rlmToggle('rlm_damage_list_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
-          <div id="rlm_damage_list_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Describe Damage</label><textarea name="damage_list" id="rlm_damage_list" rows="3" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Any Damage?</label><select name="any_damage" id="rlm_any_damage" onchange="rlmToggle('rlm_damage_btn_wrap',this.value==='Yes')" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Yes</option><option>No</option></select></div>
+          <div id="rlm_damage_btn_wrap" style="display:none;margin-bottom:10px;">
+            <input type="hidden" name="damage_list" id="rlm_damage_list">
+            <button type="button" onclick="rlmOpenDamagePanel()" style="width:100%;padding:10px;border:1.5px solid #dc2626;border-radius:8px;background:#fff;color:#dc2626;font-size:.85rem;font-weight:700;cursor:pointer;">&#x270F;&#xFE0F; Enter Damage Details</button>
+            <div id="rlm_damage_preview" style="margin-top:6px;font-size:.78rem;color:#6b7280;font-style:italic;"></div>
+          </div>
         </div>
       </details>
 
       <details style="margin-bottom:10px;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
         <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Tow &amp; Delivery</summary>
         <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
-          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Company</label><select name="tow_company_id" id="rlm_tow_company_id" onchange="if(this.value)document.getElementById('rlm_tow_company_name').value=''" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select or enter manually —</option></select></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Company</label><select name="tow_company_id" id="rlm_tow_company_id" onchange="rlmTowChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select or enter manually —</option></select></div>
+          <div id="rlm_tow_phone_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Phone</label><div id="rlm_tow_phone_display" style="padding:8px 10px;background:#f3f4f6;border-radius:8px;font-size:.9rem;font-weight:700;color:#111;"></div></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Company Name (manual)</label><input type="text" name="tow_company_name" id="rlm_tow_company_name" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Costs</label><input type="text" name="tow_costs" id="rlm_tow_costs" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard</label><select id="rlm_auction_yard_id" onchange="rlmAuctionYardChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Auction Yard —</option></select></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Deliver To</label><input type="text" name="deliver_to" id="rlm_deliver_to" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Delivery Address</label><input type="text" name="delivery_address" id="rlm_delivery_address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Expected Delivery Date</label><input type="date" name="expected_delivery_date" id="rlm_expected_delivery_date" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
@@ -460,8 +467,29 @@
   </div>
 </div>
 
+<div id="rlmDamagePanel" style="display:none;position:fixed;inset:0;z-index:9999;background:#fff;flex-direction:column;">
+  <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;background:#dc2626;color:#fff;">
+    <span style="font-weight:700;font-size:.95rem;flex:1;">Damage Details</span>
+    <button onclick="rlmCloseDamagePanel()" style="border:0;background:transparent;color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;">&#x2715;</button>
+  </div>
+  <div style="flex:1;padding:16px;overflow-y:auto;">
+    <label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Describe all damage observed on the asset:</label>
+    <textarea id="rlmDamageModalText" rows="12" placeholder="e.g. Dent on front left door, cracked windscreen, missing rear bumper..." style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;box-sizing:border-box;resize:vertical;"></textarea>
+  </div>
+  <div style="padding:12px 16px;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:8px;">
+    <button onclick="rlmCloseDamagePanel()" style="flex:1;padding:12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;font-size:.82rem;font-weight:600;cursor:pointer;">Cancel</button>
+    <button onclick="rlmSaveDamagePanel()" style="flex:1;padding:12px;border:0;border-radius:10px;background:#dc2626;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;">Save Damage Details</button>
+  </div>
+</div>
+
 <script>
 (function(){
+  var _rlmTowOps       = [];
+  var _rlmAuctionYards = [];
+  var _rlmJobId  = 0;
+  var _rlmItemId = 0;
+  var _rlmRecId  = 0;
+
   var _rlmFields = [
     "client_name","client_reference","swpi_ref","finance_company","repo_date",
     "start_time","end_time","customer_name","account_number","repo_address",
@@ -507,7 +535,34 @@
     }
   }
 
+  function _rlmUpdateForm13Btn() {
+    var v = _gid("rlm_form_13") ? _gid("rlm_form_13").value : "";
+    var wrap = _gid("rlm_form13_btn_wrap");
+    if (!wrap) return;
+    if (v === "Yes" && _rlmRecId) {
+      _gid("rlm_form13_link").href = "/jobs/" + _rlmJobId + "/repo-lock/" + _rlmRecId + "/form-13";
+      wrap.style.display = "";
+    } else {
+      wrap.style.display = "none";
+    }
+  }
+
+  function _rlmUpdateDamagePreview() {
+    var val = (_gid("rlm_damage_list").value || "").trim();
+    var preview = _gid("rlm_damage_preview");
+    if (!preview) return;
+    if (val) {
+      var short = val.length > 60 ? val.substring(0, 60) + "\u2026" : val;
+      preview.textContent = short;
+    } else {
+      preview.textContent = "";
+    }
+  }
+
   window.openRepoLock = function(jobId, itemId) {
+    _rlmJobId  = jobId;
+    _rlmItemId = itemId;
+    _rlmRecId  = 0;
     _gid("rlmJobId").value  = jobId;
     _gid("rlmItemId").value = itemId;
     _gid("rlmBanner").style.display    = "none";
@@ -522,16 +577,33 @@
 
         _gid("rlmItemLabel").textContent = data.item_label || "";
 
-        var sel = _gid("rlm_tow_company_id");
-        sel.innerHTML = '<option value="">— Select or enter manually —</option>';
-        (data.tow_ops || []).forEach(function(t) {
+        var towSel = _gid("rlm_tow_company_id");
+        towSel.innerHTML = '<option value="">— Select or enter manually —</option>';
+        _rlmTowOps = data.tow_ops || [];
+        _rlmTowOps.forEach(function(t) {
           var o = document.createElement("option");
           o.value = t.id; o.textContent = t.name;
-          sel.appendChild(o);
+          towSel.appendChild(o);
+        });
+
+        var yardSel = _gid("rlm_auction_yard_id");
+        yardSel.innerHTML = '<option value="">— Select Auction Yard —</option>';
+        _rlmAuctionYards = data.auction_yards || [];
+        _rlmAuctionYards.forEach(function(y) {
+          var o = document.createElement("option");
+          o.value = y.id;
+          o.textContent = y.name + (y.address ? " — " + y.address : "");
+          o.dataset.address = y.address || "";
+          o.dataset.name    = y.name || "";
+          yardSel.appendChild(o);
         });
 
         var src = (data.has_rec && data.existing && Object.keys(data.existing).length)
                     ? data.existing : data.prefill;
+
+        if (data.has_rec && data.existing && data.existing.id) {
+          _rlmRecId = data.existing.id;
+        }
 
         _rlmFields.forEach(function(f) {
           var el = _gid("rlm_" + f);
@@ -540,10 +612,24 @@
         });
 
         rlmToggle("rlm_keys_count_wrap",   _gid("rlm_keys_obtained").value === "Yes");
-        rlmToggle("rlm_form13_signed_wrap", _gid("rlm_form_13").value === "Yes");
+        rlmToggleForm13(_gid("rlm_form_13").value);
         rlmToggle("rlm_station_wrap",       _gid("rlm_police_notified").value === "Yes");
         rlmToggleEffects(_gid("rlm_personal_effects_removed").value);
-        rlmToggle("rlm_damage_list_wrap",   _gid("rlm_any_damage").value === "Yes");
+        rlmToggle("rlm_damage_btn_wrap",    _gid("rlm_any_damage").value === "Yes");
+        _rlmUpdateDamagePreview();
+
+        var towPhoneWrap = _gid("rlm_tow_phone_wrap");
+        if (towSel.value) {
+          var match = _rlmTowOps.find(function(t){ return String(t.id) === String(towSel.value); });
+          if (match && match.phone) {
+            _gid("rlm_tow_phone_display").textContent = match.phone;
+            towPhoneWrap.style.display = "";
+          } else {
+            towPhoneWrap.style.display = "none";
+          }
+        } else {
+          towPhoneWrap.style.display = "none";
+        }
 
         _rlmUpdateBtns(data.status);
 
@@ -574,6 +660,8 @@
       btn.disabled = false;
       txt.textContent = orig;
       if (!res.ok) { alert("Save failed."); return; }
+
+      if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); }
 
       var banner = _gid("rlmBanner");
       banner.textContent = "Draft saved — not yet submitted.";
@@ -646,6 +734,8 @@
         trigger.style.background = "#16a34a";
       }
 
+      if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); }
+
       _gid("rlmVirLink").href       = "/jobs/" + jobId + "/repo-lock/" + res.id + "/vir";
       _gid("rlmTransportLink").href = "/jobs/" + jobId + "/repo-lock/" + res.id + "/transport-instructions";
 
@@ -663,11 +753,66 @@
   };
 
   window.rlmToggle = function(id, show) {
-    _gid(id).style.display = show ? "" : "none";
+    var el = _gid(id);
+    if (el) el.style.display = show ? "" : "none";
   };
   window.rlmToggleEffects = function(v) {
     rlmToggle("rlm_removed_by_wrap",   v === "Yes");
     rlmToggle("rlm_effects_list_wrap", v === "Yes");
+  };
+  window.rlmToggleForm13 = function(v) {
+    rlmToggle("rlm_form13_signed_wrap", v === "Yes");
+    _rlmUpdateForm13Btn();
+  };
+  window.rlmTowChanged = function(sel) {
+    if (sel.value) {
+      _gid("rlm_tow_company_name").value = "";
+      var match = _rlmTowOps.find(function(t){ return String(t.id) === String(sel.value); });
+      var wrap  = _gid("rlm_tow_phone_wrap");
+      var disp  = _gid("rlm_tow_phone_display");
+      if (match && match.phone) {
+        disp.textContent = match.phone;
+        wrap.style.display = "";
+      } else {
+        wrap.style.display = "none";
+      }
+    } else {
+      _gid("rlm_tow_phone_wrap").style.display = "none";
+    }
+  };
+  window.rlmAuctionYardChanged = function(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    if (sel.value && opt) {
+      _gid("rlm_deliver_to").value      = opt.dataset.name    || "";
+      _gid("rlm_delivery_address").value = opt.dataset.address || "";
+    }
+  };
+  window.rlmRegoExpiryChanged = function(input) {
+    var val = input.value;
+    if (!val) return;
+    var d = new Date(val + "T00:00:00");
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    var regSel = _gid("rlm_registered");
+    if (!regSel) return;
+    regSel.value = d < today ? "Expired" : "Yes";
+  };
+  window.rlmOpenDamagePanel = function() {
+    var panel = _gid("rlmDamagePanel");
+    var txt   = _gid("rlmDamageModalText");
+    if (txt) txt.value = _gid("rlm_damage_list").value || "";
+    panel.style.display = "flex";
+  };
+  window.rlmCloseDamagePanel = function() {
+    _gid("rlmDamagePanel").style.display = "none";
+  };
+  window.rlmSaveDamagePanel = function() {
+    var txt = _gid("rlmDamageModalText");
+    if (txt) {
+      _gid("rlm_damage_list").value = txt.value;
+      _rlmUpdateDamagePreview();
+    }
+    _gid("rlmDamagePanel").style.display = "none";
   };
 })();
 </script>

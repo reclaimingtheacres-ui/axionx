@@ -145,7 +145,7 @@
                     </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Rego Expiry</label>
-                      <input class="form-control form-control-sm" type="month" name="rego_expiry" id="rl_rego_expiry">
+                      <input class="form-control form-control-sm" type="date" name="rego_expiry" id="rl_rego_expiry" onchange="rlRegoExpiryChanged(this)">
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label">VIN / Chassis</label>
@@ -222,6 +222,11 @@
                       <label class="form-label">Form 13 Signed By</label>
                       <input class="form-control form-control-sm" name="form_13_signed_by" id="rl_form_13_signed_by">
                     </div>
+                    <div class="col-12" id="rl_form13_btn_wrap" style="display:none;">
+                      <a id="rl_form13_link" href="#" target="_blank" class="btn btn-sm btn-outline-primary">
+                        &#x1F4CB; Complete Form 13
+                      </a>
+                    </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label">Repossessed From</label>
                       <input class="form-control form-control-sm" name="repossessed_from" id="rl_repossessed_from" placeholder="Name / address">
@@ -280,28 +285,35 @@
                     {% for fname, lbl in [
                         ("tyres","Tyres"),("body","Body"),("duco","Duco"),
                         ("interior","Interior"),("engine_condition","Engine"),
-                        ("transmission","Transmission"),("fuel_level","Fuel Level")
+                        ("transmission","Transmission")
                     ] %}
                     <div class="col-6 col-md-3">
                       <label class="form-label">{{ lbl }}</label>
                       <select class="form-select form-select-sm" name="{{ fname }}" id="rl_{{ fname }}">
                         <option value="">— Select —</option>
                         <option>Good</option><option>Fair</option><option>Poor</option>
-                        {% if fname == "fuel_level" %}
-                        <option>Empty</option><option>1/4</option><option>1/2</option><option>3/4</option><option>Full</option>
-                        {% endif %}
                       </select>
                     </div>
                     {% endfor %}
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Fuel Level</label>
+                      <select class="form-select form-select-sm" name="fuel_level" id="rl_fuel_level">
+                        <option value="">— Select —</option>
+                        <option>Empty</option><option>1/4</option><option>1/2</option><option>3/4</option><option>Full</option>
+                      </select>
+                    </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Any Damage?</label>
                       <select class="form-select form-select-sm" name="any_damage" id="rl_any_damage" onchange="rlToggleDamage(this.value)">
                         <option value="">— Select —</option><option>Yes</option><option>No</option>
                       </select>
                     </div>
-                    <div class="col-12" id="rl_damage_list_wrap" style="display:none;">
-                      <label class="form-label">Describe Damage</label>
-                      <textarea class="form-control form-control-sm" name="damage_list" id="rl_damage_list" rows="2"></textarea>
+                    <div class="col-12" id="rl_damage_btn_wrap" style="display:none;">
+                      <button type="button" class="btn btn-sm btn-outline-danger" onclick="rlOpenDamageModal()">
+                        &#x270F;&#xFE0F; Enter Damage Details
+                      </button>
+                      <small class="text-muted ms-2" id="rl_damage_preview" style="font-style:italic;"></small>
+                      <input type="hidden" name="damage_list" id="rl_damage_list">
                     </div>
                   </div>
                 </div>
@@ -324,6 +336,10 @@
                         <option value="">— Select or enter manually —</option>
                       </select>
                     </div>
+                    <div class="col-12 col-md-4" id="rl_tow_phone_wrap" style="display:none;">
+                      <label class="form-label text-muted" style="font-size:.75rem;">Phone</label>
+                      <div id="rl_tow_phone_display" style="font-size:.9rem;font-weight:600;padding:6px 0;color:#374151;"></div>
+                    </div>
                     <div class="col-12 col-md-4">
                       <label class="form-label">Tow Company Name (manual)</label>
                       <input class="form-control form-control-sm" name="tow_company_name" id="rl_tow_company_name" placeholder="If not in list">
@@ -332,9 +348,15 @@
                       <label class="form-label">Tow Costs</label>
                       <input class="form-control form-control-sm" name="tow_costs" id="rl_tow_costs" placeholder="e.g. $220.00">
                     </div>
+                    <div class="col-12">
+                      <label class="form-label">Auction Yard</label>
+                      <select class="form-select form-select-sm" id="rl_auction_yard_id" onchange="rlAuctionYardChanged(this)">
+                        <option value="">— Select Auction Yard —</option>
+                      </select>
+                    </div>
                     <div class="col-12 col-md-5">
                       <label class="form-label">Deliver To</label>
-                      <input class="form-control form-control-sm" name="deliver_to" id="rl_deliver_to">
+                      <input class="form-control form-control-sm" name="deliver_to" id="rl_deliver_to" placeholder="Auction yard / recipient name">
                     </div>
                     <div class="col-12 col-md-5">
                       <label class="form-label">Delivery Address</label>
@@ -404,9 +426,11 @@
 
 <script>
 (function(){
-  var _rlTowOps = [];
+  var _rlTowOps      = [];
+  var _rlAuctionYards = [];
   var _rlJobId  = 0;
   var _rlItemId = 0;
+  var _rlRecId  = 0;
 
   var _rlFields = [
     "client_name","client_reference","swpi_ref","finance_company","repo_date",
@@ -430,9 +454,34 @@
     spinner.classList.toggle("d-none", !disabled);
   }
 
+  function _rlUpdateForm13Btn() {
+    var v = _gid("rl_form_13") ? _gid("rl_form_13").value : "";
+    var wrap = _gid("rl_form13_btn_wrap");
+    if (!wrap) return;
+    if (v === "Yes" && _rlRecId) {
+      _gid("rl_form13_link").href = "/jobs/" + _rlJobId + "/repo-lock/" + _rlRecId + "/form-13";
+      wrap.style.display = "";
+    } else {
+      wrap.style.display = "none";
+    }
+  }
+
+  function _rlUpdateDamagePreview() {
+    var val = (_gid("rl_damage_list").value || "").trim();
+    var preview = _gid("rl_damage_preview");
+    if (!preview) return;
+    if (val) {
+      var short = val.length > 60 ? val.substring(0, 60) + "\u2026" : val;
+      preview.textContent = short;
+    } else {
+      preview.textContent = "No details entered.";
+    }
+  }
+
   window.openRepoLock = function(jobId, itemId) {
     _rlJobId  = jobId;
     _rlItemId = itemId;
+    _rlRecId  = 0;
     _gid("rlJobId").value  = jobId;
     _gid("rlItemId").value = itemId;
 
@@ -448,17 +497,33 @@
 
         _gid("rlItemLabel").textContent = data.item_label || "";
 
-        var sel = _gid("rl_tow_company_id");
-        sel.innerHTML = '<option value="">— Select or enter manually —</option>';
+        var towSel = _gid("rl_tow_company_id");
+        towSel.innerHTML = '<option value="">— Select or enter manually —</option>';
         _rlTowOps = data.tow_ops || [];
         _rlTowOps.forEach(function(t) {
           var o = document.createElement("option");
           o.value = t.id; o.textContent = t.name;
-          sel.appendChild(o);
+          towSel.appendChild(o);
+        });
+
+        var yardSel = _gid("rl_auction_yard_id");
+        yardSel.innerHTML = '<option value="">— Select Auction Yard —</option>';
+        _rlAuctionYards = data.auction_yards || [];
+        _rlAuctionYards.forEach(function(y) {
+          var o = document.createElement("option");
+          o.value = y.id;
+          o.textContent = y.name + (y.address ? " — " + y.address : "");
+          o.dataset.address = y.address || "";
+          o.dataset.name    = y.name || "";
+          yardSel.appendChild(o);
         });
 
         var src = (data.has_rec && data.existing && Object.keys(data.existing).length)
                     ? data.existing : data.prefill;
+
+        if (data.has_rec && data.existing && data.existing.id) {
+          _rlRecId = data.existing.id;
+        }
 
         _rlFields.forEach(function(f) {
           var el = _gid("rl_" + f);
@@ -471,6 +536,22 @@
         rlTogglePolice(_gid("rl_police_notified").value);
         rlToggleEffects(_gid("rl_personal_effects_removed").value);
         rlToggleDamage(_gid("rl_any_damage").value);
+        _rlUpdateDamagePreview();
+
+        var towPhoneWrap = _gid("rl_tow_phone_wrap");
+        var towPhoneDisp = _gid("rl_tow_phone_display");
+        var savedTowId = towSel.value;
+        if (savedTowId) {
+          var match = _rlTowOps.find(function(t){ return String(t.id) === String(savedTowId); });
+          if (match && match.phone) {
+            towPhoneDisp.textContent = match.phone;
+            towPhoneWrap.style.display = "";
+          } else {
+            towPhoneWrap.style.display = "none";
+          }
+        } else {
+          towPhoneWrap.style.display = "none";
+        }
 
         _rlUpdateButtonState(data.status);
 
@@ -556,6 +637,8 @@
       _rlSetBtnState(btn, spinner, false);
       if (!res.ok) { alert("Save failed."); return; }
 
+      if (res.id) { _rlRecId = res.id; _rlUpdateForm13Btn(); }
+
       var banner = _gid("rlDraftBanner");
       banner.textContent = "Draft saved — not yet submitted.";
       banner.classList.remove("d-none");
@@ -610,6 +693,8 @@
         return;
       }
 
+      if (res.id) { _rlRecId = res.id; _rlUpdateForm13Btn(); }
+
       var trigger = document.querySelector('[data-rl-item="' + _rlItemId + '"]');
       if (trigger) {
         trigger.textContent = "\u2713 Submitted";
@@ -638,6 +723,7 @@
   };
   window.rlToggleForm13 = function(v) {
     _gid("rl_form13_signed_wrap").style.display = (v === "Yes") ? "" : "none";
+    _rlUpdateForm13Btn();
   };
   window.rlTogglePolice = function(v) {
     _gid("rl_station_wrap").style.display = (v === "Yes") ? "" : "none";
@@ -648,10 +734,73 @@
     _gid("rl_effects_list_wrap").style.display = show ? "" : "none";
   };
   window.rlToggleDamage = function(v) {
-    _gid("rl_damage_list_wrap").style.display = (v === "Yes") ? "" : "none";
+    _gid("rl_damage_btn_wrap").style.display = (v === "Yes") ? "" : "none";
   };
   window.rlTowChanged = function(sel) {
-    if (sel.value) _gid("rl_tow_company_name").value = "";
+    if (sel.value) {
+      _gid("rl_tow_company_name").value = "";
+      var match = _rlTowOps.find(function(t){ return String(t.id) === String(sel.value); });
+      var wrap  = _gid("rl_tow_phone_wrap");
+      var disp  = _gid("rl_tow_phone_display");
+      if (match && match.phone) {
+        disp.textContent = match.phone;
+        wrap.style.display = "";
+      } else {
+        wrap.style.display = "none";
+      }
+    } else {
+      _gid("rl_tow_phone_wrap").style.display = "none";
+    }
+  };
+  window.rlAuctionYardChanged = function(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    if (sel.value && opt) {
+      _gid("rl_deliver_to").value      = opt.dataset.name    || "";
+      _gid("rl_delivery_address").value = opt.dataset.address || "";
+    }
+  };
+  window.rlRegoExpiryChanged = function(input) {
+    var val = input.value;
+    if (!val) return;
+    var d = new Date(val + "T00:00:00");
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    var regSel = _gid("rl_registered");
+    if (!regSel) return;
+    regSel.value = d < today ? "Expired" : "Yes";
+  };
+  window.rlOpenDamageModal = function() {
+    var modal = bootstrap.Modal.getOrCreateInstance(_gid("rlDamageModal"));
+    var txt = _gid("rlDamageModalText");
+    if (txt) txt.value = _gid("rl_damage_list").value || "";
+    modal.show();
+  };
+  window.rlSaveDamageModal = function() {
+    var txt = _gid("rlDamageModalText");
+    if (txt) {
+      _gid("rl_damage_list").value = txt.value;
+      _rlUpdateDamagePreview();
+    }
+    bootstrap.Modal.getOrCreateInstance(_gid("rlDamageModal")).hide();
   };
 })();
 </script>
+
+<div class="modal fade" id="rlDamageModal" tabindex="-1" aria-labelledby="rlDamageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title" id="rlDamageModalLabel">Damage Details</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold">Describe all damage observed on the asset:</label>
+        <textarea class="form-control" id="rlDamageModalText" rows="8" placeholder="e.g. Dent on front left door, cracked windscreen, missing rear bumper..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="rlSaveDamageModal()">Save Damage Details</button>
+      </div>
+    </div>
+  </div>
+</div>
