@@ -66,16 +66,17 @@
     </div>
     {% endif %}
 
-    {# Address + Maps #}
+    {# Address + Navigation #}
     <div>
       <div class="m-label">Full Address</div>
-      <div style="font-size:.95rem;line-height:1.5;margin-bottom:6px;color:var(--text);">{{ job.job_address or '—' }}</div>
+      <div style="font-size:.95rem;line-height:1.5;margin-bottom:8px;color:var(--text);">{{ job.job_address or '—' }}</div>
       {% if job.job_address %}
-      <a href="maps:?q={{ job.job_address | urlencode }}"
-         style="display:inline-flex;align-items:center;gap:6px;font-size:.83rem;font-weight:600;color:var(--accent);padding:6px 0;">
+      <button type="button" onclick="document.getElementById('navChooser').style.display='flex'"
+         style="display:inline-flex;align-items:center;gap:6px;font-size:.83rem;font-weight:600;
+                color:var(--accent);background:none;border:none;padding:6px 0;cursor:pointer;">
         <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-        Open in Maps
-      </a>
+        Directions
+      </button>
       {% endif %}
     </div>
 
@@ -247,6 +248,64 @@
 
 {% endblock %}
 {% block extra_scripts %}
+
+{# ── Navigation Chooser Bottom Sheet ── #}
+{% if job.job_address %}
+{% set _enc_addr = job.job_address | urlencode %}
+{% if job.lat and job.lng %}
+  {% set _waze_url   = "https://waze.com/ul?ll=" ~ job.lat ~ "," ~ job.lng ~ "&navigate=yes" %}
+  {% set _gmaps_url  = "https://www.google.com/maps/dir/?api=1&destination=" ~ job.lat ~ "," ~ job.lng %}
+  {% set _apple_url  = "http://maps.apple.com/?daddr=" ~ job.lat ~ "," ~ job.lng ~ "&dirflg=d" %}
+{% else %}
+  {% set _waze_url   = "https://waze.com/ul?q=" ~ _enc_addr ~ "&navigate=yes" %}
+  {% set _gmaps_url  = "https://www.google.com/maps/dir/?api=1&destination=" ~ _enc_addr %}
+  {% set _apple_url  = "http://maps.apple.com/?daddr=" ~ _enc_addr ~ "&dirflg=d" %}
+{% endif %}
+<div id="navChooser"
+     onclick="if(event.target===this)this.style.display='none'"
+     style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9500;
+            background:rgba(0,0,0,.45);align-items:flex-end;justify-content:center;">
+  <div style="width:100%;max-width:480px;background:#fff;border-radius:20px 20px 0 0;
+              padding:8px 16px calc(16px + env(safe-area-inset-bottom,0px));
+              box-shadow:0 -4px 24px rgba(0,0,0,.15);">
+    <div style="width:40px;height:4px;background:#d1d5db;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;
+                letter-spacing:.07em;text-align:center;margin-bottom:14px;">Open directions with</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
+      <a href="{{ _waze_url }}" target="_blank" rel="noopener"
+         onclick="document.getElementById('navChooser').style.display='none'"
+         style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:12px;
+                font-weight:600;font-size:.95rem;color:#1d4ed8;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        Waze
+      </a>
+      <a href="{{ _gmaps_url }}" target="_blank" rel="noopener"
+         onclick="document.getElementById('navChooser').style.display='none'"
+         style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;
+                font-weight:600;font-size:.95rem;color:#166534;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        Google Maps
+      </a>
+      <a href="{{ _apple_url }}" target="_blank" rel="noopener"
+         onclick="document.getElementById('navChooser').style.display='none'"
+         style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;
+                font-weight:600;font-size:.95rem;color:#374151;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a7 7 0 017 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 017-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        Apple Maps
+      </a>
+    </div>
+    <button type="button" onclick="document.getElementById('navChooser').style.display='none'"
+            style="width:100%;padding:13px;border:none;border-radius:12px;background:#f3f4f6;
+                   font-size:.9rem;font-weight:600;color:var(--muted);cursor:pointer;">
+      Cancel
+    </button>
+  </div>
+</div>
+{% endif %}
+
 <div id="rlOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9000;background:#f9fafb;overflow:hidden;flex-direction:column;">
   <div style="flex-shrink:0;background:#2563eb;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;">
     <div>
