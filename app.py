@@ -8134,7 +8134,10 @@ def _mobile_jobs_query(uid, role, params_in):
                (SELECT ji.reg  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_reg,
                (SELECT ji.vin  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_vin,
                (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
-                AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled
+                AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
+               (SELECT cpn.phone_number FROM contact_phone_numbers cpn
+                WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
+                ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE {where_sql}

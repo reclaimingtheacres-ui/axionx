@@ -41,28 +41,82 @@
   padding: 8px 14px; font-size: .78rem; color: #d97706; text-align: center;
 }
 
-/* Flat job list */
+/* ── Swipe row wrapper ── */
+.job-row-wrap {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid #efefef;
+  background: #fff;
+}
+.job-row-wrap:first-child { border-top: 1px solid #efefef; }
+
+/* Action tray — sits behind the row, revealed on left swipe */
+.job-actions {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  display: flex; align-items: stretch;
+  pointer-events: none;
+}
+.job-row-wrap.ja-open .job-actions { pointer-events: auto; }
+.ja-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; width: 62px; border: none; cursor: pointer;
+  font-size: .6rem; font-weight: 700; color: #fff; letter-spacing: .03em;
+  text-decoration: none; -webkit-tap-highlight-color: transparent;
+  padding: 0;
+}
+.ja-btn svg { display: block; }
+.ja-btn-nav  { background: #1d4ed8; }
+.ja-btn-call { background: #16a34a; }
+.ja-btn-sms  { background: #0891b2; }
+.ja-btn-note { background: #d97706; }
+.ja-btn-view { background: #6b7280; }
+.ja-btn-dis  { background: #d1d5db; color: rgba(255,255,255,.5); cursor: default; }
+
+/* Job row — slides left to reveal actions */
 .job-card {
   display: block; background: #fff;
-  border-bottom: 1px solid #f0f0f0;
   text-decoration: none; color: #111;
-  transition: background .12s;
+  position: relative; z-index: 1;
+  transform: translateX(0);
+  will-change: transform;
+  /* transition applied by JS after drag ends */
 }
-.job-card:first-child { border-top: 1px solid #f0f0f0; }
-.job-card:active { background: #f5f7fa; }
-.job-card-inner { padding: 13px 16px 13px 14px; display: flex; align-items: center; gap: 12px; }
-.job-status-dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  flex-shrink: 0; align-self: flex-start; margin-top: 5px;
+.job-card:active { background: #f6f7f9; }
+.job-card-inner { display: flex; align-items: stretch; }
+
+/* Left status bar */
+.job-status-bar {
+  width: 4px; flex-shrink: 0; align-self: stretch;
+  border-radius: 0 2px 2px 0;
+}
+
+/* Row content area */
+.job-inner-content {
+  flex: 1; min-width: 0;
+  padding: 12px 14px 12px 12px;
+  display: flex; align-items: center; gap: 10px;
 }
 .job-main { flex: 1; min-width: 0; }
-.job-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
-.job-ref { font-weight: 700; font-size: .9rem; }
-.job-customer { font-size: .82rem; color: #374151; margin-bottom: 2px; font-weight: 500; }
-.job-addr { font-size: .76rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.job-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+
+/* Info hierarchy */
+.job-primary-row {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap; margin-bottom: 2px;
+}
+.job-customer {
+  font-size: .95rem; font-weight: 700; color: #111; line-height: 1.2;
+}
+.job-addr {
+  font-size: .8rem; color: #374151;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 4px; line-height: 1.3;
+}
+.job-meta {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+}
+.job-ref  { font-size: .72rem; color: #9ca3af; font-weight: 500; }
 .job-date { font-size: .72rem; color: #9ca3af; }
-.job-dist { font-size: .72rem; font-weight: 600; color: #2563eb; }
+.job-dist { font-size: .72rem; font-weight: 700; color: #2563eb; }
 .job-chev { flex-shrink: 0; color: #d1d5db; }
 
 /* Filter bottom sheet */
@@ -141,52 +195,102 @@
   {% set has_draft = j.id in draft_job_ids %}
   {% set status_lc = (j.status or '') | lower %}
   {% if status_lc in ('suspended', 'cancelled') %}
-    {% set dot_color = '#dc2626' %}
+    {% set bar_color = '#dc2626' %}
   {% elif status_lc in ('active', 'new', 'in progress', 'ready') %}
-    {% set dot_color = '#16a34a' %}
+    {% set bar_color = '#16a34a' %}
   {% elif status_lc in ('pending', 'hold action', 'awaiting advice', 'awaiting info', 'urgent') %}
-    {% set dot_color = '#f59e0b' %}
+    {% set bar_color = '#f59e0b' %}
   {% else %}
-    {% set dot_color = '#9ca3af' %}
+    {% set bar_color = '#9ca3af' %}
   {% endif %}
-  <a class="job-card"
-     href="{{ url_for('m_job_detail', job_id=j.id) }}"
-     data-id="{{ j.id }}"
-     data-lat="{{ j.lat or '' }}"
-     data-lng="{{ j.lng or '' }}"
-     data-ref="{{ (j.display_ref or j.internal_job_number or '') | lower }}"
-     data-customer="{{ (j.customer_name or '') | lower }}"
-     data-address="{{ (j.job_address or '') | lower }}"
-     data-reg="{{ (j.asset_reg or '') | lower }}"
-     data-vin="{{ (j.asset_vin or '') | lower }}"
-     data-draft="{{ 'true' if has_draft else 'false' }}"
-     data-scheduled="{{ j.next_scheduled or '' }}">
-    <div class="job-card-inner">
-      <div class="job-status-dot" style="background:{{ dot_color }};"></div>
-      <div class="job-main">
-        <div class="job-top">
-          <span class="job-ref">{{ j.display_ref or j.internal_job_number }}</span>
-          {% if has_draft %}<span class="m-badge m-badge-red">URGENT UPDATE</span>{% endif %}
-          {% if j.priority == 'Urgent' %}<span class="m-badge m-badge-red">{{ j.priority }}</span>
-          {% elif j.priority == 'High'   %}<span class="m-badge m-badge-amber">{{ j.priority }}</span>{% endif %}
-          <span class="m-badge m-badge-gray">{{ j.status }}</span>
-        </div>
-        {% if j.customer_name and j.customer_name.strip() %}
-        <div class="job-customer">{{ j.customer_name }}</div>
-        {% endif %}
-        {% if j.job_address %}
-        <div class="job-addr">{{ j.job_address }}</div>
-        {% endif %}
-        <div class="job-meta">
-          <span class="job-dist hidden" id="dist-{{ j.id }}"></span>
-          {% if j.next_scheduled %}<span class="job-date">{{ j.next_scheduled[:10] }}</span>
-          {% elif j.job_due_date  %}<span class="job-date">Due {{ j.job_due_date }}</span>{% endif %}
-          {% if j.asset_reg %}<span class="job-date">{{ j.asset_reg }}</span>{% endif %}
+  {% set phone = j.customer_phone or '' %}
+  {% set addr  = j.job_address or '' %}
+
+  <div class="job-row-wrap"
+       data-id="{{ j.id }}"
+       data-lat="{{ j.lat or '' }}"
+       data-lng="{{ j.lng or '' }}"
+       data-ref="{{ (j.display_ref or j.internal_job_number or '') | lower }}"
+       data-customer="{{ (j.customer_name or '') | lower }}"
+       data-address="{{ (j.job_address or '') | lower }}"
+       data-reg="{{ (j.asset_reg or '') | lower }}"
+       data-vin="{{ (j.asset_vin or '') | lower }}"
+       data-draft="{{ 'true' if has_draft else 'false' }}"
+       data-scheduled="{{ j.next_scheduled or '' }}"
+       data-phone="{{ phone }}"
+       data-addr="{{ addr | e }}">
+
+    {# ── Action tray (revealed on left swipe) ── #}
+    <div class="job-actions">
+      {% if addr %}
+      <button type="button" class="ja-btn ja-btn-nav" onclick="jaNavigate(this.closest('.job-row-wrap'))">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        NAVIGATE
+      </button>
+      {% else %}
+      <div class="ja-btn ja-btn-dis">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        NAVIGATE
+      </div>
+      {% endif %}
+      {% if phone %}
+      <a class="ja-btn ja-btn-call" href="tel:{{ phone }}" onclick="jaClose(this.closest('.job-row-wrap'))">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16z"/></svg>
+        CALL
+      </a>
+      <a class="ja-btn ja-btn-sms" href="sms:{{ phone }}" onclick="jaClose(this.closest('.job-row-wrap'))">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        MESSAGE
+      </a>
+      {% else %}
+      <div class="ja-btn ja-btn-dis">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16z"/></svg>
+        CALL
+      </div>
+      <div class="ja-btn ja-btn-dis">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        MESSAGE
+      </div>
+      {% endif %}
+      <a class="ja-btn ja-btn-note" href="{{ url_for('m_update_builder', job_id=j.id) }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        ADD NOTE
+      </a>
+      <a class="ja-btn ja-btn-view" href="{{ url_for('m_job_detail', job_id=j.id) }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        VIEW
+      </a>
+    </div>
+
+    {# ── Main job row ── #}
+    <a class="job-card"
+       href="{{ url_for('m_job_detail', job_id=j.id) }}">
+      <div class="job-card-inner">
+        <div class="job-status-bar" style="background:{{ bar_color }};"></div>
+        <div class="job-inner-content">
+          <div class="job-main">
+            <div class="job-primary-row">
+              <span class="job-customer">{% if j.customer_name and j.customer_name.strip() %}{{ j.customer_name }}{% else %}No customer{% endif %}</span>
+              {% if has_draft %}<span class="m-badge m-badge-red" style="font-size:.62rem;">DRAFT</span>{% endif %}
+              {% if j.priority == 'Urgent' %}<span class="m-badge m-badge-red" style="font-size:.62rem;">{{ j.priority }}</span>
+              {% elif j.priority == 'High' %}<span class="m-badge m-badge-amber" style="font-size:.62rem;">{{ j.priority }}</span>{% endif %}
+            </div>
+            {% if addr %}<div class="job-addr">{{ addr }}</div>{% endif %}
+            <div class="job-meta">
+              <span class="job-ref">{{ j.display_ref or j.internal_job_number }}</span>
+              <span class="m-badge m-badge-gray" style="font-size:.62rem;padding:1px 6px;">{{ j.status }}</span>
+              <span class="job-dist hidden" id="dist-{{ j.id }}"></span>
+              {% if j.next_scheduled %}<span class="job-date">{{ j.next_scheduled[:10] }}</span>
+              {% elif j.job_due_date  %}<span class="job-date">Due {{ j.job_due_date }}</span>{% endif %}
+              {% if j.asset_reg %}<span class="job-date" style="font-weight:600;color:#6b7280;">{{ j.asset_reg }}</span>{% endif %}
+            </div>
+          </div>
+          <svg class="job-chev" viewBox="0 0 24 24" width="15" height="15" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
       </div>
-      <svg class="job-chev" viewBox="0 0 24 24" width="16" height="16" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-    </div>
-  </a>
+    </a>
+
+  </div>
   {% endfor %}
   {% endif %}
 </div>
@@ -257,6 +361,52 @@
 {% endblock %}
 
 {% block extra_scripts %}
+
+{# ── Shared Navigation bottom sheet (single, reused per job) ── #}
+<div id="listNavChooser"
+     onclick="if(event.target===this)this.style.display='none'"
+     style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9500;
+            background:rgba(0,0,0,.45);align-items:flex-end;justify-content:center;">
+  <div style="width:100%;max-width:480px;background:#fff;border-radius:20px 20px 0 0;
+              padding:8px 16px calc(16px + env(safe-area-inset-bottom,0px));
+              box-shadow:0 -4px 24px rgba(0,0,0,.15);">
+    <div style="width:40px;height:4px;background:#d1d5db;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-size:.8rem;font-weight:700;color:#6b7280;text-transform:uppercase;
+                letter-spacing:.07em;text-align:center;margin-bottom:14px;">Open directions with</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
+      <a id="lncWaze" href="#" target="_blank" rel="noopener"
+         onclick="document.getElementById('listNavChooser').style.display='none'"
+         style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:12px;
+                font-weight:600;font-size:.95rem;color:#1d4ed8;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        Waze
+      </a>
+      <a id="lncGmaps" href="#" target="_blank" rel="noopener"
+         onclick="document.getElementById('listNavChooser').style.display='none'"
+         style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;
+                font-weight:600;font-size:.95rem;color:#166534;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        Google Maps
+      </a>
+      <a id="lncApple" href="#" target="_blank" rel="noopener"
+         onclick="document.getElementById('listNavChooser').style.display='none'"
+         style="display:flex;align-items:center;gap:14px;padding:14px 16px;
+                background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;
+                font-weight:600;font-size:.95rem;color:#374151;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a7 7 0 017 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 017-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        Apple Maps
+      </a>
+    </div>
+    <button type="button" onclick="document.getElementById('listNavChooser').style.display='none'"
+            style="width:100%;padding:13px;border:none;border-radius:12px;background:#f3f4f6;
+                   font-size:.9rem;font-weight:600;color:#6b7280;cursor:pointer;">
+      Cancel
+    </button>
+  </div>
+</div>
+
 <script>
 (function(){
 'use strict';
@@ -265,8 +415,8 @@ const DIST_UNIT = {{ prefs.distance_unit | tojson }};
 const IS_ADMIN  = {{ is_admin | tojson }};
 const SORT_PREF = {{ prefs.sort | tojson }};
 
-// All job cards as array with parsed data
-const cards = Array.from(document.querySelectorAll('.job-card'));
+// Data is now on .job-row-wrap
+const cards = Array.from(document.querySelectorAll('.job-row-wrap'));
 
 // ── Distance ──
 let agentPos = null;
@@ -297,17 +447,13 @@ function applyDistances(){
   if(currentSort==='distance') applySortAndFilter();
 }
 
-// Request GPS immediately
 if(navigator.geolocation){
   navigator.geolocation.getCurrentPosition(pos=>{
     agentPos={lat:pos.coords.latitude,lng:pos.coords.longitude};
     applyDistances();
-    // If user wanted distance sort but we had no location, now we do
     if(SORT_PREF==='distance') applySortAndFilter();
   }, ()=>{
-    if(SORT_PREF==='distance'){
-      document.getElementById('dist-warn').style.display='block';
-    }
+    if(SORT_PREF==='distance') document.getElementById('dist-warn').style.display='block';
   }, {enableHighAccuracy:true,timeout:8000});
 } else if(SORT_PREF==='distance'){
   document.getElementById('dist-warn').style.display='block';
@@ -322,20 +468,18 @@ searchBox.addEventListener('input', function(){
 });
 
 // ── Filter state ──
-let currentSort   = SORT_PREF;
-let currentDir    = {{ prefs.dir | tojson }};
-let currentScope  = {{ prefs.scope | tojson }};
+let currentSort      = SORT_PREF;
+let currentDir       = {{ prefs.dir | tojson }};
+let currentScope     = {{ prefs.scope | tojson }};
 let currentCompleted = {{ prefs.show_completed | tojson }};
 let currentDistUnit  = DIST_UNIT;
-let activeStatuses = new Set();
+let activeStatuses   = new Set();
 
-// ── Segmented control helper ──
 function setupSeg(id, onChange){
   const wrap = document.getElementById(id);
   if(!wrap) return;
   wrap.querySelectorAll('.seg-btn').forEach(btn=>{
     btn.addEventListener('click',()=>{
-      // For scope — agents locked to mine
       if(id==='seg-scope' && !IS_ADMIN && btn.dataset.val!=='mine') return;
       wrap.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('sel'));
       btn.classList.add('sel');
@@ -350,14 +494,11 @@ setupSeg('seg-sort',     v=>{
   currentSort=v;
   document.getElementById('sort-label').textContent =
     {visit_date:'Visit Date',status:'Status',created:'Date Added',distance:'Distance'}[v]||v;
-  if(v==='distance' && !agentPos){
-    document.getElementById('dist-warn').style.display='block';
-  }
+  if(v==='distance' && !agentPos) document.getElementById('dist-warn').style.display='block';
 });
 setupSeg('seg-dir',      v=>{ currentDir=v; });
 setupSeg('seg-distunit', v=>{ currentDistUnit=v; });
 
-// ── Quick status chips ──
 document.querySelectorAll('.qs-chip').forEach(chip=>{
   chip.addEventListener('click',()=>{
     chip.classList.toggle('sel');
@@ -367,11 +508,9 @@ document.querySelectorAll('.qs-chip').forEach(chip=>{
   });
 });
 
-// ── Sort & filter ──
 function applySortAndFilter(){
   let visible = [...cards];
 
-  // Quick-status chip filter
   if(activeStatuses.size>0){
     visible = visible.filter(c=>{
       const st = c.querySelector('.m-badge-gray');
@@ -379,7 +518,6 @@ function applySortAndFilter(){
     });
   }
 
-  // Search filter
   if(searchQ){
     visible = visible.filter(c=>{
       return c.dataset.ref.includes(searchQ)
@@ -390,30 +528,24 @@ function applySortAndFilter(){
     });
   }
 
-  // Sort
   visible.sort((a,b)=>{
-    // Drafts always first
-    const da = a.dataset.draft==='true', db = b.dataset.draft==='true';
+    const da=a.dataset.draft==='true', db=b.dataset.draft==='true';
     if(da && !db) return -1;
     if(!da && db) return 1;
-
-    let cmp = 0;
+    let cmp=0;
     if(currentSort==='distance'){
-      const distA = parseFloat(a.dataset.dist)||Infinity;
-      const distB = parseFloat(b.dataset.dist)||Infinity;
-      cmp = distA-distB;
+      cmp=(parseFloat(a.dataset.dist)||Infinity)-(parseFloat(b.dataset.dist)||Infinity);
     } else if(currentSort==='status'){
-      cmp = (a.querySelector('.m-badge-gray')?.textContent||'').localeCompare(b.querySelector('.m-badge-gray')?.textContent||'');
+      cmp=(a.querySelector('.m-badge-gray')?.textContent||'').localeCompare(b.querySelector('.m-badge-gray')?.textContent||'');
     } else if(currentSort==='created'){
-      cmp = 0; // server-sorted
-    } else { // visit_date
+      cmp=0;
+    } else {
       const sa=a.dataset.scheduled||'9999', sb=b.dataset.scheduled||'9999';
-      cmp = sa.localeCompare(sb);
+      cmp=sa.localeCompare(sb);
     }
     return currentDir==='desc' ? -cmp : cmp;
   });
 
-  // Re-render: hide all, show sorted
   cards.forEach(c=>{ c.style.display='none'; c.parentNode.appendChild(c); });
   visible.forEach(c=>{ c.style.display=''; });
   updateCount(visible.length);
@@ -427,17 +559,15 @@ function updateCount(n){
   if(hdr) hdr.textContent=n;
 }
 
-// ── Apply / Reset buttons ──
 document.getElementById('apply-btn').addEventListener('click',()=>{
   applySortAndFilter();
   document.getElementById('filterSheet').classList.remove('open');
-  // Persist to backend
   fetch('/m/jobs/prefs/save',{
     method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'XMLHttpRequest'},
     body: new URLSearchParams({
-      sort: currentSort, dir: currentDir, scope: currentScope,
-      show_completed: currentCompleted, distance_unit: currentDistUnit
+      sort:currentSort, dir:currentDir, scope:currentScope,
+      show_completed:currentCompleted, distance_unit:currentDistUnit
     })
   });
 });
@@ -445,17 +575,16 @@ document.getElementById('apply-btn').addEventListener('click',()=>{
 document.getElementById('reset-btn').addEventListener('click',()=>{
   currentSort='visit_date'; currentDir='asc'; currentScope=IS_ADMIN?'all':'mine';
   currentCompleted='week'; activeStatuses.clear();
-  // Reset UI
   ['seg-scope','seg-completed','seg-sort','seg-dir','seg-distunit'].forEach(id=>{
     const wrap=document.getElementById(id);
     if(!wrap) return;
     wrap.querySelectorAll('.seg-btn').forEach(b=>{
       b.classList.toggle('sel',
-        (id==='seg-scope' && b.dataset.val===(IS_ADMIN?'all':'mine')) ||
+        (id==='seg-scope'     && b.dataset.val===(IS_ADMIN?'all':'mine')) ||
         (id==='seg-completed' && b.dataset.val==='week') ||
-        (id==='seg-sort' && b.dataset.val==='visit_date') ||
-        (id==='seg-dir'  && b.dataset.val==='asc') ||
-        (id==='seg-distunit' && b.dataset.val==='km')
+        (id==='seg-sort'      && b.dataset.val==='visit_date') ||
+        (id==='seg-dir'       && b.dataset.val==='asc') ||
+        (id==='seg-distunit'  && b.dataset.val==='km')
       );
     });
   });
@@ -464,8 +593,96 @@ document.getElementById('reset-btn').addEventListener('click',()=>{
   applySortAndFilter();
 });
 
-// ── Initial render ──
 applySortAndFilter();
+
+// ═══════════════════════════════════════════════════════
+// SWIPE ACTIONS
+// ═══════════════════════════════════════════════════════
+let _openWrap = null;
+
+function _jaSnap(wrap, open){
+  const card = wrap.querySelector('.job-card');
+  const actW  = wrap.querySelector('.job-actions').offsetWidth;
+  card.style.transition = 'transform .22s cubic-bezier(.25,.46,.45,.94)';
+  card.style.transform  = open ? `translateX(-${actW}px)` : 'translateX(0)';
+  wrap.classList.toggle('ja-open', open);
+  wrap.dataset.open = open ? '1' : '0';
+}
+
+function _jaCloseAll(except){
+  if(_openWrap && _openWrap !== except){
+    _jaSnap(_openWrap, false);
+    _openWrap = null;
+  }
+}
+
+// Global helpers called by action buttons
+window.jaClose = function(wrap){ if(wrap){ _jaSnap(wrap, false); _openWrap=null; } };
+window.jaNavigate = function(wrap){
+  if(!wrap) return;
+  jaClose(wrap);
+  const addr  = wrap.dataset.addr  || '';
+  const lat   = wrap.dataset.lat   || '';
+  const lng   = wrap.dataset.lng   || '';
+  const enc   = encodeURIComponent(addr);
+  const ll    = (lat && lng) ? lat+','+lng : null;
+  document.getElementById('lncWaze').href   = ll
+    ? 'https://waze.com/ul?ll='+ll+'&navigate=yes'
+    : 'https://waze.com/ul?q='+enc+'&navigate=yes';
+  document.getElementById('lncGmaps').href  = ll
+    ? 'https://www.google.com/maps/dir/?api=1&destination='+ll
+    : 'https://www.google.com/maps/dir/?api=1&destination='+enc;
+  document.getElementById('lncApple').href  = ll
+    ? 'http://maps.apple.com/?daddr='+ll+'&dirflg=d'
+    : 'http://maps.apple.com/?daddr='+enc+'&dirflg=d';
+  document.getElementById('listNavChooser').style.display='flex';
+};
+
+// Attach swipe to every row
+document.querySelectorAll('.job-row-wrap').forEach(function(wrap){
+  const card = wrap.querySelector('.job-card');
+  if(!card) return;
+  let sx=0, sy=0, dx=0, isH=null, dragging=false;
+
+  card.addEventListener('touchstart', function(e){
+    _jaCloseAll(wrap);
+    sx = e.touches[0].clientX;
+    sy = e.touches[0].clientY;
+    dx = 0; isH = null; dragging = false;
+    card.style.transition = 'none';
+  }, {passive:true});
+
+  card.addEventListener('touchmove', function(e){
+    dx = e.touches[0].clientX - sx;
+    const dy = e.touches[0].clientY - sy;
+    if(isH === null){ isH = Math.abs(dx) > Math.abs(dy) + 4; }
+    if(!isH) return;
+    e.preventDefault();
+    dragging = true;
+    const actW = wrap.querySelector('.job-actions').offsetWidth;
+    const base = wrap.dataset.open==='1' ? -actW : 0;
+    const nx   = Math.max(-actW, Math.min(0, base + dx));
+    card.style.transform = `translateX(${nx}px)`;
+  }, {passive:false});
+
+  card.addEventListener('touchend', function(){
+    if(!isH){ return; }
+    const actW     = wrap.querySelector('.job-actions').offsetWidth;
+    const wasOpen  = wrap.dataset.open === '1';
+    const threshold = actW * 0.28;
+    let open = wasOpen;
+    if(!wasOpen && dx < -threshold)  open = true;
+    if(wasOpen  && dx >  threshold)  open = false;
+    _jaSnap(wrap, open);
+    if(open){ _openWrap = wrap; } else if(_openWrap===wrap){ _openWrap=null; }
+  }, {passive:true});
+});
+
+// Tap anywhere on the page (not on actions) closes open row
+document.addEventListener('touchstart', function(e){
+  if(!_openWrap) return;
+  if(!_openWrap.contains(e.target)) _jaCloseAll(null);
+}, {passive:true});
 
 })();
 </script>
