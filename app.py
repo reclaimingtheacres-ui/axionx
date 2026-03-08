@@ -9152,7 +9152,7 @@ def m_api_lpr_patrol_scan():
     if request.is_json:
         body  = request.get_json(force=True, silent=True) or {}
         plate = normalise_registration(body.get("plate", ""))
-        if not plate or len(plate) < 2:
+        if not plate or len(plate) < 3:
             return jsonify({"ok": True, "plate": None}), 200
 
     # Path B — multipart form with a camera frame (web browser fallback, Tesseract OCR)
@@ -9169,7 +9169,7 @@ def m_api_lpr_patrol_scan():
                 os.unlink(tmp_path)
             except Exception:
                 pass
-        if not plate or len(plate) < 2:
+        if not plate or len(plate) < 3:
             return jsonify({"ok": True, "plate": None}), 200
 
     else:

@@ -262,19 +262,24 @@
 'use strict';
 
 /* ── State ─────────────────────────────────────────────── */
-var _stream         = null;
-var _torchOn        = false;
-var _scanning       = false;
-var _scanInterval   = null;
-var _scanCount      = 0;
-var _alertOpen      = false;
-var _fetchInFlight  = false;  // web camera: one fetch at a time
-var _cooldown       = {};     // plate → timestamp, 30s dedup
-var _feedPlates     = [];     // last 5 shown in feed
-var _currentResult  = null;
-var COOLDOWN_MS     = 30000;
-var SCAN_INTERVAL   = 2500;   // ms between frames
-var _torchSupported = false;
+var _stream          = null;
+var _torchOn         = false;
+var _scanning        = false;
+var _scanInterval    = null;
+var _scanCount       = 0;
+var _alertOpen       = false;
+var _fetchInFlight   = false;  // web camera + manual: one lookup at a time
+var _savingInFlight  = false;  // prevent double-submit on Save Sighting
+var _cooldown        = {};     // plate → timestamp, 30s dedup
+var _feedPlates      = [];     // last 5 shown in feed
+var _currentResult   = null;
+var _pendingAlerts   = [];     // queue for alerts arriving while one is showing
+var _recovering      = false;  // camera recovery in progress
+var COOLDOWN_MS      = 30000;
+var SCAN_INTERVAL    = 2500;   // ms between frames
+var _torchSupported  = false;
+var MIN_PLATE_LEN    = 3;      // reject reads shorter than this
+var _isNativeWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
 
 var video   = document.getElementById('patrolVideo');
 var canvas  = document.getElementById('pmCanvas');
@@ -282,6 +287,7 @@ var ctx     = canvas.getContext('2d');
 
 /* ── Camera init ────────────────────────────────────────── */
 async function startCamera() {
+  _recovering = false;
   try {
     _stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -298,16 +304,47 @@ async function startCamera() {
       if (!_torchSupported) {
         document.getElementById('pmTorchBtn').style.opacity = '.35';
       }
+      // Detect mid-session camera interruption (permission revoked, incoming call, etc.)
+      track.addEventListener('ended', function() {
+        if (_scanning) pmCameraRecovery('Camera interrupted — tap to retry');
+      });
     }
 
     document.getElementById('pmSubtitle').textContent = 'Scanning plates automatically · Matches trigger an alert';
+    document.getElementById('pmPulseDot').style.background = '#ef4444';
     _scanning = true;
     _scanInterval = setInterval(captureAndScan, SCAN_INTERVAL);
   } catch(err) {
+    var msg = (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
+      ? 'Camera permission denied — check Settings'
+      : (err.message || 'Camera unavailable');
     document.getElementById('pmStatusText').textContent = 'CAMERA ERROR';
-    document.getElementById('pmSubtitle').textContent = err.message || 'Camera access denied';
+    document.getElementById('pmSubtitle').textContent = msg;
     document.getElementById('pmPulseDot').style.background = '#ef4444';
+    document.getElementById('pmPulseDot').style.animation = 'none';
   }
+}
+
+/* ── Camera recovery after track ends or app returns to foreground ── */
+function pmCameraRecovery(reason) {
+  if (_recovering) return;
+  _recovering = true;
+  _scanning = false;
+  clearInterval(_scanInterval);
+  _fetchInFlight = false;
+  if (_stream) {
+    _stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} });
+    _stream = null;
+  }
+  video.srcObject = null;
+  document.getElementById('pmStatusText').textContent = 'PAUSED';
+  document.getElementById('pmSubtitle').textContent = reason || 'Camera paused — resuming…';
+  document.getElementById('pmPulseDot').style.background = '#f59e0b';
+  // Auto-retry after 1.5 s
+  setTimeout(function(){
+    document.getElementById('pmSubtitle').textContent = 'Restarting camera…';
+    startCamera();
+  }, 1500);
 }
 
 /* ── Capture frame and scan ──────────────────────────────── */
@@ -332,6 +369,7 @@ function captureAndScan() {
         if (!data.ok || !data.plate) return;
 
         var plate = data.plate;
+        if (plate.length < MIN_PLATE_LEN) return;
 
         // Duplicate suppression (checked before counting so the displayed
         // total only reflects new unique plates, not repeated hits)
@@ -382,8 +420,15 @@ function addToFeed(plate, rtype) {
 
 /* ── Match alert ─────────────────────────────────────────── */
 function showAlert(plate, result) {
-  // Guard: never stack a second alert over one already in progress
-  if (_alertOpen) return;
+  // If an alert is already showing, queue high-priority results for display after dismiss.
+  // Low-priority (no-match) plates are silently dropped while an alert is open.
+  if (_alertOpen) {
+    var rtype = result && result.result_type;
+    if (rtype === 'allocated_match' || rtype === 'restricted_match' || rtype === 'conflict' || (result && result.watchlist_hit)) {
+      _pendingAlerts.push({ plate: plate, result: result });
+    }
+    return;
+  }
   _alertOpen     = true;
   _currentResult = result;
   _currentResult._plate = plate;
@@ -470,12 +515,18 @@ window.pmDismissAlert = function() {
     alert.style.display = 'none';
     _alertOpen     = false;
     _fetchInFlight = false;  // clear any stale in-flight flag so scanning resumes immediately
+    _savingInFlight = false;
     _currentResult = null;
+    // Show next queued high-priority alert, if any
+    if (_pendingAlerts.length > 0) {
+      var next = _pendingAlerts.shift();
+      showAlert(next.plate, next.result);
+    }
   }, 320);
 };
 
 window.pmOpenJob = function(url) {
-  pmStop();
+  _pmFullCleanup();
   window.location.href = url;
 };
 
@@ -487,9 +538,16 @@ window.pmContactOffice = function() {
 
 window.pmSaveSighting = function() {
   if (!_currentResult) return;
+  // Belt-and-suspenders: block double-submit even if button re-enabled somehow
+  if (_savingInFlight) return;
+  _savingInFlight = true;
+
   var r   = _currentResult;
   var btn = document.getElementById('pmSaveBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Locating…'; }
+
+  // Stable idempotency key — fixed at first tap, not regenerated on retry
+  if (!r._clientActionId) r._clientActionId = 'patrol_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
 
   var payload = {
     registration_raw:   r._plate || r.searched_registration || '',
@@ -498,10 +556,11 @@ window.pmSaveSighting = function() {
     matched_job_id:     r.matched_job_id     || null,
     matched_job_number: r.matched_job_number || null,
     watchlist_hit:      r.watchlist_hit       ? 1 : 0,
-    client_action_id:   'patrol_' + Date.now()
+    client_action_id:   r._clientActionId
   };
 
   function doSave(pl) {
+    if (btn) btn.textContent = 'Saving…';
     fetch('/m/api/lpr/sighting', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -517,11 +576,13 @@ window.pmSaveSighting = function() {
         }
         setTimeout(function(){ pmDismissAlert(); }, 1200);
       } else {
+        _savingInFlight = false;
         if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
         alert(d.error || 'Save failed.');
       }
     })
     .catch(function(){
+      _savingInFlight = false;
       if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
       alert('Network error — try again.');
     });
@@ -530,8 +591,8 @@ window.pmSaveSighting = function() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       function(pos){ payload.latitude = pos.coords.latitude; payload.longitude = pos.coords.longitude; doSave(payload); },
-      function(){ doSave(payload); },
-      { timeout: 3000 }
+      function(){ doSave(payload); },  // GPS failure is non-blocking — save without location
+      { timeout: 5000, maximumAge: 10000 }
     );
   } else { doSave(payload); }
 };
@@ -551,14 +612,33 @@ window.pmToggleTorch = function() {
   }
 };
 
-/* ── Stop patrol ─────────────────────────────────────────── */
-window.pmStop = function() {
-  _scanning = false;
+/* ── Internal full cleanup (shared by stop and open-job) ──── */
+function _pmFullCleanup() {
+  _scanning       = false;
+  _alertOpen      = false;
+  _fetchInFlight  = false;
+  _savingInFlight = false;
+  _currentResult  = null;
+  _pendingAlerts  = [];
   clearInterval(_scanInterval);
   if (_stream) {
-    _stream.getTracks().forEach(function(t){ t.stop(); });
+    // Turn torch off before releasing tracks
+    if (_torchOn) {
+      var track = _stream.getVideoTracks()[0];
+      if (track && track.applyConstraints) {
+        try { track.applyConstraints({ advanced: [{ torch: false }] }); } catch(e) {}
+      }
+      _torchOn = false;
+    }
+    _stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} });
     _stream = null;
   }
+  video.srcObject = null;
+}
+
+/* ── Stop patrol ─────────────────────────────────────────── */
+window.pmStop = function() {
+  _pmFullCleanup();
   window.location.href = '{{ url_for("m_jobs") }}';
 };
 
@@ -579,9 +659,17 @@ window.pmCloseManual = function() {
 };
 
 window.pmManualSearch = function() {
-  var plate = (document.getElementById('pmManualInput').value || '').replace(/[^A-Z0-9]/gi,'').toUpperCase();
-  if (plate.length < 2) { document.getElementById('pmManualInput').style.borderColor = '#ef4444'; return; }
+  var input = document.getElementById('pmManualInput');
+  var plate = ((input && input.value) || '').replace(/[^A-Z0-9]/gi,'').toUpperCase();
+  if (plate.length < MIN_PLATE_LEN) {
+    if (input) input.style.borderColor = '#ef4444';
+    return;
+  }
   pmCloseManual();
+  if (input) input.value = '';  // clear for next use
+
+  // Hold off web-camera scans while manual lookup is in-flight to avoid collision
+  _fetchInFlight = true;
 
   fetch('/m/api/lpr/lookup', {
     method: 'POST',
@@ -590,17 +678,62 @@ window.pmManualSearch = function() {
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
+    _fetchInFlight = false;
     var rtype = data.result_type || '';
     addToFeed(plate, rtype);
     showAlert(plate, data);
   })
-  .catch(function(){ alert('Lookup failed.'); });
+  .catch(function(){
+    _fetchInFlight = false;
+    alert('Lookup failed.');
+  });
 };
 
 /* ── Helper ──────────────────────────────────────────────── */
 function escH(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+/* ── Background / foreground handling ───────────────────────
+ * When the app is backgrounded (home button, incoming call, etc.)
+ * iOS will freeze the camera stream.  On returning to foreground
+ * the track may be dead — detect and recover automatically.
+ * ─────────────────────────────────────────────────────────── */
+document.addEventListener('visibilitychange', function() {
+  if (!_isNativeWrapper) {
+    if (document.hidden) {
+      // App going to background — pause scanning but leave interval running
+      // (it checks _scanning / _alertOpen flags and will skip frames)
+      _scanning = false;
+      document.getElementById('pmStatusText').textContent = 'PAUSED';
+      document.getElementById('pmSubtitle').textContent = 'Paused — return to resume';
+      document.getElementById('pmPulseDot').style.background = '#f59e0b';
+    } else {
+      // App returned to foreground
+      if (!_stream || _stream.getTracks().some(function(t){ return t.readyState === 'ended'; })) {
+        // Stream is dead — do a full recovery
+        pmCameraRecovery('Resuming camera…');
+      } else {
+        // Stream alive — resume scanning
+        _scanning = true;
+        document.getElementById('pmStatusText').textContent = 'PATROL MODE ACTIVE';
+        document.getElementById('pmSubtitle').textContent = 'Scanning plates automatically · Matches trigger an alert';
+        document.getElementById('pmPulseDot').style.background = '#ef4444';
+      }
+    }
+  }
+});
+
+/* ── Cooldown pruning — prevent memory growth on long sessions ─
+ * Every 2 minutes, drop entries older than COOLDOWN_MS so the
+ * _cooldown map doesn't grow unboundedly on a long patrol.
+ * ─────────────────────────────────────────────────────────── */
+setInterval(function() {
+  var cutoff = Date.now() - COOLDOWN_MS;
+  Object.keys(_cooldown).forEach(function(plate) {
+    if (_cooldown[plate] < cutoff) delete _cooldown[plate];
+  });
+}, 120000);
 
 /* ── iOS Native Bridge Contract ─────────────────────────────
  *
@@ -627,8 +760,6 @@ function escH(s) {
  *   patrolManualEntry — user opened manual entry sheet
  * ─────────────────────────────────────────────────────────── */
 
-var _isNativeWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
-
 // Called by Swift each time OCR reads a new plate candidate.
 // While an alert is showing, drop new reads — they resume after dismiss.
 window.axionPatrolPlateRead = function(plate) {
@@ -636,7 +767,7 @@ window.axionPatrolPlateRead = function(plate) {
   if (_alertOpen) return;                              // wait until alert is dismissed
 
   var norm = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (norm.length < 2) return;
+  if (norm.length < MIN_PLATE_LEN) return;
 
   // Cooldown — only count and look up plates that pass dedup
   var now = Date.now();
@@ -698,6 +829,7 @@ if (_isNativeWrapper) {
     }
   };
   window.pmStop = function() {
+    _pmFullCleanup();
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.stopPatrolMode) {
       window.webkit.messageHandlers.stopPatrolMode.postMessage({});
     } else if (window.AxionXBridge && window.AxionXBridge.stopPatrolMode) {
