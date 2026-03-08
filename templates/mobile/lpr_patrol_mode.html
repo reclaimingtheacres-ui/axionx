@@ -262,17 +262,18 @@
 'use strict';
 
 /* ── State ─────────────────────────────────────────────── */
-var _stream        = null;
-var _torchOn       = false;
-var _scanning      = false;
-var _scanInterval  = null;
-var _scanCount     = 0;
-var _alertOpen     = false;
-var _cooldown      = {};   // plate → timestamp, 30s dedup
-var _feedPlates    = [];   // last 5 shown in feed
-var _currentResult = null;
-var COOLDOWN_MS    = 30000;
-var SCAN_INTERVAL  = 2500; // ms between frames
+var _stream         = null;
+var _torchOn        = false;
+var _scanning       = false;
+var _scanInterval   = null;
+var _scanCount      = 0;
+var _alertOpen      = false;
+var _fetchInFlight  = false;  // web camera: one fetch at a time
+var _cooldown       = {};     // plate → timestamp, 30s dedup
+var _feedPlates     = [];     // last 5 shown in feed
+var _currentResult  = null;
+var COOLDOWN_MS     = 30000;
+var SCAN_INTERVAL   = 2500;   // ms between frames
 var _torchSupported = false;
 
 var video   = document.getElementById('patrolVideo');
@@ -311,14 +312,17 @@ async function startCamera() {
 
 /* ── Capture frame and scan ──────────────────────────────── */
 function captureAndScan() {
-  if (!_scanning || _alertOpen || !video.videoWidth) return;
+  // Do not start a new capture while alert is open or a fetch is already in-flight
+  if (!_scanning || _alertOpen || _fetchInFlight || !video.videoWidth) return;
 
   canvas.width  = Math.min(video.videoWidth,  640);
   canvas.height = Math.round(canvas.width * (video.videoHeight / video.videoWidth));
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+  _fetchInFlight = true;
+
   canvas.toBlob(function(blob) {
-    if (!blob) return;
+    if (!blob) { _fetchInFlight = false; return; }
     var fd = new FormData();
     fd.append('frame', blob, 'frame.jpg');
 
@@ -328,25 +332,27 @@ function captureAndScan() {
         if (!data.ok || !data.plate) return;
 
         var plate = data.plate;
-        _scanCount++;
-        document.getElementById('pmScanNum').textContent = _scanCount;
 
-        // Duplicate suppression
+        // Duplicate suppression (checked before counting so the displayed
+        // total only reflects new unique plates, not repeated hits)
         var now = Date.now();
         if (_cooldown[plate] && (now - _cooldown[plate]) < COOLDOWN_MS) return;
         _cooldown[plate] = now;
 
+        _scanCount++;
+        document.getElementById('pmScanNum').textContent = _scanCount;
+
         var result = data.result;
         var rtype  = result && result.result_type;
 
-        // Only feed + alert for non-trivial results
         addToFeed(plate, rtype);
 
         if (rtype === 'allocated_match' || rtype === 'restricted_match' || rtype === 'conflict' || (result && result.watchlist_hit)) {
           showAlert(plate, result);
         }
       })
-      .catch(function(){});
+      .catch(function(){})
+      .finally(function(){ _fetchInFlight = false; });
   }, 'image/jpeg', 0.85);
 }
 
@@ -376,7 +382,9 @@ function addToFeed(plate, rtype) {
 
 /* ── Match alert ─────────────────────────────────────────── */
 function showAlert(plate, result) {
-  _alertOpen  = true;
+  // Guard: never stack a second alert over one already in progress
+  if (_alertOpen) return;
+  _alertOpen     = true;
   _currentResult = result;
   _currentResult._plate = plate;
 
@@ -460,7 +468,8 @@ window.pmDismissAlert = function() {
   alert.classList.remove('open');
   setTimeout(function(){
     alert.style.display = 'none';
-    _alertOpen = false;
+    _alertOpen     = false;
+    _fetchInFlight = false;  // clear any stale in-flight flag so scanning resumes immediately
     _currentResult = null;
   }, 320);
 };
@@ -620,19 +629,22 @@ function escH(s) {
 
 var _isNativeWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
 
-// Called by Swift each time OCR reads a new plate candidate
+// Called by Swift each time OCR reads a new plate candidate.
+// While an alert is showing, drop new reads — they resume after dismiss.
 window.axionPatrolPlateRead = function(plate) {
   if (!plate) return;
+  if (_alertOpen) return;                              // wait until alert is dismissed
+
   var norm = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (norm.length < 2) return;
 
-  _scanCount++;
-  document.getElementById('pmScanNum').textContent = _scanCount;
-
-  // Client-side cooldown (native layer may also dedup, belt-and-braces)
+  // Cooldown — only count and look up plates that pass dedup
   var now = Date.now();
   if (_cooldown[norm] && (now - _cooldown[norm]) < COOLDOWN_MS) return;
   _cooldown[norm] = now;
+
+  _scanCount++;
+  document.getElementById('pmScanNum').textContent = _scanCount;
 
   // Run backend lookup
   fetch('/m/api/lpr/patrol-scan', {
