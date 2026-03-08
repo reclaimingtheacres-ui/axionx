@@ -1,0 +1,596 @@
+{% extends "mobile/base.html" %}
+{% block title %}Patrol Mode — AxionX{% endblock %}
+
+{# ── Override header, nav and FAB — full-screen camera experience ── #}
+{% block header %}{% endblock %}
+{% block nav %}{% endblock %}
+{% block lpr_fab %}{% endblock %}
+
+{% block extra_head %}
+<style>
+  html, body { background: #000; overflow: hidden; }
+  .m-content { padding: 0; background: #000; min-height: 100dvh; }
+
+  /* Full-screen video layer */
+  #patrolVideo {
+    position: fixed; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; z-index: 1; background: #000;
+  }
+
+  /* All overlays sit above video */
+  .pm-layer { position: fixed; z-index: 10; }
+
+  /* Top status bar */
+  #pmStatusBar {
+    top: 0; left: 0; right: 0;
+    padding: calc(env(safe-area-inset-top,0px) + 12px) 16px 14px;
+    background: linear-gradient(to bottom, rgba(0,0,0,.75) 0%, rgba(0,0,0,0) 100%);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  }
+  #pmStatusLeft { flex: 1; }
+  .pm-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: .7rem; font-weight: 800; letter-spacing: .1em;
+    text-transform: uppercase; color: #fff;
+  }
+  .pm-pulse {
+    width: 8px; height: 8px; border-radius: 50%; background: #ef4444; flex-shrink: 0;
+    animation: pm-pulse 1s infinite;
+  }
+  @keyframes pm-pulse { 0%,100%{opacity:1} 50%{opacity:.2} }
+  .pm-subtitle { font-size: .78rem; color: rgba(255,255,255,.75); margin-top: 3px; line-height: 1.35; }
+
+  /* Bottom controls */
+  #pmControls {
+    bottom: 0; left: 0; right: 0;
+    padding: 18px 20px calc(env(safe-area-inset-bottom,0px) + 20px);
+    background: linear-gradient(to top, rgba(0,0,0,.8) 0%, rgba(0,0,0,0) 100%);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .pm-ctrl-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 14px; padding: 12px 16px; cursor: pointer; color: #fff;
+    font-size: .72rem; font-weight: 700; letter-spacing: .04em; flex: 1; max-width: 100px;
+    -webkit-tap-highlight-color: transparent; transition: background .12s;
+  }
+  .pm-ctrl-btn:active { background: rgba(255,255,255,.25); }
+  .pm-ctrl-stop {
+    background: rgba(239,68,68,.85); border-color: rgba(239,68,68,.9);
+    font-size: .8rem; padding: 14px 20px; max-width: 140px;
+  }
+  .pm-ctrl-stop:active { background: rgba(185,28,28,.9); }
+
+  /* Live plate feed (bottom-left strip) */
+  #pmFeed {
+    bottom: calc(env(safe-area-inset-bottom,0px) + 100px);
+    left: 12px; width: 160px;
+    display: flex; flex-direction: column-reverse; gap: 5px;
+    pointer-events: none;
+  }
+  .pm-feed-item {
+    background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
+    border-radius: 8px; padding: 5px 9px;
+    font-size: .72rem; font-weight: 700; letter-spacing: .08em; color: #fff;
+    display: flex; align-items: center; gap: 6px; animation: pmFeedIn .2s ease;
+    border: 1px solid rgba(255,255,255,.15);
+  }
+  .pm-feed-item.match { border-color: #22c55e; color: #22c55e; background: rgba(0,0,0,.7); }
+  .pm-feed-item.watchlist { border-color: #a855f7; color: #e9d5ff; background: rgba(0,0,0,.7); }
+  .pm-feed-item.restricted { border-color: #f59e0b; color: #fde68a; background: rgba(0,0,0,.7); }
+  @keyframes pmFeedIn { from {opacity:0;transform:translateX(-8px)} to {opacity:1;transform:none} }
+
+  /* Scan line animation on video */
+  #pmScanLine {
+    top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, transparent 0%, #3b82f6 50%, transparent 100%);
+    animation: pmScan 2s linear infinite; pointer-events: none;
+  }
+  @keyframes pmScan { 0%{top:5%} 50%{top:90%} 100%{top:5%} }
+
+  /* Viewfinder corners */
+  #pmViewfinder {
+    top: 50%; left: 50%; transform: translate(-50%,-60%);
+    width: min(280px, 80vw); height: min(120px, 30vw);
+    pointer-events: none;
+  }
+  .pm-vf-corner {
+    position: absolute; width: 22px; height: 22px;
+    border-color: rgba(255,255,255,.7); border-style: solid;
+  }
+  .pm-vf-tl { top:0;left:0; border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
+  .pm-vf-tr { top:0;right:0; border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
+  .pm-vf-bl { bottom:0;left:0; border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
+  .pm-vf-br { bottom:0;right:0; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+
+  /* Match alert overlay */
+  #pmAlert {
+    inset: 0; display: none;
+    align-items: flex-end; justify-content: center;
+    background: rgba(0,0,0,.6); padding-bottom: calc(env(safe-area-inset-bottom,0px) + 16px);
+  }
+  #pmAlertPanel {
+    width: 100%; max-width: 420px;
+    border-radius: 22px 22px 18px 18px;
+    padding: 0 0 8px;
+    box-shadow: 0 -4px 40px rgba(0,0,0,.4);
+    transform: translateY(100%); transition: transform .3s cubic-bezier(.32,.72,0,1);
+    overflow: hidden;
+  }
+  #pmAlert.open #pmAlertPanel { transform: translateY(0); }
+  .pm-alert-header {
+    padding: 16px 18px 14px; color: #fff;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .pm-alert-icon { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; }
+  .pm-alert-plate {
+    font-size: 2rem; font-weight: 900; letter-spacing: .12em;
+    font-family: monospace; margin-bottom: 2px;
+  }
+  .pm-alert-body { padding: 0 18px 12px; }
+  .pm-alert-row { font-size: .82rem; color: rgba(255,255,255,.8); margin-bottom: 3px; }
+  .pm-alert-row strong { color: #fff; font-weight: 700; }
+  .pm-alert-actions { padding: 10px 18px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .pm-alert-btn {
+    width: 100%; padding: 13px; border: none; border-radius: 12px;
+    font-size: .9rem; font-weight: 700; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; display: flex; align-items: center;
+    justify-content: center; gap: 8px;
+  }
+  .pm-alert-btn-primary { background: #fff; color: #111; }
+  .pm-alert-btn-secondary { background: rgba(255,255,255,.12); color: #fff;
+    border: 1px solid rgba(255,255,255,.2); }
+  .pm-alert-btn-save { background: rgba(34,197,94,.9); color: #fff; }
+  .pm-alert-btn-save.saved { background: rgba(21,128,61,.8); }
+
+  /* Manual entry sheet (in patrol mode) */
+  #pmManualSheet {
+    inset: 0; display: none;
+    align-items: flex-end; justify-content: center;
+    background: rgba(0,0,0,.5);
+  }
+  #pmManualPanel {
+    width: 100%; max-width: 420px;
+    background: #1f2937; border-radius: 22px 22px 0 0;
+    padding: 10px 18px calc(14px + env(safe-area-inset-bottom,0px));
+    transform: translateY(100%); transition: transform .28s cubic-bezier(.32,.72,0,1);
+  }
+  #pmManualSheet.open #pmManualPanel { transform: translateY(0); }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Video layer #}
+<video id="patrolVideo" autoplay playsinline muted></video>
+
+{# Scan line #}
+<div class="pm-layer" id="pmScanLine"></div>
+
+{# Viewfinder corners #}
+<div class="pm-layer" id="pmViewfinder">
+  <div class="pm-vf-corner pm-vf-tl"></div>
+  <div class="pm-vf-corner pm-vf-tr"></div>
+  <div class="pm-vf-corner pm-vf-bl"></div>
+  <div class="pm-vf-corner pm-vf-br"></div>
+</div>
+
+{# Top status bar #}
+<div class="pm-layer" id="pmStatusBar">
+  <div id="pmStatusLeft">
+    <div class="pm-badge">
+      <span class="pm-pulse" id="pmPulseDot"></span>
+      <span id="pmStatusText">PATROL MODE ACTIVE</span>
+    </div>
+    <div class="pm-subtitle" id="pmSubtitle">Starting camera…</div>
+  </div>
+  <div id="pmScanCount"
+       style="font-size:.72rem;font-weight:700;color:rgba(255,255,255,.6);text-align:right;line-height:1.4;white-space:nowrap;">
+    <span id="pmScanNum">0</span><br>scanned
+  </div>
+</div>
+
+{# Live plate feed #}
+<div class="pm-layer" id="pmFeed"></div>
+
+{# Bottom controls #}
+<div class="pm-layer" id="pmControls">
+  <button type="button" class="pm-ctrl-btn pm-ctrl-stop" onclick="pmStop()">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+    Stop Patrol
+  </button>
+  <button type="button" class="pm-ctrl-btn" onclick="pmOpenManual()">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+    Manual
+  </button>
+  <button type="button" class="pm-ctrl-btn" id="pmTorchBtn" onclick="pmToggleTorch()">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    Torch
+  </button>
+</div>
+
+{# Match alert overlay #}
+<div class="pm-layer" id="pmAlert" onclick="if(event.target===this)pmDismissAlert()">
+  <div id="pmAlertPanel">
+    <div class="pm-alert-header" id="pmAlertHeader">
+      <div class="pm-alert-icon" id="pmAlertIcon"></div>
+      <div>
+        <div id="pmAlertType" style="font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.8;margin-bottom:3px;"></div>
+        <div class="pm-alert-plate" id="pmAlertPlate"></div>
+      </div>
+    </div>
+    <div class="pm-alert-body" id="pmAlertBody"></div>
+    <div class="pm-alert-actions" id="pmAlertActions"></div>
+  </div>
+</div>
+
+{# Manual entry sheet #}
+<div class="pm-layer" id="pmManualSheet" onclick="if(event.target===this)pmCloseManual()">
+  <div id="pmManualPanel">
+    <div style="width:40px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:0 auto 14px;"></div>
+    <div style="font-weight:700;font-size:.95rem;color:#fff;margin-bottom:12px;">Manual Plate Entry</div>
+    <input type="text" id="pmManualInput"
+           placeholder="e.g. ABC123"
+           autocapitalize="characters" autocorrect="off" spellcheck="false"
+           inputmode="text"
+           style="width:100%;box-sizing:border-box;font-size:2rem;font-weight:800;letter-spacing:.14em;
+                  text-align:center;text-transform:uppercase;padding:16px 12px;
+                  border:2px solid rgba(255,255,255,.2);border-radius:12px;
+                  background:#111827;color:#fff;outline:none;-webkit-appearance:none;"
+           oninput="this.value=this.value.toUpperCase()"
+           onkeydown="if(event.key==='Enter')pmManualSearch()">
+    <button type="button" onclick="pmManualSearch()"
+            style="width:100%;margin-top:12px;padding:14px;background:#2563eb;color:#fff;
+                   border:none;border-radius:12px;font-size:.92rem;font-weight:700;
+                   cursor:pointer;-webkit-tap-highlight-color:transparent;">
+      Search
+    </button>
+    <button type="button" onclick="pmCloseManual()"
+            style="width:100%;margin-top:8px;padding:12px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);
+                   border:none;border-radius:12px;font-size:.88rem;font-weight:600;cursor:pointer;
+                   -webkit-tap-highlight-color:transparent;">
+      Cancel
+    </button>
+  </div>
+</div>
+
+{# Hidden canvas for frame capture #}
+<canvas id="pmCanvas" style="display:none;"></canvas>
+
+<script>
+(function(){
+'use strict';
+
+/* ── State ─────────────────────────────────────────────── */
+var _stream        = null;
+var _torchOn       = false;
+var _scanning      = false;
+var _scanInterval  = null;
+var _scanCount     = 0;
+var _alertOpen     = false;
+var _cooldown      = {};   // plate → timestamp, 30s dedup
+var _feedPlates    = [];   // last 5 shown in feed
+var _currentResult = null;
+var COOLDOWN_MS    = 30000;
+var SCAN_INTERVAL  = 2500; // ms between frames
+var _torchSupported = false;
+
+var video   = document.getElementById('patrolVideo');
+var canvas  = document.getElementById('pmCanvas');
+var ctx     = canvas.getContext('2d');
+
+/* ── Camera init ────────────────────────────────────────── */
+async function startCamera() {
+  try {
+    _stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = _stream;
+    await video.play();
+
+    // Check torch support
+    var track = _stream.getVideoTracks()[0];
+    if (track) {
+      var caps = track.getCapabilities ? track.getCapabilities() : {};
+      _torchSupported = !!(caps.torch);
+      if (!_torchSupported) {
+        document.getElementById('pmTorchBtn').style.opacity = '.35';
+      }
+    }
+
+    document.getElementById('pmSubtitle').textContent = 'Scanning plates automatically · Matches trigger an alert';
+    _scanning = true;
+    _scanInterval = setInterval(captureAndScan, SCAN_INTERVAL);
+  } catch(err) {
+    document.getElementById('pmStatusText').textContent = 'CAMERA ERROR';
+    document.getElementById('pmSubtitle').textContent = err.message || 'Camera access denied';
+    document.getElementById('pmPulseDot').style.background = '#ef4444';
+  }
+}
+
+/* ── Capture frame and scan ──────────────────────────────── */
+function captureAndScan() {
+  if (!_scanning || _alertOpen || !video.videoWidth) return;
+
+  canvas.width  = Math.min(video.videoWidth,  640);
+  canvas.height = Math.round(canvas.width * (video.videoHeight / video.videoWidth));
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  canvas.toBlob(function(blob) {
+    if (!blob) return;
+    var fd = new FormData();
+    fd.append('frame', blob, 'frame.jpg');
+
+    fetch('/m/api/lpr/patrol-scan', { method: 'POST', body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (!data.ok || !data.plate) return;
+
+        var plate = data.plate;
+        _scanCount++;
+        document.getElementById('pmScanNum').textContent = _scanCount;
+
+        // Duplicate suppression
+        var now = Date.now();
+        if (_cooldown[plate] && (now - _cooldown[plate]) < COOLDOWN_MS) return;
+        _cooldown[plate] = now;
+
+        var result = data.result;
+        var rtype  = result && result.result_type;
+
+        // Only feed + alert for non-trivial results
+        addToFeed(plate, rtype);
+
+        if (rtype === 'allocated_match' || rtype === 'restricted_match' || rtype === 'conflict' || (result && result.watchlist_hit)) {
+          showAlert(plate, result);
+        }
+      })
+      .catch(function(){});
+  }, 'image/jpeg', 0.85);
+}
+
+/* ── Live plate feed ─────────────────────────────────────── */
+function addToFeed(plate, rtype) {
+  var feed = document.getElementById('pmFeed');
+  if (!feed) return;
+
+  var cls = '';
+  if (rtype === 'allocated_match') cls = 'match';
+  else if (rtype === 'restricted_match') cls = 'restricted';
+  else if (rtype === 'watchlist_hit' || (rtype && rtype.indexOf('watchlist') >= 0)) cls = 'watchlist';
+
+  var dot = cls === 'match' ? '●' : cls === 'restricted' ? '◆' : cls === 'watchlist' ? '★' : '·';
+
+  var el = document.createElement('div');
+  el.className = 'pm-feed-item' + (cls ? ' ' + cls : '');
+  el.innerHTML = '<span>' + dot + '</span>' + escH(plate);
+  feed.insertBefore(el, feed.firstChild);
+
+  _feedPlates.unshift(plate);
+  if (_feedPlates.length > 5) {
+    _feedPlates.pop();
+    if (feed.children.length > 5) feed.removeChild(feed.lastChild);
+  }
+}
+
+/* ── Match alert ─────────────────────────────────────────── */
+function showAlert(plate, result) {
+  _alertOpen  = true;
+  _currentResult = result;
+  _currentResult._plate = plate;
+
+  var rtype  = result.result_type || '';
+  var isOwn  = rtype === 'allocated_match';
+  var isWl   = result.watchlist_hit;
+
+  // Haptic feedback
+  if (navigator.vibrate) navigator.vibrate(isOwn ? [200,80,200] : [150]);
+
+  // Colours
+  var bg = isOwn ? '#15803d' : isWl ? '#7c3aed' : '#b45309';
+
+  var header = document.getElementById('pmAlertHeader');
+  header.style.background = bg;
+
+  document.getElementById('pmAlertType').textContent =
+    isOwn ? 'Security Located' : isWl ? 'Watchlist Hit' : rtype === 'conflict' ? 'Multiple Matches' : 'Match – Not Allocated';
+  document.getElementById('pmAlertPlate').textContent = plate;
+
+  // Icon
+  var icon = document.getElementById('pmAlertIcon');
+  icon.style.background = 'rgba(255,255,255,.15)';
+  icon.innerHTML = isOwn
+    ? '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+    : isWl
+    ? '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" fill="none" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#fff" fill="none" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  // Body
+  var bodyHtml = '';
+  var asset = result.asset || {};
+  if (asset.registration || asset.make || asset.model) {
+    var veh = [asset.year, asset.make, asset.model].filter(Boolean).join(' ');
+    if (veh) bodyHtml += '<div class="pm-alert-row"><strong>' + escH(veh) + '</strong></div>';
+  }
+  if (result.matched_job_number) {
+    bodyHtml += '<div class="pm-alert-row">Job: <strong>' + escH(result.matched_job_number) + '</strong></div>';
+  }
+  if (result.client_name) {
+    bodyHtml += '<div class="pm-alert-row">Client: <strong>' + escH(result.client_name) + '</strong></div>';
+  }
+  if (isWl && result.watchlist_reason) {
+    bodyHtml += '<div class="pm-alert-row" style="color:#e9d5ff;">Watchlist: ' + escH(result.watchlist_reason) + '</div>';
+  }
+  if (!isOwn && rtype === 'restricted_match') {
+    bodyHtml += '<div class="pm-alert-row" style="color:#fde68a;margin-top:6px;font-size:.78rem;">Contact office before taking action on this plate.</div>';
+  }
+  document.getElementById('pmAlertBody').innerHTML = bodyHtml;
+
+  // Actions
+  var actHtml = '';
+  if (isOwn && result.open_url) {
+    actHtml += '<button type="button" class="pm-alert-btn pm-alert-btn-primary" onclick="pmOpenJob(\'' + escH(result.open_url) + '\')">'
+      + '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Open Job</button>';
+  }
+  if (!isOwn) {
+    actHtml += '<button type="button" class="pm-alert-btn" style="background:rgba(255,255,255,.9);color:#111;" onclick="pmContactOffice()">'
+      + '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.22 2 2 0 012.1 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.06 7.91A16 16 0 0013.91 15.76l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Contact Office</button>';
+  }
+  actHtml += '<button type="button" class="pm-alert-btn pm-alert-btn-save" id="pmSaveBtn" onclick="pmSaveSighting()">'
+    + '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Sighting</button>';
+  actHtml += '<button type="button" class="pm-alert-btn pm-alert-btn-secondary" onclick="pmDismissAlert()">Continue Scanning</button>';
+  document.getElementById('pmAlertActions').innerHTML = actHtml;
+
+  // Open overlay
+  var alert = document.getElementById('pmAlert');
+  alert.style.display = 'flex';
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){ alert.classList.add('open'); });
+  });
+}
+
+window.pmDismissAlert = function() {
+  var alert = document.getElementById('pmAlert');
+  alert.classList.remove('open');
+  setTimeout(function(){
+    alert.style.display = 'none';
+    _alertOpen = false;
+    _currentResult = null;
+  }, 320);
+};
+
+window.pmOpenJob = function(url) {
+  pmStop();
+  window.location.href = url;
+};
+
+window.pmContactOffice = function() {
+  pmDismissAlert();
+  if (window._officePhone) window.location.href = 'tel:' + window._officePhone;
+  else alert('Contact your office about this plate.');
+};
+
+window.pmSaveSighting = function() {
+  if (!_currentResult) return;
+  var r   = _currentResult;
+  var btn = document.getElementById('pmSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  var payload = {
+    registration_raw:   r._plate || r.searched_registration || '',
+    result_type:        r.result_type || 'no_match',
+    search_method:      'patrol_scan',
+    matched_job_id:     r.matched_job_id     || null,
+    matched_job_number: r.matched_job_number || null,
+    watchlist_hit:      r.watchlist_hit       ? 1 : 0,
+    client_action_id:   'patrol_' + Date.now()
+  };
+
+  function doSave(pl) {
+    fetch('/m/api/lpr/sighting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pl)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) {
+        if (btn) {
+          btn.classList.add('saved');
+          btn.textContent = '✓ Sighting Saved';
+          btn.disabled = true;
+        }
+        setTimeout(function(){ pmDismissAlert(); }, 1200);
+      } else {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
+        alert(d.error || 'Save failed.');
+      }
+    })
+    .catch(function(){
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
+      alert('Network error — try again.');
+    });
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos){ payload.latitude = pos.coords.latitude; payload.longitude = pos.coords.longitude; doSave(payload); },
+      function(){ doSave(payload); },
+      { timeout: 3000 }
+    );
+  } else { doSave(payload); }
+};
+
+/* ── Torch ───────────────────────────────────────────────── */
+window.pmToggleTorch = function() {
+  if (!_torchSupported || !_stream) return;
+  _torchOn = !_torchOn;
+  var track = _stream.getVideoTracks()[0];
+  if (track && track.applyConstraints) {
+    track.applyConstraints({ advanced: [{ torch: _torchOn }] }).catch(function(){});
+  }
+  var btn = document.getElementById('pmTorchBtn');
+  if (btn) {
+    btn.style.background = _torchOn ? 'rgba(251,191,36,.8)' : 'rgba(255,255,255,.12)';
+    btn.style.color      = _torchOn ? '#111' : '#fff';
+  }
+};
+
+/* ── Stop patrol ─────────────────────────────────────────── */
+window.pmStop = function() {
+  _scanning = false;
+  clearInterval(_scanInterval);
+  if (_stream) {
+    _stream.getTracks().forEach(function(t){ t.stop(); });
+    _stream = null;
+  }
+  window.location.href = '{{ url_for("m_jobs") }}';
+};
+
+/* ── Manual entry ────────────────────────────────────────── */
+window.pmOpenManual = function() {
+  var s = document.getElementById('pmManualSheet');
+  s.style.display = 'flex';
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){ s.classList.add('open'); });
+    setTimeout(function(){ document.getElementById('pmManualInput').focus(); }, 100);
+  });
+};
+
+window.pmCloseManual = function() {
+  var s = document.getElementById('pmManualSheet');
+  s.classList.remove('open');
+  setTimeout(function(){ s.style.display = 'none'; }, 300);
+};
+
+window.pmManualSearch = function() {
+  var plate = (document.getElementById('pmManualInput').value || '').replace(/[^A-Z0-9]/gi,'').toUpperCase();
+  if (plate.length < 2) { document.getElementById('pmManualInput').style.borderColor = '#ef4444'; return; }
+  pmCloseManual();
+
+  fetch('/m/api/lpr/lookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ registration: plate, method: 'manual' })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    var rtype = data.result_type || '';
+    addToFeed(plate, rtype);
+    showAlert(plate, data);
+  })
+  .catch(function(){ alert('Lookup failed.'); });
+};
+
+/* ── Helper ──────────────────────────────────────────────── */
+function escH(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Kickoff ─────────────────────────────────────────────── */
+startCamera();
+
+})();
+</script>
+{% endblock %}

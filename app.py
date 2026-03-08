@@ -629,8 +629,9 @@ def _migrate_update_builder():
     cur = conn.cursor()
     add_column_if_missing(cur, "jobs", "is_regional", "INTEGER")
     add_column_if_missing(cur, "jobs", "confirmed_skip", "INTEGER")
-    add_column_if_missing(cur, "system_settings", "openai_api_key", "TEXT")
-    add_column_if_missing(cur, "system_settings", "ai_use_own_key", "INTEGER")
+    add_column_if_missing(cur, "system_settings", "openai_api_key",          "TEXT")
+    add_column_if_missing(cur, "system_settings", "ai_use_own_key",          "INTEGER")
+    add_column_if_missing(cur, "system_settings", "lpr_patrol_mode_enabled", "INTEGER DEFAULT 1")
     add_column_if_missing(cur, "cue_items", "cue_link", "TEXT")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_updates (
@@ -9100,6 +9101,60 @@ def m_lpr():
 
     plate_param = (request.args.get("plate") or "").strip()
     return render_template("mobile/lpr_search.html", plate_param=plate_param)
+
+
+@app.get("/m/lpr/patrol-mode")
+@mobile_login_required
+def m_lpr_patrol_mode():
+    conn = db()
+    settings = conn.execute("SELECT lpr_patrol_mode_enabled FROM system_settings WHERE id=1").fetchone()
+    conn.close()
+    if settings and settings["lpr_patrol_mode_enabled"] == 0:
+        from flask import abort
+        abort(403)
+    return render_template("mobile/lpr_patrol_mode.html")
+
+
+@app.post("/m/api/lpr/patrol-scan")
+@mobile_login_required
+def m_api_lpr_patrol_scan():
+    uid      = session.get("user_id")
+    role     = session.get("role", "")
+    username = session.get("user_name", "")
+
+    if "frame" not in request.files:
+        return jsonify({"ok": False, "error": "No frame provided"}), 400
+
+    frame    = request.files["frame"]
+    tmp_path = os.path.join(_LPR_TMP, f"patrol_{uuid.uuid4().hex}.jpg")
+    frame.save(tmp_path)
+
+    try:
+        plate = extract_plate_from_image(tmp_path)
+    except Exception:
+        plate = ""
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    if not plate or len(plate) < 2:
+        return jsonify({"ok": True, "plate": None}), 200
+
+    result = lookup_registration_for_lpr(uid, role, username, plate)
+    _log_lpr_search(uid, role, username, plate, result, search_method="patrol_scan")
+
+    if result.get("watchlist_hit") and result.get("watchlist_priority") in ("urgent", "high"):
+        _notify_admins(
+            "Watchlist Plate Detected (Patrol Scan)",
+            "An LPR patrol scan matched a watchlist entry.",
+            "watchlist_lookup",
+            {"watchlist_priority": result.get("watchlist_priority")},
+            exclude_uid=uid,
+        )
+
+    return jsonify({"ok": True, "plate": plate, "result": result}), 200
 
 
 @app.post("/m/api/lpr/lookup")

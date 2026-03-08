@@ -335,6 +335,33 @@ a { color: var(--accent); text-decoration: none; }
     {# ── STEP 1: Action chooser ── #}
     <div id="lprStep1">
       <div class="lpr-sheet-title">LPR — Plate Recognition</div>
+
+      {# Patrol Mode — featured full-width CTA #}
+      <a href="{{ url_for('m_lpr_patrol_mode') }}" onclick="lprStoreReturn()"
+         style="display:flex;align-items:center;gap:12px;
+                background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);
+                border:1.5px solid #4f46e5;border-radius:16px;
+                padding:14px 16px;margin-bottom:12px;text-decoration:none;">
+        <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;
+                    background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#a5b4fc" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="M1 4h4v4M1 20h4v-4M23 4h-4v4M23 20h-4v-4"/>
+          </svg>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <span style="font-size:.9rem;font-weight:800;color:#fff;letter-spacing:.01em;">Patrol Mode</span>
+            <span style="font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+                         padding:2px 7px;border-radius:6px;background:rgba(167,139,250,.25);color:#a5b4fc;
+                         white-space:nowrap;">Live Scan</span>
+          </div>
+          <div style="font-size:.75rem;color:rgba(165,180,252,.75);margin-top:2px;">Continuous plate scanning · Auto-match</div>
+        </div>
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="rgba(165,180,252,.6)" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+
       <div class="lpr-action-grid">
 
         {# Live Scan: native bridge on iOS wrapper, camera-OCR on browser #}
