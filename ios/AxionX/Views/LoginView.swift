@@ -52,6 +52,17 @@ struct LoginView: View {
                     .padding(.bottom, 52)
                     .transition(.opacity.combined(with: .offset(y: 16)))
             }
+
+            // ── Non-production environment banner ─────────────────────────
+            // Visible in Staging and Local builds so testers are always aware
+            // they are NOT connected to the live production server.
+            if !AppConfig.isProduction {
+                VStack {
+                    environmentBanner
+                    Spacer()
+                }
+                .ignoresSafeArea(edges: .top)
+            }
         }
         .ignoresSafeArea()
         .preferredColorScheme(.dark)
@@ -60,6 +71,32 @@ struct LoginView: View {
                 panelVisible = true
             }
         }
+    }
+
+    // MARK: - Environment banner
+
+    private var environmentBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .bold))
+            Text("\(AppConfig.environmentName.uppercased()) BUILD")
+                .font(.system(size: 11, weight: .bold))
+                .kerning(0.6)
+            Text("·")
+                .font(.system(size: 11, weight: .light))
+                .opacity(0.7)
+            Text(AppConfig.currentBaseURL)
+                .font(.system(size: 10, weight: .regular))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .opacity(0.85)
+        }
+        .foregroundColor(.black.opacity(0.85))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .padding(.top, 4)
+        .frame(maxWidth: .infinity)
+        .background(Color(red: 1.0, green: 0.78, blue: 0.17))
     }
 
     // MARK: - Login panel

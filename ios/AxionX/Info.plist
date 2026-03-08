@@ -21,6 +21,13 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
 
+    <!-- Environment — injected at build time via Staging.xcconfig / Production.xcconfig -->
+    <!-- Never hard-coded; changing environments requires a new build. -->
+    <key>AXIONX_BASE_URL</key>
+    <string>$(AXIONX_BASE_URL)</string>
+    <key>AXIONX_ENV_NAME</key>
+    <string>$(AXIONX_ENV_NAME)</string>
+
     <!-- SwiftUI App lifecycle — no UISceneDelegate class name required -->
     <key>UIApplicationSupportsMultipleScenes</key>
     <false/>

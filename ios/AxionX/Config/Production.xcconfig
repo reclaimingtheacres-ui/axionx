@@ -1,0 +1,14 @@
+// AxionX — Production build configuration
+// ---------------------------------------------------------------------------
+// Points to the live Azure-hosted server at www.axionx.com.au.
+// Any build using this configuration writes to live production data.
+// ---------------------------------------------------------------------------
+// HOW TO USE:
+//   In Xcode → Project → Info → Configurations, duplicate the Release
+//   configuration and name it "Production". Assign this file to that
+//   configuration for the AxionX target. Use this configuration only when
+//   you are ready to ship a production TestFlight or App Store build.
+// ---------------------------------------------------------------------------
+
+AXIONX_BASE_URL = https://www.axionx.com.au
+AXIONX_ENV_NAME = Production

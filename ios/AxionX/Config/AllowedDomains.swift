@@ -1,17 +1,26 @@
 import Foundation
 
 /// Controls which URLs stay inside the WebView and which open externally.
+/// The set of trusted hosts is built at runtime from the production domains
+/// plus whatever host AppConfig.currentBaseURL resolves to, so staging builds
+/// automatically trust the Replit dev domain without any manual changes here.
 enum AllowedDomains {
 
-    // ── Trusted hosts (load inside WebView) ──────────────────────────────────
-    static let trusted: Set<String> = [
-        "www.axionx.com.au",
-        "axionx.com.au",
-        // Add staging or dev domains here as needed:
-        // "your-project.replit.app",
-    ]
+    // ── Trusted hosts (always stay inside WebView) ────────────────────────────
+    static let trusted: Set<String> = {
+        var domains: Set<String> = [
+            "www.axionx.com.au",
+            "axionx.com.au",
+        ]
+        // Automatically add the active environment's host so staging builds
+        // (Replit dev URL) work without any code changes.
+        if let host = URL(string: AppConfig.currentBaseURL)?.host?.lowercased() {
+            domains.insert(host)
+        }
+        return domains
+    }()
 
-    // ── Native URL schemes (open in system app) ──────────────────────────────
+    // ── Native URL schemes (open in system app) ───────────────────────────────
     private static let nativeSchemes: Set<String> = ["tel", "sms", "facetime", "facetime-audio"]
 
     // ── Map hosts (open in Apple Maps) ───────────────────────────────────────

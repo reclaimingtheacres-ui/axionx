@@ -1,0 +1,15 @@
+// AxionX — Staging build configuration
+// ---------------------------------------------------------------------------
+// Points to the Replit dev environment (separate database from production).
+// Replace the URL below with your actual Replit project preview URL.
+// Format: https://[username]-[project-name].replit.app
+// ---------------------------------------------------------------------------
+// HOW TO USE:
+//   In Xcode → Project → Info → Configurations, duplicate the Release
+//   configuration and name it "Staging". Assign this file to that
+//   configuration for the AxionX target. Archive using Staging to get a
+//   TestFlight build that hits the Replit dev server instead of production.
+// ---------------------------------------------------------------------------
+
+AXIONX_BASE_URL = https://REPLACE-WITH-YOUR-REPLIT-URL.replit.app
+AXIONX_ENV_NAME = Staging
