@@ -54,6 +54,89 @@ a { color: var(--accent); text-decoration: none; }
 .m-header h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: .01em; display: flex; align-items: center; gap: 6px; color: #111111; }
 .m-header-right { display: flex; gap: 10px; align-items: center; }
 
+/* ── LPR Floating Action Button ── */
+.lpr-fab {
+  position: fixed;
+  bottom: calc(var(--nav-h) + var(--safe-bot) + 14px);
+  right: 18px;
+  z-index: 290;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: #111827;
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,.32), 0 1px 4px rgba(0,0,0,.18);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .12s, box-shadow .12s;
+}
+.lpr-fab:active { transform: scale(.92); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.lpr-fab svg { display: block; flex-shrink: 0; }
+
+/* LPR action sheet overlay */
+.lpr-sheet-overlay {
+  position: fixed; inset: 0; z-index: 9800;
+  background: rgba(0,0,0,0);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  transition: background .2s;
+}
+.lpr-sheet-overlay.open {
+  background: rgba(0,0,0,.45);
+}
+.lpr-sheet {
+  width: 100%; max-width: 480px;
+  background: #fff;
+  border-radius: 22px 22px 0 0;
+  padding: 8px 14px calc(12px + env(safe-area-inset-bottom,0px));
+  box-shadow: 0 -4px 32px rgba(0,0,0,.14);
+  transform: translateY(100%);
+  transition: transform .28s cubic-bezier(.32,.72,0,1);
+}
+.lpr-sheet-overlay.open .lpr-sheet {
+  transform: translateY(0);
+}
+.lpr-sheet-handle {
+  width: 40px; height: 4px; background: #d1d5db; border-radius: 2px;
+  margin: 0 auto 18px;
+}
+.lpr-sheet-title {
+  font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+  color: var(--muted); text-transform: uppercase; text-align: center;
+  margin-bottom: 14px;
+}
+.lpr-action-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-bottom: 12px;
+}
+.lpr-action-btn {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 9px; padding: 18px 12px 16px;
+  border: 1.5px solid var(--line); border-radius: 14px;
+  background: #f9fafb; text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .1s, border-color .1s;
+}
+.lpr-action-btn:active { background: #f1f5f9; border-color: #cbd5e1; }
+.lpr-action-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+.lpr-action-label {
+  font-size: .8rem; font-weight: 700; color: #111; text-align: center; line-height: 1.25;
+}
+.lpr-action-sub {
+  font-size: .68rem; color: var(--muted); text-align: center; line-height: 1.25; margin-top: -5px;
+}
+.lpr-cancel-btn {
+  width: 100%; padding: 14px; border: none; border-radius: 14px;
+  background: #f3f4f6; font-size: .9rem; font-weight: 600; color: var(--muted);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.lpr-cancel-btn:active { background: #e5e7eb; }
+
 /* ── Bottom tab bar ── */
 .m-nav {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
@@ -229,6 +312,102 @@ a { color: var(--accent); text-decoration: none; }
 
 </nav>
 {% endblock %}
+
+{% block lpr_fab %}
+{# ── LPR Floating Action Button — shown on all main screens ── #}
+<button type="button" class="lpr-fab" id="lprFab" aria-label="LPR Quick Access" onclick="lprSheetOpen()">
+  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2" y="7" width="20" height="14" rx="2"/>
+    <path d="M16 3H8"/>
+    <path d="M7 11h.01M17 11h.01"/>
+    <rect x="9" y="13" width="6" height="4" rx="1"/>
+  </svg>
+</button>
+
+{# ── LPR Action Sheet ── #}
+<div class="lpr-sheet-overlay" id="lprSheet" onclick="if(event.target===this)lprSheetClose()">
+  <div class="lpr-sheet" role="dialog" aria-label="LPR Actions">
+    <div class="lpr-sheet-handle"></div>
+    <div class="lpr-sheet-title">LPR — Plate Recognition</div>
+    <div class="lpr-action-grid">
+
+      <a href="{{ url_for('m_lpr_capture') }}?mode=live" class="lpr-action-btn">
+        <div class="lpr-action-icon" style="background:#eff6ff;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2"/>
+          </svg>
+        </div>
+        <span class="lpr-action-label">Live Scan</span>
+        <span class="lpr-action-sub">Camera + OCR</span>
+      </a>
+
+      <a href="{{ url_for('m_lpr_capture') }}" class="lpr-action-btn">
+        <div class="lpr-action-icon" style="background:#f0fdf4;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+        <span class="lpr-action-label">Take Photo</span>
+        <span class="lpr-action-sub">Photo upload</span>
+      </a>
+
+      <a href="{{ url_for('m_lpr') }}" class="lpr-action-btn">
+        <div class="lpr-action-icon" style="background:#fffbeb;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="17" y1="10" x2="3" y2="10"/>
+            <line x1="21" y1="6" x2="3" y2="6"/>
+            <line x1="21" y1="14" x2="3" y2="14"/>
+            <line x1="17" y1="18" x2="3" y2="18"/>
+          </svg>
+        </div>
+        <span class="lpr-action-label">Manual Entry</span>
+        <span class="lpr-action-sub">Type plate number</span>
+      </a>
+
+      <a href="{{ url_for('m_lpr_patrol') }}" class="lpr-action-btn">
+        <div class="lpr-action-icon" style="background:#fdf4ff;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <polyline points="9 12 11 14 15 10"/>
+          </svg>
+        </div>
+        <span class="lpr-action-label">Patrol Intel</span>
+        <span class="lpr-action-sub">AI predictions</span>
+      </a>
+
+    </div>
+    <button type="button" class="lpr-cancel-btn" onclick="lprSheetClose()">Cancel</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var overlay = document.getElementById('lprSheet');
+  var _rafId;
+
+  window.lprSheetOpen = function(){
+    overlay.style.display = 'flex';
+    cancelAnimationFrame(_rafId);
+    _rafId = requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        overlay.classList.add('open');
+      });
+    });
+  };
+
+  window.lprSheetClose = function(){
+    overlay.classList.remove('open');
+    overlay.addEventListener('transitionend', function handler(){
+      overlay.style.display = 'none';
+      overlay.removeEventListener('transitionend', handler);
+    });
+  };
+})();
+</script>
+{% endblock %}
+
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>
