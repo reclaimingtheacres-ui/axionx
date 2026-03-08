@@ -422,8 +422,13 @@ function showAlert(plate, result) {
   if (isWl && result.watchlist_reason) {
     bodyHtml += '<div class="pm-alert-row" style="color:#e9d5ff;">Watchlist: ' + escH(result.watchlist_reason) + '</div>';
   }
-  if (!isOwn && rtype === 'restricted_match') {
-    bodyHtml += '<div class="pm-alert-row" style="color:#fde68a;margin-top:6px;font-size:.78rem;">Contact office before taking action on this plate.</div>';
+  if (rtype === 'restricted_match') {
+    if (result.assigned_agent_name) {
+      bodyHtml += '<div class="pm-alert-row">Allocated agent: <strong>' + escH(result.assigned_agent_name) + '</strong></div>';
+    } else {
+      bodyHtml += '<div class="pm-alert-row" style="opacity:.7;">Unassigned job</div>';
+    }
+    bodyHtml += '<div class="pm-alert-row" style="color:#fde68a;margin-top:6px;font-size:.78rem;">Contact office for allocation before action.</div>';
   }
   document.getElementById('pmAlertBody').innerHTML = bodyHtml;
 
@@ -588,8 +593,110 @@ function escH(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/* ── iOS Native Bridge Contract ─────────────────────────────
+ *
+ * When running inside the AxionXiOS wrapper the native layer
+ * handles camera/OCR/duplicate-suppression.  The web layer
+ * remains the coordinator for lookup, result rendering and
+ * sighting persistence.
+ *
+ * Swift → JS callbacks (called by the native scanner):
+ *
+ *   window.axionPatrolPlateRead(plate)
+ *     Called each time a unique plate candidate is read.
+ *     The web layer runs the AxionX lookup and shows alerts.
+ *
+ *   window.axionPatrolStopped()
+ *     Called when the native scanner session is closed.
+ *     The web layer navigates back to jobs.
+ *
+ * JS → Swift messages (via webkit.messageHandlers):
+ *
+ *   startPatrolMode   — begin native scanner session
+ *   stopPatrolMode    — end native scanner session
+ *   toggleTorch       — toggle device torch
+ *   patrolManualEntry — user opened manual entry sheet
+ * ─────────────────────────────────────────────────────────── */
+
+var _isNativeWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
+
+// Called by Swift each time OCR reads a new plate candidate
+window.axionPatrolPlateRead = function(plate) {
+  if (!plate) return;
+  var norm = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (norm.length < 2) return;
+
+  _scanCount++;
+  document.getElementById('pmScanNum').textContent = _scanCount;
+
+  // Client-side cooldown (native layer may also dedup, belt-and-braces)
+  var now = Date.now();
+  if (_cooldown[norm] && (now - _cooldown[norm]) < COOLDOWN_MS) return;
+  _cooldown[norm] = now;
+
+  // Run backend lookup
+  fetch('/m/api/lpr/patrol-scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plate: norm })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (!data.ok) return;
+    var rtype = data.result && data.result.result_type;
+    addToFeed(norm, rtype);
+    if (rtype === 'allocated_match' || rtype === 'restricted_match' || rtype === 'conflict' || (data.result && data.result.watchlist_hit)) {
+      showAlert(norm, data.result);
+    }
+  })
+  .catch(function(){});
+};
+
+// Called by Swift when native scanner is dismissed
+window.axionPatrolStopped = function() {
+  _scanning = false;
+  clearInterval(_scanInterval);
+  window.location.href = '{{ url_for("m_jobs") }}';
+};
+
 /* ── Kickoff ─────────────────────────────────────────────── */
-startCamera();
+if (_isNativeWrapper) {
+  // Hand off to native Swift scanner; web layer stands by for bridge callbacks
+  document.getElementById('pmSubtitle').textContent = 'Native scanner active · Matches trigger an alert';
+  document.getElementById('patrolVideo').style.display = 'none';
+  document.getElementById('pmScanLine').style.display  = 'none';
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startPatrolMode) {
+    window.webkit.messageHandlers.startPatrolMode.postMessage({});
+  } else if (window.AxionXBridge && window.AxionXBridge.startPatrolMode) {
+    window.AxionXBridge.startPatrolMode();
+  } else {
+    // iOS wrapper detected but bridge not available yet — fall back to web camera
+    startCamera();
+  }
+  // Override torch and stop to route through native bridge
+  window.pmToggleTorch = function() {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.toggleTorch) {
+      window.webkit.messageHandlers.toggleTorch.postMessage({});
+    }
+    var btn = document.getElementById('pmTorchBtn');
+    _torchOn = !_torchOn;
+    if (btn) {
+      btn.style.background = _torchOn ? 'rgba(251,191,36,.8)' : 'rgba(255,255,255,.12)';
+      btn.style.color      = _torchOn ? '#111' : '#fff';
+    }
+  };
+  window.pmStop = function() {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.stopPatrolMode) {
+      window.webkit.messageHandlers.stopPatrolMode.postMessage({});
+    } else if (window.AxionXBridge && window.AxionXBridge.stopPatrolMode) {
+      window.AxionXBridge.stopPatrolMode();
+    }
+    window.location.href = '{{ url_for("m_jobs") }}';
+  };
+} else {
+  // Browser web camera fallback
+  startCamera();
+}
 
 })();
 </script>

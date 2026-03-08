@@ -336,45 +336,18 @@ a { color: var(--accent); text-decoration: none; }
     <div id="lprStep1">
       <div class="lpr-sheet-title">LPR — Plate Recognition</div>
 
-      {# Patrol Mode — featured full-width CTA #}
-      <a href="{{ url_for('m_lpr_patrol_mode') }}" onclick="lprStoreReturn()"
-         style="display:flex;align-items:center;gap:12px;
-                background:linear-gradient(135deg,#1e1b4b 0%,#312e81 100%);
-                border:1.5px solid #4f46e5;border-radius:16px;
-                padding:14px 16px;margin-bottom:12px;text-decoration:none;">
-        <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;
-                    background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#a5b4fc" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            <path d="M1 4h4v4M1 20h4v-4M23 4h-4v4M23 20h-4v-4"/>
-          </svg>
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:7px;">
-            <span style="font-size:.9rem;font-weight:800;color:#fff;letter-spacing:.01em;">Patrol Mode</span>
-            <span style="font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
-                         padding:2px 7px;border-radius:6px;background:rgba(167,139,250,.25);color:#a5b4fc;
-                         white-space:nowrap;">Live Scan</span>
-          </div>
-          <div style="font-size:.75rem;color:rgba(165,180,252,.75);margin-top:2px;">Continuous plate scanning · Auto-match</div>
-        </div>
-        <svg viewBox="0 0 24 24" width="16" height="16" stroke="rgba(165,180,252,.6)" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-      </a>
-
       <div class="lpr-action-grid">
 
-        {# Live Scan: native bridge on iOS wrapper, camera-OCR on browser #}
-        <button type="button" class="lpr-action-btn" id="lprBtnLiveScan" onclick="lprLiveScan()">
-          <div class="lpr-action-icon" style="background:#eff6ff;">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2563eb" stroke-width="2"
+        {# Manual Plate Search — inline, no navigation #}
+        <button type="button" class="lpr-action-btn" onclick="lprGoManual()">
+          <div class="lpr-action-icon" style="background:#fffbeb;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#d97706" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 4h4v4M1 20h4v-4M23 4h-4v4M23 20h-4v-4"/>
-              <rect x="7" y="7" width="10" height="10" rx="1"/>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
           </div>
-          <span class="lpr-action-label">Live Scan</span>
-          <span class="lpr-action-sub" id="lprLiveScanSub">Camera OCR</span>
+          <span class="lpr-action-label">Manual Search</span>
+          <span class="lpr-action-sub">Type plate number</span>
         </button>
 
         {# Take Photo — navigates, stores return URL #}
@@ -387,22 +360,7 @@ a { color: var(--accent); text-decoration: none; }
             </svg>
           </div>
           <span class="lpr-action-label">Take Photo</span>
-          <span class="lpr-action-sub">Camera scan</span>
-        </button>
-
-        {# Manual Entry — inline, no navigation #}
-        <button type="button" class="lpr-action-btn" onclick="lprGoManual()">
-          <div class="lpr-action-icon" style="background:#fffbeb;">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#d97706" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <line x1="17" y1="10" x2="3" y2="10"/>
-              <line x1="21" y1="6" x2="3" y2="6"/>
-              <line x1="21" y1="14" x2="3" y2="14"/>
-              <line x1="17" y1="18" x2="3" y2="18"/>
-            </svg>
-          </div>
-          <span class="lpr-action-label">Manual Entry</span>
-          <span class="lpr-action-sub">Type plate</span>
+          <span class="lpr-action-sub">Camera OCR scan</span>
         </button>
 
         {# Patrol Intel — navigates #}
@@ -417,6 +375,20 @@ a { color: var(--accent); text-decoration: none; }
           <span class="lpr-action-label">Patrol Intel</span>
           <span class="lpr-action-sub">AI predictions</span>
         </a>
+
+        {# Patrol Mode — continuous live scan #}
+        <button type="button" class="lpr-action-btn" onclick="lprGoPatrolMode()"
+                style="background:linear-gradient(145deg,#1e1b4b,#312e81);border-color:#4f46e5;">
+          <div class="lpr-action-icon" style="background:rgba(255,255,255,.1);">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#a5b4fc" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 4h4v4M1 20h4v-4M23 4h-4v4M23 20h-4v-4"/>
+              <rect x="7" y="7" width="10" height="10" rx="1"/>
+            </svg>
+          </div>
+          <span class="lpr-action-label" style="color:#e0e7ff;">Patrol Mode</span>
+          <span class="lpr-action-sub" style="color:rgba(165,180,252,.8);">Auto continuous scan</span>
+        </button>
 
       </div>
       <button type="button" class="lpr-cancel-btn" onclick="lprSheetClose()">Cancel</button>
@@ -532,19 +504,22 @@ window.lprStoreReturn = function() {
   try { sessionStorage.setItem('lprReturnUrl', window.location.href); } catch(e){}
 };
 
-// ── Live Scan: native bridge on iOS, camera-OCR on browser ─
-window.lprLiveScan = function() {
+// ── Patrol Mode: native bridge on iOS wrapper, web camera otherwise ─
+window.lprGoPatrolMode = function() {
+  lprSheetClose();
   var isWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
   if (isWrapper) {
-    lprSheetClose();
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.triggerLiveScan) {
-      window.webkit.messageHandlers.triggerLiveScan.postMessage({});
-    } else if (window.AxionXBridge && window.AxionXBridge.triggerLiveScan) {
-      window.AxionXBridge.triggerLiveScan();
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startPatrolMode) {
+      window.webkit.messageHandlers.startPatrolMode.postMessage({});
+    } else if (window.AxionXBridge && window.AxionXBridge.startPatrolMode) {
+      window.AxionXBridge.startPatrolMode();
+    } else {
+      lprStoreReturn();
+      window.location.href = '{{ url_for("m_lpr_patrol_mode") }}';
     }
   } else {
     lprStoreReturn();
-    window.location.href = '{{ url_for("m_lpr_capture") }}';
+    window.location.href = '{{ url_for("m_lpr_patrol_mode") }}';
   }
 };
 
@@ -660,14 +635,16 @@ function lprRenderResult(r, method) {
     }
 
   } else if (rtype === 'restricted_match') {
-    heading.textContent = 'Not Allocated';
+    heading.textContent = 'Match Found – Not Allocated';
     html += '<div style="display:flex;align-items:flex-start;gap:9px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:11px 13px;margin-bottom:10px;">'
       + '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#d97706" fill="none" stroke-width="2.5" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
-      + '<div><div style="font-size:.75rem;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.05em;">Not allocated</div>'
-      + '<div style="font-size:.8rem;color:#92400e;margin-top:1px;">' + esc(r.notice || '') + '</div></div></div>';
+      + '<div><div style="font-size:.75rem;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.05em;">Match Found – Not Allocated</div>'
+      + '<div style="font-size:.8rem;color:#92400e;margin-top:1px;">' + esc(r.notice || 'Contact office for allocation before action.') + '</div></div></div>';
     html += '<div style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;">'
       + '<div style="font-size:1.8rem;font-weight:900;letter-spacing:.12em;color:var(--text);">' + esc(r.asset && r.asset.registration || '') + '</div>'
-      + (r.asset && (r.asset.year || r.asset.make || r.asset.model) ? '<div style="font-size:.82rem;color:#374151;margin-top:4px;">' + esc([r.asset.year,r.asset.make,r.asset.model].filter(Boolean).join(' ')) + '</div>' : '')
+      + (r.asset && (r.asset.year || r.asset.make || r.asset.model) ? '<div style="font-size:.82rem;font-weight:600;color:#374151;margin-top:4px;">' + esc([r.asset.year,r.asset.make,r.asset.model].filter(Boolean).join(' ')) + '</div>' : '')
+      + '<div style="font-size:.75rem;color:var(--muted);margin-top:4px;">Job: ' + esc(r.matched_job_number || '') + '</div>'
+      + (r.assigned_agent_name ? '<div style="font-size:.75rem;color:#b45309;margin-top:3px;font-weight:600;">Allocated agent: ' + esc(r.assigned_agent_name) + '</div>' : '<div style="font-size:.75rem;color:var(--muted);margin-top:3px;">Unassigned job</div>')
       + '</div>';
     actHtml += '<button type="button" onclick="lprContactOffice()" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;font-size:.88rem;font-weight:700;color:#b45309;cursor:pointer;-webkit-tap-highlight-color:transparent;">'
       + '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.22 2 2 0 012.1 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.06 7.91A16 16 0 0013.91 15.76l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Contact Office</button>';
@@ -766,15 +743,6 @@ window.lprContactOffice = function() {
   }
 };
 
-// ── Init: badge Live Scan label based on wrapper ──────────
-(function(){
-  var sub = document.getElementById('lprLiveScanSub');
-  if (sub) {
-    sub.textContent = navigator.userAgent.indexOf('AxionXiOS') !== -1
-      ? 'Native scanner'
-      : 'Camera + OCR';
-  }
-})();
 
 })();
 </script>

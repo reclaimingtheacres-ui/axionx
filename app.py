@@ -8663,9 +8663,11 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
     rows = conn.execute("""
         SELECT ji.id AS item_id, ji.reg, ji.make, ji.model, ji.year, ji.vin,
                j.id AS job_id, j.internal_job_number, j.display_ref,
-               j.assigned_user_id, j.client_id, j.status
+               j.assigned_user_id, j.client_id, j.status,
+               u.full_name AS assigned_agent_name
         FROM job_items ji
         JOIN jobs j ON j.id = ji.job_id
+        LEFT JOIN users u ON u.id = j.assigned_user_id
         WHERE j.status NOT IN ('Completed','Invoiced','Cancelled')
           AND ji.reg IS NOT NULL AND ji.reg != ''
     """).fetchall()
@@ -8732,7 +8734,8 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
         "is_allocated_to_user": False,
         "asset": asset,
         "client_name": client_name,
-        "notice": "This file is not allocated to our agent. Contact the office for instructions.",
+        "assigned_agent_name": matched["assigned_agent_name"] or None,
+        "notice": "Contact office for allocation before action.",
         **wl,
     }
 
@@ -9122,25 +9125,32 @@ def m_api_lpr_patrol_scan():
     role     = session.get("role", "")
     username = session.get("user_name", "")
 
-    if "frame" not in request.files:
-        return jsonify({"ok": False, "error": "No frame provided"}), 400
+    # Path A — JSON with pre-extracted plate (iOS native bridge, Swift has already done OCR)
+    if request.is_json:
+        body  = request.get_json(force=True, silent=True) or {}
+        plate = normalise_registration(body.get("plate", ""))
+        if not plate or len(plate) < 2:
+            return jsonify({"ok": True, "plate": None}), 200
 
-    frame    = request.files["frame"]
-    tmp_path = os.path.join(_LPR_TMP, f"patrol_{uuid.uuid4().hex}.jpg")
-    frame.save(tmp_path)
-
-    try:
-        plate = extract_plate_from_image(tmp_path)
-    except Exception:
-        plate = ""
-    finally:
+    # Path B — multipart form with a camera frame (web browser fallback, Tesseract OCR)
+    elif "frame" in request.files:
+        frame    = request.files["frame"]
+        tmp_path = os.path.join(_LPR_TMP, f"patrol_{uuid.uuid4().hex}.jpg")
+        frame.save(tmp_path)
         try:
-            os.unlink(tmp_path)
+            plate = extract_plate_from_image(tmp_path)
         except Exception:
-            pass
+            plate = ""
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+        if not plate or len(plate) < 2:
+            return jsonify({"ok": True, "plate": None}), 200
 
-    if not plate or len(plate) < 2:
-        return jsonify({"ok": True, "plate": None}), 200
+    else:
+        return jsonify({"ok": False, "error": "No frame or plate provided"}), 400
 
     result = lookup_registration_for_lpr(uid, role, username, plate)
     _log_lpr_search(uid, role, username, plate, result, search_method="patrol_scan")
