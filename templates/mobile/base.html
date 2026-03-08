@@ -156,6 +156,8 @@ a { color: var(--accent); text-decoration: none; }
 }
 .m-nav a.active, .m-nav a:hover { color: var(--accent); }
 .m-nav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.m-nav-badge-wrap { position:relative; display:inline-flex; align-items:center; justify-content:center; }
+.m-msg-dot { position:absolute;top:-2px;right:-6px;width:8px;height:8px;background:var(--accent);border-radius:50%;display:none;border:2px solid #fff; }
 
 /* ── Main content ── */
 .m-content { padding: 14px 16px 8px; background: #f7f8fa; min-height: calc(100dvh - var(--safe-top) - var(--nav-h) - var(--safe-bot) - 52px); }
@@ -301,6 +303,16 @@ a { color: var(--accent); text-decoration: none; }
      aria-label="Map" role="tab">
     <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
     Map
+  </a>
+
+  <a href="{{ url_for('m_messages_list') }}"
+     class="{{ 'active' if request.endpoint in ('m_messages_list','m_message_thread') }}"
+     aria-label="Messages" role="tab">
+    <div class="m-nav-badge-wrap">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      <span class="m-msg-dot" id="mMsgDot"></span>
+    </div>
+    Msgs
   </a>
 
   <a href="{{ url_for('m_settings') }}"
@@ -749,5 +761,24 @@ window.lprContactOffice = function() {
 {% endblock %}
 
 {% block extra_scripts %}{% endblock %}
+{% if session.get('user_id') %}
+<script>
+(function(){
+  var _mlast = 0;
+  function pollMobileMsgs(){
+    fetch('/api/messages/unread-count', {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var count = d.count || 0;
+        var dot = document.getElementById('mMsgDot');
+        if(dot) dot.style.display = count > 0 ? 'block' : 'none';
+        _mlast = count;
+      }).catch(function(){});
+  }
+  pollMobileMsgs();
+  setInterval(pollMobileMsgs, 30000);
+})();
+</script>
+{% endif %}
 </body>
 </html>

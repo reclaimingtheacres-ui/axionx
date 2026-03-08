@@ -54,6 +54,20 @@ No explicit user preferences were provided in the original `replit.md` file. The
 
 **12. Repo Lock (v2):** Per-security-item repossession record accessible on desktop and mobile. Features draft saving and submission workflows, generating formatted notes and linking to PDF generation for VIR, Transport Instructions, and other forms. Includes signature capture and PDF generation via `pdf_gen.py`.
 
+**14. Internal Messaging System:** Staff messaging (admin↔agent, agent↔agent) with job-linked and direct conversations.
+- Tables: `conversations` (type: direct|job, optional job_id), `conversation_participants`, `messages`, `message_reads`
+- Desktop: Two-panel layout at `/messages` and `/messages/<conv_id>`. Left sidebar = conversation list; right = chat bubbles. Reply with Enter key or Send button.
+- Mobile: Full-screen conversation list at `/m/messages`; chat interface at `/m/messages/<conv_id>` with pinned reply bar.
+- New message modal (desktop) + compose sheet (mobile): select recipient, optional job link, first message body.
+- Unread badge: blue count badge in desktop sidebar nav + dot indicator on mobile "Msgs" tab. Both poll `/api/messages/unread-count` every 30 seconds. Desktop shows a toast notification when new messages arrive.
+- Job-linked conversations show a yellow banner with clickable link to the job.
+- Shared API: `GET /api/messages/unread-count`, `POST /messages/<conv_id>/read`
+
+**15. Customer Call/SMS Actions:**
+- `customer_detail.html`: Phone numbers show inline Call (green) + SMS (blue) buttons with `tel:` and `sms:` schemes.
+- `job_detail.html`: Linked customer rows show primary phone with Call + SMS buttons. Client phone shows Call button.
+- Mobile: Already had Call/SMS on job detail; now consistent across all platforms.
+
 ## External Dependencies
 
 - **Database**: SQLite

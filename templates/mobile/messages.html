@@ -1,0 +1,200 @@
+{% extends "mobile/base.html" %}
+{% block title %}Messages — AxionX{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mc-list { display:flex;flex-direction:column;gap:0; }
+  .mc-row {
+    display:flex;align-items:center;gap:12px;
+    padding:13px 16px;background:#fff;border-bottom:1px solid var(--line);
+    text-decoration:none;color:var(--text);
+    -webkit-tap-highlight-color:transparent;
+    transition:background .12s;
+  }
+  .mc-row:active { background:#f3f4f6; }
+  .mc-avatar {
+    width:42px;height:42px;border-radius:50%;
+    background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:.85rem;font-weight:800;
+    flex-shrink:0;text-transform:uppercase;
+  }
+  .mc-body { flex:1;min-width:0; }
+  .mc-name { font-size:.9rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+  .mc-preview { font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px; }
+  .mc-job-tag { font-size:.65rem;font-weight:700;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px;margin-left:5px; }
+  .mc-meta { display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0; }
+  .mc-time { font-size:.72rem;color:var(--muted); }
+  .mc-unread { width:10px;height:10px;background:var(--accent);border-radius:50%;margin-right:2px; }
+  .mc-unread-num { background:var(--accent);color:#fff;font-size:.65rem;font-weight:800;border-radius:10px;padding:1px 6px;min-width:18px;text-align:center; }
+
+  .mc-empty {
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:60px 24px;color:var(--muted);text-align:center;gap:10px;
+  }
+  .mc-empty svg { opacity:.2; }
+
+  /* Compose button */
+  .mc-compose-btn {
+    position:fixed;bottom:calc(var(--nav-h) + var(--safe-bot) + 16px);right:16px;
+    width:52px;height:52px;border-radius:50%;background:var(--accent);
+    color:#fff;border:none;font-size:1.4rem;font-weight:300;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 4px 16px rgba(37,99,235,.45);
+    cursor:pointer;z-index:200;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mc-compose-btn:active { opacity:.85; transform:scale(.96); }
+
+  /* Compose sheet */
+  .mc-sheet-overlay {
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;
+  }
+  .mc-sheet-overlay.open { display:block; }
+  .mc-sheet {
+    position:fixed;bottom:0;left:0;right:0;z-index:401;
+    background:#fff;border-radius:20px 20px 0 0;
+    padding:0 0 calc(16px + var(--safe-bot)) 0;
+    transform:translateY(100%);
+    transition:transform .28s cubic-bezier(.4,0,.2,1);
+  }
+  .mc-sheet-overlay.open .mc-sheet { transform:translateY(0); }
+  .mc-sheet-handle { width:38px;height:4px;background:#d1d5db;border-radius:2px;margin:12px auto 4px; }
+  .mc-sheet-title { font-size:.95rem;font-weight:800;padding:12px 20px 8px; }
+  .mc-sheet-body { padding:4px 20px; }
+  .mc-sheet-label { font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;margin-top:14px;display:block; }
+  .mc-sheet-select, .mc-sheet-input, .mc-sheet-textarea {
+    width:100%;box-sizing:border-box;
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+    font-size:.9rem;background:#f7f8fa;font-family:inherit;outline:none;
+  }
+  .mc-sheet-select:focus, .mc-sheet-input:focus, .mc-sheet-textarea:focus {
+    border-color:var(--accent);background:#fff;
+  }
+  .mc-sheet-textarea { min-height:80px;resize:none; }
+  .mc-sheet-send {
+    width:100%;margin-top:16px;padding:13px;background:var(--accent);color:#fff;
+    border:none;border-radius:12px;font-size:.9rem;font-weight:700;cursor:pointer;
+  }
+  .mc-sheet-send:active { opacity:.85; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="background:#fff;padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;">
+  <span style="font-size:.78rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);">Messages</span>
+</div>
+
+{% if convs %}
+  <div class="mc-list">
+    {% for c in convs %}
+      {% set other_name = c.others[0].full_name if c.others else 'Unknown' %}
+      {% set parts = other_name.split() %}
+      {% set initials = (parts[0][0] + (parts[-1][0] if parts|length > 1 else ''))|upper %}
+      <a href="{{ url_for('m_message_thread', conv_id=c.id) }}" class="mc-row">
+        <div class="mc-avatar">{{ initials }}</div>
+        <div class="mc-body">
+          <div class="mc-name">
+            {{ other_name }}{% if c.type == 'job' and c.job_ref %}<span class="mc-job-tag">{{ c.job_ref }}</span>{% endif %}
+          </div>
+          <div class="mc-preview">
+            {% if c.last_msg %}
+              {% if c.last_msg.sender_name %}{{ c.last_msg.sender_name.split()[0] }}: {% endif %}{{ c.last_msg.body[:50] }}
+            {% else %}
+              <em style="color:var(--muted)">No messages yet</em>
+            {% endif %}
+          </div>
+        </div>
+        <div class="mc-meta">
+          <span class="mc-time">
+            {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
+          </span>
+          {% if c.unread > 0 %}
+            <span class="mc-unread-num">{{ c.unread }}</span>
+          {% endif %}
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="mc-empty">
+    <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" fill="none" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    <div style="font-size:.9rem;font-weight:600;">No conversations yet</div>
+    <div style="font-size:.8rem;">Tap the compose button to start messaging</div>
+  </div>
+{% endif %}
+
+{# Compose FAB #}
+<button class="mc-compose-btn" onclick="openCompose()" aria-label="New message">
+  <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+</button>
+
+{# Compose sheet #}
+<div class="mc-sheet-overlay" id="composeOverlay" onclick="if(event.target===this)closeCompose()">
+  <div class="mc-sheet" id="composeSheet">
+    <div class="mc-sheet-handle"></div>
+    <div class="mc-sheet-title">New Message</div>
+    <form class="mc-sheet-body" method="post" action="{{ url_for('m_messages_new') }}">
+      <label class="mc-sheet-label" for="cs_recipient">To</label>
+      <select class="mc-sheet-select" id="cs_recipient" name="recipient_id" required>
+        <option value="">— Select person —</option>
+        {% for u in users %}
+          <option value="{{ u.id }}">{{ u.full_name }}</option>
+        {% endfor %}
+      </select>
+
+      <label class="mc-sheet-label" for="cs_job">Link to Job (optional)</label>
+      <input class="mc-sheet-input" type="text" id="cs_job" name="_job_search"
+             placeholder="Type job number…" autocomplete="off"
+             oninput="mFilterJobs(this.value)">
+      <input type="hidden" id="cs_job_id" name="job_id">
+      <div id="cs_job_results" style="display:none;background:#fff;border:1px solid var(--line);border-radius:8px;max-height:110px;overflow-y:auto;margin-top:4px;"></div>
+
+      <label class="mc-sheet-label" for="cs_body">Message</label>
+      <textarea class="mc-sheet-textarea" id="cs_body" name="body" placeholder="Write your message…" required></textarea>
+
+      <button type="submit" class="mc-sheet-send">Send Message</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openCompose() {
+  document.getElementById('composeOverlay').classList.add('open');
+  setTimeout(function(){ document.getElementById('cs_recipient').focus(); }, 200);
+}
+function closeCompose() {
+  document.getElementById('composeOverlay').classList.remove('open');
+}
+
+var _mjTimer = null;
+function mFilterJobs(val) {
+  clearTimeout(_mjTimer);
+  var res = document.getElementById('cs_job_results');
+  var hid = document.getElementById('cs_job_id');
+  if(!val.trim()){ res.style.display='none'; hid.value=''; return; }
+  _mjTimer = setTimeout(function(){
+    fetch('/api/jobs/search?q='+encodeURIComponent(val))
+      .then(function(r){ return r.json(); })
+      .then(function(jobs){
+        if(!jobs.length){ res.style.display='none'; return; }
+        res.innerHTML='';
+        jobs.forEach(function(j){
+          var div=document.createElement('div');
+          div.style.cssText='padding:8px 12px;cursor:pointer;font-size:.85rem;border-bottom:1px solid var(--line)';
+          div.textContent=j.display_ref+(j.customer_label?' — '+j.customer_label:'');
+          div.ontouchstart=function(){
+            document.getElementById('cs_job').value=j.display_ref;
+            hid.value=j.id;
+            res.style.display='none';
+          };
+          res.appendChild(div);
+        });
+        res.style.display='block';
+      }).catch(function(){});
+  }, 300);
+}
+</script>
+{% endblock %}

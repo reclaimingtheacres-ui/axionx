@@ -1,0 +1,256 @@
+{% extends "layout.html" %}
+{% block title %}Messages — Axionx{% endblock %}
+{% block page_title %}Messages{% endblock %}
+
+{% block content %}
+<style>
+  .msg-shell {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    height: calc(100vh - 57px);
+    overflow: hidden;
+  }
+  .msg-sidebar {
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+  }
+  .msg-sidebar-head {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .msg-sidebar-title {
+    font-size: .82rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .msg-new-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: .78rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .msg-new-btn:hover { opacity: .88; }
+  .msg-conv-list {
+    flex: 1;
+    overflow-y: auto;
+  }
+  .msg-conv-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: var(--text);
+    transition: background .1s;
+    cursor: pointer;
+  }
+  .msg-conv-item:hover { background: var(--panel2); }
+  .msg-conv-item.active { background: #eff6ff; border-left: 3px solid var(--accent); padding-left: 13px; }
+  .msg-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .78rem; font-weight: 800;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+  .msg-conv-body { flex: 1; min-width: 0; }
+  .msg-conv-name {
+    font-size: .85rem; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .msg-conv-preview {
+    font-size: .78rem; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 1px;
+  }
+  .msg-conv-meta {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    flex-shrink: 0;
+  }
+  .msg-conv-time { font-size: .72rem; color: var(--muted); }
+  .msg-unread-badge {
+    background: var(--accent); color: #fff;
+    font-size: .65rem; font-weight: 800;
+    border-radius: 10px; padding: 1px 6px;
+    min-width: 18px; text-align: center;
+  }
+  .msg-job-tag {
+    font-size: .65rem; font-weight: 700;
+    background: #fef3c7; color: #92400e;
+    border-radius: 4px; padding: 1px 5px;
+    margin-left: 4px;
+  }
+  .msg-main {
+    display: flex; align-items: center; justify-content: center;
+    background: var(--panel2);
+    color: var(--muted);
+    font-size: .9rem;
+    text-align: center;
+  }
+
+  /* New message modal */
+  .msg-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.4); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .msg-modal-overlay.open { display: flex; }
+  .msg-modal {
+    background: #fff; border-radius: 14px;
+    padding: 24px; width: 100%; max-width: 440px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.18);
+  }
+  .msg-modal-title { font-size: 1rem; font-weight: 800; margin-bottom: 16px; }
+  .msg-modal label { font-size: .8rem; font-weight: 700; color: var(--muted); display: block; margin-bottom: 5px; margin-top: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .msg-modal select, .msg-modal textarea, .msg-modal input {
+    width: 100%; box-sizing: border-box;
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; font-size: .88rem; outline: none;
+    background: var(--panel2);
+  }
+  .msg-modal select:focus, .msg-modal textarea:focus { border-color: var(--accent); background: #fff; }
+  .msg-modal textarea { resize: vertical; min-height: 80px; }
+  .msg-modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .msg-modal-send { flex: 1; background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px; font-size: .88rem; font-weight: 700; cursor: pointer; }
+  .msg-modal-cancel { background: var(--panel2); color: var(--muted); border: none; border-radius: 8px; padding: 10px 16px; font-size: .88rem; font-weight: 700; cursor: pointer; }
+</style>
+
+<div class="msg-shell">
+  {# Sidebar: conversation list #}
+  <div class="msg-sidebar">
+    <div class="msg-sidebar-head">
+      <span class="msg-sidebar-title">Conversations</span>
+      <button class="msg-new-btn" onclick="openNewMsg()">+ New</button>
+    </div>
+    <div class="msg-conv-list">
+      {% if convs %}
+        {% for c in convs %}
+          {% set other_name = c.others[0].full_name if c.others else 'Unknown' %}
+          {% set initials = (other_name.split()[0][0] + (other_name.split()[-1][0] if other_name.split()|length > 1 else ''))|upper %}
+          <a href="{{ url_for('message_thread', conv_id=c.id) }}" class="msg-conv-item">
+            <div class="msg-avatar">{{ initials }}</div>
+            <div class="msg-conv-body">
+              <div class="msg-conv-name">
+                {{ other_name }}{% if c.type == 'job' and c.job_ref %}<span class="msg-job-tag">{{ c.job_ref }}</span>{% endif %}
+              </div>
+              <div class="msg-conv-preview">
+                {% if c.last_msg %}{{ c.last_msg.body[:60] }}{% else %}<em>No messages yet</em>{% endif %}
+              </div>
+            </div>
+            <div class="msg-conv-meta">
+              <span class="msg-conv-time">
+                {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
+              </span>
+              {% if c.unread > 0 %}<span class="msg-unread-badge">{{ c.unread }}</span>{% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      {% else %}
+        <div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:.88rem;">
+          No conversations yet.<br>
+          <span style="font-size:.8rem;">Use <strong>+ New</strong> to start messaging.</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Right panel: empty state #}
+  <div class="msg-main">
+    <div>
+      <svg viewBox="0 0 24 24" width="40" height="40" stroke="currentColor" fill="none" stroke-width="1.5" style="opacity:.25;display:block;margin:0 auto 12px"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      Select a conversation or start a new one
+    </div>
+  </div>
+</div>
+
+{# New message modal #}
+<div class="msg-modal-overlay" id="newMsgModal" onclick="if(event.target===this)closeNewMsg()">
+  <div class="msg-modal">
+    <div class="msg-modal-title">New Message</div>
+    <form method="post" action="{{ url_for('messages_new') }}">
+      <label for="nm_recipient">To</label>
+      <select id="nm_recipient" name="recipient_id" required>
+        <option value="">— Select person —</option>
+        {% for u in users %}
+          <option value="{{ u.id }}">{{ u.full_name }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="nm_job">Link to Job (optional)</label>
+      <input type="text" id="nm_job_display" placeholder="Type job number to link…" autocomplete="off"
+             oninput="filterJobs(this.value)">
+      <input type="hidden" id="nm_job_id" name="job_id">
+      <div id="nm_job_results" style="display:none;background:#fff;border:1px solid var(--line);border-radius:6px;max-height:120px;overflow-y:auto;margin-top:2px;"></div>
+
+      <label for="nm_body">Message</label>
+      <textarea id="nm_body" name="body" placeholder="Write your message…" required></textarea>
+
+      <div class="msg-modal-actions">
+        <button type="button" class="msg-modal-cancel" onclick="closeNewMsg()">Cancel</button>
+        <button type="submit" class="msg-modal-send">Send Message</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openNewMsg() {
+  document.getElementById('newMsgModal').classList.add('open');
+  setTimeout(function(){ document.getElementById('nm_recipient').focus(); }, 100);
+}
+function closeNewMsg() {
+  document.getElementById('newMsgModal').classList.remove('open');
+}
+
+var _jobTimer = null;
+function filterJobs(val) {
+  clearTimeout(_jobTimer);
+  var res = document.getElementById('nm_job_results');
+  var hidden = document.getElementById('nm_job_id');
+  if (!val.trim()) { res.style.display = 'none'; hidden.value = ''; return; }
+  _jobTimer = setTimeout(function() {
+    fetch('/api/jobs/search?q=' + encodeURIComponent(val))
+      .then(function(r){ return r.json(); })
+      .then(function(jobs){
+        if (!jobs.length) { res.style.display = 'none'; return; }
+        res.innerHTML = '';
+        jobs.forEach(function(j) {
+          var div = document.createElement('div');
+          div.style.cssText = 'padding:6px 10px;cursor:pointer;font-size:.82rem;border-bottom:1px solid var(--line)';
+          div.textContent = j.display_ref + (j.customer_label ? ' — ' + j.customer_label : '');
+          div.onmousedown = function() {
+            document.getElementById('nm_job_display').value = j.display_ref;
+            hidden.value = j.id;
+            res.style.display = 'none';
+          };
+          res.appendChild(div);
+        });
+        res.style.display = 'block';
+      })
+      .catch(function(){});
+  }, 250);
+}
+document.addEventListener('click', function(e) {
+  var res = document.getElementById('nm_job_results');
+  if (res && !res.contains(e.target)) res.style.display = 'none';
+});
+</script>
+{% endblock %}

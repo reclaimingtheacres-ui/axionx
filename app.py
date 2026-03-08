@@ -2116,6 +2116,31 @@ def jobs_list():
     return render_template("jobs.html", jobs=rows, statuses=statuses, status=status, q=q, sort=sort)
 
 
+@app.get("/api/jobs/search")
+@login_required
+def api_jobs_search():
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f"%{q}%"
+    conn = db()
+    rows = conn.execute("""
+        SELECT j.id, j.display_ref,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE j.display_ref LIKE ?
+           OR j.client_reference LIKE ?
+           OR j.client_job_number LIKE ?
+           OR cu.last_name LIKE ?
+           OR cu.company LIKE ?
+        ORDER BY j.created_at DESC
+        LIMIT 12
+    """, (like, like, like, like, like)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
 @app.get("/jobs/search-reference")
 @admin_required
 def jobs_search_reference():
@@ -2724,7 +2749,10 @@ def job_detail(job_id: int):
     cur.execute("""
         SELECT jc.id AS jc_id, jc.role, jc.sort_order,
                cu.id AS customer_id, cu.first_name, cu.last_name, cu.company,
-               cu.email, cu.address
+               cu.email, cu.address,
+               (SELECT cpn.phone_number FROM contact_phone_numbers cpn
+                WHERE cpn.customer_id = cu.id
+                ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS primary_phone
         FROM job_customers jc
         JOIN customers cu ON cu.id = jc.customer_id
         WHERE jc.job_id = ?
@@ -13786,6 +13814,401 @@ def admin_lpr_automation_resume_scope():
             {"scope_key": scope_key},
         )
     return jsonify({"ok": True, "resumed": resumed > 0}), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Internal Messaging System
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _ensure_msg_tables(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            type       TEXT    NOT NULL DEFAULT 'direct',
+            job_id     INTEGER,
+            subject    TEXT,
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL,
+            FOREIGN KEY(job_id) REFERENCES jobs(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_participants (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            user_id         INTEGER NOT NULL,
+            joined_at       TEXT    NOT NULL,
+            UNIQUE(conversation_id, user_id),
+            FOREIGN KEY(conversation_id) REFERENCES conversations(id),
+            FOREIGN KEY(user_id)         REFERENCES users(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            sender_id       INTEGER NOT NULL,
+            body            TEXT    NOT NULL,
+            created_at      TEXT    NOT NULL,
+            is_deleted      INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY(conversation_id) REFERENCES conversations(id),
+            FOREIGN KEY(sender_id)       REFERENCES users(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS message_reads (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            read_at    TEXT    NOT NULL,
+            UNIQUE(message_id, user_id),
+            FOREIGN KEY(message_id) REFERENCES messages(id),
+            FOREIGN KEY(user_id)    REFERENCES users(id)
+        )
+    """)
+    conn.commit()
+
+
+def _get_or_create_direct_conv(conn, uid_a, uid_b, job_id=None):
+    """Return (conv_id, created) for a direct conversation between two users.
+    If job_id is provided, look for a job-linked conversation involving both."""
+    conv_type = 'job' if job_id else 'direct'
+    if job_id:
+        row = conn.execute("""
+            SELECT c.id FROM conversations c
+            JOIN conversation_participants pa ON pa.conversation_id = c.id AND pa.user_id = ?
+            JOIN conversation_participants pb ON pb.conversation_id = c.id AND pb.user_id = ?
+            WHERE c.type = 'job' AND c.job_id = ?
+            LIMIT 1
+        """, (uid_a, uid_b, job_id)).fetchone()
+    else:
+        row = conn.execute("""
+            SELECT c.id FROM conversations c
+            JOIN conversation_participants pa ON pa.conversation_id = c.id AND pa.user_id = ?
+            JOIN conversation_participants pb ON pb.conversation_id = c.id AND pb.user_id = ?
+            WHERE c.type = 'direct'
+            AND (SELECT COUNT(*) FROM conversation_participants cp WHERE cp.conversation_id = c.id) = 2
+            LIMIT 1
+        """, (uid_a, uid_b)).fetchone()
+    if row:
+        return row["id"], False
+    ts = now_ts()
+    cur = conn.execute(
+        "INSERT INTO conversations (type, job_id, created_at, updated_at) VALUES (?,?,?,?)",
+        (conv_type, job_id, ts, ts)
+    )
+    conv_id = cur.lastrowid
+    conn.execute("INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)", (conv_id, uid_a, ts))
+    conn.execute("INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)", (conv_id, uid_b, ts))
+    conn.commit()
+    return conv_id, True
+
+
+def _get_unread_count(conn, user_id):
+    row = conn.execute("""
+        SELECT COUNT(*) c
+        FROM messages m
+        JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = ?
+        WHERE m.sender_id != ?
+          AND m.is_deleted = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM message_reads mr WHERE mr.message_id = m.id AND mr.user_id = ?
+          )
+    """, (user_id, user_id, user_id)).fetchone()
+    return row["c"] if row else 0
+
+
+def _get_conv_list(conn, user_id):
+    """Return list of conversations for a user with last message + unread count."""
+    rows = conn.execute("""
+        SELECT c.id, c.type, c.job_id, c.subject, c.updated_at,
+               j.display_ref AS job_ref
+        FROM conversations c
+        JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = ?
+        LEFT JOIN jobs j ON j.id = c.job_id
+        ORDER BY c.updated_at DESC
+    """, (user_id,)).fetchall()
+
+    result = []
+    for conv in rows:
+        cid = conv["id"]
+        # Last message
+        last_msg = conn.execute("""
+            SELECT m.body, m.created_at, u.full_name sender_name
+            FROM messages m JOIN users u ON u.id = m.sender_id
+            WHERE m.conversation_id = ? AND m.is_deleted = 0
+            ORDER BY m.created_at DESC LIMIT 1
+        """, (cid,)).fetchone()
+        # Unread count
+        unread = conn.execute("""
+            SELECT COUNT(*) c FROM messages m
+            WHERE m.conversation_id = ? AND m.sender_id != ? AND m.is_deleted = 0
+              AND NOT EXISTS (SELECT 1 FROM message_reads mr WHERE mr.message_id=m.id AND mr.user_id=?)
+        """, (cid, user_id, user_id)).fetchone()["c"]
+        # Other participants
+        others = conn.execute("""
+            SELECT u.id, u.full_name FROM conversation_participants cp
+            JOIN users u ON u.id = cp.user_id
+            WHERE cp.conversation_id = ? AND cp.user_id != ?
+        """, (cid, user_id)).fetchall()
+        result.append({
+            "id": cid, "type": conv["type"], "job_id": conv["job_id"],
+            "job_ref": conv["job_ref"], "subject": conv["subject"],
+            "updated_at": conv["updated_at"],
+            "last_msg": dict(last_msg) if last_msg else None,
+            "unread": unread,
+            "others": [dict(o) for o in others],
+        })
+    return result
+
+
+def _mark_conv_read(conn, conv_id, user_id):
+    ts = now_ts()
+    unread_msgs = conn.execute("""
+        SELECT m.id FROM messages m
+        WHERE m.conversation_id = ? AND m.sender_id != ? AND m.is_deleted = 0
+          AND NOT EXISTS (SELECT 1 FROM message_reads mr WHERE mr.message_id=m.id AND mr.user_id=?)
+    """, (conv_id, user_id, user_id)).fetchall()
+    for msg in unread_msgs:
+        try:
+            conn.execute("INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at) VALUES (?,?,?)",
+                         (msg["id"], user_id, ts))
+        except Exception:
+            pass
+    conn.commit()
+
+
+def _post_message(conn, conv_id, sender_id, body):
+    ts = now_ts()
+    cur = conn.execute(
+        "INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?,?,?,?)",
+        (conv_id, sender_id, body.strip(), ts)
+    )
+    msg_id = cur.lastrowid
+    conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (ts, conv_id))
+    # Mark as read for sender
+    conn.execute("INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at) VALUES (?,?,?)",
+                 (msg_id, sender_id, ts))
+    conn.commit()
+    return msg_id
+
+
+# ── Unread count API (shared desktop + mobile) ────────────────────────────────
+
+@app.get("/api/messages/unread-count")
+@login_required
+def api_messages_unread_count():
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    count = _get_unread_count(conn, uid)
+    conn.close()
+    return jsonify({"count": count})
+
+
+# ── Desktop messaging routes ──────────────────────────────────────────────────
+
+@app.get("/messages")
+@login_required
+def messages_list():
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    convs = _get_conv_list(conn, uid)
+    users = conn.execute(
+        "SELECT id, full_name FROM users WHERE active=1 AND id != ? ORDER BY full_name",
+        (uid,)
+    ).fetchall()
+    conn.close()
+    return render_template("messages.html", convs=convs, users=users)
+
+
+@app.get("/messages/<int:conv_id>")
+@login_required
+def message_thread(conv_id):
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    # Verify participant
+    part = conn.execute(
+        "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+        (conv_id, uid)
+    ).fetchone()
+    if not part:
+        conn.close()
+        flash("Conversation not found.", "warning")
+        return redirect(url_for("messages_list"))
+    # Mark read
+    _mark_conv_read(conn, conv_id, uid)
+    # Conversation meta
+    conv = conn.execute("""
+        SELECT c.*, j.display_ref job_ref, j.id as jid
+        FROM conversations c LEFT JOIN jobs j ON j.id = c.job_id
+        WHERE c.id=?
+    """, (conv_id,)).fetchone()
+    # Messages
+    msgs = conn.execute("""
+        SELECT m.*, u.full_name sender_name
+        FROM messages m JOIN users u ON u.id = m.sender_id
+        WHERE m.conversation_id=? AND m.is_deleted=0
+        ORDER BY m.created_at ASC
+    """, (conv_id,)).fetchall()
+    # Participants
+    participants = conn.execute("""
+        SELECT u.id, u.full_name FROM conversation_participants cp
+        JOIN users u ON u.id = cp.user_id
+        WHERE cp.conversation_id=?
+    """, (conv_id,)).fetchall()
+    # Full conv list for sidebar
+    convs = _get_conv_list(conn, uid)
+    users = conn.execute(
+        "SELECT id, full_name FROM users WHERE active=1 AND id != ? ORDER BY full_name",
+        (uid,)
+    ).fetchall()
+    conn.close()
+    return render_template("message_thread.html",
+                           conv=conv, msgs=msgs, participants=participants,
+                           convs=convs, users=users, conv_id=conv_id)
+
+
+@app.post("/messages/new")
+@login_required
+def messages_new():
+    uid = session.get("user_id")
+    recipient_id = request.form.get("recipient_id", type=int)
+    body = (request.form.get("body") or "").strip()
+    job_id = request.form.get("job_id", type=int) or None
+
+    if not recipient_id or not body:
+        flash("Recipient and message are required.", "warning")
+        return redirect(url_for("messages_list"))
+
+    conn = db()
+    _ensure_msg_tables(conn)
+    conv_id, _ = _get_or_create_direct_conv(conn, uid, recipient_id, job_id=job_id)
+    _post_message(conn, conv_id, uid, body)
+    conn.close()
+    return redirect(url_for("message_thread", conv_id=conv_id))
+
+
+@app.post("/messages/<int:conv_id>/reply")
+@login_required
+def messages_reply(conv_id):
+    uid = session.get("user_id")
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        return redirect(url_for("message_thread", conv_id=conv_id))
+    conn = db()
+    _ensure_msg_tables(conn)
+    part = conn.execute(
+        "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+        (conv_id, uid)
+    ).fetchone()
+    if part:
+        _post_message(conn, conv_id, uid, body)
+    conn.close()
+    return redirect(url_for("message_thread", conv_id=conv_id))
+
+
+@app.post("/messages/<int:conv_id>/read")
+@login_required
+def messages_mark_read(conv_id):
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    _mark_conv_read(conn, conv_id, uid)
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ── Mobile messaging routes ────────────────────────────────────────────────────
+
+@app.get("/m/messages")
+@mobile_login_required
+def m_messages_list():
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    convs = _get_conv_list(conn, uid)
+    users = conn.execute(
+        "SELECT id, full_name FROM users WHERE active=1 AND id != ? ORDER BY full_name",
+        (uid,)
+    ).fetchall()
+    conn.close()
+    return render_template("mobile/messages.html", convs=convs, users=users)
+
+
+@app.get("/m/messages/<int:conv_id>")
+@mobile_login_required
+def m_message_thread(conv_id):
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    part = conn.execute(
+        "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+        (conv_id, uid)
+    ).fetchone()
+    if not part:
+        conn.close()
+        return redirect(url_for("m_messages_list"))
+    _mark_conv_read(conn, conv_id, uid)
+    conv = conn.execute("""
+        SELECT c.*, j.display_ref job_ref
+        FROM conversations c LEFT JOIN jobs j ON j.id = c.job_id
+        WHERE c.id=?
+    """, (conv_id,)).fetchone()
+    msgs = conn.execute("""
+        SELECT m.*, u.full_name sender_name
+        FROM messages m JOIN users u ON u.id = m.sender_id
+        WHERE m.conversation_id=? AND m.is_deleted=0
+        ORDER BY m.created_at ASC
+    """, (conv_id,)).fetchall()
+    participants = conn.execute("""
+        SELECT u.id, u.full_name FROM conversation_participants cp
+        JOIN users u ON u.id = cp.user_id WHERE cp.conversation_id=?
+    """, (conv_id,)).fetchall()
+    conn.close()
+    return render_template("mobile/message_thread.html",
+                           conv=conv, msgs=msgs, participants=participants,
+                           conv_id=conv_id)
+
+
+@app.post("/m/messages/new")
+@mobile_login_required
+def m_messages_new():
+    uid = session.get("user_id")
+    recipient_id = request.form.get("recipient_id", type=int)
+    body = (request.form.get("body") or "").strip()
+    job_id = request.form.get("job_id", type=int) or None
+
+    if not recipient_id or not body:
+        return redirect(url_for("m_messages_list"))
+
+    conn = db()
+    _ensure_msg_tables(conn)
+    conv_id, _ = _get_or_create_direct_conv(conn, uid, recipient_id, job_id=job_id)
+    _post_message(conn, conv_id, uid, body)
+    conn.close()
+    return redirect(url_for("m_message_thread", conv_id=conv_id))
+
+
+@app.post("/m/messages/<int:conv_id>/reply")
+@mobile_login_required
+def m_messages_reply(conv_id):
+    uid = session.get("user_id")
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        return redirect(url_for("m_message_thread", conv_id=conv_id))
+    conn = db()
+    _ensure_msg_tables(conn)
+    part = conn.execute(
+        "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+        (conv_id, uid)
+    ).fetchone()
+    if part:
+        _post_message(conn, conv_id, uid, body)
+    conn.close()
+    return redirect(url_for("m_message_thread", conv_id=conv_id))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

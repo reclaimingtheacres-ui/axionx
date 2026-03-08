@@ -24,8 +24,11 @@
           <div class="small" style="color:var(--muted)">Phone Numbers</div>
           {% if phones %}
             {% for p in phones %}
-              <div><span class="small" style="color:var(--muted)">{{ p.label }}:</span>
-                <a href="tel:{{ p.phone_number }}" style="color:var(--accent)">{{ p.phone_number }}</a>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
+                <span class="small" style="color:var(--muted)">{{ p.label }}:</span>
+                <span style="font-weight:600">{{ p.phone_number }}</span>
+                <a href="tel:{{ p.phone_number }}" style="display:inline-flex;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:5px;padding:1px 7px;text-decoration:none">&#9742; Call</a>
+                <a href="sms:{{ p.phone_number }}" style="display:inline-flex;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#fff;background:var(--accent);border-radius:5px;padding:1px 7px;text-decoration:none">&#128172; SMS</a>
               </div>
             {% endfor %}
           {% else %}
