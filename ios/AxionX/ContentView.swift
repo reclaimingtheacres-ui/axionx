@@ -1,44 +1,71 @@
 import SwiftUI
+import WebKit
 
-/// Root view. Controls the splash → main transition and
-/// surfaces connectivity state from ConnectivityMonitor.
+/// Root view.
+/// On first launch: checks for an existing session cookie (nearly instant) while
+/// showing the same AxionX branding as the LaunchScreen, then either skips
+/// straight to the WebView (returning user) or presents the native LoginView.
 struct ContentView: View {
 
-    @StateObject private var connectivity = ConnectivityMonitor()
-    @State private var splashDone = false
+    // MARK: - State
+
+    private enum AuthState { case checking, unauthenticated, authenticated }
+
+    @State private var authState: AuthState = .checking
+
+    // MARK: - Body
 
     var body: some View {
         ZStack {
             Color.white.ignoresSafeArea()
 
-            if !splashDone {
-                // Native splash shown while WebView boots
-                SplashView()
+            switch authState {
+
+            case .checking:
+                // Shown while the session cookie check runs (< 100 ms).
+                // Identical to LaunchScreen so the user sees no visual break.
+                brandingView
                     .transition(.opacity)
 
-            } else if !connectivity.isConnected {
-                // Network unreachable before the first load attempt
-                OfflineView {
-                    // Connectivity monitor will flip isConnected automatically
-                    // when the network returns; this closure just forces a re-check
-                }
+            case .unauthenticated:
+                LoginView(onLoginSuccess: {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        authState = .authenticated
+                    }
+                })
                 .transition(.opacity)
 
-            } else {
-                // Main content — WebViewContainer manages its own offline overlay
-                // for errors that happen after the initial connectivity check
+            case .authenticated:
                 WebViewContainer()
                     .transition(.opacity)
             }
         }
         .preferredColorScheme(.light)
-        .onAppear {
-            // Dismiss splash after a short delay to let the WebView start loading
-            DispatchQueue.main.asyncAfter(deadline: .now() + AppConfig.splashDelay) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    splashDone = true
+        .task {
+            let hasSession = await LoginService.hasValidSession()
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    authState = hasSession ? .authenticated : .unauthenticated
                 }
             }
+        }
+    }
+
+    // MARK: - Branding (matches LaunchScreen.storyboard exactly)
+
+    private var brandingView: some View {
+        ZStack {
+            Color.white.ignoresSafeArea()
+            VStack(spacing: 4) {
+                Text("AxionX")
+                    .font(.system(size: 42, weight: .bold, design: .default))
+                    .foregroundColor(Color(red: 0.149, green: 0.388, blue: 0.922))
+                    .tracking(-0.5)
+                Text("Field Operations")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundColor(Color(red: 0.424, green: 0.443, blue: 0.502))
+            }
+            .offset(y: -20)
         }
     }
 }

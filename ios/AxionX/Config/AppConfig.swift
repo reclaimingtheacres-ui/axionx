@@ -15,7 +15,7 @@ enum AppConfig {
     #endif
 
     // ── Entry point ─────────────────────────────────────────────────────────
-    static let mobileEntryPath = "/m/login"
+    static let mobileEntryPath = "/m/schedule/today"
 
     static var entryURL: URL {
         guard let url = URL(string: currentBaseURL + mobileEntryPath) else {
