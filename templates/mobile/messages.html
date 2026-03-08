@@ -34,17 +34,15 @@
   }
   .mc-empty svg { opacity:.2; }
 
-  /* Compose button */
-  .mc-compose-btn {
-    position:fixed;bottom:calc(var(--nav-h) + var(--safe-bot) + 16px);right:16px;
-    width:52px;height:52px;border-radius:50%;background:var(--accent);
-    color:#fff;border:none;font-size:1.4rem;font-weight:300;
+  /* Compose button — in header */
+  .mc-compose-btn-header {
+    width:38px;height:38px;border-radius:10px;
+    background:var(--accent);color:#fff;border:none;
     display:flex;align-items:center;justify-content:center;
-    box-shadow:0 4px 16px rgba(37,99,235,.45);
-    cursor:pointer;z-index:200;
-    -webkit-tap-highlight-color:transparent;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
+    flex-shrink:0;
   }
-  .mc-compose-btn:active { opacity:.85; transform:scale(.96); }
+  .mc-compose-btn-header:active { opacity:.8; transform:scale(.94); }
 
   /* Compose sheet */
   .mc-sheet-overlay {
@@ -80,10 +78,18 @@
 </style>
 {% endblock %}
 
+{% block header_title %}Messages{% endblock %}
+{% block header_right %}
+<button class="mc-compose-btn-header" onclick="openCompose()" aria-label="New message">
+  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.2"
+       stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 20h9"/>
+    <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+  </svg>
+</button>
+{% endblock %}
+
 {% block content %}
-<div style="background:#fff;padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;">
-  <span style="font-size:.78rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);">Messages</span>
-</div>
 
 {% if convs %}
   <div class="mc-list">
@@ -120,14 +126,9 @@
   <div class="mc-empty">
     <svg viewBox="0 0 24 24" width="52" height="52" stroke="currentColor" fill="none" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
     <div style="font-size:.9rem;font-weight:600;">No conversations yet</div>
-    <div style="font-size:.8rem;">Tap the compose button to start messaging</div>
+    <div style="font-size:.8rem;">Tap the compose button in the top right to start messaging</div>
   </div>
 {% endif %}
-
-{# Compose FAB #}
-<button class="mc-compose-btn" onclick="openCompose()" aria-label="New message">
-  <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-</button>
 
 {# Compose sheet #}
 <div class="mc-sheet-overlay" id="composeOverlay" onclick="if(event.target===this)closeCompose()">
