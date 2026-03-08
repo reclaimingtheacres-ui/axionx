@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify, Response, abort, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, send_file, jsonify, Response, abort, make_response
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -701,6 +701,8 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "user_mobile_settings", "quick_status",           "TEXT NOT NULL DEFAULT ''")
     add_column_if_missing(cur, "user_mobile_settings", "mobile_default_view",    "TEXT NOT NULL DEFAULT 'schedule'")
     add_column_if_missing(cur, "user_mobile_settings", "show_status_on_visits",  "INTEGER NOT NULL DEFAULT 1")
+    add_column_if_missing(cur, "job_field_notes",       "note_type",             "TEXT NOT NULL DEFAULT 'text'")
+    add_column_if_missing(cur, "job_field_notes",       "audio_filename",        "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS repo_lock_records (
@@ -8251,12 +8253,14 @@ def m_job_detail(job_id):
     bill_client = conn.execute("SELECT * FROM clients WHERE id=?", (_bill_to_id,)).fetchone() if _bill_to_id else None
     assets      = conn.execute("SELECT * FROM job_items WHERE job_id=? ORDER BY id", (job_id,)).fetchall()
     notes       = conn.execute("""
-        SELECT jfn.*, u.full_name AS agent_name
+        SELECT jfn.*, u.full_name AS agent_name,
+               jnf.id AS photo_file_id, jnf.filename AS photo_filename
         FROM job_field_notes jfn
         LEFT JOIN users u ON u.id = jfn.created_by_user_id
+        LEFT JOIN job_note_files jnf ON jnf.job_field_note_id = jfn.id
         WHERE jfn.job_id=?
         ORDER BY jfn.created_at DESC
-        LIMIT 5
+        LIMIT 30
     """, (job_id,)).fetchall()
 
     has_draft = bool(conn.execute(
@@ -8342,6 +8346,113 @@ def m_update_builder(job_id):
                            asset_reg=asset_reg,
                            now_date=mel_now.strftime("%Y-%m-%d"),
                            now_time=mel_now.strftime("%H:%M"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quick Field Note — text / audio / photo (inline, no page reload)
+# ─────────────────────────────────────────────────────────────────────────────
+_NOTE_AUDIO_DIR = os.path.join("uploads", "notes", "audio")
+_NOTE_PHOTO_DIR = os.path.join("uploads", "notes", "photos")
+
+@app.post("/m/job/<int:job_id>/quick-note")
+@mobile_login_required
+def m_quick_note_save(job_id):
+    uid      = session.get("user_id")
+    username = session.get("user_name", "Unknown")
+    conn = db()
+    job = conn.execute("SELECT id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found"}), 404
+
+    note_text  = (request.form.get("note_text") or "").strip() or None
+    audio_file = request.files.get("audio_file")
+    photo_file = request.files.get("photo_file")
+
+    audio_filename = None
+    if audio_file and audio_file.filename:
+        ct  = (audio_file.content_type or "").lower()
+        ext = ".webm" if "webm" in ct else ".m4a" if ("mp4" in ct or "m4a" in ct) else ".ogg" if "ogg" in ct else ".wav"
+        audio_filename = f"{uuid.uuid4().hex}{ext}"
+        os.makedirs(_NOTE_AUDIO_DIR, exist_ok=True)
+        audio_file.save(os.path.join(_NOTE_AUDIO_DIR, audio_filename))
+
+    has_text  = note_text is not None
+    has_audio = bool(audio_filename)
+    has_photo = bool(photo_file and photo_file.filename)
+
+    if has_audio and has_text:       note_type = "audio_text"
+    elif has_audio:                  note_type = "audio"
+    elif has_photo and has_text:     note_type = "photo_text"
+    elif has_photo:                  note_type = "photo"
+    else:                            note_type = "text"
+
+    if not has_text and not has_audio and not has_photo:
+        conn.close()
+        return jsonify({"ok": False, "error": "Nothing to save"}), 400
+
+    ts  = now_ts()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at, note_type, audio_filename) VALUES (?,?,?,?,?,?)",
+        (job_id, uid, note_text, ts, note_type, audio_filename)
+    )
+    note_id = cur.lastrowid
+
+    photo_file_id = None
+    if has_photo:
+        safe_fn      = secure_filename(photo_file.filename or "photo.jpg")
+        photo_name   = f"{uuid.uuid4().hex}_{safe_fn}"
+        photo_path   = os.path.join(_NOTE_PHOTO_DIR, photo_name)
+        os.makedirs(_NOTE_PHOTO_DIR, exist_ok=True)
+        photo_file.save(photo_path)
+        cur.execute(
+            "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
+            (note_id, photo_name, photo_path, ts)
+        )
+        photo_file_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok":           True,
+        "note_id":      note_id,
+        "note_type":    note_type,
+        "created_at":   ts[:16].replace("T", " "),
+        "agent_name":   username,
+        "note_text":    note_text or "",
+        "audio_url":    f"/m/note-audio/{note_id}" if audio_filename else None,
+        "photo_url":    f"/m/note-photo/{photo_file_id}" if photo_file_id else None,
+    })
+
+
+@app.get("/m/note-audio/<int:note_id>")
+@mobile_login_required
+def m_note_audio(note_id):
+    conn = db()
+    note = conn.execute("SELECT audio_filename FROM job_field_notes WHERE id=?", (note_id,)).fetchone()
+    conn.close()
+    if not note or not note["audio_filename"]:
+        abort(404)
+    audio_path = os.path.join(_NOTE_AUDIO_DIR, note["audio_filename"])
+    if not os.path.exists(audio_path):
+        abort(404)
+    ext      = os.path.splitext(note["audio_filename"])[1].lower().lstrip(".")
+    mimetypes_map = {"webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "wav": "audio/wav"}
+    mimetype = mimetypes_map.get(ext, "audio/mpeg")
+    return send_file(audio_path, mimetype=mimetype)
+
+
+@app.get("/m/note-photo/<int:file_id>")
+@mobile_login_required
+def m_note_photo(file_id):
+    conn = db()
+    row = conn.execute("SELECT filepath FROM job_note_files WHERE id=?", (file_id,)).fetchone()
+    conn.close()
+    if not row or not os.path.exists(row["filepath"]):
+        abort(404)
+    return send_file(row["filepath"])
 
 
 @app.get("/m/tow-operators")
