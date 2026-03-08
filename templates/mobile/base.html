@@ -314,9 +314,12 @@ a { color: var(--accent); text-decoration: none; }
 {% endblock %}
 
 {% block lpr_fab %}
-{# ── LPR Floating Action Button — shown on all main screens ── #}
+{# ═══════════════════════════════════════════════════════
+   LPR Floating Action Button — persistent on all screens
+   ═══════════════════════════════════════════════════════ #}
 <button type="button" class="lpr-fab" id="lprFab" aria-label="LPR Quick Access" onclick="lprSheetOpen()">
-  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ffffff" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round">
     <rect x="2" y="7" width="20" height="14" rx="2"/>
     <path d="M16 3H8"/>
     <path d="M7 11h.01M17 11h.01"/>
@@ -324,86 +327,428 @@ a { color: var(--accent); text-decoration: none; }
   </svg>
 </button>
 
-{# ── LPR Action Sheet ── #}
+{# ── LPR Multi-step Sheet ── #}
 <div class="lpr-sheet-overlay" id="lprSheet" onclick="if(event.target===this)lprSheetClose()">
-  <div class="lpr-sheet" role="dialog" aria-label="LPR Actions">
+  <div class="lpr-sheet" role="dialog" aria-modal="true" aria-label="LPR Actions">
     <div class="lpr-sheet-handle"></div>
-    <div class="lpr-sheet-title">LPR — Plate Recognition</div>
-    <div class="lpr-action-grid">
 
-      <a href="{{ url_for('m_lpr_capture') }}?mode=live" class="lpr-action-btn">
-        <div class="lpr-action-icon" style="background:#eff6ff;">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M23 7l-7 5 7 5V7z"/>
-            <rect x="1" y="5" width="15" height="14" rx="2"/>
-          </svg>
-        </div>
-        <span class="lpr-action-label">Live Scan</span>
-        <span class="lpr-action-sub">Camera + OCR</span>
-      </a>
+    {# ── STEP 1: Action chooser ── #}
+    <div id="lprStep1">
+      <div class="lpr-sheet-title">LPR — Plate Recognition</div>
+      <div class="lpr-action-grid">
 
-      <a href="{{ url_for('m_lpr_capture') }}" class="lpr-action-btn">
-        <div class="lpr-action-icon" style="background:#f0fdf4;">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-            <circle cx="12" cy="13" r="4"/>
-          </svg>
-        </div>
-        <span class="lpr-action-label">Take Photo</span>
-        <span class="lpr-action-sub">Photo upload</span>
-      </a>
+        {# Live Scan: native bridge on iOS wrapper, camera-OCR on browser #}
+        <button type="button" class="lpr-action-btn" id="lprBtnLiveScan" onclick="lprLiveScan()">
+          <div class="lpr-action-icon" style="background:#eff6ff;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2563eb" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 4h4v4M1 20h4v-4M23 4h-4v4M23 20h-4v-4"/>
+              <rect x="7" y="7" width="10" height="10" rx="1"/>
+            </svg>
+          </div>
+          <span class="lpr-action-label">Live Scan</span>
+          <span class="lpr-action-sub" id="lprLiveScanSub">Camera OCR</span>
+        </button>
 
-      <a href="{{ url_for('m_lpr') }}" class="lpr-action-btn">
-        <div class="lpr-action-icon" style="background:#fffbeb;">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="17" y1="10" x2="3" y2="10"/>
-            <line x1="21" y1="6" x2="3" y2="6"/>
-            <line x1="21" y1="14" x2="3" y2="14"/>
-            <line x1="17" y1="18" x2="3" y2="18"/>
-          </svg>
-        </div>
-        <span class="lpr-action-label">Manual Entry</span>
-        <span class="lpr-action-sub">Type plate number</span>
-      </a>
+        {# Take Photo — navigates, stores return URL #}
+        <button type="button" class="lpr-action-btn" onclick="lprGoPhoto()">
+          <div class="lpr-action-icon" style="background:#f0fdf4;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#16a34a" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </div>
+          <span class="lpr-action-label">Take Photo</span>
+          <span class="lpr-action-sub">Camera scan</span>
+        </button>
 
-      <a href="{{ url_for('m_lpr_patrol') }}" class="lpr-action-btn">
-        <div class="lpr-action-icon" style="background:#fdf4ff;">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            <polyline points="9 12 11 14 15 10"/>
-          </svg>
-        </div>
-        <span class="lpr-action-label">Patrol Intel</span>
-        <span class="lpr-action-sub">AI predictions</span>
-      </a>
+        {# Manual Entry — inline, no navigation #}
+        <button type="button" class="lpr-action-btn" onclick="lprGoManual()">
+          <div class="lpr-action-icon" style="background:#fffbeb;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#d97706" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <line x1="17" y1="10" x2="3" y2="10"/>
+              <line x1="21" y1="6" x2="3" y2="6"/>
+              <line x1="21" y1="14" x2="3" y2="14"/>
+              <line x1="17" y1="18" x2="3" y2="18"/>
+            </svg>
+          </div>
+          <span class="lpr-action-label">Manual Entry</span>
+          <span class="lpr-action-sub">Type plate</span>
+        </button>
 
+        {# Patrol Intel — navigates #}
+        <a href="{{ url_for('m_lpr_patrol') }}" class="lpr-action-btn" onclick="lprStoreReturn()">
+          <div class="lpr-action-icon" style="background:#fdf4ff;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#9333ea" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <polyline points="9 12 11 14 15 10"/>
+            </svg>
+          </div>
+          <span class="lpr-action-label">Patrol Intel</span>
+          <span class="lpr-action-sub">AI predictions</span>
+        </a>
+
+      </div>
+      <button type="button" class="lpr-cancel-btn" onclick="lprSheetClose()">Cancel</button>
     </div>
-    <button type="button" class="lpr-cancel-btn" onclick="lprSheetClose()">Cancel</button>
+
+    {# ── STEP 2: Manual plate input ── #}
+    <div id="lprStep2" style="display:none;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <button type="button" onclick="lprGoStep(1)"
+                style="background:none;border:none;cursor:pointer;padding:2px;color:var(--muted);
+                       display:flex;align-items:center;-webkit-tap-highlight-color:transparent;">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style="font-weight:700;font-size:1rem;color:#111;">Enter Plate</div>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <input type="text" id="lprPlateInput"
+               placeholder="e.g. ABC123"
+               autocapitalize="characters" autocorrect="off" spellcheck="false"
+               inputmode="text"
+               style="display:block;width:100%;box-sizing:border-box;
+                      font-size:2rem;font-weight:800;letter-spacing:.12em;text-align:center;
+                      text-transform:uppercase;padding:16px 12px;
+                      border:2.5px solid var(--line);border-radius:12px;
+                      background:#f9fafb;color:var(--text);outline:none;-webkit-appearance:none;"
+               oninput="this.value=this.value.toUpperCase()"
+               onkeydown="if(event.key==='Enter')lprRunLookup()">
+      </div>
+      <button type="button" id="lprSearchBtn" onclick="lprRunLookup()"
+              style="width:100%;padding:14px;background:var(--accent);color:#fff;
+                     border:none;border-radius:12px;font-size:.95rem;font-weight:700;
+                     cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+                     -webkit-tap-highlight-color:transparent;">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Search Active Assets
+      </button>
+    </div>
+
+    {# ── STEP 3: Inline result ── #}
+    <div id="lprStep3" style="display:none;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <button type="button" onclick="lprGoStep(2)"
+                style="background:none;border:none;cursor:pointer;padding:2px;color:var(--muted);
+                       display:flex;align-items:center;-webkit-tap-highlight-color:transparent;">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style="font-weight:700;font-size:1rem;color:#111;" id="lprResultHeading">Result</div>
+        <span id="lprMethodBadge" style="margin-left:auto;font-size:.68rem;font-weight:700;
+              letter-spacing:.04em;padding:3px 9px;border-radius:8px;"></span>
+      </div>
+
+      {# Result body rendered by JS #}
+      <div id="lprResultBody" style="margin-bottom:12px;"></div>
+
+      {# Action row #}
+      <div id="lprResultActions" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+
+      <button type="button" onclick="lprSheetClose()"
+              style="width:100%;padding:13px;border:none;border-radius:12px;
+                     background:#f3f4f6;font-size:.9rem;font-weight:600;color:var(--muted);
+                     cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        Dismiss
+      </button>
+    </div>
+
   </div>
 </div>
 
 <script>
 (function(){
-  var overlay = document.getElementById('lprSheet');
-  var _rafId;
+'use strict';
 
-  window.lprSheetOpen = function(){
-    overlay.style.display = 'flex';
-    cancelAnimationFrame(_rafId);
-    _rafId = requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        overlay.classList.add('open');
-      });
+var overlay  = document.getElementById('lprSheet');
+var _rafId;
+var _lprCurrentResult = null;
+
+// ── Open / close ─────────────────────────────────────────
+window.lprSheetOpen = function() {
+  lprGoStep(1);
+  overlay.style.display = 'flex';
+  cancelAnimationFrame(_rafId);
+  _rafId = requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      overlay.classList.add('open');
     });
+  });
+};
+
+window.lprSheetClose = function() {
+  overlay.classList.remove('open');
+  overlay.addEventListener('transitionend', function handler(){
+    overlay.style.display = 'none';
+    overlay.removeEventListener('transitionend', handler);
+  }, { once: true });
+  _lprCurrentResult = null;
+};
+
+// ── Step navigation ──────────────────────────────────────
+window.lprGoStep = function(n) {
+  document.getElementById('lprStep1').style.display = n === 1 ? '' : 'none';
+  document.getElementById('lprStep2').style.display = n === 2 ? '' : 'none';
+  document.getElementById('lprStep3').style.display = n === 3 ? '' : 'none';
+  if (n === 2) {
+    var inp = document.getElementById('lprPlateInput');
+    inp.value = '';
+    setTimeout(function(){ inp.focus(); }, 80);
+  }
+};
+
+// ── Store return URL before navigating away ──────────────
+window.lprStoreReturn = function() {
+  try { sessionStorage.setItem('lprReturnUrl', window.location.href); } catch(e){}
+};
+
+// ── Live Scan: native bridge on iOS, camera-OCR on browser ─
+window.lprLiveScan = function() {
+  var isWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
+  if (isWrapper) {
+    lprSheetClose();
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.triggerLiveScan) {
+      window.webkit.messageHandlers.triggerLiveScan.postMessage({});
+    } else if (window.AxionXBridge && window.AxionXBridge.triggerLiveScan) {
+      window.AxionXBridge.triggerLiveScan();
+    }
+  } else {
+    lprStoreReturn();
+    window.location.href = '{{ url_for("m_lpr_capture") }}';
+  }
+};
+
+window.lprGoPhoto = function() {
+  lprStoreReturn();
+  window.location.href = '{{ url_for("m_lpr_capture") }}';
+};
+
+window.lprGoManual = function() {
+  lprGoStep(2);
+};
+
+// ── Native plate scan bridge (callable from iOS wrapper) ─
+window.handleNativePlateScan = function(plate, method) {
+  if (!plate) return;
+  var cleanPlate = plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  lprSheetOpen();
+  lprGoStep(2);
+  document.getElementById('lprPlateInput').value = cleanPlate;
+  lprRunLookupWith(cleanPlate, method || 'live_scan');
+};
+
+// ── Plate lookup ─────────────────────────────────────────
+window.lprRunLookup = function() {
+  var plate = (document.getElementById('lprPlateInput').value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (plate.length < 2) {
+    document.getElementById('lprPlateInput').style.borderColor = 'var(--red)';
+    setTimeout(function(){ document.getElementById('lprPlateInput').style.borderColor = 'var(--line)'; }, 2000);
+    return;
+  }
+  lprRunLookupWith(plate, 'manual');
+};
+
+function lprRunLookupWith(plate, method) {
+  var btn = document.getElementById('lprSearchBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
+
+  fetch('/m/api/lpr/lookup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ registration: plate, method: method || 'manual' })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    _lprCurrentResult = data;
+    _lprCurrentResult._search_method = method || 'manual';
+    lprGoStep(3);
+    lprRenderResult(data, method);
+  })
+  .catch(function(){
+    alert('Lookup failed. Please check your connection.');
+  })
+  .finally(function(){
+    if (btn) { btn.disabled = false; btn.textContent = 'Search Active Assets'; }
+  });
+}
+
+// ── Render result inline ─────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function lprRenderResult(r, method) {
+  var body    = document.getElementById('lprResultBody');
+  var actions = document.getElementById('lprResultActions');
+  var heading = document.getElementById('lprResultHeading');
+  var badge   = document.getElementById('lprMethodBadge');
+
+  // Method badge
+  if (method === 'live_scan') {
+    badge.textContent = '▣ Live Scan';
+    badge.style.cssText = 'margin-left:auto;font-size:.68rem;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:8px;background:#faf5ff;color:#7c3aed;';
+  } else if (method === 'photo_ocr') {
+    badge.textContent = '📷 Photo';
+    badge.style.cssText = 'margin-left:auto;font-size:.68rem;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:8px;background:#f0f9ff;color:#0284c7;';
+  } else {
+    badge.textContent = '✎ Manual';
+    badge.style.cssText = 'margin-left:auto;font-size:.68rem;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:8px;background:#f3f4f6;color:var(--muted);';
+  }
+
+  var html = '';
+  var actHtml = '';
+
+  // Watchlist banner
+  if (r.watchlist_hit) {
+    var wColor = r.watchlist_priority === 'urgent' ? '#dc2626' : '#d97706';
+    html += '<div style="display:flex;align-items:flex-start;gap:10px;background:#faf5ff;border:2px solid #a855f7;border-radius:10px;padding:12px 14px;margin-bottom:10px;">'
+      + '<span style="font-size:1.1rem;flex-shrink:0;">⚑</span>'
+      + '<div><div style="font-size:.75rem;font-weight:800;color:#7c3aed;letter-spacing:.06em;text-transform:uppercase;">Watchlist Hit</div>'
+      + (r.watchlist_priority === 'urgent' || r.watchlist_priority === 'high'
+          ? '<div style="font-size:.78rem;font-weight:700;color:' + wColor + ';margin-top:2px;">' + (r.watchlist_priority === 'urgent' ? 'URGENT — Contact office immediately' : 'HIGH PRIORITY') + '</div>' : '')
+      + (r.watchlist_reason ? '<div style="font-size:.8rem;color:#6b21a8;margin-top:3px;">' + esc(r.watchlist_reason) + '</div>' : '')
+      + '</div></div>';
+  }
+
+  var rtype = r.result_type || '';
+
+  if (rtype === 'allocated_match') {
+    heading.textContent = 'Match Found';
+    html += '<div style="display:flex;align-items:center;gap:9px;background:#f0fdf4;border:1.5px solid #86efac;border-radius:10px;padding:11px 13px;margin-bottom:10px;">'
+      + '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#16a34a" fill="none" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+      + '<div><div style="font-size:.75rem;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.05em;">Allocated match</div>'
+      + '<div style="font-size:.8rem;color:#166534;margin-top:1px;">File is allocated to our agent</div></div></div>';
+    html += '<div style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;">'
+      + '<div style="font-size:1.8rem;font-weight:900;letter-spacing:.12em;color:var(--text);margin-bottom:6px;">' + esc(r.asset && r.asset.registration || '') + '</div>';
+    if (r.asset && (r.asset.year || r.asset.make || r.asset.model)) {
+      html += '<div style="font-size:.82rem;font-weight:600;color:#374151;">' + esc([r.asset.year, r.asset.make, r.asset.model].filter(Boolean).join(' ')) + '</div>';
+    }
+    html += '<div style="font-size:.75rem;color:var(--muted);margin-top:4px;">Job: ' + esc(r.matched_job_number || '') + '</div></div>';
+
+    if (r.open_url) {
+      actHtml += '<a href="' + esc(r.open_url) + '" style="display:flex;align-items:center;justify-content:center;gap:8px;'
+        + 'padding:13px;background:var(--accent);color:#fff;border-radius:12px;text-decoration:none;font-size:.92rem;font-weight:700;">'
+        + '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Open Job</a>';
+    }
+
+  } else if (rtype === 'restricted_match') {
+    heading.textContent = 'Not Allocated';
+    html += '<div style="display:flex;align-items:flex-start;gap:9px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:11px 13px;margin-bottom:10px;">'
+      + '<svg viewBox="0 0 24 24" width="20" height="20" stroke="#d97706" fill="none" stroke-width="2.5" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+      + '<div><div style="font-size:.75rem;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.05em;">Not allocated</div>'
+      + '<div style="font-size:.8rem;color:#92400e;margin-top:1px;">' + esc(r.notice || '') + '</div></div></div>';
+    html += '<div style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;">'
+      + '<div style="font-size:1.8rem;font-weight:900;letter-spacing:.12em;color:var(--text);">' + esc(r.asset && r.asset.registration || '') + '</div>'
+      + (r.asset && (r.asset.year || r.asset.make || r.asset.model) ? '<div style="font-size:.82rem;color:#374151;margin-top:4px;">' + esc([r.asset.year,r.asset.make,r.asset.model].filter(Boolean).join(' ')) + '</div>' : '')
+      + '</div>';
+    actHtml += '<button type="button" onclick="lprContactOffice()" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;font-size:.88rem;font-weight:700;color:#b45309;cursor:pointer;-webkit-tap-highlight-color:transparent;">'
+      + '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.22 2 2 0 012.1 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.06 7.91A16 16 0 0013.91 15.76l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>Contact Office</button>';
+
+  } else if (rtype === 'conflict') {
+    heading.textContent = 'Conflict';
+    html += '<div style="display:flex;align-items:flex-start;gap:9px;background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:11px 13px;margin-bottom:10px;">'
+      + '<svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--red)" fill="none" stroke-width="2.5" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+      + '<div><div style="font-size:.75rem;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.05em;">Multiple active matches</div>'
+      + '<div style="font-size:.8rem;color:#991b1b;margin-top:1px;">' + esc(r.message || '') + '</div></div></div>';
+    html += '<div style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;">'
+      + '<div style="font-size:1.8rem;font-weight:900;letter-spacing:.12em;color:var(--text);">' + esc(r.searched_registration || '') + '</div></div>';
+
+  } else {
+    heading.textContent = 'No Match';
+    html += '<div style="display:flex;align-items:center;gap:9px;background:#f9fafb;border:1.5px solid #d1d5db;border-radius:10px;padding:11px 13px;margin-bottom:10px;">'
+      + '<svg viewBox="0 0 24 24" width="20" height="20" stroke="var(--muted)" fill="none" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>'
+      + '<div><div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">No match</div>'
+      + '<div style="font-size:.8rem;color:var(--muted);margin-top:1px;">No active job for this registration</div></div></div>';
+    html += '<div style="background:#f9fafb;border:1px solid var(--line);border-radius:10px;padding:12px 14px;">'
+      + '<div style="font-size:1.8rem;font-weight:900;letter-spacing:.12em;color:var(--text);">' + esc(r.searched_registration || '') + '</div></div>';
+  }
+
+  body.innerHTML    = html;
+  actions.innerHTML = actHtml
+    + '<button type="button" id="lprSaveBtn" onclick="lprSaveSighting()" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:#f9fafb;border:1.5px solid var(--line);border-radius:12px;font-size:.88rem;font-weight:700;color:#374151;cursor:pointer;-webkit-tap-highlight-color:transparent;">'
+    + '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save Sighting</button>'
+    + '<button type="button" onclick="lprGoStep(2)" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;background:none;border:none;border-radius:12px;font-size:.82rem;font-weight:600;color:var(--accent);cursor:pointer;-webkit-tap-highlight-color:transparent;">New Search</button>';
+}
+
+// ── Save sighting ─────────────────────────────────────────
+window.lprSaveSighting = function() {
+  if (!_lprCurrentResult) return;
+  var r   = _lprCurrentResult;
+  var btn = document.getElementById('lprSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+  var payload = {
+    registration_raw:   r.searched_registration || r.asset && r.asset.registration || '',
+    result_type:        r.result_type || 'no_match',
+    search_method:      r._search_method || 'manual',
+    matched_job_id:     r.matched_job_id    || null,
+    matched_job_number: r.matched_job_number || null,
+    watchlist_hit:      r.watchlist_hit      ? 1 : 0,
+    client_action_id:   'fab_' + Date.now()
   };
 
-  window.lprSheetClose = function(){
-    overlay.classList.remove('open');
-    overlay.addEventListener('transitionend', function handler(){
-      overlay.style.display = 'none';
-      overlay.removeEventListener('transitionend', handler);
-    });
-  };
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        payload.latitude  = pos.coords.latitude;
+        payload.longitude = pos.coords.longitude;
+        _doSaveSighting(payload, btn);
+      },
+      function() { _doSaveSighting(payload, btn); },
+      { timeout: 3500 }
+    );
+  } else {
+    _doSaveSighting(payload, btn);
+  }
+};
+
+function _doSaveSighting(payload, btn) {
+  fetch('/m/api/lpr/sighting', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (data.ok) {
+      if (btn) {
+        btn.textContent = '✓ Sighting Saved';
+        btn.style.background   = '#f0fdf4';
+        btn.style.borderColor  = '#86efac';
+        btn.style.color        = '#15803d';
+      }
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
+      alert(data.error || 'Save failed.');
+    }
+  })
+  .catch(function(){
+    if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
+    alert('Network error. Please try again.');
+  });
+}
+
+// ── Contact office (tel: if available) ───────────────────
+window.lprContactOffice = function() {
+  lprSheetClose();
+  if (window._officePhone) {
+    window.location.href = 'tel:' + window._officePhone;
+  } else {
+    alert('Contact your office about this plate.');
+  }
+};
+
+// ── Init: badge Live Scan label based on wrapper ──────────
+(function(){
+  var sub = document.getElementById('lprLiveScanSub');
+  if (sub) {
+    sub.textContent = navigator.userAgent.indexOf('AxionXiOS') !== -1
+      ? 'Native scanner'
+      : 'Camera + OCR';
+  }
+})();
+
 })();
 </script>
 {% endblock %}

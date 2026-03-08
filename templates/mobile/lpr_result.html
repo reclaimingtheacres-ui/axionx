@@ -10,6 +10,33 @@ Plate Result
 
 {% block content %}
 
+{# ── Return to previous screen (set via sessionStorage by FAB) ── #}
+<div id="lprReturnBanner" style="display:none;margin-bottom:12px;">
+  <button type="button" id="lprReturnBtn"
+          style="display:flex;align-items:center;gap:8px;
+                 background:#f9fafb;border:1.5px solid var(--line);border-radius:10px;
+                 padding:10px 14px;font-size:.82rem;font-weight:700;color:var(--accent);
+                 cursor:pointer;width:100%;text-align:left;-webkit-tap-highlight-color:transparent;">
+    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Return to previous screen
+  </button>
+</div>
+<script>
+(function(){
+  var url = null;
+  try { url = sessionStorage.getItem('lprReturnUrl'); } catch(e){}
+  if (url && url !== window.location.href) {
+    var banner = document.getElementById('lprReturnBanner');
+    var btn    = document.getElementById('lprReturnBtn');
+    if (banner) banner.style.display = '';
+    if (btn) btn.addEventListener('click', function(){
+      try { sessionStorage.removeItem('lprReturnUrl'); } catch(e){}
+      window.location.href = url;
+    });
+  }
+})();
+</script>
+
 {# ── Watchlist alert — highest priority banner ── #}
 {% if result.watchlist_hit %}
 <div style="display:flex;align-items:flex-start;gap:10px;
