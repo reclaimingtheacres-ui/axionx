@@ -1,137 +1,127 @@
 import SwiftUI
 
 /// Native login screen.
-/// Visually identical to LaunchScreen.storyboard — white background with the
-/// AxionX wordmark at the same vertical position — so the launch→login
-/// transition feels like a single continuous screen.
-/// A login card slides in below the logo after a brief settle delay.
+/// Full-screen AppBackground image fills the display — identical to the
+/// LaunchScreen — with a frosted-glass login panel layered over the lower half.
+/// The panel fades in after a short delay so the branding remains the first
+/// thing the user sees.
 struct LoginView: View {
 
-    /// Called once the session cookie has been injected into WKWebsiteDataStore.
     var onLoginSuccess: () -> Void
 
     // MARK: - State
 
-    @State private var email:         String = ""
-    @State private var password:      String = ""
-    @State private var isLoading:     Bool   = false
-    @State private var errorMessage:  String?
-    @State private var cardVisible:   Bool   = false
+    @State private var email:        String = ""
+    @State private var password:     String = ""
+    @State private var isLoading:    Bool   = false
+    @State private var errorMessage: String?
+    @State private var panelVisible: Bool   = false
 
     @FocusState private var focusedField: FormField?
     private enum FormField { case email, password }
 
-    // MARK: - Brand colours (matching LaunchScreen.storyboard exactly)
+    // MARK: - Colours
 
     private let axionBlue = Color(red: 0.149, green: 0.388, blue: 0.922)
-    private let axionGray = Color(red: 0.424, green: 0.443, blue: 0.502)
-
-    // AxionX text intrinsic height at 42pt bold ≈ 52 pt.
-    // topPad = screenH/2 - 20 - 26  →  AxionX centre = screenH/2 - 20
-    // which matches the LaunchScreen constraint exactly.
-    private let axionXHalfHeight: CGFloat = 26
 
     // MARK: - Body
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .top) {
-                Color.white.ignoresSafeArea()
+        ZStack(alignment: .bottom) {
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        // Top spacer — pins AxionX centre to LaunchScreen position
-                        let topPad = max(geo.size.height / 2 - 20 - axionXHalfHeight, 80)
-                        Color.clear.frame(height: topPad)
+            // ── Background image — full screen, identical to LaunchScreen ──
+            Image("AppBackground")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .ignoresSafeArea()
 
-                        // ── Branding ──────────────────────────────────────────
-                        VStack(spacing: 4) {
-                            Text("AxionX")
-                                .font(.system(size: 42, weight: .bold, design: .default))
-                                .foregroundColor(axionBlue)
-                                .tracking(-0.5)
-
-                            Text("Field Operations")
-                                .font(.system(size: 16, weight: .regular))
-                                .foregroundColor(axionGray)
-                        }
-                        .frame(maxWidth: .infinity)
-
-                        // ── Login card ────────────────────────────────────────
-                        if cardVisible {
-                            loginCard
-                                .padding(.top, 48)
-                                .padding(.horizontal, 28)
-                                .padding(.bottom, 60)
-                                .transition(
-                                    .opacity.combined(with: .offset(y: 24))
-                                )
-                        }
-                    }
-                }
+            // ── Frosted glass login panel — lower portion ─────────────────
+            if panelVisible {
+                loginPanel
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 52)
+                    .transition(.opacity.combined(with: .offset(y: 16)))
             }
         }
         .ignoresSafeArea()
-        .preferredColorScheme(.light)
+        .preferredColorScheme(.dark)
         .onAppear {
             withAnimation(
-                .spring(response: 0.55, dampingFraction: 0.85).delay(0.18)
+                .easeOut(duration: 0.45).delay(0.25)
             ) {
-                cardVisible = true
+                panelVisible = true
             }
         }
     }
 
-    // MARK: - Login card
+    // MARK: - Login panel (frosted glass)
 
-    private var loginCard: some View {
-        VStack(spacing: 16) {
+    private var loginPanel: some View {
+        VStack(spacing: 18) {
+
+            // Panel heading
+            VStack(spacing: 3) {
+                Text("Sign In")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("AxionX Field Operations")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 4)
 
             // Email
             VStack(alignment: .leading, spacing: 6) {
                 Text("Email")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(axionGray)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                    .textCase(.uppercase)
+                    .kerning(0.5)
 
-                TextField("you@example.com", text: $email)
+                TextField("", text: $email, prompt: Text("you@company.com").foregroundColor(.white.opacity(0.35)))
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
                     .autocorrectionDisabled()
                     .textContentType(.emailAddress)
                     .focused($focusedField, equals: .email)
                     .font(.system(size: 15))
+                    .foregroundColor(.white)
+                    .tint(.white)
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(Color(white: 0.97))
-                    .cornerRadius(10)
+                    .padding(.vertical, 13)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(white: 0.88), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 11)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
                     )
             }
 
             // Password
             VStack(alignment: .leading, spacing: 6) {
                 Text("Password")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(axionGray)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                    .textCase(.uppercase)
+                    .kerning(0.5)
 
-                SecureField("Password", text: $password)
+                SecureField("", text: $password, prompt: Text("Password").foregroundColor(.white.opacity(0.35)))
                     .textContentType(.password)
                     .focused($focusedField, equals: .password)
                     .font(.system(size: 15))
+                    .foregroundColor(.white)
+                    .tint(.white)
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(Color(white: 0.97))
-                    .cornerRadius(10)
+                    .padding(.vertical, 13)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(white: 0.88), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 11)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 1)
                     )
                     .onSubmit { Task { await performLogin() } }
             }
 
-            // Inline error
+            // Error message
             if let msg = errorMessage {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill")
@@ -139,9 +129,8 @@ struct LoginView: View {
                     Text(msg)
                         .font(.system(size: 13))
                 }
-                .foregroundColor(.red)
+                .foregroundColor(Color(red: 1.0, green: 0.5, blue: 0.5))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 2)
                 .transition(.opacity)
                 .animation(.easeInOut(duration: 0.2), value: errorMessage)
             }
@@ -158,19 +147,31 @@ struct LoginView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(axionBlue)
-                .cornerRadius(12)
+                .frame(height: 52)
+                .background(
+                    axionBlue.opacity(isLoading || email.isEmpty || password.isEmpty ? 0.6 : 1.0)
+                )
+                .cornerRadius(13)
             }
             .disabled(isLoading || email.isEmpty || password.isEmpty)
-            .opacity(isLoading || email.isEmpty || password.isEmpty ? 0.7 : 1.0)
             .padding(.top, 4)
             .animation(.easeInOut(duration: 0.15), value: isLoading)
         }
         .padding(24)
-        .background(Color.white)
-        .cornerRadius(20)
-        .shadow(color: .black.opacity(0.08), radius: 20, x: 0, y: 4)
+        .background {
+            // Dark-tinted frosted glass
+            RoundedRectangle(cornerRadius: 24)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(Color.black.opacity(0.28))
+                )
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.4), radius: 32, x: 0, y: 12)
     }
 
     // MARK: - Auth

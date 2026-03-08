@@ -15,31 +15,19 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <!-- White background -->
-                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="AxionX" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="GJd-Yh-RWb">
-                                <rect key="frame" x="0.0" y="390" width="393" height="72"/>
-                                <fontDescription key="fontDescription" type="system" pointSize="42" weight="bold"/>
-                                <color key="textColor" red="0.14901960784313725" green="0.38823529411764707" blue="0.92156862745098034" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-                                <nil key="highlightedColor"/>
-                                <constraints>
-                                    <constraint firstAttribute="width" constant="393" id="Koa"/>
-                                    <constraint firstAttribute="height" constant="72" id="Kob"/>
-                                </constraints>
-                            </label>
-                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Field Operations" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="HJd-Yz-RWb">
-                                <rect key="frame" x="0.0" y="468" width="393" height="24"/>
-                                <fontDescription key="fontDescription" type="system" pointSize="16" weight="regular"/>
-                                <color key="textColor" red="0.42352941176470588" green="0.44313725490196076" blue="0.50196078431372547" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-                                <nil key="highlightedColor"/>
-                            </label>
+                            <!-- Full-screen background image -->
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFill" image="AppBackground" translatesAutoresizingMaskIntoConstraints="NO" id="BgImg-01">
+                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                            </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="Bcu-3y-fUS"/>
-                        <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <!-- Dark blue fallback if image is unavailable -->
+                        <color key="backgroundColor" red="0.063" green="0.129" blue="0.302" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
-                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="moa-aY-eqy"/>
-                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" constant="-20" id="moa-aY-eqz"/>
-                            <constraint firstItem="HJd-Yz-RWb" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="moa-aY-eqa"/>
-                            <constraint firstItem="HJd-Yz-RWb" firstAttribute="top" secondItem="GJd-Yh-RWb" secondAttribute="bottom" constant="4" id="moa-aY-eqb"/>
+                            <constraint firstItem="BgImg-01" firstAttribute="leading" secondItem="Ze5-6b-2t3" secondAttribute="leading" id="bg-leading"/>
+                            <constraint firstItem="BgImg-01" firstAttribute="trailing" secondItem="Ze5-6b-2t3" secondAttribute="trailing" id="bg-trailing"/>
+                            <constraint firstItem="BgImg-01" firstAttribute="top" secondItem="Ze5-6b-2t3" secondAttribute="top" id="bg-top"/>
+                            <constraint firstItem="BgImg-01" firstAttribute="bottom" secondItem="Ze5-6b-2t3" secondAttribute="bottom" id="bg-bottom"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -47,4 +35,7 @@
             </objects>
         </scene>
     </scenes>
+    <resources>
+        <image name="AppBackground" width="700" height="1120"/>
+    </resources>
 </document>
