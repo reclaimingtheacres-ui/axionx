@@ -2751,7 +2751,7 @@ def job_detail(job_id: int):
                cu.id AS customer_id, cu.first_name, cu.last_name, cu.company,
                cu.email, cu.address,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
-                WHERE cpn.customer_id = cu.id
+                WHERE cpn.entity_type='customer' AND cpn.entity_id = cu.id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS primary_phone
         FROM job_customers jc
         JOIN customers cu ON cu.id = jc.customer_id
