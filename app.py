@@ -2010,7 +2010,8 @@ def dashboard():
 @login_required
 def jobs_list():
     status = request.args.get("status", "").strip()
-    q = request.args.get("q", "").strip()
+    q      = request.args.get("q", "").strip()
+    sort   = request.args.get("sort", "").strip()
 
     user_id = session.get("user_id")
     role = session.get("role")
@@ -2021,6 +2022,7 @@ def jobs_list():
     sql = """
     SELECT j.*,
            COALESCE(c.nickname, c.name) AS client_name,
+           cu.last_name AS customer_last_name,
            (cu.first_name || ' ' || cu.last_name) AS customer_name,
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
            COALESCE(u.full_name, (
@@ -2086,7 +2088,14 @@ def jobs_list():
         like = f"%{q}%"
         params.extend([like] * 12)
 
-    sql += " ORDER BY CASE WHEN j.status = 'Invoiced' THEN 1 ELSE 0 END, CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC"
+    _SORT_MAP = {
+        "agent":      "LOWER(COALESCE(u.full_name,'')) ASC, j.updated_at DESC",
+        "active":     "CASE WHEN j.status LIKE 'Active%' THEN 0 ELSE 1 END ASC, j.updated_at DESC",
+        "job_number": "CAST(j.internal_job_number AS INTEGER) DESC, j.updated_at DESC",
+        "client_ref": "CAST(j.client_reference AS INTEGER) DESC, j.updated_at DESC",
+    }
+    order_clause = _SORT_MAP.get(sort, "CASE WHEN j.status='Invoiced' THEN 1 ELSE 0 END, CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC")
+    sql += f" ORDER BY {order_clause}"
 
     cur.execute(sql, params)
     rows = cur.fetchall()
@@ -2102,7 +2111,7 @@ def jobs_list():
         "Invoiced"
     ]
 
-    return render_template("jobs.html", jobs=rows, statuses=statuses, status=status, q=q)
+    return render_template("jobs.html", jobs=rows, statuses=statuses, status=status, q=q, sort=sort)
 
 
 @app.get("/jobs/search-reference")

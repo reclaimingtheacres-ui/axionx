@@ -9,11 +9,13 @@
     {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
   </div>
   <div class="ax-card-b">
+
+    {# ── Filters + Sort ── #}
     <form class="row g-2 mb-3" method="get">
       <div class="col-12 col-lg-5">
         <input class="form-control" name="q" placeholder="Search job no., client, customer, rego, VIN, address..." value="{{ q }}">
       </div>
-      <div class="col-12 col-lg-3">
+      <div class="col-6 col-lg-2">
         <select class="form-select" name="status">
           <option value="">All statuses</option>
           {% for s in statuses %}
@@ -21,11 +23,21 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-12 col-lg-2">
+      <div class="col-6 col-lg-2">
+        <select class="form-select" name="sort">
+          <option value="" {% if sort == '' %}selected{% endif %}>Sort: Default</option>
+          <option value="active"      {% if sort == 'active' %}selected{% endif %}>Sort: Active first</option>
+          <option value="agent"       {% if sort == 'agent' %}selected{% endif %}>Sort: Agent A–Z</option>
+          <option value="job_number"  {% if sort == 'job_number' %}selected{% endif %}>Sort: Job # high–low</option>
+          <option value="client_ref"  {% if sort == 'client_ref' %}selected{% endif %}>Sort: Client ref high–low</option>
+        </select>
+      </div>
+      <div class="col-12 col-lg-1">
         <button class="btn btn-outline-secondary w-100">Filter</button>
       </div>
     </form>
 
+    {# ── Job rows ── #}
     {% for j in jobs %}
       {% set is_suspended = j.status in ['Suspended', 'Awaiting Instructions'] %}
       {% set bt = j.next_booking_type or '' %}
@@ -41,10 +53,13 @@
         {% set badge_color = '#9ca3af' %}
       {% endif %}
 
-      <div style="display:flex;align-items:stretch;gap:12px;padding:.65rem .1rem;border-bottom:1px solid #e5e7eb;">
+      <div style="display:flex;align-items:stretch;gap:12px;padding:.7rem 0;
+                  border-bottom:1px solid #e5e7eb;{% if loop.first %}padding-top:.2rem;{% endif %}">
 
         <a href="/jobs/{{ j.id }}" class="text-decoration-none flex-grow-1" style="min-width:0;color:inherit;">
-          <div class="fw-semibold">{{ j.display_ref }} &mdash; {{ j.customer_name or "No customer" }}</div>
+          <div class="fw-semibold" style="font-size:.95rem;">
+            {{ j.display_ref }}{% if j.customer_last_name %} &mdash; {{ j.customer_last_name }}{% endif %}
+          </div>
           <div class="small" style="color:var(--muted)">
             {{ j.client_name or "No client" }}{% if j.asset_reg %} &nbsp;|&nbsp; Reg: {{ j.asset_reg }}{% endif %}
           </div>
