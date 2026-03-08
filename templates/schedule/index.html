@@ -38,7 +38,7 @@
             <td>
               <a href="/jobs/{{ b.job_id }}"
                  style="color:var(--accent);text-decoration:none;font-weight:600">
-                {{ b.display_ref or b.internal_job_number or b.client_reference or ('Job #' ~ b.job_id) }}
+                {{ b.display_ref or b.internal_job_number or b.client_reference or ('Job #' ~ b.job_id) }}{% if b.customer_label %} &mdash; {{ b.customer_label }}{% endif %}
               </a>
             </td>
             {% if is_admin %}

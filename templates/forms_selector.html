@@ -80,7 +80,7 @@
             {% for j in jobs %}
             <option value="{{ j.id }}" {% if j.id == selected_job_id %}selected{% endif %}>
               {{ j.internal_job_number or ('#'~j.id) }}
-              {% if j.customer_name %} — {{ j.customer_name }}{% endif %}
+              {% if j.customer_label or j.customer_name %} — {{ j.customer_label or j.customer_name }}{% endif %}
               {% if j.lender_name %} ({{ j.lender_name }}){% endif %}
             </option>
             {% endfor %}

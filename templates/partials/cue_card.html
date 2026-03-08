@@ -4,7 +4,7 @@
       {{ cue.internal_job_number }}{% if cue.client_reference %} ({{ cue.client_reference }}){% endif %}
     </a>
   </div>
-  <div class="meta">{{ cue.customer_name or "No customer" }}{% if cue.asset_reg %} | Reg: {{ cue.asset_reg }}{% endif %}</div>
+  <div class="meta">{{ cue.customer_label or cue.customer_name or "No customer" }}{% if cue.asset_reg %} | Reg: {{ cue.asset_reg }}{% endif %}</div>
   <div class="meta">{{ cue.visit_type }} |
     <span style="color:{% if cue.priority == 'Urgent' %}#f87171{% elif cue.priority == 'High' %}#fbbf24{% else %}var(--muted){% endif %}">{{ cue.priority }}</span>
   </div>

@@ -1938,6 +1938,7 @@ def dashboard():
                 SELECT j.id, j.display_ref, j.status,
                        COALESCE(CASE WHEN cu.last_name IS NOT NULL THEN cu.last_name || COALESCE(' ' || cu.first_name, '') ELSE NULL END,
                                 cu.company, 'No customer') AS customer_name,
+                       COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                        {agent_subq},
                        {sched_subq}
                 FROM jobs j
@@ -2023,6 +2024,7 @@ def jobs_list():
     SELECT j.*,
            COALESCE(c.nickname, c.name) AS client_name,
            cu.last_name AS customer_last_name,
+           COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
            (cu.first_name || ' ' || cu.last_name) AS customer_name,
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
            COALESCE(u.full_name, (
@@ -3138,11 +3140,13 @@ def schedule_index():
         cur.execute("""
             SELECT s.*, bt.name booking_type_name,
                    j.internal_job_number, j.client_reference, j.display_ref, j.id job_id,
-                   u.full_name assigned_to_name
+                   u.full_name assigned_to_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label
             FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
             JOIN jobs j ON j.id = s.job_id
             LEFT JOIN users u ON u.id = s.assigned_to_user_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
             WHERE s.status NOT IN ('Completed', 'Cancelled')
               AND s.scheduled_for >= ?
               AND s.scheduled_for <= ?
@@ -3152,11 +3156,13 @@ def schedule_index():
         cur.execute("""
             SELECT s.*, bt.name booking_type_name,
                    j.internal_job_number, j.client_reference, j.display_ref, j.id job_id,
-                   u.full_name assigned_to_name
+                   u.full_name assigned_to_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label
             FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
             JOIN jobs j ON j.id = s.job_id
             LEFT JOIN users u ON u.id = s.assigned_to_user_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
             WHERE s.status NOT IN ('Completed', 'Cancelled')
               AND s.assigned_to_user_id = ?
               AND s.scheduled_for >= ?
@@ -5536,18 +5542,20 @@ def forms_generate():
     # ── Load all jobs for the selector ──
     job_rows = conn.execute(
         """SELECT j.id, j.internal_job_number, j.lender_name, j.client_job_number,
-                  c.first_name, c.last_name
+                  c.first_name, c.last_name, c.company
            FROM jobs j
            LEFT JOIN customers c ON c.id = j.customer_id
            ORDER BY j.id DESC LIMIT 200""").fetchall()
     jobs = []
     for r in job_rows:
         cname = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
+        clabel = (r["company"] or "").strip() or (r["last_name"] or "").strip() or None
         jobs.append({
             "id":                  r["id"],
             "internal_job_number": r["internal_job_number"],
             "lender_name":         r["lender_name"],
             "customer_name":       cname,
+            "customer_label":      clabel,
         })
 
     # ── Recent submitted repo lock records for quick access ──
@@ -6996,6 +7004,7 @@ def _queue_row_sql():
                j.status AS job_status, j.job_address, j.assigned_user_id AS job_assigned_uid,
                c.name  AS client_name,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                (SELECT ji.reg FROM job_items ji
                 WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
                ag.full_name AS agent_name,
@@ -7460,6 +7469,7 @@ def my_today():
     cur.execute("""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
                (cu.first_name || ' ' || cu.last_name) customer_name,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
@@ -7475,6 +7485,7 @@ def my_today():
                bt.name AS booking_type_name,
                j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type='vehicle' LIMIT 1) AS asset_reg
         FROM schedules s
         JOIN booking_types bt ON bt.id = s.booking_type_id
@@ -7489,7 +7500,8 @@ def my_today():
     cur.execute("""
         SELECT ju.id AS draft_id, ju.job_id, ju.created_at,
                j.internal_job_number, j.client_reference, j.job_address,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label
         FROM job_updates ju
         JOIN jobs j ON j.id = ju.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -7769,6 +7781,7 @@ def api_map_data():
         jobs = conn.execute("""
             SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                    c.name AS client_name,
                    ag.full_name AS agent_name
             FROM jobs j
@@ -7783,6 +7796,7 @@ def api_map_data():
         jobs = conn.execute("""
             SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                    c.name AS client_name,
                    ag.full_name AS agent_name
             FROM jobs j
@@ -7821,7 +7835,7 @@ def api_map_data():
             "status": r["status"],
             "lat": r["lat"],
             "lng": r["lng"],
-            "customer": r["customer_name"] or "",
+            "customer": r["customer_label"] or r["customer_name"] or "",
             "client": r["client_name"] or "",
             "agent": r["agent_name"] or ""
         } for r in jobs],

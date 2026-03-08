@@ -30,7 +30,7 @@
     <div>
       <div class="fw-semibold">
         {{ d.internal_job_number }}{% if d.client_reference %} ({{ d.client_reference }}){% endif %}
-        — {{ d.customer_name or "No customer" }}
+        — {{ d.customer_label or d.customer_name or "No customer" }}
       </div>
       <div class="small text-muted">
         Update draft not applied — tap to complete
@@ -62,7 +62,7 @@
       <div>
         <div class="fw-semibold">
           <a href="/jobs/{{ s.job_id }}">{{ s.internal_job_number }}{% if s.client_reference %} ({{ s.client_reference }}){% endif %}</a>
-          — {{ s.customer_name or "No customer" }}
+          — {{ s.customer_label or s.customer_name or "No customer" }}
         </div>
         <div class="small text-muted">
           {% if s.scheduled_for %}{{ s.scheduled_for[11:16] }}{% endif %}
@@ -109,7 +109,7 @@
       <div>
         <div class="fw-semibold">
           <a href="/jobs/{{ c.job_id }}">{{ c.internal_job_number }}{% if c.client_reference %} ({{ c.client_reference }}){% endif %}</a>
-          — {{ c.customer_name or "No customer" }}
+          — {{ c.customer_label or c.customer_name or "No customer" }}
         </div>
         <div class="small text-muted">
           {{ c.visit_type }} | {{ c.priority }}

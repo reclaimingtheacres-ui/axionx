@@ -62,7 +62,7 @@
         <div>
           <div class="fw-semibold">
             <a href="/jobs/{{ c.job_id }}">{{ c.internal_job_number }}{% if c.client_reference %} ({{ c.client_reference }}){% endif %}</a>
-            — {{ c.customer_name or "No customer" }}
+            — {{ c.customer_label or c.customer_name or "No customer" }}
           </div>
           <div class="small text-muted">
             {{ c.visit_type }} | Priority: {{ c.priority }}
