@@ -81,6 +81,10 @@
     <key>NSCameraUsageDescription</key>
     <string>AxionX requires camera access to scan vehicle registrations for live LPR lookups.</string>
 
+    <!-- Face ID permission — required for biometric login -->
+    <key>NSFaceIDUsageDescription</key>
+    <string>AxionX uses Face ID to sign you in quickly and securely without entering your password.</string>
+
     <!-- Background modes: location (significant-change + active-job), fetch (BG sync) -->
     <key>UIBackgroundModes</key>
     <array>

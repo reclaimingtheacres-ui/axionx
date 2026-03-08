@@ -64,39 +64,36 @@ enum LoginService {
         return cookies
     }
 
+    /// Full login pipeline: authenticate, inject cookies into WKWebView, and save
+    /// to Keychain so biometric can be used on the next launch.
+    static func loginAndPersist(email: String, password: String) async throws {
+        let cookies = try await login(email: email, password: password)
+        await injectCookies(cookies)
+        BiometricAuthService.saveSession(from: cookies)
+    }
+
     /// Inject cookies into the WKWebView's persistent data store so subsequent
     /// web requests made by the WebView are already authenticated.
     static func injectCookies(_ cookies: [HTTPCookie]) async {
         let store = WKWebsiteDataStore.default().httpCookieStore
         for cookie in cookies {
-            await store.set(cookie)
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                store.setCookie(cookie) { cont.resume() }
+            }
         }
     }
 
     /// Returns true if a non-expired session cookie already exists in the
     /// WKWebView's persistent data store from a previous login.
     static func hasValidSession() async -> Bool {
-        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
-        return cookies.contains {
-            $0.name == "session" &&
-            ($0.expiresDate == nil || $0.expiresDate! > Date())
-        }
-    }
-}
-
-// MARK: - WKHTTPCookieStore async helpers
-
-private extension WKHTTPCookieStore {
-
-    func allCookies() async -> [HTTPCookie] {
         await withCheckedContinuation { cont in
-            getAllCookies { cont.resume(returning: $0) }
-        }
-    }
-
-    func set(_ cookie: HTTPCookie) async {
-        await withCheckedContinuation { cont in
-            setCookie(cookie) { cont.resume() }
+            WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+                let valid = cookies.contains {
+                    $0.name == "session" &&
+                    ($0.expiresDate == nil || $0.expiresDate! > Date())
+                }
+                cont.resume(returning: valid)
+            }
         }
     }
 }
