@@ -26,7 +26,7 @@
             {% for p in phones %}
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
                 <span class="small" style="color:var(--muted)">{{ p.label }}:</span>
-                <span class="ax-ph" onclick="axPhone('{{ p.phone_number }}',event)" style="font-weight:600;color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">{{ p.phone_number }}</span>
+                <span class="ax-ph" onclick="axPhone('{{ p.phone_number }}',event)">{{ p.phone_number }}</span>
               </div>
             {% endfor %}
           {% else %}

@@ -205,6 +205,15 @@ a { color: var(--accent); text-decoration: none; }
 .m-btn-danger   { background: var(--red); color: #ffffff; }
 .m-btn-green    { background: var(--green); color: #ffffff; }
 .m-btn-sm { padding: 9px 16px; font-size: .85rem; border-radius: 9px; width: auto; min-height: 36px; }
+.ax-ph {
+  color: #1e293b;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 1px dotted rgba(100,116,139,.5);
+  white-space: nowrap;
+  -webkit-tap-highlight-color: rgba(37,99,235,.1);
+}
+.ax-ph:active { color: #2563eb; border-bottom-color: #2563eb; }
 
 /* ── Badges ── */
 .m-badge {
@@ -824,7 +833,7 @@ function axLinkPhones(container) {
   while ((n = walker.nextNode())) { if (re.test(n.textContent)) nodes.push(n); re.lastIndex = 0; }
   nodes.forEach(function(node) {
     var html = node.textContent.replace(re, function(m) {
-      return '<span class="ax-ph" onclick="axPhone(\'' + m.trim().replace(/'/g, '') + '\',event)" style="color:#2563eb;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;white-space:nowrap">' + m + '</span>';
+      return '<span class="ax-ph" onclick="axPhone(\'' + m.trim().replace(/'/g, '') + '\',event)">' + m + '</span>';
     });
     re.lastIndex = 0;
     var wrap = document.createElement('span');

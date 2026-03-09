@@ -222,6 +222,18 @@
     }
     .form-control::placeholder{ color: rgba(17,24,39,.4); }
     .form-label{ color: var(--muted); font-size: .85rem; }
+    .ax-ph{
+      color: var(--text);
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 1px dotted rgba(100,116,139,.5);
+      white-space: nowrap;
+      transition: color .15s, border-color .15s;
+    }
+    .ax-ph:hover{
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
     .btn{
       border-radius: 12px;
       font-weight: 600;
@@ -738,7 +750,7 @@ function axLinkPhones(container) {
   while ((n = walker.nextNode())) { if (re.test(n.textContent)) nodes.push(n); re.lastIndex = 0; }
   nodes.forEach(function(node) {
     var html = node.textContent.replace(re, function(m) {
-      return '<span class="ax-ph" onclick="axPhone(\'' + m.trim().replace(/'/g, '') + '\',event)" style="color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;white-space:nowrap">' + m + '</span>';
+      return '<span class="ax-ph" onclick="axPhone(\'' + m.trim().replace(/'/g, '') + '\',event)">' + m + '</span>';
     });
     re.lastIndex = 0;
     var wrap = document.createElement('span');

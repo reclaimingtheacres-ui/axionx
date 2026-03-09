@@ -235,7 +235,7 @@
                     {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
                     {% if lc.primary_phone %}
                       <div class="small mt-1">
-                        <span class="ax-ph" onclick="axPhone('{{ lc.primary_phone }}',event)" style="color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">{{ lc.primary_phone }}</span>
+                        <span class="ax-ph" onclick="axPhone('{{ lc.primary_phone }}',event)">{{ lc.primary_phone }}</span>
                       </div>
                     {% endif %}
                     {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
@@ -280,7 +280,7 @@
           </div>
           {% if job.client_phone %}
             <div class="small mt-1">
-              <span class="ax-ph" onclick="axPhone('{{ job.client_phone }}',event)" style="color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">{{ job.client_phone }}</span>
+              <span class="ax-ph" onclick="axPhone('{{ job.client_phone }}',event)">{{ job.client_phone }}</span>
             </div>
           {% endif %}
           {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}

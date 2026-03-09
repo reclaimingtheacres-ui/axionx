@@ -37,23 +37,15 @@
       </div>
     </div>
     {% if op.mobile or op.phone or op.other_phone %}
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px;">
       {% if op.mobile %}
-      <span onclick="axPhone('{{ op.mobile }}',event)" style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#2563eb;cursor:pointer;">
-        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-        {{ op.mobile }}
-      </span>
+      <div><span style="font-size:.73rem;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-right:6px">Mobile</span><span class="ax-ph" onclick="axPhone('{{ op.mobile }}',event)">{{ op.mobile }}</span></div>
       {% endif %}
       {% if op.phone %}
-      <span onclick="axPhone('{{ op.phone }}',event)" style="display:inline-flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;cursor:pointer;">
-        <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-        {{ op.phone }}
-      </span>
+      <div><span style="font-size:.73rem;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-right:6px">Office</span><span class="ax-ph" onclick="axPhone('{{ op.phone }}',event)">{{ op.phone }}</span></div>
       {% endif %}
       {% if op.other_phone %}
-      <span onclick="axPhone('{{ op.other_phone }}',event)" style="display:inline-flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;cursor:pointer;">
-        Other: {{ op.other_phone }}
-      </span>
+      <div><span style="font-size:.73rem;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin-right:6px">Other</span><span class="ax-ph" onclick="axPhone('{{ op.other_phone }}',event)">{{ op.other_phone }}</span></div>
       {% endif %}
     </div>
     {% endif %}
