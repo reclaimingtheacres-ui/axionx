@@ -486,6 +486,7 @@ def init_db():
         ("account_number", "TEXT"),
         ("regulation_type","TEXT"),
         ("engine_number",  "TEXT"),
+        ("deliver_to",     "TEXT"),
     ]:
         add_column_if_missing(cur, "job_items", col, coltype)
 
@@ -4311,6 +4312,7 @@ def job_item_create(job_id: int):
     item_lender      = request.form.get("item_lender_name", "").strip()
     item_account     = request.form.get("item_account_number", "").strip()
     item_regulation  = request.form.get("item_regulation_type", "").strip()
+    item_deliver_to  = request.form.get("item_deliver_to", "").strip()
 
     conn = db()
     cur = conn.cursor()
@@ -4321,15 +4323,15 @@ def job_item_create(job_id: int):
             property_address, lot_details,
             serial_number, identifier,
             notes, lender_name, account_number, regulation_type,
-            created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            deliver_to, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         job_id, item_type, description or None,
         reg or None, vin or None, make or None, model or None, year or None,
         property_address or None, lot_details or None,
         serial_number or None, identifier or None,
         notes or None, item_lender or None, item_account or None, item_regulation or None,
-        now_ts()
+        item_deliver_to or None, now_ts()
     ))
     conn.commit()
     conn.close()

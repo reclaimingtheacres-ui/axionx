@@ -430,6 +430,12 @@
                         {{ item.lender_name or '' }}{% if item.account_number %} &mdash; Acct: {{ item.account_number }}{% endif %}{% if item.regulation_type %} <span style="color:var(--muted)">({{ item.regulation_type }})</span>{% endif %}
                       </div>
                     {% endif %}
+                    {% if item.deliver_to %}
+                      <div class="small mt-1">
+                        <span style="color:var(--muted)">Deliver to:</span>
+                        <span style="font-weight:500">{{ item.deliver_to }}</span>
+                      </div>
+                    {% endif %}
                   </div>
                   <div class="d-flex flex-column gap-1 ms-2 align-items-end flex-shrink-0">
                     {% if item.item_type == 'vehicle' %}
@@ -521,6 +527,28 @@
                 </div>
               </div>
             </div>
+
+            {% if auction_yards %}
+            <div class="mb-3 pt-2" style="border-top:1px solid var(--line)">
+              <div class="small fw-bold mb-2" style="color:var(--muted)">DELIVERY (optional)</div>
+              <div class="row g-2">
+                <div class="col-12 col-lg-5">
+                  <label class="form-label">Deliver to</label>
+                  <select class="form-select" name="item_deliver_to">
+                    <option value="">— Not specified —</option>
+                    {% set _seen = namespace(names=[]) %}
+                    {% for y in auction_yards %}
+                      {% if y.name not in _seen.names %}
+                        {% set _seen.names = _seen.names + [y.name] %}
+                        <option value="{{ y.name }}">{{ y.name }}</option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                  <div class="form-text" style="font-size:.73rem">Auction yard name only — specific address selected by agent at repossession</div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
 
             <button class="btn btn-primary btn-sm">Add Security</button>
           </form>
