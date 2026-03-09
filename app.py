@@ -8475,15 +8475,23 @@ def m_job_detail(job_id):
     bill_client = conn.execute("SELECT * FROM clients WHERE id=?", (_bill_to_id,)).fetchone() if _bill_to_id else None
     assets      = conn.execute("SELECT * FROM job_items WHERE job_id=? ORDER BY id", (job_id,)).fetchall()
     notes       = conn.execute("""
-        SELECT jfn.*, u.full_name AS agent_name,
-               jnf.id AS photo_file_id, jnf.filename AS photo_filename
+        SELECT jfn.*, u.full_name AS agent_name
         FROM job_field_notes jfn
         LEFT JOIN users u ON u.id = jfn.created_by_user_id
-        LEFT JOIN job_note_files jnf ON jnf.job_field_note_id = jfn.id
         WHERE jfn.job_id=?
         ORDER BY jfn.created_at DESC
         LIMIT 30
     """, (job_id,)).fetchall()
+    _note_ids = [n["id"] for n in notes]
+    _note_files_map: dict = {}
+    if _note_ids:
+        placeholders = ",".join("?" * len(_note_ids))
+        _file_rows = conn.execute(
+            f"SELECT * FROM job_note_files WHERE job_field_note_id IN ({placeholders}) ORDER BY id",
+            _note_ids
+        ).fetchall()
+        for fr in _file_rows:
+            _note_files_map.setdefault(fr["job_field_note_id"], []).append(fr)
 
     has_draft = bool(conn.execute(
         "SELECT 1 FROM job_updates WHERE job_id=? AND created_by_user_id=? AND status='draft' LIMIT 1",
@@ -8498,8 +8506,8 @@ def m_job_detail(job_id):
     return render_template("mobile/job_detail.html",
                            job=job, customer=customer, customer_mobile=customer_mobile,
                            client=client, bill_client=bill_client,
-                           assets=assets, notes=notes, has_draft=has_draft,
-                           repo_lock_map=repo_lock_map)
+                           assets=assets, notes=notes, note_files_map=_note_files_map,
+                           has_draft=has_draft, repo_lock_map=repo_lock_map)
 
 
 @app.get("/m/job/<int:job_id>/note/new")

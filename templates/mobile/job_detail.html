@@ -345,13 +345,63 @@
             {{ ntype | replace('_','+') }}
           </span>
         </div>
-        {# Photo thumbnail #}
-        {% if n.photo_file_id %}
-        <div style="margin-bottom:8px;">
-          <img src="{{ url_for('m_note_photo', file_id=n.photo_file_id) }}"
-               style="width:100%;max-height:220px;object-fit:cover;border-radius:9px;cursor:pointer;display:block;"
-               onclick="notePhotoPreview(this.src)" alt="Note photo" loading="lazy">
-        </div>
+        {# File attachments (images, PDFs, docs) #}
+        {% set n_files = note_files_map.get(n.id, []) %}
+        {% if n_files %}
+          {% set ns_f = namespace(has_img=false) %}
+          {% for f in n_files %}
+            {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
+            {% if fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp'] %}
+              {% set ns_f.has_img = true %}
+            {% endif %}
+          {% endfor %}
+          {# Full-width image if only one image #}
+          {% if n_files | length == 1 and ns_f.has_img %}
+            {% set f = n_files[0] %}
+            <div style="margin-bottom:8px;">
+              <img src="/uploads/{{ f.filename }}"
+                   style="width:100%;max-height:220px;object-fit:cover;border-radius:9px;cursor:pointer;display:block;"
+                   onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
+                   alt="Note photo" loading="lazy">
+            </div>
+          {% else %}
+            {# Multiple or non-image files: scrollable row of thumbnails #}
+            <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:4px;">
+              {% for f in n_files %}
+                {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
+                {% set is_img   = fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp'] %}
+                {% set is_pdf   = fext == 'pdf' %}
+                {% set is_word  = fext in ['doc','docx'] %}
+                {% set is_excel = fext in ['xls','xlsx','csv'] %}
+                <button type="button"
+                        onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
+                        style="background:none;border:0;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;width:68px;">
+                  {% if is_img %}
+                    <span style="width:64px;height:64px;border-radius:8px;border:1.5px solid #e5e7eb;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                      <img src="/uploads/{{ f.filename }}" alt="" style="width:64px;height:64px;object-fit:cover;display:block">
+                    </span>
+                  {% elif is_pdf %}
+                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
+                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#fee2e2"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#fecaca"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#dc2626" font-size="10" font-family="system-ui" font-weight="800">PDF</text></svg>
+                    </span>
+                  {% elif is_word %}
+                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
+                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#dbeafe"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#bfdbfe"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#2563eb" font-size="10" font-family="system-ui" font-weight="800">DOC</text></svg>
+                    </span>
+                  {% elif is_excel %}
+                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
+                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#dcfce7"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#bbf7d0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#16a34a" font-size="10" font-family="system-ui" font-weight="800">XLS</text></svg>
+                    </span>
+                  {% else %}
+                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
+                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#f1f5f9"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#e2e8f0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/></svg>
+                    </span>
+                  {% endif %}
+                  <span style="font-size:.6rem;color:#6b7280;text-align:center;word-break:break-all;line-height:1.2;max-width:68px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ f.filename.rsplit('_',1)[-1] if '_' in f.filename else f.filename }}</span>
+                </button>
+              {% endfor %}
+            </div>
+          {% endif %}
         {% endif %}
         {# Text #}
         {% if n.note_text %}
@@ -619,6 +669,122 @@ function qaFallbackReveal(type, value) {
   <img id="notePhotoLightboxImg" src="" alt="Note photo"
        style="max-width:95vw;max-height:90vh;object-fit:contain;border-radius:8px;display:block;">
 </div>
+
+{# ── Mobile File Preview Sheet ── #}
+<div id="mFilePreviewOverlay"
+     style="display:none;position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,.55);"
+     onclick="if(event.target===this)axMobilePreviewClose()">
+  <div id="mFilePreviewSheet"
+       style="position:absolute;left:0;right:0;bottom:0;
+              background:#fff;border-radius:20px 20px 0 0;
+              max-height:92vh;display:flex;flex-direction:column;
+              box-shadow:0 -4px 32px rgba(0,0,0,.18);">
+    {# Header #}
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:14px 16px 10px;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
+      <span id="mFilePreviewTitle"
+            style="font-size:.88rem;font-weight:700;color:#111;
+                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:10px;"></span>
+      <button type="button" onclick="axMobilePreviewClose()"
+              style="background:none;border:0;padding:4px 6px;font-size:1.3rem;color:#6b7280;cursor:pointer;flex-shrink:0;">&#x2715;</button>
+    </div>
+    {# Content area #}
+    <div id="mFilePreviewBody"
+         style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;min-height:180px;"></div>
+    {# Footer buttons #}
+    <div style="display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
+                border-top:1px solid #e5e7eb;flex-shrink:0;">
+      <a id="mFileDownloadBtn" href="#" download
+         style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+                padding:12px;border-radius:12px;background:#2563eb;color:#fff;
+                font-size:.88rem;font-weight:700;text-decoration:none;">
+        &#8659; Save / Download
+      </a>
+      <button id="mFileShareBtn" type="button" onclick="axMobileShare()"
+         style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
+                padding:12px;border-radius:12px;background:#f3f4f6;color:#374151;
+                border:1.5px solid #e5e7eb;font-size:.88rem;font-weight:700;cursor:pointer;">
+        &#9993; Email / Share
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var IMAGE_EXT = ['jpg','jpeg','png','gif','webp','heic','heif','bmp'];
+  var PDF_EXT   = ['pdf'];
+  var _curUrl = '', _curFilename = '';
+
+  window.axMobilePreview = function(url, filename) {
+    _curUrl = url;
+    _curFilename = filename;
+    var ext = (filename.split('.').pop() || '').toLowerCase();
+    var body = document.getElementById('mFilePreviewBody');
+    var title = document.getElementById('mFilePreviewTitle');
+    var dl = document.getElementById('mFileDownloadBtn');
+
+    title.textContent = filename;
+    dl.href = url;
+    dl.download = filename;
+    body.innerHTML = '';
+
+    if (IMAGE_EXT.includes(ext)) {
+      body.style.padding = '12px';
+      var img = document.createElement('img');
+      img.src = url;
+      img.alt = filename;
+      img.style.cssText = 'max-width:100%;max-height:55vh;object-fit:contain;border-radius:8px;display:block;margin:auto;';
+      body.appendChild(img);
+    } else if (PDF_EXT.includes(ext)) {
+      body.style.padding = '0';
+      var embed = document.createElement('embed');
+      embed.src = url;
+      embed.type = 'application/pdf';
+      embed.style.cssText = 'width:100%;height:55vh;border:0;display:block;';
+      body.appendChild(embed);
+      var hint = document.createElement('div');
+      hint.style.cssText = 'padding:6px 12px;font-size:.72rem;color:#9ca3af;text-align:center;';
+      hint.textContent = 'If PDF does not display, use Save / Download below.';
+      body.appendChild(hint);
+    } else {
+      body.style.padding = '32px 16px';
+      var icon = ext === 'doc' || ext === 'docx' ? '📄' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv' ? '📊' : '📎');
+      body.innerHTML = '<div style="text-align:center;">' +
+        '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
+        '<div style="font-size:.92rem;font-weight:600;color:#111;margin-bottom:4px;word-break:break-all;">' + filename + '</div>' +
+        '<div style="font-size:.78rem;color:#6b7280;">Preview not available — use <strong>Save / Download</strong> or <strong>Email / Share</strong> below.</div>' +
+        '</div>';
+    }
+
+    var ov = document.getElementById('mFilePreviewOverlay');
+    ov.style.display = 'flex';
+    ov.style.alignItems = 'flex-end';
+  };
+
+  window.axMobilePreviewClose = function() {
+    document.getElementById('mFilePreviewOverlay').style.display = 'none';
+    document.getElementById('mFilePreviewBody').innerHTML = '';
+  };
+
+  window.axMobileShare = function() {
+    var fileUrl = window.location.origin + _curUrl;
+    /* Use native share sheet if available (iOS/Android) */
+    if (navigator.share) {
+      navigator.share({
+        title: _curFilename,
+        text: 'File: ' + _curFilename,
+        url: fileUrl
+      }).catch(function(){});
+    } else {
+      /* Fallback: open mailto */
+      var su = encodeURIComponent('Document: ' + _curFilename);
+      var bo = encodeURIComponent('File: ' + _curFilename + '\nDownload: ' + fileUrl);
+      window.location.href = 'mailto:?subject=' + su + '&body=' + bo;
+    }
+  };
+})();
+</script>
 
 {# ── Navigation Chooser Bottom Sheet ── #}
 {% if job.job_address %}
