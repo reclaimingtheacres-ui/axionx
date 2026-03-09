@@ -3541,6 +3541,7 @@ def delete_job(job_id: int):
     conn = db()
     cur = conn.cursor()
 
+    # Clean up note files (blobs + local)
     cur.execute("SELECT id FROM job_field_notes WHERE job_id = ?", (job_id,))
     note_ids = [r["id"] for r in cur.fetchall()]
     for nid in note_ids:
@@ -3552,13 +3553,29 @@ def delete_job(job_id: int):
         cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (nid,))
     cur.execute("DELETE FROM job_field_notes WHERE job_id = ?", (job_id,))
 
+    # Clean up uploaded documents (blobs)
     cur.execute("SELECT stored_filename FROM job_documents WHERE job_id = ?", (job_id,))
     for f in cur.fetchall():
         delete_blob_safely(f["stored_filename"])
     cur.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
 
-    for tbl in ("job_items", "job_assets", "interactions", "cue_items", "schedules"):
-        cur.execute(f"DELETE FROM {tbl} WHERE job_id = ?", (job_id,))
+    # Nullify matched_job_id in LPR tables (sightings are standalone records)
+    for lpr_tbl in ("lpr_sightings", "lpr_patrol_intel"):
+        try:
+            cur.execute(f"UPDATE {lpr_tbl} SET matched_job_id=NULL WHERE matched_job_id=?", (job_id,))
+        except Exception:
+            pass
+
+    # Delete all child rows
+    for tbl in (
+        "job_items", "job_assets", "interactions", "cue_items", "schedules",
+        "job_customers", "job_updates", "job_payments",
+        "repo_lock_records", "repo_lock_queue",
+    ):
+        try:
+            cur.execute(f"DELETE FROM {tbl} WHERE job_id = ?", (job_id,))
+        except Exception:
+            pass
 
     cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     conn.commit()
@@ -3566,7 +3583,7 @@ def delete_job(job_id: int):
 
     audit("job", job_id, "delete", "Job deleted", {})
     flash("Job deleted.", "success")
-    return redirect(url_for("jobs"))
+    return redirect(url_for("jobs_list"))
 
 
 @app.post("/jobs/<int:job_id>/status")
@@ -7237,6 +7254,53 @@ def admin_settings():
     return render_template("settings.html", settings=settings, booking_types=booking_types,
                            tow_operators=tow_operators, auction_yards=auction_yards,
                            ai_usage=ai_usage)
+
+
+@app.get("/admin/api/duplicates")
+@login_required
+@admin_required
+def admin_api_duplicates():
+    conn = db()
+    # Duplicate jobs — same non-null account_number
+    dup_jobs_raw = conn.execute("""
+        SELECT j.id, j.display_ref, j.account_number, j.lender_name, j.status,
+               c.name AS client_name,
+               cu.first_name || ' ' || cu.last_name AS customer_name
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE j.account_number IS NOT NULL AND j.account_number != ''
+        ORDER BY LOWER(j.account_number), j.id
+    """).fetchall()
+
+    acct_groups = {}
+    for r in dup_jobs_raw:
+        key = (r["account_number"] or "").strip().lower()
+        if key:
+            acct_groups.setdefault(key, []).append(dict(r))
+    dup_jobs = [
+        {"key": k, "jobs": v}
+        for k, v in acct_groups.items() if len(v) > 1
+    ]
+
+    # Duplicate clients — same name (case-insensitive)
+    dup_clients_raw = conn.execute("""
+        SELECT id, name, email, phone
+        FROM clients
+        ORDER BY LOWER(name), id
+    """).fetchall()
+    name_groups = {}
+    for r in dup_clients_raw:
+        key = (r["name"] or "").strip().lower()
+        if key:
+            name_groups.setdefault(key, []).append(dict(r))
+    dup_clients = [
+        {"key": k, "clients": v}
+        for k, v in name_groups.items() if len(v) > 1
+    ]
+
+    conn.close()
+    return {"dup_jobs": dup_jobs, "dup_clients": dup_clients}
 
 
 @app.post("/admin/settings")

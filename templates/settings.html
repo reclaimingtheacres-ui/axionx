@@ -55,6 +55,9 @@
     <li class="nav-item">
       <a class="nav-link" href="#change-password" data-tab="change-password">Change Password</a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#duplicate-finder" data-tab="duplicate-finder">&#128270; Duplicate Finder</a>
+    </li>
   </ul>
 </div>
 
@@ -404,7 +407,7 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 });
 
 (function() {
-  var validTabs = ['job-numbers', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password'];
+  var validTabs = ['job-numbers', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder'];
   var hash = location.hash.replace('#', '');
   showTab(validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers');
 })();
@@ -716,6 +719,163 @@ function savePassword() {
       alertEl.classList.add('alert-danger');
       alertEl.style.display = '';
     });
+}
+</script>
+
+<!-- TAB: Duplicate Finder -->
+<div class="tab-pane-custom" id="tab-duplicate-finder" style="display:none">
+  <div class="ax-card mb-4">
+    <div class="ax-card-h d-flex justify-content-between align-items-center">
+      <span>&#128270; Duplicate Finder</span>
+      <button class="btn btn-primary btn-sm" onclick="dupScan()" id="dupScanBtn">Scan for Duplicates</button>
+    </div>
+    <div class="ax-card-b">
+      <p class="small mb-3" style="color:var(--muted)">
+        Scans for duplicate <strong>jobs</strong> (same account number) and duplicate <strong>clients</strong> (same name).
+        Review each group and keep the record you want — delete the extras.
+      </p>
+      <div id="dupLoading" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.9rem">
+        Scanning…
+      </div>
+      <div id="dupResults" style="display:none">
+        <!-- Jobs duplicates -->
+        <div id="dupJobsSection">
+          <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Jobs (by Account Number)</h6>
+          <div id="dupJobsList"></div>
+        </div>
+        <!-- Clients duplicates -->
+        <div id="dupClientsSection" class="mt-4">
+          <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Clients (by Name)</h6>
+          <div id="dupClientsList"></div>
+        </div>
+        <div id="dupNoneMsg" style="display:none;padding:24px;text-align:center;color:#16a34a;font-weight:600">
+          &#10003; No duplicates found — your data looks clean!
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function dupScan() {
+  var btn = document.getElementById('dupScanBtn');
+  var loading = document.getElementById('dupLoading');
+  var results = document.getElementById('dupResults');
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  loading.style.display = '';
+  results.style.display = 'none';
+
+  fetch('/admin/api/duplicates', {credentials: 'include'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = 'Scan for Duplicates';
+      loading.style.display = 'none';
+      results.style.display = '';
+
+      var jobList  = document.getElementById('dupJobsList');
+      var cliList  = document.getElementById('dupClientsList');
+      var noneMsg  = document.getElementById('dupNoneMsg');
+      var jobSec   = document.getElementById('dupJobsSection');
+      var cliSec   = document.getElementById('dupClientsSection');
+      jobList.innerHTML = '';
+      cliList.innerHTML = '';
+
+      var total = (data.dup_jobs || []).length + (data.dup_clients || []).length;
+      if (total === 0) {
+        jobSec.style.display = 'none';
+        cliSec.style.display = 'none';
+        noneMsg.style.display = '';
+        return;
+      }
+      noneMsg.style.display = 'none';
+
+      // --- Duplicate Jobs ---
+      if ((data.dup_jobs || []).length === 0) {
+        jobSec.style.display = 'none';
+      } else {
+        jobSec.style.display = '';
+        data.dup_jobs.forEach(function(grp) {
+          var card = document.createElement('div');
+          card.className = 'mb-3';
+          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
+          var header = '<div style="background:var(--card);padding:8px 12px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.04em">' +
+            'ACCOUNT: ' + _esc(grp.key.toUpperCase()) + ' — ' + grp.jobs.length + ' jobs</div>';
+          var rows = grp.jobs.map(function(j) {
+            return '<tr>' +
+              '<td style="padding:8px 12px;font-size:.85rem"><a href="/jobs/' + j.id + '" target="_blank" style="font-weight:600;color:var(--accent)">' + _esc(j.display_ref || '#'+j.id) + '</a></td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.lender_name || '—') + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.client_name || '—') + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.customer_name || '—') + '</td>' +
+              '<td style="padding:8px 12px"><span class="badge" style="font-size:.7rem;background:' + (j.status==='Active'?'#22c55e':j.status==='Completed'?'#64748b':'#f59e0b') + ';color:#fff">' + _esc(j.status||'—') + '</span></td>' +
+              '<td style="padding:8px 12px;white-space:nowrap">' +
+                '<a href="/jobs/' + j.id + '" class="btn btn-outline-primary btn-sm me-1" style="font-size:.72rem" target="_blank">Edit</a>' +
+                '<form method="post" action="/jobs/' + j.id + '/delete" style="display:inline" onsubmit="return confirm(\'Delete job ' + _esc(j.display_ref||'#'+j.id) + '? This cannot be undone.\')">' +
+                  '<button class="btn btn-outline-danger btn-sm" style="font-size:.72rem">Delete</button>' +
+                '</form>' +
+              '</td>' +
+            '</tr>';
+          }).join('');
+          card.innerHTML = header + '<table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr style="background:var(--panel2)">' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">REF</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">LENDER</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CLIENT</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CUSTOMER</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">STATUS</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ACTIONS</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>';
+          jobList.appendChild(card);
+        });
+      }
+
+      // --- Duplicate Clients ---
+      if ((data.dup_clients || []).length === 0) {
+        cliSec.style.display = 'none';
+      } else {
+        cliSec.style.display = '';
+        data.dup_clients.forEach(function(grp) {
+          var card = document.createElement('div');
+          card.className = 'mb-3';
+          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
+          var header = '<div style="background:var(--card);padding:8px 12px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.04em">' +
+            'CLIENT NAME: ' + _esc(grp.key.toUpperCase()) + ' — ' + grp.clients.length + ' records</div>';
+          var rows = grp.clients.map(function(c) {
+            return '<tr>' +
+              '<td style="padding:8px 12px;font-size:.85rem;font-weight:600">' + _esc(c.name) + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.email || '—') + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.phone || '—') + '</td>' +
+              '<td style="padding:8px 12px;white-space:nowrap">' +
+                '<a href="/clients/' + c.id + '/edit" class="btn btn-outline-primary btn-sm me-1" style="font-size:.72rem" target="_blank">Edit</a>' +
+                '<form method="post" action="/clients/delete" style="display:inline" onsubmit="return confirm(\'Delete client ' + _esc(c.name) + '? This cannot be undone.\')">' +
+                  '<input type="hidden" name="client_id" value="' + c.id + '">' +
+                  '<button class="btn btn-outline-danger btn-sm" style="font-size:.72rem">Delete</button>' +
+                '</form>' +
+              '</td>' +
+            '</tr>';
+          }).join('');
+          card.innerHTML = header + '<table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr style="background:var(--panel2)">' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">NAME</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">EMAIL</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">PHONE</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ACTIONS</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>';
+          cliList.appendChild(card);
+        });
+      }
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Scan for Duplicates';
+      loading.style.display = 'none';
+      alert('Error scanning for duplicates. Please try again.');
+    });
+}
+
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 {% endblock %}
