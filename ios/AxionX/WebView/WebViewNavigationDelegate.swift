@@ -109,6 +109,24 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         vc.present(alert, animated: true)
     }
 
+    // MARK: - Camera permission (iOS 15+)
+
+    /// WKWebView calls this before allowing getUserMedia / camera access from web JS.
+    /// Without this delegate method WKWebView silently denies the request every time,
+    /// even if the host app has NSCameraUsageDescription and the user granted camera
+    /// permission in iOS Settings.  We grant unconditionally — the user already approved
+    /// camera access at the native iOS level when the OS prompt was accepted.
+    @available(iOS 15.0, *)
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        decisionHandler(.grant)
+    }
+
     // MARK: - Private
 
     private func topViewController() -> UIViewController? {

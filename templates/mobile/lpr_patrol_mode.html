@@ -288,6 +288,20 @@ var ctx     = canvas.getContext('2d');
 /* ── Camera init ────────────────────────────────────────── */
 async function startCamera() {
   _recovering = false;
+
+  // Defensive check: navigator.mediaDevices may be undefined in restricted
+  // WebView environments (e.g. older WKWebView builds without camera permission
+  // delegate).  Show a clear, actionable message instead of throwing a raw
+  // TypeError.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    document.getElementById('pmStatusText').textContent = 'CAMERA UNAVAILABLE';
+    document.getElementById('pmSubtitle').textContent =
+      'Camera API not available in this build — update the app and ensure camera permission is granted in iOS Settings';
+    document.getElementById('pmPulseDot').style.background = '#ef4444';
+    document.getElementById('pmPulseDot').style.animation = 'none';
+    return;
+  }
+
   try {
     _stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -316,7 +330,9 @@ async function startCamera() {
     _scanInterval = setInterval(captureAndScan, SCAN_INTERVAL);
   } catch(err) {
     var msg = (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
-      ? 'Camera permission denied — check Settings'
+      ? 'Camera permission denied — go to iOS Settings → AxionX → Camera'
+      : (err.name === 'NotFoundError')
+      ? 'No camera found on this device'
       : (err.message || 'Camera unavailable');
     document.getElementById('pmStatusText').textContent = 'CAMERA ERROR';
     document.getElementById('pmSubtitle').textContent = msg;

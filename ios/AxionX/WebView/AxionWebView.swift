@@ -13,6 +13,8 @@ final class WebViewStore: ObservableObject {
         config.websiteDataStore = .default()
         config.applicationNameForUserAgent = AppConfig.userAgent
         config.allowsInlineMediaPlayback = true
+        // Required so getUserMedia works without a user gesture on every call
+        config.mediaTypesRequiringUserActionForPlayback = []
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.backgroundColor = .white
