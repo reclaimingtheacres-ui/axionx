@@ -99,7 +99,7 @@
           {% for j in jobs %}
           <tr style="cursor:pointer;border-color:var(--line)" onclick="window.location='/jobs/{{ j.id }}'">
             <td style="border-color:var(--line);color:var(--accent);font-weight:600">{{ j.display_ref }}</td>
-            <td style="border-color:var(--line);color:#fff;font-weight:500">{{ j.customer_label or j.customer_name }}</td>
+            <td style="border-color:var(--line);color:var(--text);font-weight:500">{{ j.customer_label or j.customer_name }}</td>
             <td style="border-color:var(--line);color:var(--muted)">{{ j.assigned_name or '&#8212;' }}</td>
             <td style="border-color:var(--line)">
               {% if j.next_scheduled %}
