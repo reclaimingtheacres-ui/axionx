@@ -493,6 +493,19 @@ def init_db():
     add_column_if_missing(cur, "jobs", "costs2_cents", "INTEGER")
 
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        payment_date TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        note TEXT,
+        recorded_by_user_id INTEGER,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS job_types (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -2765,6 +2778,17 @@ def job_detail(job_id: int):
     job["total_due_now_cents"] = int(round(total_dollars * 100))
     job["mmp_included_in_total"] = include_mmp
 
+    # Payments received for this job
+    cur.execute(
+        "SELECT jp.*, u.full_name AS recorded_by_name FROM job_payments jp "
+        "LEFT JOIN users u ON u.id = jp.recorded_by_user_id "
+        "WHERE jp.job_id = ? ORDER BY jp.payment_date DESC, jp.id DESC",
+        (job_id,)
+    )
+    job_payments = cur.fetchall()
+    payments_total_cents = sum(p["amount_cents"] for p in job_payments)
+    job["net_due_cents"] = max(0, job["total_due_now_cents"] - payments_total_cents)
+
     role = session.get("role")
     user_id = session.get("user_id")
     if role == "agent" and job["assigned_user_id"] != user_id:
@@ -2960,7 +2984,9 @@ def job_detail(job_id: int):
                            form_templates=form_templates,
                            job_lpr_sightings=job_lpr_sightings,
                            job_patrol_intel=job_patrol_intel,
-                           repo_lock_map=repo_lock_map)
+                           repo_lock_map=repo_lock_map,
+                           job_payments=job_payments,
+                           payments_total_cents=payments_total_cents)
 
 
 @app.post("/jobs/<int:job_id>/customers/add")
@@ -3712,6 +3738,66 @@ def job_lender_update(job_id: int):
     conn.close()
     flash("Lender details updated.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/payments")
+@login_required
+def job_payment_add(job_id: int):
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    pmt_date   = request.form.get("payment_date", "").strip()
+    pmt_amount = request.form.get("payment_amount", "").strip()
+    pmt_note   = request.form.get("payment_note", "").strip()
+
+    amount_cents = money_to_cents(pmt_amount)
+    if not amount_cents or amount_cents <= 0:
+        flash("Payment amount is required.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+    if not pmt_date:
+        pmt_date = datetime.now(_melbourne).strftime("%Y-%m-%d")
+    else:
+        try:
+            pmt_date = datetime.strptime(pmt_date, "%d/%m/%Y").strftime("%Y-%m-%d")
+        except Exception:
+            try:
+                pmt_date = datetime.strptime(pmt_date, "%Y-%m-%d").strftime("%Y-%m-%d")
+            except Exception:
+                pmt_date = datetime.now(_melbourne).strftime("%Y-%m-%d")
+
+    ts = now_ts()
+    conn = db()
+    cur  = conn.cursor()
+
+    cur.execute(
+        "INSERT INTO job_payments (job_id, payment_date, amount_cents, note, recorded_by_user_id, created_at) VALUES (?,?,?,?,?,?)",
+        (job_id, pmt_date, amount_cents, pmt_note or None, uid, ts)
+    )
+
+    pmt_display_date = datetime.strptime(pmt_date, "%Y-%m-%d").strftime("%d/%m/%Y")
+    note_body = f"Payment received: ${amount_cents/100:.2f} on {pmt_display_date}"
+    if pmt_note:
+        note_body += f" — {pmt_note}"
+    cur.execute(
+        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+        (job_id, uid, note_body, ts)
+    )
+
+    conn.commit()
+    conn.close()
+    flash("Payment recorded.", "success")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="lender-payments"))
+
+
+@app.post("/jobs/<int:job_id>/payments/<int:payment_id>/delete")
+@login_required
+@admin_required
+def job_payment_delete(job_id: int, payment_id: int):
+    conn = db()
+    conn.execute("DELETE FROM job_payments WHERE id=? AND job_id=?", (payment_id, job_id))
+    conn.commit()
+    conn.close()
+    flash("Payment removed.", "success")
+    return redirect(url_for("job_detail", job_id=job_id, _anchor="lender-payments"))
 
 
 @app.post("/jobs/<int:job_id>/interactions/new")
