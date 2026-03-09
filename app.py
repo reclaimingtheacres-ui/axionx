@@ -3864,9 +3864,12 @@ def client_detail(client_id: int):
         conn.close()
         return ("Not found", 404)
     cur.execute("""
-        SELECT j.*, u.full_name agent_name
+        SELECT j.*, u.full_name agent_name,
+               cu.last_name  AS cust_last_name,
+               cu.company    AS cust_company
         FROM jobs j
-        LEFT JOIN users u ON u.id = j.assigned_user_id
+        LEFT JOIN users     u  ON u.id  = j.assigned_user_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE j.client_id = ?
         ORDER BY j.created_at DESC
     """, (client_id,))

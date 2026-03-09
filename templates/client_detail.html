@@ -50,7 +50,16 @@
       <a href="/jobs/{{ j.id }}" class="text-decoration-none d-flex justify-content-between align-items-center"
          style="padding:.65rem 0;border-bottom:1px solid #e5e7eb;color:inherit;{% if loop.first %}padding-top:.1rem;{% endif %}">
         <div style="min-width:0;">
-          <div class="fw-semibold" style="font-size:.92rem;">{{ j.display_ref }}</div>
+          <div class="fw-semibold" style="font-size:.92rem;">
+            {{ j.display_ref }}
+            {%- if j.cust_last_name or j.cust_company -%}
+              <span style="font-weight:400;color:var(--muted);margin-left:7px;font-size:.85rem;">
+                {%- if j.cust_last_name %}{{ j.cust_last_name }}{% endif -%}
+                {%- if j.cust_last_name and j.cust_company %} / {% endif -%}
+                {%- if j.cust_company %}{{ j.cust_company }}{% endif -%}
+              </span>
+            {%- endif %}
+          </div>
           <div class="small" style="color:var(--muted)">{{ j.job_type }}{% if j.agent_name %} &bull; {{ j.agent_name }}{% endif %}</div>
         </div>
         <span style="flex-shrink:0;margin-left:12px;display:inline-block;
