@@ -7853,9 +7853,21 @@ def assign_board():
     agents = cur.fetchall()
 
     cur.execute("""
-        SELECT ci.*, j.internal_job_number, j.client_reference,
+        SELECT ci.*,
+               j.internal_job_number, j.client_reference,
                (cu.first_name || ' ' || cu.last_name) customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg,
+               COALESCE(
+                   ci.assigned_user_id,
+                   (SELECT s.assigned_to_user_id
+                    FROM schedules s
+                    WHERE s.job_id = ci.job_id
+                      AND date(s.scheduled_for) = ci.due_date
+                      AND s.status NOT IN ('Cancelled','Completed')
+                    ORDER BY s.scheduled_for
+                    LIMIT 1),
+                   j.assigned_user_id
+               ) AS display_assigned_user_id
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id

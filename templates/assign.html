@@ -20,7 +20,7 @@
     <div class="assign-header">Unassigned</div>
     <div class="assign-body dropzone">
       {% for cue in cues %}
-        {% if not cue.assigned_user_id %}
+        {% if not cue.display_assigned_user_id %}
           {% include "partials/cue_card.html" %}
         {% endif %}
       {% endfor %}
@@ -32,7 +32,7 @@
       <div class="assign-header">{{ agent.full_name }}</div>
       <div class="assign-body dropzone">
         {% for cue in cues %}
-          {% if cue.assigned_user_id == agent.id %}
+          {% if cue.display_assigned_user_id == agent.id %}
             {% include "partials/cue_card.html" %}
           {% endif %}
         {% endfor %}
