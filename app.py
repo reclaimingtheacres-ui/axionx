@@ -13,6 +13,7 @@ import io
 import uuid
 import mimetypes
 import traceback
+import threading
 import pytesseract
 from PIL import Image, ImageFilter, ImageEnhance
 from datetime import date, datetime
@@ -2734,6 +2735,9 @@ def job_create():
     conn.commit()
     conn.close()
 
+    if job_address:
+        _geocode_job_async(job_id, job_address)
+
     flash("Job created.", "success")
     if request.form.get("add_another"):
         params = {}
@@ -3727,6 +3731,10 @@ def job_edit(job_id: int):
 
     conn.commit()
     conn.close()
+
+    if job_address:
+        _geocode_job_async(job_id, job_address)
+
     flash("Job updated.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
 
@@ -8308,6 +8316,49 @@ def api_agent_location():
     return jsonify({"ok": True})
 
 
+def _geocode_address(address: str):
+    """Geocode an address via Nominatim. Returns (lat, lng) or None.
+    Rate-limit compliant: caller must sleep ≥1 s between calls."""
+    import urllib.request
+    import urllib.parse
+    try:
+        params = urllib.parse.urlencode({
+            "q": address,
+            "format": "json",
+            "limit": 1,
+            "countrycodes": "au",
+        })
+        url = f"https://nominatim.openstreetmap.org/search?{params}"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "AxionX/1.0 field-ops (contact@swpirecoveries.com.au)"}
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            import json as _json
+            data = _json.loads(resp.read())
+        if data:
+            return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception:
+        pass
+    return None
+
+
+def _geocode_job_async(job_id: int, address: str):
+    """Fire-and-forget: geocode one job address and persist the result."""
+    def _worker():
+        result = _geocode_address(address)
+        if result:
+            lat, lng = result
+            try:
+                conn = db()
+                conn.execute("UPDATE jobs SET lat=?, lng=? WHERE id=?", (lat, lng, job_id))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 @app.post("/api/jobs/<int:job_id>/geocode")
 @login_required
 def api_job_geocode(job_id: int):
@@ -8322,6 +8373,49 @@ def api_job_geocode(job_id: int):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.post("/m/api/jobs/geocode-pending")
+def m_geocode_pending():
+    """Batch-geocode up to 5 jobs that have an address but no lat/lng.
+    Returns {ok, updated:[{id,lat,lng}], remaining} so the client can
+    keep calling until remaining==0."""
+    if not session.get("user_id"):
+        return jsonify({"ok": False}), 401
+    import time as _time
+    conn = db()
+    pending = conn.execute(
+        "SELECT id, job_address FROM jobs"
+        " WHERE job_address IS NOT NULL AND job_address != ''"
+        "   AND (lat IS NULL OR lng IS NULL)"
+        " LIMIT 5"
+    ).fetchall()
+    conn.close()
+
+    updated = []
+    for job in pending:
+        result = _geocode_address(job["job_address"])
+        if result:
+            lat, lng = result
+            try:
+                c2 = db()
+                c2.execute("UPDATE jobs SET lat=?, lng=? WHERE id=?",
+                           (lat, lng, job["id"]))
+                c2.commit()
+                c2.close()
+                updated.append({"id": job["id"], "lat": lat, "lng": lng})
+            except Exception:
+                pass
+        _time.sleep(1.05)  # Nominatim hard rate limit: 1 req/s
+
+    remaining_conn = db()
+    remaining = remaining_conn.execute(
+        "SELECT COUNT(*) FROM jobs"
+        " WHERE job_address IS NOT NULL AND job_address != ''"
+        "   AND (lat IS NULL OR lng IS NULL)"
+    ).fetchone()[0]
+    remaining_conn.close()
+    return jsonify({"ok": True, "updated": updated, "remaining": remaining})
 
 
 # ─────────────────────────────────────────────────────────────────────────────

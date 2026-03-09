@@ -414,6 +414,8 @@ const cards = Array.from(document.querySelectorAll('.job-row-wrap'));
 
 // ── Distance ──
 let agentPos = null;
+let _geocodePending = false;
+let _geocodeExhausted = false;
 
 function haversineKm(lat1,lng1,lat2,lng2){
   const R=6371, dL=(lat2-lat1)*Math.PI/180, dl=(lng2-lng1)*Math.PI/180;
@@ -421,34 +423,98 @@ function haversineKm(lat1,lng1,lat2,lng2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 function fmtDist(km){
+  if(km < 1) return Math.round(km*1000)+' m';
   if(DIST_UNIT==='mi'){ const mi=km*0.621371; return (mi<10?mi.toFixed(1):Math.round(mi))+' mi'; }
   return (km<10?km.toFixed(1):Math.round(km))+' km';
 }
 
 function applyDistances(){
-  if(!agentPos){ return; }
+  if(!agentPos) return;
+  let missingCoords = 0;
   cards.forEach(c=>{
     const lat=parseFloat(c.dataset.lat), lng=parseFloat(c.dataset.lng);
     const el=document.getElementById('dist-'+c.dataset.id);
-    if(el && lat && lng){
+    if(lat && lng){
       const km=haversineKm(agentPos.lat,agentPos.lng,lat,lng);
-      el.textContent=fmtDist(km);
-      el.classList.remove('hidden');
+      if(el){ el.textContent=fmtDist(km); el.classList.remove('hidden'); }
       c.dataset.dist = km;
+    } else {
+      missingCoords++;
+      if(el && currentSort==='distance'){
+        el.textContent='no coords'; el.classList.remove('hidden');
+      }
     }
   });
-  updateCount();
   if(currentSort==='distance') applySortAndFilter();
+  // Kick off server-side batch geocoding for jobs missing coordinates
+  if(missingCoords > 0 && !_geocodePending && !_geocodeExhausted){
+    geocodePendingJobs();
+  }
+}
+
+function geocodePendingJobs(){
+  if(_geocodePending) return;
+  _geocodePending = true;
+  const warn = document.getElementById('dist-warn');
+  if(warn) warn.textContent = 'Fetching coordinates for job addresses — distances updating…';
+  if(warn) warn.style.display = 'block';
+
+  function runBatch(){
+    fetch('/m/api/jobs/geocode-pending',{method:'POST'})
+      .then(r=>r.json())
+      .then(data=>{
+        if(!data.ok) return;
+        // Update cards that now have coordinates
+        data.updated.forEach(function(u){
+          const card = document.querySelector('.job-row-wrap[data-id="'+u.id+'"]');
+          if(card){
+            card.dataset.lat = u.lat;
+            card.dataset.lng = u.lng;
+          }
+        });
+        if(data.updated.length > 0) applyDistances();
+        if(data.remaining > 0){
+          // More jobs to geocode — wait a moment then run again
+          setTimeout(runBatch, 500);
+        } else {
+          _geocodePending = false;
+          _geocodeExhausted = true;  // no more geocodable jobs on server
+          // All done — update or hide the warning
+          const anyMissing = Array.from(cards).some(c=>!parseFloat(c.dataset.lat));
+          if(warn){
+            if(anyMissing){
+              warn.textContent = 'Some jobs have no address — they appear at the bottom.';
+            } else {
+              warn.style.display = 'none';
+            }
+          }
+          if(currentSort==='distance') applySortAndFilter();
+        }
+      })
+      .catch(()=>{ _geocodePending = false; });
+  }
+  runBatch();
 }
 
 if(navigator.geolocation){
-  navigator.geolocation.getCurrentPosition(pos=>{
-    agentPos={lat:pos.coords.latitude,lng:pos.coords.longitude};
-    applyDistances();
-    if(SORT_PREF==='distance') applySortAndFilter();
-  }, ()=>{
-    if(SORT_PREF==='distance') document.getElementById('dist-warn').style.display='block';
-  }, {enableHighAccuracy:true,timeout:8000});
+  // Use watchPosition so iOS WKWebView reliably provides coordinates;
+  // cancel after first successful fix to avoid battery drain.
+  let _watchId = null;
+  _watchId = navigator.geolocation.watchPosition(
+    pos=>{
+      agentPos = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+      if(_watchId !== null){ navigator.geolocation.clearWatch(_watchId); _watchId = null; }
+      document.getElementById('dist-warn').style.display = 'none';
+      applyDistances();
+    },
+    ()=>{
+      if(currentSort==='distance'){
+        const w = document.getElementById('dist-warn');
+        if(w){ w.textContent = 'Location access is off. Distance-based ordering is unavailable — sorted by visit date instead.'; w.style.display='block'; }
+      }
+    },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:60000}
+  );
 } else if(SORT_PREF==='distance'){
   document.getElementById('dist-warn').style.display='block';
 }
@@ -488,7 +554,10 @@ setupSeg('seg-sort',     v=>{
   currentSort=v;
   document.getElementById('sort-label').textContent =
     {visit_date:'Visit Date',status:'Status',created:'Date Added',distance:'Distance'}[v]||v;
-  if(v==='distance' && !agentPos) document.getElementById('dist-warn').style.display='block';
+  if(v==='distance'){
+    if(agentPos){ applyDistances(); }
+    else { document.getElementById('dist-warn').style.display='block'; }
+  }
 });
 setupSeg('seg-dir',      v=>{ currentDir=v; });
 setupSeg('seg-distunit', v=>{ currentDistUnit=v; });
