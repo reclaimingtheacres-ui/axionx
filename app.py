@@ -2010,9 +2010,14 @@ def dashboard():
 @app.get("/jobs")
 @login_required
 def jobs_list():
-    status = request.args.get("status", "").strip()
-    q      = request.args.get("q", "").strip()
-    sort   = request.args.get("sort", "").strip()
+    status       = request.args.get("status", "").strip()
+    q            = request.args.get("q", "").strip()
+    sort         = request.args.get("sort", "").strip()
+    filter_client  = request.args.get("client_id", "").strip()
+    filter_agent   = request.args.get("agent_id", "").strip()
+    filter_btype   = request.args.get("booking_type_id", "").strip()
+    filter_date_from = request.args.get("date_from", "").strip()
+    filter_date_to   = request.args.get("date_to", "").strip()
 
     user_id = session.get("user_id")
     role = session.get("role")
@@ -2090,6 +2095,26 @@ def jobs_list():
         like = f"%{q}%"
         params.extend([like] * 12)
 
+    if filter_client:
+        sql += " AND j.client_id = ?"
+        params.append(filter_client)
+
+    if filter_agent and role in ("admin", "both"):
+        sql += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled')))"
+        params.extend([filter_agent, filter_agent])
+
+    if filter_btype:
+        sql += " AND EXISTS (SELECT 1 FROM schedules sb JOIN booking_types btf ON btf.id = sb.booking_type_id WHERE sb.job_id = j.id AND sb.booking_type_id = ? AND sb.status NOT IN ('Completed', 'Cancelled') AND sb.scheduled_for >= datetime('now'))"
+        params.append(filter_btype)
+
+    if filter_date_from:
+        sql += " AND date(j.updated_at) >= ?"
+        params.append(filter_date_from)
+
+    if filter_date_to:
+        sql += " AND date(j.updated_at) <= ?"
+        params.append(filter_date_to)
+
     _SORT_MAP = {
         "agent":      "LOWER(COALESCE(u.full_name,'')) ASC, j.updated_at DESC",
         "active":     "CASE WHEN j.status LIKE 'Active%' THEN 0 ELSE 1 END ASC, j.updated_at DESC",
@@ -2101,6 +2126,17 @@ def jobs_list():
 
     cur.execute(sql, params)
     rows = cur.fetchall()
+
+    clients_list = cur.execute(
+        "SELECT id, COALESCE(nickname, name) AS name FROM clients ORDER BY name"
+    ).fetchall()
+    agents_list = cur.execute(
+        "SELECT id, full_name FROM users WHERE role IN ('admin','agent','both') ORDER BY full_name"
+    ).fetchall()
+    btypes_list = cur.execute(
+        "SELECT id, name FROM booking_types ORDER BY name"
+    ).fetchall()
+
     conn.close()
 
     statuses = [
@@ -2113,7 +2149,22 @@ def jobs_list():
         "Invoiced"
     ]
 
-    return render_template("jobs.html", jobs=rows, statuses=statuses, status=status, q=q, sort=sort)
+    return render_template(
+        "jobs.html",
+        jobs=rows,
+        statuses=statuses,
+        status=status,
+        q=q,
+        sort=sort,
+        clients_list=clients_list,
+        agents_list=agents_list,
+        btypes_list=btypes_list,
+        filter_client=filter_client,
+        filter_agent=filter_agent,
+        filter_btype=filter_btype,
+        filter_date_from=filter_date_from,
+        filter_date_to=filter_date_to,
+    )
 
 
 @app.get("/api/jobs/search")

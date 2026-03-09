@@ -11,31 +11,108 @@
   <div class="ax-card-b">
 
     {# ── Filters + Sort ── #}
-    <form class="row g-2 mb-3" method="get">
-      <div class="col-12 col-lg-5">
-        <input class="form-control" name="q" placeholder="Search job no., client, customer, rego, VIN, address..." value="{{ q }}">
+    {% set has_advanced = filter_client or filter_agent or filter_btype or filter_date_from or filter_date_to %}
+    <form class="mb-3" method="get" id="jobs-filter-form">
+
+      {# Row 1: search + status + sort + toggle #}
+      <div class="row g-2 mb-2">
+        <div class="col-12 col-lg-5">
+          <input class="form-control" name="q" placeholder="Search job no., client, customer, rego, VIN, address..." value="{{ q }}">
+        </div>
+        <div class="col-6 col-lg-2">
+          <select class="form-select" name="status">
+            <option value="">All statuses</option>
+            {% for s in statuses %}
+              <option value="{{s}}" {% if s == status %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <select class="form-select" name="sort">
+            <option value="" {% if sort == '' %}selected{% endif %}>Sort: Default</option>
+            <option value="active"      {% if sort == 'active' %}selected{% endif %}>Sort: Active first</option>
+            <option value="agent"       {% if sort == 'agent' %}selected{% endif %}>Sort: Agent A–Z</option>
+            <option value="job_number"  {% if sort == 'job_number' %}selected{% endif %}>Sort: Job # high–low</option>
+            <option value="client_ref"  {% if sort == 'client_ref' %}selected{% endif %}>Sort: Client ref high–low</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <button type="button" id="adv-toggle"
+                  onclick="axToggleAdv()"
+                  style="width:100%;padding:.375rem .75rem;border:1px solid {% if has_advanced %}var(--accent){% else %}var(--line){% endif %};border-radius:8px;background:{% if has_advanced %}rgba(96,165,250,.1){% else %}var(--card){% endif %};color:{% if has_advanced %}var(--accent){% else %}var(--text){% endif %};font-size:.875rem;cursor:pointer;white-space:nowrap;">
+            More filters{% if has_advanced %} ●{% endif %} <span id="adv-arrow">{% if has_advanced %}▲{% else %}▼{% endif %}</span>
+          </button>
+        </div>
+        <div class="col-6 col-lg-1">
+          <button class="btn btn-outline-secondary w-100" type="submit">Filter</button>
+        </div>
       </div>
-      <div class="col-6 col-lg-2">
-        <select class="form-select" name="status">
-          <option value="">All statuses</option>
-          {% for s in statuses %}
-            <option value="{{s}}" {% if s == status %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select>
+
+      {# Row 2: advanced filters (collapsible) #}
+      <div id="adv-filters" style="display:{% if has_advanced %}flex{% else %}none{% endif %};flex-wrap:wrap;gap:8px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:4px;">
+
+        <div style="flex:1;min-width:140px;">
+          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Client</label>
+          <select class="form-select form-select-sm" name="client_id">
+            <option value="">All clients</option>
+            {% for c in clients_list %}
+              <option value="{{ c.id }}" {% if filter_client == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        {% if session.get('role') in ('admin', 'both') %}
+        <div style="flex:1;min-width:140px;">
+          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Agent</label>
+          <select class="form-select form-select-sm" name="agent_id">
+            <option value="">All agents</option>
+            {% for a in agents_list %}
+              <option value="{{ a.id }}" {% if filter_agent == a.id|string %}selected{% endif %}>{{ a.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <div style="flex:1;min-width:160px;">
+          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Booking type</label>
+          <select class="form-select form-select-sm" name="booking_type_id">
+            <option value="">All booking types</option>
+            {% for bt in btypes_list %}
+              <option value="{{ bt.id }}" {% if filter_btype == bt.id|string %}selected{% endif %}>{{ bt.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="flex:1;min-width:130px;">
+          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Updated from</label>
+          <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filter_date_from }}">
+        </div>
+
+        <div style="flex:1;min-width:130px;">
+          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Updated to</label>
+          <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filter_date_to }}">
+        </div>
+
+        {% if has_advanced %}
+        <div style="display:flex;align-items:flex-end;padding-bottom:1px;">
+          <a href="/jobs" style="font-size:.78rem;color:#ef4444;text-decoration:none;padding:6px 10px;border:1px solid #ef444440;border-radius:7px;white-space:nowrap;">✕ Clear</a>
+        </div>
+        {% endif %}
+
       </div>
-      <div class="col-6 col-lg-2">
-        <select class="form-select" name="sort">
-          <option value="" {% if sort == '' %}selected{% endif %}>Sort: Default</option>
-          <option value="active"      {% if sort == 'active' %}selected{% endif %}>Sort: Active first</option>
-          <option value="agent"       {% if sort == 'agent' %}selected{% endif %}>Sort: Agent A–Z</option>
-          <option value="job_number"  {% if sort == 'job_number' %}selected{% endif %}>Sort: Job # high–low</option>
-          <option value="client_ref"  {% if sort == 'client_ref' %}selected{% endif %}>Sort: Client ref high–low</option>
-        </select>
-      </div>
-      <div class="col-12 col-lg-1">
-        <button class="btn btn-outline-secondary w-100">Filter</button>
-      </div>
+
     </form>
+
+    <script>
+    function axToggleAdv() {
+      var el  = document.getElementById('adv-filters');
+      var arr = document.getElementById('adv-arrow');
+      var btn = document.getElementById('adv-toggle');
+      var open = el.style.display !== 'none';
+      el.style.display  = open ? 'none' : 'flex';
+      arr.textContent   = open ? '▼' : '▲';
+    }
+    </script>
 
     {# ── Job rows ── #}
     {% for j in jobs %}
