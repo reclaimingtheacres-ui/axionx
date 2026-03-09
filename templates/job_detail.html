@@ -719,7 +719,12 @@
                       Selected ▾
                     </button>
                     <div id="note-menu-{{ entry.note.id }}"
-                         style="display:none;position:absolute;left:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:999;min-width:100px;overflow:hidden">
+                         style="display:none;position:absolute;left:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:999;min-width:110px;overflow:hidden">
+                      <button type="button"
+                              onclick="axNoteEdit({{ entry.note.id }})"
+                              style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
+                        ✏ Edit
+                      </button>
                       <form method="post" action="/jobs/{{ job.id }}/notes/{{ entry.note.id }}/delete" style="margin:0">
                         <button type="submit"
                                 style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:#ef4444;cursor:pointer;font-weight:500">
@@ -773,7 +778,25 @@
                 <!-- Content col -->
                 <div>
                   {% if entry.note.note_text %}
-                    <div class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
+                    <div id="note-text-{{ entry.note.id }}" class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
+                    <div id="note-edit-{{ entry.note.id }}" style="display:none;margin-bottom:6px">
+                      <textarea id="note-edit-ta-{{ entry.note.id }}"
+                                rows="4"
+                                style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid var(--accent);border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;background:var(--card);color:var(--text);outline:none;"></textarea>
+                      <div style="display:flex;gap:8px;margin-top:6px">
+                        <button type="button"
+                                onclick="axNoteSave({{ entry.note.id }}, '{{ url_for('edit_job_note', job_id=job.id, note_id=entry.note.id) }}')"
+                                style="padding:5px 16px;background:var(--accent);color:#fff;border:0;border-radius:7px;font-size:.8rem;font-weight:600;cursor:pointer">
+                          Save
+                        </button>
+                        <button type="button"
+                                onclick="axNoteCancelEdit({{ entry.note.id }})"
+                                style="padding:5px 14px;background:var(--card);color:var(--muted);border:1px solid var(--line);border-radius:7px;font-size:.8rem;cursor:pointer">
+                          Cancel
+                        </button>
+                        <span id="note-edit-err-{{ entry.note.id }}" style="font-size:.78rem;color:#ef4444;align-self:center;display:none"></span>
+                      </div>
+                    </div>
                   {% endif %}
                   {% if entry.files %}
                     <div class="d-flex flex-wrap gap-2 mt-2" style="align-items:flex-start">
@@ -1939,6 +1962,52 @@ function axNoteMenu(noteId, btn) {
   var isOpen = menu.style.display === 'block';
   document.querySelectorAll('[id^="note-menu-"]').forEach(function(m){ m.style.display = 'none'; });
   menu.style.display = isOpen ? 'none' : 'block';
+}
+function axNoteEdit(noteId) {
+  var textEl = document.getElementById('note-text-' + noteId);
+  var editEl = document.getElementById('note-edit-' + noteId);
+  var ta     = document.getElementById('note-edit-ta-' + noteId);
+  var menu   = document.getElementById('note-menu-' + noteId);
+  if (!textEl || !editEl || !ta) return;
+  ta.value = textEl.textContent;
+  textEl.style.display = 'none';
+  editEl.style.display = 'block';
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  if (menu) menu.style.display = 'none';
+}
+function axNoteCancelEdit(noteId) {
+  var textEl = document.getElementById('note-text-' + noteId);
+  var editEl = document.getElementById('note-edit-' + noteId);
+  if (textEl) textEl.style.display = '';
+  if (editEl) editEl.style.display = 'none';
+  var errEl = document.getElementById('note-edit-err-' + noteId);
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
+function axNoteSave(noteId, url) {
+  var ta    = document.getElementById('note-edit-ta-' + noteId);
+  var errEl = document.getElementById('note-edit-err-' + noteId);
+  var newText = ta ? ta.value.trim() : '';
+  if (!newText) {
+    if (errEl) { errEl.textContent = 'Note cannot be empty.'; errEl.style.display = 'inline'; }
+    return;
+  }
+  var fd = new FormData();
+  fd.append('note_text', newText);
+  fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        var textEl = document.getElementById('note-text-' + noteId);
+        if (textEl) textEl.textContent = data.note_text;
+        axNoteCancelEdit(noteId);
+      } else {
+        if (errEl) { errEl.textContent = data.error || 'Save failed.'; errEl.style.display = 'inline'; }
+      }
+    })
+    .catch(function() {
+      if (errEl) { errEl.textContent = 'Network error — try again.'; errEl.style.display = 'inline'; }
+    });
 }
 function axNoteEmailTo(btn, recipient) {
   var c = btn.closest('[data-note-body]');

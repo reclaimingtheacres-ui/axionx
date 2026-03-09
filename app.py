@@ -5758,6 +5758,36 @@ def delete_job_note(job_id: int, note_id: int):
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
 
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/edit")
+@login_required
+def edit_job_note(job_id: int, note_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM job_field_notes WHERE id=? AND job_id=?", (note_id, job_id))
+    note = cur.fetchone()
+    if not note:
+        conn.close()
+        return jsonify({"ok": False, "error": "Note not found"}), 404
+
+    caller_id   = session.get("user_id")
+    caller_role = session.get("role", "")
+    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Permission denied"}), 403
+
+    new_text = request.form.get("note_text", "").strip()
+    if not new_text:
+        conn.close()
+        return jsonify({"ok": False, "error": "Note text cannot be empty"}), 400
+
+    cur.execute("UPDATE job_field_notes SET note_text=? WHERE id=?", (new_text, note_id))
+    conn.commit()
+    conn.close()
+
+    audit("job_note", note_id, "edit", "Field note edited", {"job_id": job_id})
+    return jsonify({"ok": True, "note_text": new_text})
+
+
 @app.get("/uploads/<path:filename>")
 @login_required
 def serve_upload(filename):
