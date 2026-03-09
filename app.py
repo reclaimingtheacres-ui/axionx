@@ -490,6 +490,8 @@ def init_db():
     ]:
         add_column_if_missing(cur, "job_items", col, coltype)
 
+    add_column_if_missing(cur, "jobs", "costs2_cents", "INTEGER")
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS job_types (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1446,10 +1448,11 @@ def format_interaction_dt(s: str) -> str:
     return s
 
 
-def calc_total_due_now(arrears, costs, mmp, due_date):
+def calc_total_due_now(arrears, costs, mmp, due_date, costs2=0):
     arrears = float(arrears or 0)
-    costs = float(costs or 0)
-    mmp = float(mmp or 0)
+    costs   = float(costs or 0)
+    costs2  = float(costs2 or 0)
+    mmp     = float(mmp or 0)
     if isinstance(due_date, str):
         try:
             due_date = datetime.strptime(due_date[:10], "%Y-%m-%d").date()
@@ -1458,11 +1461,49 @@ def calc_total_due_now(arrears, costs, mmp, due_date):
     if isinstance(due_date, datetime):
         due_date = due_date.date()
     today = datetime.now(_melbourne).date()
-    total = arrears + costs
+    total = arrears + costs + costs2
     include_mmp = bool(due_date and due_date < today)
     if include_mmp:
         total += mmp
     return round(total, 2), include_mmp
+
+
+def _add_months(d, n):
+    import calendar
+    month = d.month + n
+    year  = d.year + (month - 1) // 12
+    month = (month - 1) % 12 + 1
+    day   = min(d.day, calendar.monthrange(year, month)[1])
+    return d.replace(year=year, month=month, day=day)
+
+
+def advance_due_date_display(due_date_str, payment_frequency):
+    """Return the next upcoming due date (string YYYY-MM-DD) by advancing
+    past today according to the payment frequency.  Used for display only."""
+    if not due_date_str:
+        return due_date_str
+    try:
+        due = datetime.strptime(due_date_str[:10], "%Y-%m-%d").date()
+    except Exception:
+        return due_date_str
+    today = datetime.now(_melbourne).date()
+    if due >= today:
+        return due_date_str
+    freq = (payment_frequency or "").lower()
+    from datetime import timedelta as _td
+    max_iter = 1000
+    i = 0
+    while due < today and i < max_iter:
+        if "month" in freq:
+            due = _add_months(due, 1)
+        elif "fortnight" in freq:
+            due += _td(days=14)
+        elif "week" in freq:
+            due += _td(days=7)
+        else:
+            break
+        i += 1
+    return due.isoformat()
 
 
 app.jinja_env.globals.update(
@@ -2716,9 +2757,11 @@ def job_detail(job_id: int):
         (job.get("arrears_cents") or 0) / 100,
         (job.get("costs_cents") or 0) / 100,
         (job.get("mmp_cents") or 0) / 100,
-        job.get("job_due_date")
+        job.get("job_due_date"),
+        (job.get("costs2_cents") or 0) / 100,
     )
-    job["due_date_display"] = format_ddmmyyyy(job.get("job_due_date"))
+    _adv_due = advance_due_date_display(job.get("job_due_date"), job.get("payment_frequency"))
+    job["due_date_display"] = format_ddmmyyyy(_adv_due)
     job["total_due_now_cents"] = int(round(total_dollars * 100))
     job["mmp_included_in_total"] = include_mmp
 
@@ -3652,6 +3695,7 @@ def job_lender_update(job_id: int):
     regulation_type    = request.form.get("regulation_type", "").strip()
     arrears_cents      = money_to_cents(request.form.get("arrears", ""))
     costs_cents        = money_to_cents(request.form.get("costs", ""))
+    costs2_cents       = money_to_cents(request.form.get("costs2", ""))
     mmp_cents          = money_to_cents(request.form.get("mmp", ""))
     job_due_date       = request.form.get("job_due_date", "").strip() or None
     payment_frequency  = request.form.get("payment_frequency", "").strip() or None
@@ -3659,11 +3703,11 @@ def job_lender_update(job_id: int):
     cur  = conn.cursor()
     cur.execute("""
         UPDATE jobs SET lender_name=?, account_number=?, regulation_type=?,
-        arrears_cents=?, costs_cents=?, mmp_cents=?, job_due_date=?,
+        arrears_cents=?, costs_cents=?, costs2_cents=?, mmp_cents=?, job_due_date=?,
         payment_frequency=?, updated_at=? WHERE id=?
     """, (lender_name or None, account_number or None, regulation_type or None,
-          arrears_cents or None, costs_cents or None, mmp_cents or None,
-          job_due_date, payment_frequency, now_ts(), job_id))
+          arrears_cents or None, costs_cents or None, costs2_cents or None,
+          mmp_cents or None, job_due_date, payment_frequency, now_ts(), job_id))
     conn.commit()
     conn.close()
     flash("Lender details updated.", "success")

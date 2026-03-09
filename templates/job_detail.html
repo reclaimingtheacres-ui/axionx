@@ -206,193 +206,191 @@
 <div class="tab-pane fade show active" id="tab-job" role="tabpanel">
 <div class="d-flex flex-column gap-3">
 
-    <!-- Customer(s) -->
-    <div class="ax-card p-3">
-      <div class="d-flex justify-content-between align-items-start mb-2">
-        <div class="small fw-bold" style="color:var(--muted)">CUSTOMER(S)</div>
-        <div class="d-flex gap-2 align-items-center">
-          {% if job.job_address %}
-            <a class="btn btn-outline-secondary btn-sm"
-               target="_blank"
-               href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
-              Open in Maps
-            </a>
+    {# ── Customer + Client side-by-side ── #}
+    <div class="row g-2">
+
+      {# Left: Customer(s) #}
+      <div class="col-12 col-lg-6">
+        <div style="padding:.75rem .9rem;border-radius:10px;background:var(--card);">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">CUSTOMER(S)</div>
+            <div class="d-flex gap-2 align-items-center">
+              {% if job.job_address %}
+                <a class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:2px 8px"
+                   target="_blank"
+                   href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
+                  Open in Maps
+                </a>
+              {% endif %}
+            </div>
+          </div>
+          {% if job_linked_customers %}
+            {% for lc in job_linked_customers %}
+              <div class="{% if not loop.first %}mt-2 pt-2{% endif %}" {% if not loop.first %}style="border-top:1px solid var(--line)"{% endif %}>
+                <div class="d-flex align-items-start justify-content-between gap-2">
+                  <div>
+                    <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.68rem;font-weight:600">{{ lc.role }}</span>
+                    {% if lc.company %}<div class="fw-semibold small">{{ lc.company }}</div>{% endif %}
+                    <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
+                    {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
+                    {% if lc.primary_phone %}
+                      <div class="small d-flex align-items-center gap-1 flex-wrap mt-1">
+                        <span style="color:var(--muted)">{{ lc.primary_phone }}</span>
+                        <a href="tel:{{ lc.primary_phone }}" style="font-size:.68rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:4px;padding:1px 6px;text-decoration:none">&#9742; Call</a>
+                        <a href="sms:{{ lc.primary_phone }}" style="font-size:.68rem;font-weight:700;color:#fff;background:var(--accent);border-radius:4px;padding:1px 6px;text-decoration:none">&#128172; SMS</a>
+                      </div>
+                    {% endif %}
+                    {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
+                  </div>
+                  <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
+                    {% if session.get('role') == 'admin' %}
+                      <a href="/customers/{{ lc.customer_id }}/edit" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px">Edit</a>
+                    {% endif %}
+                    {% if session.get('role') == 'admin' and job_linked_customers|length > 1 %}
+                      <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
+                        <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.68rem;padding:2px 7px">Remove</button>
+                      </form>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="small" style="color:var(--muted)">No customers linked.</div>
           {% endif %}
         </div>
       </div>
 
-      {% if job_linked_customers %}
-        {% for lc in job_linked_customers %}
-          <div class="{% if not loop.first %}mt-3 pt-3{% endif %}" {% if not loop.first %}style="border-top:1px solid var(--line)"{% endif %}>
-            <div class="d-flex align-items-start justify-content-between gap-2">
-              <div>
-                <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.7rem;font-weight:600;letter-spacing:.04em">{{ lc.role }}</span>
-                {% if lc.company %}<div class="fw-semibold">{{ lc.company }}</div>{% endif %}
-                <div class="{% if lc.company %}small{% else %}fw-semibold{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
-                {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
-                {% if lc.primary_phone %}
-                  <div class="small d-flex align-items-center gap-1 flex-wrap mt-1">
-                    <span style="color:var(--muted)">{{ lc.primary_phone }}</span>
-                    <a href="tel:{{ lc.primary_phone }}" style="font-size:.7rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:4px;padding:1px 6px;text-decoration:none">&#9742; Call</a>
-                    <a href="sms:{{ lc.primary_phone }}" style="font-size:.7rem;font-weight:700;color:#fff;background:var(--accent);border-radius:4px;padding:1px 6px;text-decoration:none">&#128172; SMS</a>
-                  </div>
-                {% endif %}
-                {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
-              </div>
-              <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
-                {% if session.get('role') == 'admin' %}
-                  <a href="/customers/{{ lc.customer_id }}/edit" class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:2px 8px">Edit</a>
-                {% endif %}
-                {% if session.get('role') == 'admin' and job_linked_customers|length > 1 %}
-                  <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
-                    <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.7rem;padding:2px 8px">Remove</button>
-                  </form>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <div style="color:var(--muted)">No customers linked.</div>
-      {% endif %}
-    </div>
-
-    <!-- Client -->
-    <div class="ax-card p-3" style="background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.30);">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <div class="small fw-bold" style="color:#2563eb">CLIENT</div>
-        {% if session.get('role') == 'admin' and job.client_id %}
-          <a href="/clients/{{ job.client_id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px;">Edit</a>
-        {% endif %}
-      </div>
-      <div class="fw-semibold">
-        {{ job.client_name or "—" }}
-        {% if job.client_nickname %}
-          <span class="badge ms-1 py-0 px-1" style="font-size:.7rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
-        {% endif %}
-      </div>
-      {% if job.client_phone %}
-        <div class="small d-flex align-items-center gap-1 flex-wrap mt-1">
-          <span style="color:var(--muted)">{{ job.client_phone }}</span>
-          <a href="tel:{{ job.client_phone }}" style="font-size:.7rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:4px;padding:1px 6px;text-decoration:none">&#9742; Call</a>
-        </div>
-      {% endif %}
-      {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
-      {% if job.bill_to_client_name and job.bill_to_client_name != job.client_name %}
-        <div class="small mt-2" style="color:var(--muted)">Bill to: <strong style="color:var(--text)">{{ job.bill_to_client_name }}</strong></div>
-      {% endif %}
-    </div>
-
-    <!-- Lender Details -->
-    <div class="ax-card">
-      <div class="ax-card-h">Lender Details</div>
-      <div class="ax-card-b">
-        <div class="row g-1 mb-1">
-          <div class="col-12 col-lg-4">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">LENDER</span>
-            <div class="small fw-semibold">{{ job.lender_name or '—' }}</div>
-          </div>
-          <div class="col-12 col-lg-4">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">ACCOUNT NUMBER</span>
-            <div class="small fw-semibold">{{ job.account_number or '—' }}</div>
-          </div>
-          <div class="col-12 col-lg-4">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">CONTRACT TYPE</span>
-            <div class="small fw-semibold">{{ job.regulation_type or '—' }}</div>
-          </div>
-        </div>
-        <div class="row g-1 mb-1">
-          <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">ARREARS</span>
-            <div class="small fw-semibold">{{ cents_to_money(job.arrears_cents) }}</div>
-          </div>
-          <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">COSTS</span>
-            <div class="small fw-semibold">{{ cents_to_money(job.costs_cents) }}</div>
-          </div>
-          <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">NEXT PMT DUE</span>
-            <div class="small fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
-          </div>
-          <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">PMT DUE DATE</span>
-            <div class="small fw-semibold">{{ job.due_date_display or '—' }}</div>
-          </div>
-        </div>
-        <div class="row g-1 mb-1">
-          <div class="col-6 col-lg-3">
-            <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">PMT FREQUENCY</span>
-            <div class="small fw-semibold">{{ job.payment_frequency or '—' }}</div>
-          </div>
-        </div>
-        <div class="mb-2">
-          <span style="color:var(--muted);font-size:.68rem;letter-spacing:.03em">TOTAL DUE NOW</span>
-          <div class="fw-semibold fs-6" style="color:var(--accent)">{{ cents_to_money(job.total_due_now_cents) }}
-            {% if job.mmp_cents and not job.mmp_included_in_total %}
-              <span class="fw-normal ms-1" style="color:var(--muted);font-size:.72rem">(Next pmt not yet due)</span>
+      {# Right: Client #}
+      <div class="col-12 col-lg-6">
+        <div style="padding:.75rem .9rem;border-radius:10px;background:rgba(37,99,235,.06);">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="small fw-bold" style="color:#2563eb;letter-spacing:.04em">CLIENT</div>
+            {% if session.get('role') == 'admin' and job.client_id %}
+              <a href="/clients/{{ job.client_id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px">Edit</a>
             {% endif %}
           </div>
+          <div class="fw-semibold small">
+            {{ job.client_name or "—" }}
+            {% if job.client_nickname %}
+              <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
+            {% endif %}
+          </div>
+          {% if job.client_phone %}
+            <div class="small d-flex align-items-center gap-1 flex-wrap mt-1">
+              <span style="color:var(--muted)">{{ job.client_phone }}</span>
+              <a href="tel:{{ job.client_phone }}" style="font-size:.68rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:4px;padding:1px 6px;text-decoration:none">&#9742; Call</a>
+            </div>
+          {% endif %}
+          {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
+          {% if job.bill_to_client_name and job.bill_to_client_name != job.client_name %}
+            <div class="small mt-1" style="color:var(--muted)">Bill to: <strong style="color:var(--text)">{{ job.bill_to_client_name }}</strong></div>
+          {% endif %}
         </div>
-        {% if session.get('role') == 'admin' %}
-        <details id="lender-details">
-          <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
-          <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-2">
-            <div class="mb-3">
-              <button class="btn btn-primary btn-sm">Save Lender Details</button>
-            </div>
-            <div class="row g-2 mb-2">
-              <div class="col-12 col-lg-4">
-                <label class="form-label">Lender Name</label>
-                <input class="form-control" name="lender_name" value="{{ job.lender_name or '' }}" placeholder="e.g. Macquarie Bank">
-              </div>
-              <div class="col-12 col-lg-4">
-                <label class="form-label">Account Number</label>
-                <input class="form-control" name="account_number" value="{{ job.account_number or '' }}">
-              </div>
-              <div class="col-12 col-lg-4">
-                <label class="form-label">Contract Type</label>
-                <select class="form-select" name="regulation_type">
-                  <option value="">— Select —</option>
-                  {% for rt in ['Regulated','Unregulated','N/A'] %}
-                    <option value="{{ rt }}" {% if job.regulation_type == rt %}selected{% endif %}>{{ rt }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-            </div>
-            <div class="row g-2 mb-2">
-              <div class="col-6 col-lg-3">
-                <label class="form-label">Arrears ($)</label>
-                <input class="form-control" name="arrears" value="{{ cents_to_money(job.arrears_cents) if job.arrears_cents else '' }}" placeholder="0.00">
-              </div>
-              <div class="col-6 col-lg-3">
-                <label class="form-label">Costs ($)</label>
-                <input class="form-control" name="costs" value="{{ cents_to_money(job.costs_cents) if job.costs_cents else '' }}" placeholder="0.00">
-              </div>
-              <div class="col-6 col-lg-3">
-                <label class="form-label">Next Payment Due ($)</label>
-                <input class="form-control" name="mmp" value="{{ cents_to_money(job.mmp_cents) if job.mmp_cents else '' }}" placeholder="0.00">
-              </div>
-              <div class="col-6 col-lg-3">
-                <label class="form-label">Next Payment Due Date</label>
-                <input class="form-control" name="job_due_date" type="date" value="{{ job.job_due_date[:10] if job.job_due_date else '' }}">
-              </div>
-            </div>
-            <div class="row g-2 mb-3">
-              <div class="col-6 col-lg-3">
-                <label class="form-label">Next Payment Frequency</label>
-                <select class="form-select" name="payment_frequency">
-                  <option value="">— Select —</option>
-                  {% for freq in ['Monthly','Fortnightly','Weekly'] %}
-                    <option value="{{ freq }}" {% if job.payment_frequency == freq %}selected{% endif %}>{{ freq }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-            </div>
-            <button class="btn btn-primary btn-sm">Save Lender Details</button>
-          </form>
-        </details>
+      </div>
+
+    </div>{# /row customer+client #}
+
+    <!-- Lender Details -->
+    <div style="padding:.75rem .9rem;border-radius:10px;background:var(--card);">
+      <div class="small fw-bold mb-2" style="color:var(--muted);letter-spacing:.04em">LENDER DETAILS</div>
+      <div class="row g-2 mb-1">
+        <div class="col-12 col-sm-5">
+          <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">LENDER</div>
+          <div class="small fw-semibold">{{ job.lender_name or '—' }}</div>
+        </div>
+        <div class="col-6 col-sm-4">
+          <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">ACCOUNT NO.</div>
+          <div class="small fw-semibold">{{ job.account_number or '—' }}</div>
+        </div>
+        <div class="col-6 col-sm-3">
+          <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">CONTRACT</div>
+          <div class="small fw-semibold">{{ job.regulation_type or '—' }}</div>
+        </div>
+      </div>
+      <div class="row g-2 mb-1">
+        <div class="col-6 col-sm-3">
+          <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">ARREARS</div>
+          <div class="small fw-semibold">{{ cents_to_money(job.arrears_cents) }}</div>
+        </div>
+        <div class="col-6 col-sm-3">
+          <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">COSTS</div>
+          <div class="small fw-semibold">{{ cents_to_money(job.costs_cents) }}{% if job.costs2_cents %} <span style="color:var(--muted);font-size:.7em">+{{ cents_to_money(job.costs2_cents) }}</span>{% endif %}</div>
+        </div>
+        <div class="col-6 col-sm-3">
+          <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">NEXT PMT DUE</div>
+          <div class="small fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
+        </div>
+        <div class="col-6 col-sm-3">
+          <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">PMT DUE DATE <span style="font-weight:400">({{ job.payment_frequency or '—' }})</span></div>
+          <div class="small fw-semibold">{{ job.due_date_display or '—' }}</div>
+        </div>
+      </div>
+      <div class="d-flex align-items-baseline gap-2 mt-1 mb-1">
+        <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">TOTAL DUE NOW</div>
+        <div class="fw-bold" style="color:var(--accent);font-size:1.05rem">{{ cents_to_money(job.total_due_now_cents) }}</div>
+        {% if job.mmp_cents and not job.mmp_included_in_total %}
+          <span style="color:var(--muted);font-size:.72rem">(next pmt not yet due)</span>
         {% endif %}
       </div>
+      {% if session.get('role') == 'admin' %}
+      <details id="lender-details" class="mt-2">
+        <summary class="btn btn-outline-secondary btn-sm" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
+        <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-3">
+          <div class="row g-2 mb-2">
+            <div class="col-12 col-lg-5">
+              <label class="form-label form-label-sm">Lender Name</label>
+              <input class="form-control form-control-sm" name="lender_name" value="{{ job.lender_name or '' }}" placeholder="e.g. Macquarie Bank">
+            </div>
+            <div class="col-6 col-lg-4">
+              <label class="form-label form-label-sm">Account Number</label>
+              <input class="form-control form-control-sm" name="account_number" value="{{ job.account_number or '' }}">
+            </div>
+            <div class="col-6 col-lg-3">
+              <label class="form-label form-label-sm">Contract Type</label>
+              <select class="form-select form-select-sm" name="regulation_type">
+                <option value="">— Select —</option>
+                {% for rt in ['Regulated','Unregulated','N/A'] %}
+                  <option value="{{ rt }}" {% if job.regulation_type == rt %}selected{% endif %}>{{ rt }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6 col-lg-2">
+              <label class="form-label form-label-sm">Arrears ($)</label>
+              <input class="form-control form-control-sm" name="arrears" value="{{ cents_to_money(job.arrears_cents) if job.arrears_cents else '' }}" placeholder="0.00">
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label form-label-sm">Costs ($)</label>
+              <input class="form-control form-control-sm" name="costs" value="{{ cents_to_money(job.costs_cents) if job.costs_cents else '' }}" placeholder="0.00">
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label form-label-sm">Add. Costs ($)</label>
+              <input class="form-control form-control-sm" name="costs2" value="{{ cents_to_money(job.costs2_cents) if job.costs2_cents else '' }}" placeholder="0.00">
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label form-label-sm">Next Pmt Due ($)</label>
+              <input class="form-control form-control-sm" name="mmp" value="{{ cents_to_money(job.mmp_cents) if job.mmp_cents else '' }}" placeholder="0.00">
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label form-label-sm">Pmt Due Date</label>
+              <input class="form-control form-control-sm" name="job_due_date" type="date" value="{{ job.job_due_date[:10] if job.job_due_date else '' }}">
+            </div>
+            <div class="col-6 col-lg-2">
+              <label class="form-label form-label-sm">Frequency</label>
+              <select class="form-select form-select-sm" name="payment_frequency">
+                <option value="">—</option>
+                {% for freq in ['Monthly','Fortnightly','Weekly'] %}
+                  <option value="{{ freq }}" {% if job.payment_frequency == freq %}selected{% endif %}>{{ freq }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm">Save Lender Details</button>
+        </form>
+      </details>
+      {% endif %}
     </div>
 
     <!-- Security/s (was Job Items) -->
