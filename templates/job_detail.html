@@ -926,7 +926,7 @@
                     <div id="note-menu-{{ entry.note.id }}"
                          style="display:none;position:absolute;left:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:999;min-width:110px;overflow:hidden">
                       <button type="button"
-                              onclick="axNoteEdit({{ entry.note.id }})"
+                              onclick='axOpenEditNote({{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson }}, {{ entry.note.created_at | tojson }}, {{ entry.note.created_by_user_id or 0 }})'
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
                         ✏ Edit
                       </button>
@@ -975,7 +975,7 @@
                 </div>
 
                 <!-- Date/time col -->
-                <div style="color:var(--muted);font-size:.78rem;line-height:1.4">
+                <div id="note-date-{{ entry.note.id }}" style="color:var(--muted);font-size:.78rem;line-height:1.4">
                   {{ entry.note.created_at[8:10] }}/{{ entry.note.created_at[5:7] }}/{{ entry.note.created_at[:4] }}<br>
                   {{ entry.note.created_at[11:16] }}
                 </div>
@@ -2173,52 +2173,112 @@ function axNoteMenu(noteId, btn) {
   document.querySelectorAll('[id^="note-menu-"]').forEach(function(m){ m.style.display = 'none'; });
   menu.style.display = isOpen ? 'none' : 'block';
 }
-function axNoteEdit(noteId) {
-  var textEl = document.getElementById('note-text-' + noteId);
-  var editEl = document.getElementById('note-edit-' + noteId);
-  var ta     = document.getElementById('note-edit-ta-' + noteId);
-  var menu   = document.getElementById('note-menu-' + noteId);
-  if (!textEl || !editEl || !ta) return;
-  ta.value = textEl.textContent;
-  textEl.style.display = 'none';
-  editEl.style.display = 'block';
-  ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
-  if (menu) menu.style.display = 'none';
-}
-function axNoteCancelEdit(noteId) {
-  var textEl = document.getElementById('note-text-' + noteId);
-  var editEl = document.getElementById('note-edit-' + noteId);
-  if (textEl) textEl.style.display = '';
-  if (editEl) editEl.style.display = 'none';
-  var errEl = document.getElementById('note-edit-err-' + noteId);
-  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
-}
-function axNoteSave(noteId, url) {
-  var ta    = document.getElementById('note-edit-ta-' + noteId);
-  var errEl = document.getElementById('note-edit-err-' + noteId);
-  var newText = ta ? ta.value.trim() : '';
-  if (!newText) {
-    if (errEl) { errEl.textContent = 'Note cannot be empty.'; errEl.style.display = 'inline'; }
-    return;
-  }
-  var fd = new FormData();
-  fd.append('note_text', newText);
-  fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
-    .then(function(r) { return r.json(); })
+/* ── Edit Note modal logic ───────────────────────────── */
+document.addEventListener('DOMContentLoaded', function(){
+  var modal   = document.getElementById('addNoteModal');
+  var form    = document.getElementById('addNoteForm');
+  if (!modal || !form) return;
+
+  /* Intercept submit: if in edit mode, use fetch instead of page POST */
+  form.addEventListener('submit', function(e) {
+    var editIdEl = document.getElementById('an_edit_note_id');
+    var editNoteId = editIdEl ? editIdEl.value.trim() : '';
+    if (!editNoteId) return; /* normal add — let it POST */
+    e.preventDefault();
+
+    var ta = document.getElementById('an_text');
+    var newText = ta ? ta.value.trim() : '';
+    if (!newText) { if (ta) { ta.focus(); } return; }
+
+    var saveBtn = form.querySelector('button[name="_action"][value="save"]');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    var fd = new FormData();
+    fd.append('note_text', newText);
+    var dateEl = document.getElementById('an_date');
+    var hourEl = document.getElementById('an_hour');
+    var minEl  = document.getElementById('an_minute');
+    if (dateEl && dateEl.value) fd.append('note_date', dateEl.value);
+    if (hourEl) fd.append('note_hour', hourEl.value);
+    if (minEl)  fd.append('note_minute', minEl.value);
+    var staffEl = document.getElementById('an_staff');
+    if (staffEl) fd.append('staff_user_id', staffEl.value);
+
+    fetch('/jobs/{{ job.id }}/notes/' + editNoteId + '/edit', {
+      method: 'POST', body: fd, credentials: 'same-origin'
+    })
+    .then(function(r){ return r.json(); })
     .then(function(data) {
       if (data.ok) {
-        var textEl = document.getElementById('note-text-' + noteId);
+        var textEl = document.getElementById('note-text-' + editNoteId);
         if (textEl) textEl.textContent = data.note_text;
-        axNoteCancelEdit(noteId);
+        if (data.created_at) {
+          var dateDiv = document.getElementById('note-date-' + editNoteId);
+          if (dateDiv) {
+            var ca = data.created_at;
+            var dd = ca.substring(8,10), mm = ca.substring(5,7), yyyy = ca.substring(0,4);
+            dateDiv.innerHTML = dd+'/'+mm+'/'+yyyy+'<br>'+ca.substring(11,16);
+          }
+        }
+        bootstrap.Modal.getOrCreateInstance(modal).hide();
       } else {
-        if (errEl) { errEl.textContent = data.error || 'Save failed.'; errEl.style.display = 'inline'; }
+        alert(data.error || 'Save failed — please try again.');
       }
     })
-    .catch(function() {
-      if (errEl) { errEl.textContent = 'Network error — try again.'; errEl.style.display = 'inline'; }
+    .catch(function(){ alert('Network error — try again.'); })
+    .finally(function(){
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
     });
-}
+  });
+
+  /* Reset modal to Add mode when closed */
+  modal.addEventListener('hidden.bs.modal', function() {
+    var editIdEl = document.getElementById('an_edit_note_id');
+    if (editIdEl) editIdEl.value = '';
+    var titleEl = document.getElementById('addNoteModalTitle');
+    if (titleEl) titleEl.textContent = 'Add Note/File';
+    var dotEl = document.getElementById('addNoteModalDot');
+    if (dotEl) dotEl.style.background = '#22c55e';
+    var wrap = document.getElementById('an_save_add_wrap');
+    if (wrap) wrap.style.display = '';
+  });
+
+  /* Open modal pre-populated for editing an existing note */
+  window.axOpenEditNote = function(noteId, noteText, createdAt, authorId) {
+    var editIdEl = document.getElementById('an_edit_note_id');
+    if (editIdEl) editIdEl.value = noteId;
+
+    var titleEl = document.getElementById('addNoteModalTitle');
+    if (titleEl) titleEl.textContent = 'Edit Note';
+    var dotEl = document.getElementById('addNoteModalDot');
+    if (dotEl) dotEl.style.background = '#f59e0b';
+    var wrap = document.getElementById('an_save_add_wrap');
+    if (wrap) wrap.style.display = 'none';
+
+    var ta = document.getElementById('an_text');
+    if (ta) ta.value = noteText;
+    var barcodeEl = document.getElementById('an_barcode');
+    if (barcodeEl) barcodeEl.value = '';
+
+    if (createdAt && createdAt.length >= 16) {
+      var dd = createdAt.substring(8,10), mm = createdAt.substring(5,7), yyyy = createdAt.substring(0,4);
+      var hh = createdAt.substring(11,13), min = createdAt.substring(14,16);
+      var dateEl = document.getElementById('an_date');
+      var hourEl = document.getElementById('an_hour');
+      var minEl  = document.getElementById('an_minute');
+      if (dateEl) dateEl.value = dd+'/'+mm+'/'+yyyy;
+      if (hourEl) hourEl.value = hh;
+      if (minEl)  minEl.value  = min;
+    }
+    var staffEl = document.getElementById('an_staff');
+    if (staffEl && authorId) staffEl.value = String(authorId);
+
+    bootstrap.Modal.getOrCreateInstance(modal).show();
+    setTimeout(function(){
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    }, 350);
+  };
+});
 function axNoteEmailTo(btn, recipient) {
   var c = btn.closest('[data-note-body]');
   var body    = c ? c.dataset.noteBody : '';
@@ -2595,11 +2655,12 @@ document.addEventListener('click', function(e) {
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
       <div class="modal-header" style="border-bottom:1px solid var(--line);gap:.5rem">
-        <span style="width:22px;height:22px;border-radius:50%;background:#22c55e;display:inline-block;flex-shrink:0"></span>
-        <h6 class="modal-title mb-0" style="color:var(--text);flex:1">Add Note/File</h6>
+        <span id="addNoteModalDot" style="width:22px;height:22px;border-radius:50%;background:#22c55e;display:inline-block;flex-shrink:0"></span>
+        <h6 class="modal-title mb-0" id="addNoteModalTitle" style="color:var(--text);flex:1">Add Note/File</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form id="addNoteForm" method="post" action="/jobs/{{ job.id }}/notes/new" enctype="multipart/form-data">
+        <input type="hidden" id="an_edit_note_id" value="">
         <div class="modal-body">
 
           <style>
@@ -2665,7 +2726,7 @@ document.addEventListener('click', function(e) {
         </div>
         <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
           <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save">Save</button>
-          <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save_add" id="an_save_add">Save and Add</button>
+          <span id="an_save_add_wrap"><button type="submit" class="btn btn-primary btn-sm" name="_action" value="save_add" id="an_save_add">Save and Add</button></span>
           <button type="button" class="btn btn-outline-secondary btn-sm" onclick="anClear()">Clear</button>
         </div>
       </form>

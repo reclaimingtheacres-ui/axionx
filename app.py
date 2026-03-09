@@ -6087,12 +6087,36 @@ def edit_job_note(job_id: int, note_id: int):
         conn.close()
         return jsonify({"ok": False, "error": "Note text cannot be empty"}), 400
 
-    cur.execute("UPDATE job_field_notes SET note_text=? WHERE id=?", (new_text, note_id))
+    fields: dict = {"note_text": new_text}
+
+    if caller_role in ("admin", "both"):
+        note_date = request.form.get("note_date", "").strip()
+        note_hour = request.form.get("note_hour", "").strip()
+        note_min  = request.form.get("note_minute", "").strip()
+        if note_date and note_hour and note_min:
+            try:
+                fields["created_at"] = parse_interaction_datetime(note_date, f"{note_hour}:{note_min}")
+            except Exception:
+                pass
+        staff_uid_raw = request.form.get("staff_user_id", "").strip()
+        if staff_uid_raw and staff_uid_raw.isdigit():
+            fields["created_by_user_id"] = int(staff_uid_raw)
+
+    set_clause = ", ".join(f"{k}=?" for k in fields)
+    cur.execute(f"UPDATE job_field_notes SET {set_clause} WHERE id=?",
+                list(fields.values()) + [note_id])
     conn.commit()
+
+    cur.execute("SELECT created_at FROM job_field_notes WHERE id=?", (note_id,))
+    updated = cur.fetchone()
     conn.close()
 
     audit("job_note", note_id, "edit", "Field note edited", {"job_id": job_id})
-    return jsonify({"ok": True, "note_text": new_text})
+    return jsonify({
+        "ok": True,
+        "note_text": new_text,
+        "created_at": updated["created_at"] if updated else note["created_at"],
+    })
 
 
 @app.get("/uploads/<path:filename>")

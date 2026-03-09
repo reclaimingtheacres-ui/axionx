@@ -332,7 +332,7 @@
           {% endif %}
           <div style="flex:1;min-width:0;">
             <div style="font-size:.73rem;font-weight:700;color:#111;line-height:1.2;">{{ n.agent_name or 'Unknown' }}</div>
-            <div style="font-size:.66rem;color:var(--muted);">{{ n.created_at[:16] | replace('T',' ') }}</div>
+            <div id="note-meta-{{ n.id }}" style="font-size:.66rem;color:var(--muted);">{{ n.created_at[:16] | replace('T',' ') }}</div>
           </div>
           <span style="font-size:.58rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
                        padding:2px 7px;border-radius:5px;
@@ -340,6 +340,17 @@
                        color:{% if 'audio' in ntype %}var(--green){% elif 'photo' in ntype %}var(--accent){% else %}var(--muted){% endif %};">
             {{ ntype | replace('_','+') }}
           </span>
+          {% if session.get('role') in ('admin', 'both') or n.created_by_user_id == session.get('user_id') %}
+          <button type="button"
+                  onclick='openNoteSheet({id:{{ n.id }},text:{{ n.note_text | strip_ai_prefix | tojson }},created_at:{{ n.created_at | tojson }}})'
+                  title="Edit note"
+                  style="background:none;border:0;padding:5px 4px;color:var(--muted);cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;">
+            <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          {% endif %}
         </div>
         {# File attachments (images, PDFs, docs) #}
         {% set n_files = note_files_map.get(n.id, []) %}
@@ -401,7 +412,7 @@
         {% endif %}
         {# Text #}
         {% if n.note_text %}
-        <div style="font-size:.88rem;line-height:1.55;white-space:pre-wrap;color:#222;">{{ n.note_text | strip_ai_prefix }}</div>
+        <div id="note-text-{{ n.id }}" style="font-size:.88rem;line-height:1.55;white-space:pre-wrap;color:#222;">{{ n.note_text | strip_ai_prefix }}</div>
         {% endif %}
         {# Audio player #}
         {% if n.audio_filename %}
@@ -547,7 +558,7 @@ function qaFallbackReveal(type, value) {
               transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1);">
 
     <div style="width:40px;height:4px;background:#d1d5db;border-radius:2px;margin:0 auto 16px;"></div>
-    <div style="font-weight:700;font-size:1rem;margin-bottom:14px;color:#111;">Add Field Note</div>
+    <div id="noteSheetTitle" style="font-weight:700;font-size:1rem;margin-bottom:14px;color:#111;">Add Field Note</div>
 
     {# Photo preview #}
     <div id="notePhotoPreview" style="display:none;margin-bottom:10px;">
@@ -595,7 +606,7 @@ function qaFallbackReveal(type, value) {
     </div>
 
     {# Action row: mic, camera, gallery #}
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;">
+    <div id="noteMediaRow" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;">
 
       <button type="button" id="noteRecBtn" onclick="toggleNoteRecord()"
               style="padding:11px 6px;border:1.5px solid var(--line);border-radius:10px;
@@ -1365,19 +1376,50 @@ var _noteRecTimer    = null;
 var _noteRecSec      = 0;
 
 // ── Open / close sheet ──────────────────────────────────
-window.openNoteSheet = function() {
+var _editNoteId = 0;
+
+window.openNoteSheet = function(editData) {
+  _editNoteId = (editData && editData.id) ? editData.id : 0;
+
+  var titleEl    = document.getElementById('noteSheetTitle');
+  var mediaRow   = document.getElementById('noteMediaRow');
+  var photoPreview = document.getElementById('notePhotoPreview');
+  var textEl     = document.getElementById('noteText');
+  var saveBtnEl  = document.getElementById('noteSaveBtn');
+
+  if (_editNoteId) {
+    if (titleEl)   titleEl.textContent = 'Edit Note';
+    if (mediaRow)  mediaRow.style.display = 'none';
+    if (photoPreview) photoPreview.style.display = 'none';
+    if (textEl)    textEl.value = (editData.text || '');
+    if (saveBtnEl) saveBtnEl.textContent = 'Save Edit';
+  } else {
+    if (titleEl)   titleEl.textContent = 'Add Field Note';
+    if (mediaRow)  mediaRow.style.display = '';
+    if (textEl)    textEl.value = '';
+    if (saveBtnEl) saveBtnEl.textContent = 'Save Note';
+  }
+
   var ov = document.getElementById('noteSheetOverlay');
   ov.style.display = 'flex';
   requestAnimationFrame(function(){
     requestAnimationFrame(function(){
       ov.style.background = 'rgba(0,0,0,.45)';
       document.getElementById('noteSheetPanel').style.transform = 'translateY(0)';
+      if (textEl) { textEl.focus(); textEl.setSelectionRange(textEl.value.length, textEl.value.length); }
     });
   });
 };
 
 window.closeNoteSheet = function() {
   stopNoteRecord();
+  _editNoteId = 0;
+  var titleEl  = document.getElementById('noteSheetTitle');
+  var mediaRow = document.getElementById('noteMediaRow');
+  var saveBtnEl = document.getElementById('noteSaveBtn');
+  if (titleEl)   titleEl.textContent = 'Add Field Note';
+  if (mediaRow)  mediaRow.style.display = '';
+  if (saveBtnEl) saveBtnEl.textContent = 'Save Note';
   var ov    = document.getElementById('noteSheetOverlay');
   var panel = document.getElementById('noteSheetPanel');
   ov.style.background    = 'rgba(0,0,0,0)';
@@ -1490,7 +1532,45 @@ window.clearNotePhoto = function() {
 
 // ── Save via fetch ───────────────────────────────────────
 window.saveQuickNote = function() {
-  var noteText = (document.getElementById('noteText').value || '').trim();
+  var editNoteId = _editNoteId;
+  var noteText   = (document.getElementById('noteText').value || '').trim();
+  var btn        = document.getElementById('noteSaveBtn');
+
+  /* ── Edit mode ── */
+  if (editNoteId) {
+    if (!noteText) {
+      var ta = document.getElementById('noteText');
+      ta.style.borderColor = 'var(--red)';
+      ta.focus();
+      setTimeout(function(){ ta.style.borderColor = 'var(--line)'; }, 2000);
+      return;
+    }
+    btn.disabled    = true;
+    btn.textContent = 'Saving…';
+    var fd = new FormData();
+    fd.append('note_text', noteText);
+    fetch('/jobs/{{ job.id }}/notes/' + editNoteId + '/edit', { method: 'POST', body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (!data.ok) { alert(data.error || 'Save failed.'); return; }
+        var textEl = document.getElementById('note-text-' + editNoteId);
+        if (textEl) textEl.textContent = data.note_text;
+        if (data.created_at) {
+          var metaEl = document.getElementById('note-meta-' + editNoteId);
+          if (metaEl) metaEl.textContent = data.created_at.substring(0,16).replace('T',' ');
+        }
+        document.getElementById('noteText').value = '';
+        closeNoteSheet();
+      })
+      .catch(function(){ alert('Network error. Please try again.'); })
+      .finally(function(){
+        btn.disabled    = false;
+        btn.textContent = 'Save Edit';
+      });
+    return;
+  }
+
+  /* ── Add mode ── */
   if (!noteText && !_noteAudioBlob && !_notePhotoFile) {
     document.getElementById('noteText').style.borderColor = 'var(--red)';
     document.getElementById('noteText').focus();
@@ -1498,7 +1578,6 @@ window.saveQuickNote = function() {
     return;
   }
 
-  var btn = document.getElementById('noteSaveBtn');
   btn.disabled    = true;
   btn.textContent = 'Saving…';
 
@@ -1515,22 +1594,18 @@ window.saveQuickNote = function() {
     .then(function(data) {
       if (!data.ok) { alert(data.error || 'Save failed.'); return; }
 
-      // Reset form state
       document.getElementById('noteText').value = '';
       clearNoteAudio();
       clearNotePhoto();
       closeNoteSheet();
 
-      // Inject new note at top of list
       prependNoteCard(data);
 
-      // Update count label
       var lbl  = document.getElementById('notesCountLabel');
       var list = document.getElementById('notesList');
       var cnt  = list ? list.querySelectorAll('.m-card:not(#notesEmptyState)').length : 1;
       if (lbl) lbl.textContent = cnt + ' Note' + (cnt !== 1 ? 's' : '');
 
-      // Update tab badge
       var tabBtn = document.getElementById('tab-notes');
       if (tabBtn) {
         var badge = tabBtn.querySelector('span[style*="border-radius:99px"]');
