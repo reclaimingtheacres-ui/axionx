@@ -1,14 +1,25 @@
-<div class="cue-card" draggable="true" data-cue-id="{{ cue.id }}">
-  <div class="ref">
-    <a href="/jobs/{{ cue.job_id }}" class="text-decoration-none" style="color:var(--text)">
+<div class="cue-card" data-cue-id="{{ cue.id }}" data-job-id="{{ cue.job_id }}">
+
+  <div class="cue-card-top">
+    <div class="cue-ref">
       {{ cue.internal_job_number }}{% if cue.client_reference %} ({{ cue.client_reference }}){% endif %}
-    </a>
+    </div>
+    <div class="drag-handle" draggable="true" title="Drag to reassign"
+         onclick="event.stopPropagation()">
+      <svg viewBox="0 0 16 24" width="12" height="18" fill="currentColor" style="display:block;">
+        <circle cx="4" cy="4"  r="1.6"/><circle cx="12" cy="4"  r="1.6"/>
+        <circle cx="4" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/>
+        <circle cx="4" cy="20" r="1.6"/><circle cx="12" cy="20" r="1.6"/>
+      </svg>
+    </div>
   </div>
-  <div class="meta">{{ cue.customer_label or cue.customer_name or "No customer" }}{% if cue.asset_reg %} | Reg: {{ cue.asset_reg }}{% endif %}</div>
-  <div class="meta">{{ cue.visit_type }} |
-    <span style="color:{% if cue.priority == 'Urgent' %}#f87171{% elif cue.priority == 'High' %}#fbbf24{% else %}var(--muted){% endif %}">{{ cue.priority }}</span>
+
+  <div class="cue-meta">{{ cue.customer_label or cue.customer_name or "No customer" }}{% if cue.asset_reg %} | Reg: {{ cue.asset_reg }}{% endif %}</div>
+  <div class="cue-meta">{{ cue.visit_type }} |
+    <span style="color:{% if cue.priority == 'Urgent' %}#f87171{% elif cue.priority == 'High' %}#fbbf24{% else %}#9ca3af{% endif %}">{{ cue.priority }}</span>
   </div>
   {% if cue.instructions %}
-    <div class="meta mt-1" style="font-style:italic">{{ cue.instructions }}</div>
+    <div class="cue-meta" style="font-style:italic;margin-top:4px;">{{ cue.instructions }}</div>
   {% endif %}
+
 </div>
