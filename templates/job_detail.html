@@ -936,7 +936,7 @@
                           🗑 Delete
                         </button>
                       </form>
-                      <div data-note-body="{{ entry.note.note_text | e }}"
+                      <div data-note-body="{{ entry.note.note_text | strip_ai_prefix | e }}"
                            data-note-ref="{{ job.display_ref }}"
                            data-client-email="{{ job.client_email or '' }}"
                            data-agent-email="{{ job.assigned_email or '' }}">
@@ -983,7 +983,7 @@
                 <!-- Content col -->
                 <div>
                   {% if entry.note.note_text %}
-                    <div id="note-text-{{ entry.note.id }}" class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text }}</div>
+                    <div id="note-text-{{ entry.note.id }}" class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text | strip_ai_prefix }}</div>
                     <div id="note-edit-{{ entry.note.id }}" style="display:none;margin-bottom:6px">
                       <textarea id="note-edit-ta-{{ entry.note.id }}"
                                 rows="4"

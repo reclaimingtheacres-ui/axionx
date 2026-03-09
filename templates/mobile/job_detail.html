@@ -401,7 +401,7 @@
         {% endif %}
         {# Text #}
         {% if n.note_text %}
-        <div style="font-size:.88rem;line-height:1.55;white-space:pre-wrap;color:#222;">{{ n.note_text }}</div>
+        <div style="font-size:.88rem;line-height:1.55;white-space:pre-wrap;color:#222;">{{ n.note_text | strip_ai_prefix }}</div>
         {% endif %}
         {# Audio player #}
         {% if n.audio_filename %}

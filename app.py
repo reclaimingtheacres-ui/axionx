@@ -1527,6 +1527,17 @@ app.jinja_env.globals.update(
 )
 
 
+@app.template_filter("strip_ai_prefix")
+def strip_ai_prefix(text):
+    """Strip the [AI Update] marker from stored field notes before display.
+    The AI assistance feature remains available; this only affects the label."""
+    if not text:
+        return text
+    if text.startswith("[AI Update]\n"):
+        return text[len("[AI Update]\n"):]
+    return text
+
+
 @app.template_filter("fmt_queue_dt")
 def fmt_queue_dt(ts_str):
     """Format a cue_items created_at string as '05Mar26 09:07'."""
@@ -6651,7 +6662,7 @@ def update_builder_save(job_id: int):
     conn.execute("""
         INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
         VALUES (?, ?, ?, ?)
-    """, (job_id, uid, f"[AI Update]\n{final_text}", ts))
+    """, (job_id, uid, final_text, ts))
     conn.commit()
 
     for cue_type in ("Update Required", "Complete Attendance Update"):
@@ -7742,7 +7753,10 @@ def queue_send_email():
         if note_rows:
             full_body_txt += "\n\n--- Attached Notes ---\n"
             for nr in note_rows:
-                full_body_txt += f"\n[{nr['created_at'][:16]}] {nr['note_text']}"
+                note_body = nr['note_text']
+                if note_body and note_body.startswith("[AI Update]\n"):
+                    note_body = note_body[len("[AI Update]\n"):]
+                full_body_txt += f"\n[{nr['created_at'][:16]}] {note_body}"
 
     body_html = f"""<div style="font-family:sans-serif;max-width:640px">
 <p><strong>Job:</strong> {job['display_ref']}</p>

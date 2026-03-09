@@ -127,7 +127,7 @@
   {% for n in notes %}
   <div class="m-card-body" style="{% if not loop.last %}border-bottom:1px solid var(--line);{% endif %}">
     <div style="font-size:.75rem;color:var(--muted);margin-bottom:4px;">{{ n.created_at[:10] }} — {{ n.agent_name or 'Unknown' }}</div>
-    <div style="font-size:.85rem;white-space:pre-wrap;line-height:1.5;">{{ n.note_text }}</div>
+    <div style="font-size:.85rem;white-space:pre-wrap;line-height:1.5;">{{ n.note_text | strip_ai_prefix }}</div>
   </div>
   {% endfor %}
 </div>
