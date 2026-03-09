@@ -7307,29 +7307,60 @@ def admin_settings():
 @admin_required
 def admin_api_duplicates():
     conn = db()
-    # Duplicate jobs — same non-null account_number
-    dup_jobs_raw = conn.execute("""
-        SELECT j.id, j.display_ref, j.account_number, j.lender_name, j.status,
+
+    base_sel = """
+        SELECT j.id, j.display_ref, j.internal_job_number, j.account_number,
+               j.client_reference, j.lender_name, j.status,
                c.name AS client_name,
-               cu.first_name || ' ' || cu.last_name AS customer_name
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name,
+                        cu.first_name || ' ' || cu.last_name) AS customer_name
         FROM jobs j
         LEFT JOIN clients c ON c.id = j.client_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
+    """
+
+    # --- Group 1: same internal_job_number (accidentally created duplicate jobs) ---
+    rows_by_jobnum = conn.execute(base_sel + """
+        WHERE j.internal_job_number IS NOT NULL AND j.internal_job_number != ''
+        ORDER BY LOWER(j.internal_job_number), j.id
+    """).fetchall()
+
+    jobnum_groups = {}
+    for r in rows_by_jobnum:
+        key = (r["internal_job_number"] or "").strip().lower()
+        if key:
+            jobnum_groups.setdefault(key, []).append(dict(r))
+    dup_jobs_by_num = [
+        {"key": v[0]["internal_job_number"].strip(), "match_type": "job_number", "jobs": v}
+        for k, v in jobnum_groups.items() if len(v) > 1
+    ]
+
+    # --- Group 2: same non-null account_number (same lender account on multiple jobs) ---
+    rows_by_acct = conn.execute(base_sel + """
         WHERE j.account_number IS NOT NULL AND j.account_number != ''
         ORDER BY LOWER(j.account_number), j.id
     """).fetchall()
 
     acct_groups = {}
-    for r in dup_jobs_raw:
+    for r in rows_by_acct:
         key = (r["account_number"] or "").strip().lower()
         if key:
             acct_groups.setdefault(key, []).append(dict(r))
-    dup_jobs = [
-        {"key": k, "jobs": v}
-        for k, v in acct_groups.items() if len(v) > 1
-    ]
 
-    # Duplicate clients — same name (case-insensitive)
+    # Only include account_number groups that aren't already covered by job_number groups
+    covered_ids = {j["id"] for grp in dup_jobs_by_num for j in grp["jobs"]}
+    dup_jobs_by_acct = []
+    for k, v in acct_groups.items():
+        if len(v) > 1:
+            uncovered = [j for j in v if j["id"] not in covered_ids]
+            if len(uncovered) > 1:
+                dup_jobs_by_acct.append(
+                    {"key": v[0]["account_number"].strip(), "match_type": "account_number", "jobs": v}
+                )
+
+    dup_jobs = dup_jobs_by_num + dup_jobs_by_acct
+
+    # --- Duplicate clients: same name ---
     dup_clients_raw = conn.execute("""
         SELECT id, name, email, phone
         FROM clients

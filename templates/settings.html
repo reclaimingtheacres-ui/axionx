@@ -731,7 +731,7 @@ function savePassword() {
     </div>
     <div class="ax-card-b">
       <p class="small mb-3" style="color:var(--muted)">
-        Scans for duplicate <strong>jobs</strong> (same account number) and duplicate <strong>clients</strong> (same name).
+        Scans for duplicate <strong>jobs</strong> (same job number, or same account number) and duplicate <strong>clients</strong> (same name).
         Review each group and keep the record you want — delete the extras.
       </p>
       <div id="dupLoading" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.9rem">
@@ -740,7 +740,7 @@ function savePassword() {
       <div id="dupResults" style="display:none">
         <!-- Jobs duplicates -->
         <div id="dupJobsSection">
-          <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Jobs (by Account Number)</h6>
+          <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Jobs</h6>
           <div id="dupJobsList"></div>
         </div>
         <!-- Clients duplicates -->
@@ -800,8 +800,13 @@ function dupScan() {
           var card = document.createElement('div');
           card.className = 'mb-3';
           card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
+          var matchLabel = grp.match_type === 'job_number' ? 'JOB #' : 'ACCOUNT';
+          var acctExtra = '';
+          if (grp.match_type === 'job_number' && grp.jobs[0] && grp.jobs[0].account_number) {
+            acctExtra = ' &nbsp;<span style="font-weight:400;color:var(--muted)">acct: ' + _esc(grp.jobs[0].account_number) + '</span>';
+          }
           var header = '<div style="background:var(--card);padding:8px 12px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.04em">' +
-            'ACCOUNT: ' + _esc(grp.key.toUpperCase()) + ' — ' + grp.jobs.length + ' jobs</div>';
+            matchLabel + ': ' + _esc(grp.key.toUpperCase()) + acctExtra + ' — ' + grp.jobs.length + ' jobs</div>';
           var rows = grp.jobs.map(function(j) {
             return '<tr>' +
               '<td style="padding:8px 12px;font-size:.85rem"><a href="/jobs/' + j.id + '" target="_blank" style="font-weight:600;color:var(--accent)">' + _esc(j.display_ref || '#'+j.id) + '</a></td>' +
