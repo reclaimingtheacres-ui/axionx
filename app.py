@@ -3429,14 +3429,12 @@ def delete_job(job_id: int):
         cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (nid,))
     cur.execute("DELETE FROM job_field_notes WHERE job_id = ?", (job_id,))
 
-    cur.execute("SELECT stored_filename, filepath FROM job_documents WHERE job_id = ?", (job_id,))
+    cur.execute("SELECT stored_filename FROM job_documents WHERE job_id = ?", (job_id,))
     for f in cur.fetchall():
         delete_blob_safely(f["stored_filename"])
-        try: os.remove(f["filepath"])
-        except OSError: pass
     cur.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
 
-    for tbl in ("job_items", "job_assets", "interactions", "cue_items"):
+    for tbl in ("job_items", "job_assets", "interactions", "cue_items", "schedules"):
         cur.execute(f"DELETE FROM {tbl} WHERE job_id = ?", (job_id,))
 
     cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
