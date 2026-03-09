@@ -2342,14 +2342,16 @@ document.addEventListener('click', function(e) {
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content" style="background:var(--panel);border:1px solid var(--line);border-radius:16px">
       <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h6 class="modal-title text-truncate" id="previewModalTitle" style="color:var(--text);max-width:80%"></h6>
+        <h6 class="modal-title text-truncate" id="previewModalTitle" style="color:var(--text);max-width:75%"></h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0" id="previewModalBody" style="min-height:200px;max-height:70vh;overflow:auto;display:flex;align-items:center;justify-content:center">
       </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line)">
+      <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
         <a id="previewDownloadBtn" href="#" download
            class="btn btn-primary btn-sm">&#8659; Save / Download</a>
+        <button id="previewEmailBtn" type="button" data-axep
+           class="btn btn-outline-secondary btn-sm">&#9993; Email</button>
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
@@ -2360,18 +2362,26 @@ document.addEventListener('click', function(e) {
   var _previewModal = null;
   var IMAGE_EXT = ['jpg','jpeg','png','gif','webp','heic','heif','bmp'];
   var PDF_EXT   = ['pdf'];
+  var _currentUrl = '';
+  var _currentFilename = '';
 
   var _blobUrls = [];
-
   function _revokePrev() {
     _blobUrls.forEach(function(u){ URL.revokeObjectURL(u); });
     _blobUrls = [];
   }
 
   function _showLoading(body) {
-    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
-      '<div style="font-size:.85rem">Loading…</div></div>';
+    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:.85rem">Loading…</div></div>';
   }
+
+  /* Email button: call the global email picker with a download link in the body */
+  document.getElementById('previewEmailBtn').addEventListener('click', function() {
+    var btn = this;
+    var subject = 'Document: ' + _currentFilename;
+    var body = 'Please find the file below.\n\nFile: ' + _currentFilename + '\nDownload: ' + window.location.origin + _currentUrl;
+    axEmailPicker(btn, '', subject, body);
+  });
 
   window.axPreviewFile = function (url, filename) {
     if (!_previewModal) _previewModal = new bootstrap.Modal(document.getElementById('filePreviewModal'));
@@ -2380,12 +2390,16 @@ document.addEventListener('click', function(e) {
     var title = document.getElementById('previewModalTitle');
     var dl = document.getElementById('previewDownloadBtn');
 
+    _currentUrl = url;
+    _currentFilename = filename;
+
     title.textContent = filename;
     dl.href = url;
     dl.download = filename;
     _revokePrev();
 
-    if (IMAGE_EXT.includes(ext) || PDF_EXT.includes(ext)) {
+    if (IMAGE_EXT.includes(ext)) {
+      /* Images: fetch blob so auth cookie is handled, render inline */
       _showLoading(body);
       body.style.display = 'block';
       fetch(url, {credentials: 'include'})
@@ -2396,31 +2410,38 @@ document.addEventListener('click', function(e) {
         .then(function(blob) {
           var blobUrl = URL.createObjectURL(blob);
           _blobUrls.push(blobUrl);
-          body.innerHTML = '';
-          if (IMAGE_EXT.includes(ext)) {
-            var img = document.createElement('img');
-            img.src = blobUrl;
-            img.style.cssText = 'max-width:100%;max-height:68vh;object-fit:contain;display:block;margin:auto;padding:12px';
-            body.appendChild(img);
-          } else {
-            var ifrm = document.createElement('iframe');
-            ifrm.src = blobUrl;
-            ifrm.style.cssText = 'width:100%;height:68vh;border:0;display:block';
-            body.appendChild(ifrm);
-          }
           dl.href = blobUrl;
+          body.innerHTML = '';
+          var img = document.createElement('img');
+          img.src = blobUrl;
+          img.style.cssText = 'max-width:100%;max-height:68vh;object-fit:contain;display:block;margin:auto;padding:12px';
+          body.appendChild(img);
         })
         .catch(function() {
-          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
-            '<div style="font-size:3rem;margin-bottom:12px">&#9888;</div>' +
-            '<div style="font-size:.9rem">Could not load file. Use the download button below.</div></div>';
+          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:2rem;margin-bottom:12px">&#9888;</div><div style="font-size:.9rem">Could not load image. Use the download button below.</div></div>';
         });
+    } else if (PDF_EXT.includes(ext)) {
+      /* PDFs: embed directly via authenticated URL — avoids Safari blob-URL iframe restriction */
+      body.style.display = 'block';
+      body.innerHTML = '';
+      var embed = document.createElement('embed');
+      embed.src = url;
+      embed.type = 'application/pdf';
+      embed.style.cssText = 'width:100%;height:68vh;border:0;display:block';
+      body.appendChild(embed);
+      /* Fallback link shown beneath embed for browsers that block inline PDF */
+      var fallback = document.createElement('div');
+      fallback.style.cssText = 'padding:8px 12px;font-size:.78rem;color:var(--muted);text-align:center';
+      fallback.innerHTML = 'If PDF does not display, use the <strong>Save / Download</strong> button below.';
+      body.appendChild(fallback);
     } else {
+      /* DOC, XLSX, etc — no in-browser preview */
       body.style.display = 'flex';
+      var icon = ext === 'docx' || ext === 'doc' ? '📄' : (ext === 'xlsx' || ext === 'xls' || ext === 'csv' ? '📊' : '📎');
       body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">' +
-        '<div style="font-size:3rem;margin-bottom:12px">&#128196;</div>' +
-        '<div style="font-size:.95rem">' + filename + '</div>' +
-        '<div style="font-size:.82rem;margin-top:8px">Preview not available — use the download button below.</div>' +
+        '<div style="font-size:3rem;margin-bottom:12px">' + icon + '</div>' +
+        '<div style="font-size:.95rem;font-weight:600;margin-bottom:4px">' + filename + '</div>' +
+        '<div style="font-size:.82rem;margin-top:4px">Preview not available — use <strong>Save / Download</strong> or <strong>Email</strong> below.</div>' +
         '</div>';
     }
     _previewModal.show();
