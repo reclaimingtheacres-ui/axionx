@@ -479,63 +479,6 @@
       </div>{# /row #}
     </div>
 
-    <!-- Enter Payment Modal -->
-    <div class="modal fade" id="enterPaymentModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
-          <div class="modal-header" style="border-bottom:1px solid var(--line)">
-            <h6 class="modal-title mb-0" style="color:var(--text)">&#128176; Enter Payment Received</h6>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <form method="post" action="/jobs/{{ job.id }}/payments">
-            <div class="modal-body">
-              <div class="mb-3">
-                <label class="form-label form-label-sm fw-semibold">Date Received</label>
-                <input type="text" class="form-control form-control-sm" name="payment_date"
-                       id="pmtDateInput" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
-                <div class="form-text" style="font-size:.72rem">Leave blank to use today's date.</div>
-              </div>
-              <div class="mb-3">
-                <label class="form-label form-label-sm fw-semibold">Amount ($) <span class="text-danger">*</span></label>
-                <input type="text" class="form-control form-control-sm" name="payment_amount"
-                       placeholder="0.00" inputmode="decimal" autocomplete="off">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm fw-semibold">Note <span style="color:var(--muted);font-weight:400">(optional)</span></label>
-                <input type="text" class="form-control form-control-sm" name="payment_note"
-                       placeholder="e.g. EFT, bank transfer ref #…" autocomplete="off">
-              </div>
-              <div class="alert alert-info mb-0 mt-2 py-2" style="font-size:.78rem;border-radius:8px">
-                A confirmation note will automatically be added to the <strong>Notes &amp; Docs</strong> section when this payment is saved.
-              </div>
-            </div>
-            <div class="modal-footer" style="border-top:1px solid var(--line)">
-              <button type="submit" class="btn btn-primary btn-sm">&#10003; Save Payment</button>
-              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-    <script>
-    (function(){
-      var pmtInput = document.getElementById('pmtDateInput');
-      if (pmtInput) {
-        pmtInput.addEventListener('input', function(){
-          var v = this.value.replace(/\D/g,'');
-          if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
-          if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5,9);
-          this.value = v;
-        });
-        /* Pre-fill today */
-        var now = new Date();
-        var d = String(now.getDate()).padStart(2,'0');
-        var m = String(now.getMonth()+1).padStart(2,'0');
-        var y = now.getFullYear();
-        pmtInput.value = d + '/' + m + '/' + y;
-      }
-    })();
-    </script>
 
     <!-- Security/s (was Job Items) -->
     <div class="ax-card">
@@ -3567,6 +3510,63 @@ function doSendMsg() {
 })();
 </script>
 {% endif %}
+
+<!-- ===== ENTER PAYMENT MODAL ===== -->
+<div class="modal fade" id="enterPaymentModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title mb-0" style="color:var(--text)">&#128176; Enter Payment Received</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/jobs/{{ job.id }}/payments">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label form-label-sm fw-semibold">Date Received</label>
+            <input type="text" class="form-control form-control-sm" name="payment_date"
+                   id="pmtDateInput" placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
+            <div class="form-text" style="font-size:.72rem">Leave blank to use today's date.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label form-label-sm fw-semibold">Amount ($) <span class="text-danger">*</span></label>
+            <input type="text" class="form-control form-control-sm" name="payment_amount"
+                   placeholder="0.00" inputmode="decimal" autocomplete="off">
+          </div>
+          <div class="mb-2">
+            <label class="form-label form-label-sm fw-semibold">Note <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+            <input type="text" class="form-control form-control-sm" name="payment_note"
+                   placeholder="e.g. EFT, bank transfer ref #…" autocomplete="off">
+          </div>
+          <div class="alert alert-info mb-0 mt-2 py-2" style="font-size:.78rem;border-radius:8px">
+            A confirmation note will automatically be added to the <strong>Notes &amp; Docs</strong> section when this payment is saved.
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid var(--line)">
+          <button type="submit" class="btn btn-primary btn-sm">&#10003; Save Payment</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var pmtInput = document.getElementById('pmtDateInput');
+  if (pmtInput) {
+    pmtInput.addEventListener('input', function(){
+      var v = this.value.replace(/\D/g,'');
+      if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
+      if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5,9);
+      this.value = v;
+    });
+    var now = new Date();
+    var d = String(now.getDate()).padStart(2,'0');
+    var m = String(now.getMonth()+1).padStart(2,'0');
+    var y = now.getFullYear();
+    pmtInput.value = d + '/' + m + '/' + y;
+  }
+})();
+</script>
 
 <!-- ===== EDIT CLIENT HELPERS ===== -->
 {% if session.get('role') == 'admin' %}
