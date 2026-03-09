@@ -780,5 +780,58 @@ window.lprContactOffice = function() {
 })();
 </script>
 {% endif %}
+<!-- ===== PHONE ACTION SHEET (mobile) ===== -->
+<div id="axPhoneSheet" onclick="axPhoneClose()" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5)">
+  <div id="axPhoneInner" onclick="event.stopPropagation()" style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-radius:20px 20px 0 0;padding:14px 16px 36px;box-shadow:0 -4px 40px rgba(0,0,0,.2);transform:translateY(100%);transition:transform .25s ease">
+    <div style="width:38px;height:4px;background:#e5e7eb;border-radius:2px;margin:0 auto 14px"></div>
+    <div id="axPhoneNum" style="font-size:1.1rem;font-weight:700;color:#111;text-align:center;margin-bottom:16px;letter-spacing:.03em"></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <a id="axPhoneCallA" href="#" onclick="axPhoneClose()" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:15px;background:#f1f5f9;border-radius:12px;font-weight:600;color:#16a34a;text-decoration:none;font-size:1rem">&#9742; Call</a>
+      <a id="axPhoneSmsA"  href="#" onclick="axPhoneClose()" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:15px;background:#f1f5f9;border-radius:12px;font-weight:600;color:#2563eb;text-decoration:none;font-size:1rem">&#128172; SMS</a>
+      <a id="axPhoneWaA"  href="#" onclick="axPhoneClose()" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:15px;background:#f1f5f9;border-radius:12px;font-weight:600;color:#16a34a;text-decoration:none;font-size:1rem">&#128154; WhatsApp</a>
+      <button onclick="axPhoneClose()" style="padding:15px;background:#f1f5f9;border-radius:12px;font-weight:600;color:#64748b;border:none;width:100%;font-size:1rem;cursor:pointer">&#10005; Cancel</button>
+    </div>
+  </div>
+</div>
+<script>
+function axPhone(num, ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  var clean = (num || '').replace(/[\s\-().]/g, '');
+  var waNum = clean.startsWith('+') ? clean.slice(1) : (clean.startsWith('0') ? '61' + clean.slice(1) : clean);
+  document.getElementById('axPhoneNum').textContent = num;
+  document.getElementById('axPhoneCallA').href = 'tel:' + clean;
+  document.getElementById('axPhoneSmsA').href  = 'sms:' + clean;
+  document.getElementById('axPhoneWaA').href   = 'https://wa.me/' + waNum;
+  var sheet = document.getElementById('axPhoneSheet');
+  sheet.style.display = 'block';
+  requestAnimationFrame(function() { document.getElementById('axPhoneInner').style.transform = 'translateY(0)'; });
+}
+function axPhoneClose() {
+  var inner = document.getElementById('axPhoneInner');
+  inner.style.transform = 'translateY(100%)';
+  setTimeout(function() { document.getElementById('axPhoneSheet').style.display = 'none'; }, 250);
+}
+function axLinkPhones(container) {
+  var re = /(\+?61\s*[2-9]|\b0[2-9])(?:[\s\-]?\d){7,8}\b/g;
+  var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode: function(n) {
+      var p = n.parentNode;
+      return (p && (p.tagName === 'A' || p.tagName === 'BUTTON' || (p.classList && p.classList.contains('ax-ph'))))
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  var nodes = []; var n;
+  while ((n = walker.nextNode())) { if (re.test(n.textContent)) nodes.push(n); re.lastIndex = 0; }
+  nodes.forEach(function(node) {
+    var html = node.textContent.replace(re, function(m) {
+      return '<span class="ax-ph" onclick="axPhone(\'' + m.trim().replace(/'/g, '') + '\',event)" style="color:#2563eb;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;white-space:nowrap">' + m + '</span>';
+    });
+    re.lastIndex = 0;
+    var wrap = document.createElement('span');
+    wrap.innerHTML = html;
+    node.parentNode.replaceChild(wrap, node);
+  });
+}
+</script>
 </body>
 </html>

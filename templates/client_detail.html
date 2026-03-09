@@ -29,7 +29,7 @@
             {% for p in phones %}
               <div>
                 <span class="small" style="color:var(--muted)">{{ p.label }}:</span>
-                <a href="tel:{{ p.phone_number }}" style="color:var(--accent)">{{ p.phone_number }}</a>
+                <span class="ax-ph" onclick="axPhone('{{ p.phone_number }}',event)" style="color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;font-weight:600">{{ p.phone_number }}</span>
               </div>
             {% endfor %}
           {% else %}

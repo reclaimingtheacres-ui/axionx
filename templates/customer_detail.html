@@ -26,9 +26,7 @@
             {% for p in phones %}
               <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
                 <span class="small" style="color:var(--muted)">{{ p.label }}:</span>
-                <span style="font-weight:600">{{ p.phone_number }}</span>
-                <a href="tel:{{ p.phone_number }}" style="display:inline-flex;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:5px;padding:1px 7px;text-decoration:none">&#9742; Call</a>
-                <a href="sms:{{ p.phone_number }}" style="display:inline-flex;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:#fff;background:var(--accent);border-radius:5px;padding:1px 7px;text-decoration:none">&#128172; SMS</a>
+                <span class="ax-ph" onclick="axPhone('{{ p.phone_number }}',event)" style="font-weight:600;color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">{{ p.phone_number }}</span>
               </div>
             {% endfor %}
           {% else %}

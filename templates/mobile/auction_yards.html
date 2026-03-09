@@ -35,21 +35,21 @@
     {% if yard.mobile or yard.phone or yard.other_phone %}
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
       {% if yard.mobile %}
-      <a href="tel:{{ yard.mobile }}" style="display:flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#2563eb;text-decoration:none;">
+      <span onclick="axPhone('{{ yard.mobile }}',event)" style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#2563eb;cursor:pointer;">
         <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
         {{ yard.mobile }}
-      </a>
+      </span>
       {% endif %}
       {% if yard.phone %}
-      <a href="tel:{{ yard.phone }}" style="display:flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;text-decoration:none;">
+      <span onclick="axPhone('{{ yard.phone }}',event)" style="display:inline-flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;cursor:pointer;">
         <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.1 1.18 2 2 0 012.08 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
         {{ yard.phone }}
-      </a>
+      </span>
       {% endif %}
       {% if yard.other_phone %}
-      <a href="tel:{{ yard.other_phone }}" style="display:flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;text-decoration:none;">
+      <span onclick="axPhone('{{ yard.other_phone }}',event)" style="display:inline-flex;align-items:center;gap:5px;background:#f7f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.8rem;font-weight:600;color:#374151;cursor:pointer;">
         Other: {{ yard.other_phone }}
-      </a>
+      </span>
       {% endif %}
     </div>
     {% endif %}

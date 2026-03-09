@@ -66,8 +66,6 @@
 }
 .ja-btn svg { display: block; }
 .ja-btn-nav  { background: #1d4ed8; }
-.ja-btn-call { background: #16a34a; }
-.ja-btn-sms  { background: #0891b2; }
 .ja-btn-note { background: #d97706; }
 .ja-btn-view { background: #6b7280; }
 .ja-btn-dis  { background: #d1d5db; color: rgba(255,255,255,.5); cursor: default; }
@@ -234,14 +232,10 @@
       </div>
       {% endif %}
       {% if phone %}
-      <a class="ja-btn ja-btn-call" href="tel:{{ phone }}" onclick="jaClose(this.closest('.job-row-wrap'))">
+      <div class="ja-btn" onclick="jaClose(this.closest('.job-row-wrap'));axPhone('{{ phone }}',event)" style="background:#2563eb;">
         <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16z"/></svg>
-        CALL
-      </a>
-      <a class="ja-btn ja-btn-sms" href="sms:{{ phone }}" onclick="jaClose(this.closest('.job-row-wrap'))">
-        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        MESSAGE
-      </a>
+        CONTACT
+      </div>
       {% else %}
       <div class="ja-btn ja-btn-dis">
         <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16z"/></svg>

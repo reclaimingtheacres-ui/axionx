@@ -234,10 +234,8 @@
                     <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
                     {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
                     {% if lc.primary_phone %}
-                      <div class="small d-flex align-items-center gap-1 flex-wrap mt-1">
-                        <span style="color:var(--muted)">{{ lc.primary_phone }}</span>
-                        <a href="tel:{{ lc.primary_phone }}" style="font-size:.68rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:4px;padding:1px 6px;text-decoration:none">&#9742; Call</a>
-                        <a href="sms:{{ lc.primary_phone }}" style="font-size:.68rem;font-weight:700;color:#fff;background:var(--accent);border-radius:4px;padding:1px 6px;text-decoration:none">&#128172; SMS</a>
+                      <div class="small mt-1">
+                        <span class="ax-ph" onclick="axPhone('{{ lc.primary_phone }}',event)" style="color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">{{ lc.primary_phone }}</span>
                       </div>
                     {% endif %}
                     {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
@@ -281,9 +279,8 @@
             {% endif %}
           </div>
           {% if job.client_phone %}
-            <div class="small d-flex align-items-center gap-1 flex-wrap mt-1">
-              <span style="color:var(--muted)">{{ job.client_phone }}</span>
-              <a href="tel:{{ job.client_phone }}" style="font-size:.68rem;font-weight:700;color:#fff;background:var(--accent2);border-radius:4px;padding:1px 6px;text-decoration:none">&#9742; Call</a>
+            <div class="small mt-1">
+              <span class="ax-ph" onclick="axPhone('{{ job.client_phone }}',event)" style="color:var(--accent);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">{{ job.client_phone }}</span>
             </div>
           {% endif %}
           {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
@@ -3735,5 +3732,11 @@ function axSaveClient() {
 }
 </script>
 {% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[id^="note-text-"]').forEach(function(el) { axLinkPhones(el); });
+});
+</script>
 
 {% endblock %}
