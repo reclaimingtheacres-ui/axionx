@@ -269,6 +269,8 @@
             {% if session.get('role') == 'admin' %}
               {% if job.client_id %}
                 <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axEditClient({{ job.client_id }})">Edit</button>
+              {% else %}
+                <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenEditJobForClient()">+ Add Client</button>
               {% endif %}
             {% endif %}
           </div>
@@ -3563,6 +3565,20 @@ function doSendMsg() {
     });
   };
 })();
+</script>
+{% endif %}
+
+<!-- ===== EDIT CLIENT HELPERS ===== -->
+{% if session.get('role') == 'admin' %}
+<script>
+function axOpenEditJobForClient() {
+  var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editJobModal'));
+  modal.show();
+  setTimeout(function() {
+    var el = document.getElementById('ej_client_search');
+    if (el) { el.focus(); el.scrollIntoView({behavior:'smooth', block:'center'}); }
+  }, 350);
+}
 </script>
 {% endif %}
 
