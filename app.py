@@ -4067,7 +4067,14 @@ def client_detail(client_id: int):
         conn.close()
         return ("Not found", 404)
     cur.execute("""
-        SELECT j.*, u.full_name agent_name,
+        SELECT j.*,
+               COALESCE(
+                   (SELECT u2.full_name FROM schedules s2
+                    JOIN users u2 ON u2.id = s2.assigned_to_user_id
+                    WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed')
+                    ORDER BY s2.scheduled_for ASC LIMIT 1),
+                   u.full_name
+               ) AS agent_name,
                cu.last_name  AS cust_last_name,
                cu.company    AS cust_company
         FROM jobs j
