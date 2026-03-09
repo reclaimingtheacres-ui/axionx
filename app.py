@@ -1980,11 +1980,12 @@ def dashboard():
 
     def jrows(status):
         agent_subq = """
-            COALESCE(u.full_name,
+            COALESCE(
                 (SELECT u2.full_name FROM schedules sx
                  JOIN users u2 ON u2.id = sx.assigned_to_user_id
-                 WHERE sx.job_id = j.id
-                 ORDER BY sx.created_at DESC LIMIT 1)
+                 WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed')
+                 ORDER BY sx.scheduled_for ASC LIMIT 1),
+                u.full_name
             ) AS assigned_name"""
         sched_subq = """
             (SELECT sx2.scheduled_for FROM schedules sx2
@@ -2089,12 +2090,13 @@ def jobs_list():
            COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
            (cu.first_name || ' ' || cu.last_name) AS customer_name,
            (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
-           COALESCE(u.full_name, (
-               SELECT u2.full_name FROM schedules s2
-               JOIN users u2 ON u2.id = s2.assigned_to_user_id
-               WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed')
-               ORDER BY s2.scheduled_for ASC LIMIT 1
-           )) AS assigned_name,
+           COALESCE(
+               (SELECT u2.full_name FROM schedules s2
+                JOIN users u2 ON u2.id = s2.assigned_to_user_id
+                WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed')
+                ORDER BY s2.scheduled_for ASC LIMIT 1),
+               u.full_name
+           ) AS assigned_name,
            (SELECT s.scheduled_for FROM schedules s
             WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
               AND s.scheduled_for >= datetime('now')
