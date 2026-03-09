@@ -266,12 +266,14 @@
         <div style="padding:.75rem .9rem;border-radius:10px;background:rgba(37,99,235,.06);">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="small fw-bold" style="color:#2563eb;letter-spacing:.04em">CLIENT</div>
-            {% if session.get('role') == 'admin' and job.client_id %}
-              <a href="/clients/{{ job.client_id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px">Edit</a>
+            {% if session.get('role') == 'admin' %}
+              {% if job.client_id %}
+                <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axEditClient({{ job.client_id }})">Edit</button>
+              {% endif %}
             {% endif %}
           </div>
           <div class="fw-semibold small">
-            {{ job.client_name or "—" }}
+            <span class="client-name-display">{{ job.client_name or "—" }}</span>
             {% if job.client_nickname %}
               <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
             {% endif %}
@@ -3561,6 +3563,139 @@ function doSendMsg() {
     });
   };
 })();
+</script>
+{% endif %}
+
+<!-- ===== EDIT CLIENT MODAL ===== -->
+{% if session.get('role') == 'admin' and job.client_id %}
+<div class="modal fade" id="editClientModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:14px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);padding:14px 20px">
+        <h5 class="modal-title" style="font-size:1rem;font-weight:700;color:var(--text)">Edit Client</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <div id="ecAlertBox" class="alert" style="display:none;font-size:.85rem;margin-bottom:14px"></div>
+        <form id="editClientForm">
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Client Name <span style="color:#ef4444">*</span></label>
+              <input type="text" class="form-control" name="name" id="ec_name" required>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Nickname / Short Name</label>
+              <input type="text" class="form-control" name="nickname" id="ec_nickname" placeholder="e.g. RSA, IRS">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Email</label>
+              <input type="email" class="form-control" name="email" id="ec_email">
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Address</label>
+              <input type="text" class="form-control" name="address" id="ec_address">
+            </div>
+            <div class="col-12">
+              <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Phone Numbers</label>
+              <div class="row g-2">
+                <div class="col-6 col-md-3">
+                  <input type="tel" class="form-control" name="phone_mobile" id="ec_phone_mobile" placeholder="Mobile">
+                </div>
+                <div class="col-6 col-md-3">
+                  <input type="tel" class="form-control" name="phone_work" id="ec_phone_work" placeholder="Work">
+                </div>
+                <div class="col-6 col-md-3">
+                  <input type="tel" class="form-control" name="phone_home" id="ec_phone_home" placeholder="Home">
+                </div>
+                <div class="col-6 col-md-3">
+                  <input type="tel" class="form-control" name="phone_other" id="ec_phone_other" placeholder="Other">
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Notes</label>
+              <textarea class="form-control" name="notes" id="ec_notes" rows="3"></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);padding:12px 20px;gap:8px">
+        <a id="ecFullEditLink" href="/clients/{{ job.client_id }}/edit" target="_blank" class="btn btn-outline-secondary btn-sm me-auto" style="font-size:.8rem">Open Full Edit Page ↗</a>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="ecSaveBtn" onclick="axSaveClient()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var _axClientId = {{ job.client_id }};
+
+function axEditClient(clientId) {
+  var alertBox = document.getElementById('ecAlertBox');
+  alertBox.style.display = 'none';
+  alertBox.className = 'alert';
+
+  fetch('/api/clients/' + clientId, {credentials: 'include'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      document.getElementById('ec_name').value         = d.name || '';
+      document.getElementById('ec_nickname').value     = d.nickname || '';
+      document.getElementById('ec_email').value        = d.email || '';
+      document.getElementById('ec_address').value      = d.address || '';
+      document.getElementById('ec_phone_mobile').value = d.phone_mobile || '';
+      document.getElementById('ec_phone_work').value   = d.phone_work || '';
+      document.getElementById('ec_phone_home').value   = d.phone_home || '';
+      document.getElementById('ec_phone_other').value  = d.phone_other || '';
+      document.getElementById('ec_notes').value        = d.notes || '';
+      var modal = new bootstrap.Modal(document.getElementById('editClientModal'));
+      modal.show();
+    })
+    .catch(function() {
+      alert('Could not load client data. Please try again.');
+    });
+}
+
+function axSaveClient() {
+  var btn = document.getElementById('ecSaveBtn');
+  var alertBox = document.getElementById('ecAlertBox');
+  alertBox.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  var fd = new FormData(document.getElementById('editClientForm'));
+  fetch('/clients/' + _axClientId + '/edit', {
+    method: 'POST',
+    body: fd,
+    headers: {'X-Requested-With': 'XMLHttpRequest'},
+    credentials: 'include'
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+    if (!data.ok) {
+      alertBox.textContent = data.error || 'Save failed.';
+      alertBox.className = 'alert alert-danger';
+      alertBox.style.display = '';
+      return;
+    }
+    bootstrap.Modal.getInstance(document.getElementById('editClientModal')).hide();
+    var nameEl = document.querySelector('.client-name-display');
+    if (nameEl) {
+      nameEl.textContent = data.name || '';
+    } else {
+      location.reload();
+    }
+  })
+  .catch(function() {
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+    alertBox.textContent = 'Network error. Please try again.';
+    alertBox.className = 'alert alert-danger';
+    alertBox.style.display = '';
+  });
+}
 </script>
 {% endif %}
 

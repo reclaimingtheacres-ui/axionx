@@ -4125,7 +4125,11 @@ def client_edit_post(client_id: int):
     address  = request.form.get("address", "").strip()
     notes    = request.form.get("notes", "").strip()
 
+    is_xhr = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     if not name:
+        if is_xhr:
+            return jsonify({"ok": False, "error": "Client name is required."})
         flash("Client name is required.", "danger")
         return redirect(url_for("client_edit", client_id=client_id))
 
@@ -4158,8 +4162,41 @@ def client_edit_post(client_id: int):
     conn.close()
 
     audit("client", client_id, "update", "Client details updated", {})
+
+    if is_xhr:
+        return jsonify({"ok": True, "name": name, "nickname": nickname, "email": email})
+
     flash("Client updated.", "success")
     return redirect(url_for("client_detail", client_id=client_id))
+
+
+@app.get("/api/clients/<int:client_id>")
+@login_required
+@admin_required
+def api_client_get(client_id: int):
+    conn = db()
+    client = conn.execute("SELECT * FROM clients WHERE id = ?", (client_id,)).fetchone()
+    if not client:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+    phones = conn.execute(
+        "SELECT label, phone_number FROM contact_phone_numbers WHERE entity_type='client' AND entity_id=? ORDER BY id",
+        (client_id,)
+    ).fetchall()
+    conn.close()
+    pm = {r["label"]: r["phone_number"] for r in phones}
+    return jsonify({
+        "id":       client["id"],
+        "name":     client["name"] or "",
+        "nickname": client["nickname"] or "",
+        "email":    client["email"] or "",
+        "address":  client["address"] or "",
+        "notes":    client["notes"] or "",
+        "phone_mobile": pm.get("Mobile", ""),
+        "phone_home":   pm.get("Home", ""),
+        "phone_work":   pm.get("Work", ""),
+        "phone_other":  pm.get("Other", ""),
+    })
 
 
 # -------- Customers --------
