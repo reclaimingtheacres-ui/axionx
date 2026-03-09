@@ -57,13 +57,12 @@
    ═══════════════════════════════════════════ #}
 <div id="tabpanel-detail">
 
-{# ── Quick action bar ── #}
+{# ── Quick action bar: REG · VIN · DIRECTIONS (Contact removed — phone is in customer card) ── #}
 {% set _first_asset = assets[0] if assets else None %}
 {% set _has_reg  = _first_asset and _first_asset.reg %}
 {% set _has_vin  = _first_asset and _first_asset.vin %}
 {% set _has_addr = job.job_address %}
-{% set _has_call = customer_mobile %}
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
 
   {# Reg #}
   {% if _has_reg %}
@@ -122,24 +121,6 @@
   </div>
   {% endif %}
 
-  {# Contact #}
-  {% if _has_call %}
-  <div onclick="axPhone('{{ customer_mobile }}',event)"
-       style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-              padding:10px 4px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;
-              font-size:.7rem;font-weight:700;color:#2563eb;text-decoration:none;cursor:pointer;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
-    CONTACT
-  </div>
-  {% else %}
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-              padding:10px 4px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;
-              font-size:.7rem;font-weight:700;color:#9ca3af;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
-    CONTACT
-  </div>
-  {% endif %}
-
 </div>
 
 {# Inline reveal toast for Reg/VIN copy #}
@@ -149,16 +130,16 @@
                           z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3);">
 </div>
 
-{# ── Detail card: Customer → Address → Account → Lender → Description → Vehicle ── #}
-<div class="m-card">
+{# ── 1. Customer card: name · address · phone · email · account ── #}
+<div class="m-card" style="margin-bottom:10px;">
   <div class="m-card-body">
 
-    {# 1. Customer / Company #}
+    {# Customer name #}
     {% if customer %}
     <div style="margin-bottom:12px;">
       <div class="m-label">Customer</div>
-      <div style="font-weight:700;font-size:1.1rem;color:var(--text);line-height:1.2;">{{ customer.first_name }} {{ customer.last_name }}</div>
-      {% if customer.company %}<div style="font-size:.85rem;color:var(--muted);margin-top:2px;">{{ customer.company }}</div>{% endif %}
+      <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">{{ customer.first_name }} {{ customer.last_name }}</div>
+      {% if customer.company %}<div style="font-size:.82rem;color:var(--muted);margin-top:2px;">{{ customer.company }}</div>{% endif %}
     </div>
     {% else %}
     <div style="margin-bottom:12px;">
@@ -167,78 +148,168 @@
     </div>
     {% endif %}
 
-    {# 2. Address #}
+    {# Address #}
     <div style="margin-bottom:12px;">
       <div class="m-label">Address</div>
-      <div style="font-size:.93rem;line-height:1.5;color:var(--text);">{{ job.job_address or '—' }}</div>
+      <div style="font-size:.9rem;line-height:1.5;color:var(--text);">{{ job.job_address or '—' }}</div>
     </div>
 
-    {# 3. Account Number #}
+    {# Phone — tappable action sheet (Call / SMS / WhatsApp / Cancel) #}
+    {% if customer_mobile %}
+    <div style="margin-bottom:12px;">
+      <div class="m-label">Phone</div>
+      <span class="ax-ph" onclick="axPhone('{{ customer_mobile }}',event)"
+            style="font-size:.98rem;font-weight:600;color:var(--accent);cursor:pointer;
+                   display:inline-flex;align-items:center;gap:6px;margin-top:2px;">
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
+        {{ customer_mobile }}
+      </span>
+    </div>
+    {% endif %}
+
+    {# Email — tappable mailto link #}
+    {% if customer and customer.email %}
+    <div style="margin-bottom:12px;">
+      <div class="m-label">Email</div>
+      <a href="mailto:{{ customer.email }}"
+         style="font-size:.9rem;color:var(--accent);word-break:break-all;display:inline-flex;align-items:center;gap:6px;margin-top:2px;text-decoration:none;">
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        {{ customer.email }}
+      </a>
+    </div>
+    {% endif %}
+
+    {# Account Number #}
     {% if job.account_number %}
-    <div style="margin-bottom:12px;">
+    <div>
       <div class="m-label">Account Number</div>
-      <div style="font-weight:600;font-size:.95rem;">{{ job.account_number }}</div>
+      <div style="font-weight:600;font-size:.93rem;">{{ job.account_number }}</div>
     </div>
-    {% endif %}
-
-    {# 4. Lender #}
-    {% if job.lender_name %}
-    <div style="margin-bottom:12px;">
-      <div class="m-label">Lender</div>
-      <div style="font-weight:600;font-size:.95rem;">{{ job.lender_name }}</div>
-    </div>
-    {% endif %}
-
-    {# 5. Description #}
-    {% if job.description %}
-    <div style="margin-bottom:12px;">
-      <div class="m-label">Description &amp; Instructions</div>
-      <div style="font-size:.88rem;line-height:1.6;white-space:pre-wrap;color:#222;">{{ job.description }}</div>
-    </div>
-    {% endif %}
-
-    {# 6. Vehicle / Registration details #}
-    {% if assets %}
-    {% for asset in assets %}
-    <div style="{% if not loop.first %}border-top:1px solid var(--line);padding-top:12px;margin-top:4px;{% endif %}{% if not loop.last %}margin-bottom:4px;{% endif %}">
-      <div class="m-label">{{ asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:.85rem;margin-top:4px;">
-        {% if asset.year or asset.make or asset.model %}
-        <div style="grid-column:1/-1;">
-          <span style="color:var(--muted);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Vehicle</span><br>
-          <span style="font-weight:600;">{{ [asset.year, asset.make, asset.model] | select | join(' ') }}</span>
-        </div>
-        {% endif %}
-        {% if asset.reg %}
-        <div>
-          <span style="color:var(--muted);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Rego</span><br>
-          <strong style="font-size:1rem;">{{ asset.reg }}</strong>
-        </div>
-        {% endif %}
-        {% if asset.vin %}
-        <div>
-          <span style="color:var(--muted);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">VIN</span><br>
-          <span style="font-size:.85rem;word-break:break-all;">{{ asset.vin }}</span>
-        </div>
-        {% endif %}
-        {% if asset.engine_number %}
-        <div>
-          <span style="color:var(--muted);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Engine</span><br>
-          {{ asset.engine_number }}
-        </div>
-        {% endif %}
-      </div>
-      {% if asset.notes %}<div style="font-size:.8rem;color:var(--muted);margin-top:6px;line-height:1.4;">{{ asset.notes }}</div>{% endif %}
-    </div>
-    {% endfor %}
     {% endif %}
 
   </div>
 </div>
 
-{# Client / Regulation card #}
+{# ── 2. Financial Details card ── #}
+{% if job.lender_name or job.arrears_cents or job.costs_cents or job.mmp_cents or job.job_due_date %}
+{% set _total_due = (job.arrears_cents or 0) + (job.costs_cents or 0) %}
+<div class="m-card" style="margin-bottom:10px;">
+  <div class="m-card-header">Financial Details</div>
+  <div class="m-card-body">
+
+    {% if job.lender_name %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Lender</div>
+      <div style="font-weight:600;font-size:.9rem;text-align:right;">{{ job.lender_name }}</div>
+    </div>
+    {% endif %}
+
+    {% if job.payment_frequency %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Contract Type</div>
+      <div style="font-size:.9rem;text-align:right;">{{ job.payment_frequency }}</div>
+    </div>
+    {% endif %}
+
+    {% if job.arrears_cents %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Arrears</div>
+      <div style="font-weight:600;font-size:.9rem;color:#dc2626;text-align:right;">${{ "%.2f" | format(job.arrears_cents / 100) }}</div>
+    </div>
+    {% endif %}
+
+    {% if job.costs_cents %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Costs</div>
+      <div style="font-weight:600;font-size:.9rem;text-align:right;">${{ "%.2f" | format(job.costs_cents / 100) }}</div>
+    </div>
+    {% endif %}
+
+    {% if job.mmp_cents %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Next Payment Due</div>
+      <div style="font-weight:600;font-size:.9rem;text-align:right;">${{ "%.2f" | format(job.mmp_cents / 100) }}</div>
+    </div>
+    {% endif %}
+
+    {% if job.job_due_date %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Due Date</div>
+      <div style="font-size:.9rem;font-weight:600;text-align:right;">
+        {{ job.job_due_date[8:10] }}/{{ job.job_due_date[5:7] }}/{{ job.job_due_date[:4] }}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if _total_due > 0 %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;
+                border-top:1.5px solid var(--line);padding-top:9px;margin-top:4px;">
+      <div style="font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:120px;">Total Now Due</div>
+      <div style="font-size:1.05rem;font-weight:800;color:#dc2626;text-align:right;">${{ "%.2f" | format(_total_due / 100) }}</div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endif %}
+
+{# ── 3. Vehicle Details card(s) ── #}
+{% if assets %}
+{% for asset in assets %}
+<div class="m-card" style="margin-bottom:10px;">
+  <div class="m-card-header">Vehicle Details{% if asset.description %}: {{ asset.description }}{% endif %}</div>
+  <div class="m-card-body">
+
+    {% if asset.year or asset.make or asset.model %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">Description</div>
+      <div style="font-weight:600;font-size:.95rem;">{{ [asset.year, asset.make, asset.model] | select | join(' ') }}</div>
+      {% if asset.notes %}<div style="font-size:.8rem;color:var(--muted);margin-top:3px;">{{ asset.notes }}</div>{% endif %}
+    </div>
+    {% elif asset.notes %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">Notes</div>
+      <div style="font-size:.88rem;color:var(--muted);">{{ asset.notes }}</div>
+    </div>
+    {% endif %}
+
+    {% if asset.reg %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">Reg</div>
+      <div style="font-size:1.05rem;font-weight:700;letter-spacing:.04em;">{{ asset.reg }}</div>
+    </div>
+    {% endif %}
+
+    {% if asset.vin %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">VIN</div>
+      <div style="font-size:.88rem;word-break:break-all;font-family:monospace;">{{ asset.vin }}</div>
+    </div>
+    {% endif %}
+
+    {% set _deliver = asset.deliver_to or job.deliver_to %}
+    {% if _deliver %}
+    <div style="{% if not (asset.reg or asset.vin) %}margin-top:0;{% endif %}">
+      <div class="m-label">Deliver To</div>
+      <div style="font-size:.9rem;line-height:1.45;">{{ _deliver }}</div>
+    </div>
+    {% endif %}
+
+    {% if asset.engine_number %}
+    <div style="margin-top:10px;">
+      <div class="m-label">Engine No.</div>
+      <div style="font-size:.88rem;">{{ asset.engine_number }}</div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{# ── 4. Client / Regulation card ── #}
 {% if client or job.client_job_number or job.regulation_type %}
-<div class="m-card">
+<div class="m-card" style="margin-bottom:10px;">
   <div class="m-card-body">
     {% if client %}
     <div style="margin-bottom:8px;">
@@ -254,7 +325,7 @@
     {% endif %}
     {% if job.regulation_type %}
     <div style="margin-top:4px;">
-      {% if job.regulation_type == 'REGULATED' %}
+      {% if job.regulation_type | upper == 'REGULATED' %}
       <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border:2px solid #fca5a5;
                    border-radius:8px;padding:5px 16px;font-size:.88rem;font-weight:700;letter-spacing:.04em;">REGULATED</span>
       {% else %}
@@ -267,18 +338,12 @@
 </div>
 {% endif %}
 
-{# Customer mobile row #}
-{% if customer_mobile %}
+{# ── 5. Description & Instructions — at the bottom ── #}
+{% if job.description %}
 <div class="m-card">
+  <div class="m-card-header">Description &amp; Instructions</div>
   <div class="m-card-body">
-    <div class="m-label">Mobile</div>
-    <span class="ax-ph" onclick="axPhone('{{ customer_mobile }}',event)" style="font-size:1.05rem;display:inline-block;margin-bottom:4px;margin-top:2px">{{ customer_mobile }}</span>
-    <div class="m-row" style="margin-top:8px">
-      <button onclick="axPhone('{{ customer_mobile }}',event)" class="m-btn m-btn-primary" style="background:#2563eb;">
-        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
-        Contact
-      </button>
-    </div>
+    <div style="font-size:.88rem;line-height:1.65;white-space:pre-wrap;color:#222;">{{ job.description }}</div>
   </div>
 </div>
 {% endif %}
