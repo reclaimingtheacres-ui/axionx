@@ -1401,16 +1401,18 @@ def format_ddmmyyyy(d):
 
 def parse_interaction_datetime(date_str: str, time_str: str) -> str:
     date_str = (date_str or "").strip()
-    time_str = (time_str or "").strip().upper()
+    time_str = (time_str or "").strip()
     if not date_str:
         return datetime.now().isoformat(timespec="seconds")
+    if time_str:
+        combined = f"{date_str} {time_str}"
+        for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y %I:%M %p", "%d/%m/%Y %I:%M%p"):
+            try:
+                return datetime.strptime(combined, fmt).isoformat(timespec="seconds")
+            except Exception:
+                continue
     try:
-        if time_str:
-            combined = f"{date_str} {time_str}"
-            dt = datetime.strptime(combined, "%d/%m/%Y %I:%M %p")
-        else:
-            dt = datetime.strptime(date_str, "%d/%m/%Y")
-        return dt.isoformat(timespec="seconds")
+        return datetime.strptime(date_str, "%d/%m/%Y").isoformat(timespec="seconds")
     except Exception:
         return datetime.now().isoformat(timespec="seconds")
 
