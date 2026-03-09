@@ -4384,6 +4384,46 @@ def job_item_create(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+@app.post("/jobs/<int:job_id>/items/<int:item_id>/edit")
+@login_required
+@admin_required
+def job_item_edit(job_id: int, item_id: int):
+    item_type        = request.form.get("item_type", "vehicle").strip()
+    description      = request.form.get("description", "").strip()
+    reg              = request.form.get("reg", "").strip()
+    vin              = request.form.get("vin", "").strip()
+    serial_number    = request.form.get("serial_number", "").strip()
+    identifier       = request.form.get("identifier", "").strip()
+    property_address = request.form.get("property_address", "").strip()
+    lot_details      = request.form.get("lot_details", "").strip()
+    notes            = request.form.get("notes", "").strip()
+    item_lender      = request.form.get("item_lender_name", "").strip()
+    item_account     = request.form.get("item_account_number", "").strip()
+    item_regulation  = request.form.get("item_regulation_type", "").strip()
+    item_deliver_to  = request.form.get("item_deliver_to", "").strip()
+    conn = db()
+    cur  = conn.cursor()
+    cur.execute("""
+        UPDATE job_items SET
+            item_type=?, description=?, reg=?, vin=?,
+            serial_number=?, identifier=?, property_address=?, lot_details=?,
+            notes=?, lender_name=?, account_number=?, regulation_type=?,
+            deliver_to=?
+        WHERE id=? AND job_id=?
+    """, (
+        item_type, description or None, reg or None, vin or None,
+        serial_number or None, identifier or None,
+        property_address or None, lot_details or None,
+        notes or None, item_lender or None, item_account or None,
+        item_regulation or None, item_deliver_to or None,
+        item_id, job_id
+    ))
+    conn.commit()
+    conn.close()
+    flash("Security item updated.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
 @app.post("/jobs/<int:job_id>/items/<int:item_id>/delete")
 @login_required
 @admin_required

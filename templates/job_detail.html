@@ -453,12 +453,107 @@
                       {% else %}Repo Lock{% endif %}
                     </button>
                     {% if session.get('role') == 'admin' %}
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            onclick="axItemEditToggle({{ item.id }})">Edit</button>
                     <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
                       <button class="btn btn-outline-danger btn-sm" onclick="return confirm('Remove this item?')">Remove</button>
                     </form>
                     {% endif %}
                   </div>
                 </div>
+
+                {# ── Inline edit form (admin, hidden by default) ── #}
+                {% if session.get('role') == 'admin' %}
+                <div id="item-edit-{{ item.id }}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+                  <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/edit">
+                    <div class="row g-2 mb-2">
+                      <div class="col-6 col-lg-3">
+                        <label class="form-label form-label-sm">Type</label>
+                        <select class="form-select form-select-sm" name="item_type">
+                          {% for t in item_types %}
+                            <option value="{{ t }}" {% if item.item_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                      <div class="col-6 col-lg-9">
+                        <label class="form-label form-label-sm">Description</label>
+                        <input class="form-control form-control-sm" name="description" value="{{ item.description or '' }}">
+                      </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-6 col-lg-3">
+                        <label class="form-label form-label-sm">Reg</label>
+                        <input class="form-control form-control-sm" name="reg" value="{{ item.reg or '' }}" placeholder="ABC123">
+                      </div>
+                      <div class="col-6 col-lg-3">
+                        <label class="form-label form-label-sm">VIN</label>
+                        <input class="form-control form-control-sm" name="vin" value="{{ item.vin or '' }}">
+                      </div>
+                      <div class="col-6 col-lg-3">
+                        <label class="form-label form-label-sm">Serial Number</label>
+                        <input class="form-control form-control-sm" name="serial_number" value="{{ item.serial_number or '' }}">
+                      </div>
+                      <div class="col-6 col-lg-3">
+                        <label class="form-label form-label-sm">Identifier</label>
+                        <input class="form-control form-control-sm" name="identifier" value="{{ item.identifier or '' }}">
+                      </div>
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-12 col-lg-8">
+                        <label class="form-label form-label-sm">Property Address</label>
+                        <input class="form-control form-control-sm" name="property_address" value="{{ item.property_address or '' }}">
+                      </div>
+                      <div class="col-12 col-lg-4">
+                        <label class="form-label form-label-sm">Lot / Title</label>
+                        <input class="form-control form-control-sm" name="lot_details" value="{{ item.lot_details or '' }}">
+                      </div>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label form-label-sm">Notes</label>
+                      <input class="form-control form-control-sm" name="notes" value="{{ item.notes or '' }}">
+                    </div>
+                    <div class="row g-2 mb-2">
+                      <div class="col-12 col-lg-4">
+                        <label class="form-label form-label-sm">Lender Name</label>
+                        <input class="form-control form-control-sm" name="item_lender_name" value="{{ item.lender_name or '' }}">
+                      </div>
+                      <div class="col-6 col-lg-3">
+                        <label class="form-label form-label-sm">Account Number</label>
+                        <input class="form-control form-control-sm" name="item_account_number" value="{{ item.account_number or '' }}">
+                      </div>
+                      <div class="col-6 col-lg-2">
+                        <label class="form-label form-label-sm">Contract Type</label>
+                        <select class="form-select form-select-sm" name="item_regulation_type">
+                          <option value="">—</option>
+                          {% for rt in ['Regulated','Unregulated','N/A'] %}
+                            <option value="{{ rt }}" {% if item.regulation_type == rt %}selected{% endif %}>{{ rt }}</option>
+                          {% endfor %}
+                        </select>
+                      </div>
+                      {% if auction_yards %}
+                      <div class="col-12 col-lg-3">
+                        <label class="form-label form-label-sm">Deliver to</label>
+                        <select class="form-select form-select-sm" name="item_deliver_to">
+                          <option value="">— Not specified —</option>
+                          {% set _eseen = namespace(names=[]) %}
+                          {% for y in auction_yards %}
+                            {% if y.name not in _eseen.names %}
+                              {% set _eseen.names = _eseen.names + [y.name] %}
+                              <option value="{{ y.name }}" {% if item.deliver_to == y.name %}selected{% endif %}>{{ y.name }}</option>
+                            {% endif %}
+                          {% endfor %}
+                        </select>
+                      </div>
+                      {% endif %}
+                    </div>
+                    <div class="d-flex gap-2">
+                      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="axItemEditToggle({{ item.id }})">Cancel</button>
+                    </div>
+                  </form>
+                </div>
+                {% endif %}
+
               </div>
             {% endfor %}
           </div>
@@ -1969,6 +2064,11 @@ function showItemFields(type) {
     const el = document.getElementById('fields-' + t);
     if (el) el.style.display = (t === type) ? '' : 'none';
   });
+}
+function axItemEditToggle(itemId) {
+  var el = document.getElementById('item-edit-' + itemId);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 </script>
 
