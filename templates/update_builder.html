@@ -345,7 +345,12 @@
       });
       const data = await resp.json();
       if (!resp.ok || data.error) {
-        err.textContent = data.error || 'Generation failed.';
+        const msg = data.error || 'Generation failed.';
+        if (msg.includes('No OpenAI key') || msg.includes('Settings')) {
+          err.innerHTML = msg + ' <a href="/admin/settings#ai-settings" target="_blank" style="color:inherit;text-decoration:underline">Open Settings ↗</a>';
+        } else {
+          err.textContent = msg;
+        }
         err.style.display = 'block';
       } else {
         const ta = $('final_narrative');

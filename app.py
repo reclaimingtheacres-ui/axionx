@@ -6265,9 +6265,17 @@ def _get_ai_client():
         from openai import OpenAI
         return OpenAI(api_key=own_key), "own"
     from openai import OpenAI
-    replit_base = os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL", "https://ai.replit.com")
+    replit_base = os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL", "")
     replit_key  = os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY", "")
-    return OpenAI(api_key=replit_key, base_url=replit_base), "replit"
+    # Replit's AI integration only works inside Replit's dev environment.
+    # If base_url points to localhost (i.e. running on Azure/external), fall back to own key.
+    if replit_base and "localhost" not in replit_base and replit_key and not replit_key.startswith("_DUMMY"):
+        return OpenAI(api_key=replit_key, base_url=replit_base), "replit"
+    if not own_key:
+        raise RuntimeError(
+            "No OpenAI key configured. Go to Settings → AI to add your own OpenAI API key."
+        )
+    return OpenAI(api_key=own_key), "own"
 
 
 def _calc_eta_date(from_date, poc):
