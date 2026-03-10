@@ -3062,7 +3062,10 @@ def _resolve_booking_type(cur, bt_id: str, bt_name: str):
         except Exception:
             pass
     if bt_name:
-        row = cur.execute("SELECT id FROM booking_types WHERE LOWER(name) = LOWER(?)", (bt_name,)).fetchone()
+        bt_name = " ".join(bt_name.split()).strip()
+        if not bt_name:
+            return None
+        row = cur.execute("SELECT id FROM booking_types WHERE LOWER(TRIM(name)) = LOWER(?)", (bt_name,)).fetchone()
         if row:
             return row["id"]
         cur.execute("INSERT INTO booking_types (name, active) VALUES (?, 1)", (bt_name,))
@@ -3081,6 +3084,7 @@ def add_schedule(job_id: int):
     notes       = request.form.get("notes", "").strip() or None
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
+    is_ajax     = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     if caller_role in ("admin", "both"):
         assigned_to = request.form.get("assigned_to_user_id", "").strip() or None
@@ -3090,12 +3094,16 @@ def add_schedule(job_id: int):
         assigned_to = caller_id
 
     if not date_str or not time_str or (not bt_id and not bt_name):
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Date, time and booking type are required."})
         flash("Date, time and booking type are required.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
 
     try:
         dt_str = parse_interaction_datetime(date_str, time_str)
     except Exception:
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Invalid date or time format."})
         flash("Invalid date or time format.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
 
@@ -3104,6 +3112,8 @@ def add_schedule(job_id: int):
     resolved_bt_id = _resolve_booking_type(cur, bt_id, bt_name)
     if not resolved_bt_id:
         conn.close()
+        if is_ajax:
+            return jsonify({"ok": False, "error": "Invalid booking type."})
         flash("Invalid booking type.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
 
@@ -3119,6 +3129,8 @@ def add_schedule(job_id: int):
     conn.commit()
     conn.close()
 
+    if is_ajax:
+        return jsonify({"ok": True, "bt_id": resolved_bt_id, "bt_name": bt_row["name"] if bt_row else bt_name})
     flash("Booking added.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
 
@@ -3147,7 +3159,8 @@ def add_schedule_ajax(job_id: int):
     conn = db()
     cur = conn.cursor()
 
-    cur.execute("SELECT id FROM booking_types WHERE name = ? COLLATE NOCASE", (bt_name,))
+    bt_name = " ".join(bt_name.split()).strip()
+    cur.execute("SELECT id FROM booking_types WHERE LOWER(TRIM(name)) = LOWER(?)", (bt_name,))
     bt_row = cur.fetchone()
     if bt_row:
         bt_id = bt_row["id"]
@@ -3374,11 +3387,15 @@ def add_booking_type():
 @login_required
 @admin_required
 def add_booking_type_ajax():
-    name = request.form.get("name", "").strip()
+    name = " ".join((request.form.get("name", "") or "").split()).strip()
     if not name:
         return jsonify({"ok": False, "error": "Name is required."})
     conn = db()
     cur = conn.cursor()
+    existing = cur.execute("SELECT id, name FROM booking_types WHERE LOWER(TRIM(name)) = LOWER(?)", (name,)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({"ok": True, "id": existing["id"], "name": existing["name"], "existing": True})
     try:
         cur.execute("INSERT INTO booking_types (name, active) VALUES (?, 1)", (name,))
         new_id = cur.lastrowid

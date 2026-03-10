@@ -1097,63 +1097,45 @@
   <div class="ax-card-b">
 
         {% if session.get('role') == 'admin' %}
-        <form method="post" action="/jobs/{{ job.id }}/schedule" class="row g-2 mb-3">
+        <div id="inlineBookingSuccess" class="alert alert-success mb-3" style="display:none"></div>
+        <div class="row g-2 mb-3" id="inlineBookingForm">
           <div class="col-md-2">
             <input type="date" id="sched_date_picker" class="form-control">
           </div>
           <div class="col-md-2">
-            <input type="text" id="sched_date_text" name="schedule_date" class="form-control"
+            <input type="text" id="sched_date_text" class="form-control"
                    placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" required>
           </div>
           <div class="col-md-2">
             <input type="time" id="sched_time_picker" class="form-control">
           </div>
           <div class="col-md-2">
-            <input type="text" id="sched_time_text" name="schedule_time" class="form-control"
+            <input type="text" id="sched_time_text" class="form-control"
                    placeholder="hh:mm am" maxlength="8" autocomplete="off" required>
           </div>
           <div class="col-md-3">
             <div class="position-relative">
-              <input type="text" id="bt_search" name="booking_type_name" class="form-control"
-                     placeholder="Booking type…" autocomplete="off" required>
-              <input type="hidden" name="booking_type_id" id="bt_id_hidden">
-              <div id="bt_dropdown" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+              <input type="text" id="bt_search" class="form-control"
+                     placeholder="Type to search or add new..." autocomplete="off" required>
+              <input type="hidden" id="bt_id_hidden">
+              <div id="bt_dropdown" class="bt-combo-drop" style="display:none"></div>
             </div>
           </div>
           <div class="col-12">
-            <textarea name="notes" class="form-control" rows="2"
+            <textarea id="sched_notes" class="form-control" rows="2"
                       placeholder="Optional notes about this booking"></textarea>
           </div>
-          {% if session.get('role') == 'admin' %}
           <div class="col-md-4">
-            <select name="assigned_to_user_id" class="form-select">
+            <select id="sched_assign" class="form-select">
               <option value="">Unassigned</option>
               {% for u in users %}
                 <option value="{{ u.id }}" {% if u.id == job.assigned_user_id %}selected{% endif %}>{{ u.full_name }}</option>
               {% endfor %}
             </select>
           </div>
-          {% else %}
-          <input type="hidden" name="assigned_to_user_id" value="{{ job.assigned_user_id or '' }}">
-          {% endif %}
           <div class="col-md-4">
-            <button class="btn btn-primary w-100" type="submit">Add Booking</button>
+            <button class="btn btn-primary w-100" type="button" id="inlineBookingSaveBtn" onclick="inlineSaveBooking()">Add Booking</button>
           </div>
-        </form>
-        {% endif %}
-
-        {% if session.get('role') == 'admin' %}
-        <button class="btn btn-outline-secondary btn-sm mb-3"
-                data-bs-toggle="collapse" data-bs-target="#addBookingType">
-          + Add Booking Type
-        </button>
-        <div class="collapse mb-3" id="addBookingType">
-          <form method="post" action="/booking-type">
-            <div class="input-group">
-              <input name="new_booking_type" class="form-control" placeholder="New booking type name…">
-              <button class="btn btn-outline-primary" type="submit">Save</button>
-            </div>
-          </form>
         </div>
         {% endif %}
 
@@ -2915,24 +2897,14 @@ function axCopyVin(btn) {
             </div>
           </div>
           <div class="mb-2">
-            <div class="d-flex justify-content-between align-items-center mb-1">
-              <label class="form-label small mb-0" style="color:var(--muted)">Booking Type</label>
-              <button type="button" class="btn btn-link btn-sm p-0" style="color:var(--accent);font-size:.8rem"
-                      onclick="toggleNewBtRow()">+ New type</button>
+            <label class="form-label small mb-1" style="color:var(--muted)">Booking Type</label>
+            <div class="position-relative">
+              <input type="text" id="ap_bt_search" class="form-control"
+                     placeholder="Type to search or add new..." autocomplete="off">
+              <input type="hidden" name="booking_type_id" id="ap_bt_id_hidden">
+              <input type="hidden" name="booking_type_name" id="ap_bt_name_hidden">
+              <div id="ap_bt_dropdown" class="bt-combo-drop" style="display:none"></div>
             </div>
-            <select name="booking_type_id" id="ap_booking_type" class="form-select">
-              <option value="">&#8212; Select type &#8212;</option>
-              {% for bt in booking_types %}
-                <option value="{{ bt.id }}">{{ bt.name }}</option>
-              {% endfor %}
-            </select>
-            <div id="newBtRow" class="input-group mt-1" style="display:none">
-              <input type="text" id="newBtName" class="form-control form-control-sm"
-                     placeholder="New booking type name…" maxlength="80">
-              <button type="button" class="btn btn-outline-primary btn-sm" onclick="saveNewBt()">Add</button>
-              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="toggleNewBtRow()">✕</button>
-            </div>
-            <div id="newBtError" class="text-danger small mt-1" style="display:none"></div>
           </div>
           <div class="mb-2">
             <label class="form-label small" style="color:var(--muted)">Assign To</label>
@@ -2991,34 +2963,7 @@ function axCopyVin(btn) {
     f.submit();
   };
 
-  window.toggleNewBtRow = function() {
-    var row = document.getElementById('newBtRow');
-    var inp = document.getElementById('newBtName');
-    row.style.display = row.style.display === 'none' ? '' : 'none';
-    if (row.style.display !== 'none') inp.focus();
-    document.getElementById('newBtError').style.display = 'none';
-  };
-
-  window.saveNewBt = function() {
-    var name = (document.getElementById('newBtName').value || '').trim();
-    var errEl = document.getElementById('newBtError');
-    if (!name) { errEl.textContent = 'Enter a name.'; errEl.style.display = ''; return; }
-    errEl.style.display = 'none';
-    var fd = new FormData(); fd.append('name', name);
-    fetch('/booking-type/ajax', { method: 'POST', body: fd,
-                                   headers: {'X-Requested-With': 'XMLHttpRequest'} })
-      .then(function(r){ return r.json(); })
-      .then(function(data) {
-        if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
-        var sel = document.getElementById('ap_booking_type');
-        var opt = new Option(data.name, data.id, true, true);
-        sel.add(opt);
-        sel.value = String(data.id);
-        document.getElementById('newBtName').value = '';
-        document.getElementById('newBtRow').style.display = 'none';
-      })
-      .catch(function(){ errEl.textContent = 'Network error.'; errEl.style.display = ''; });
-  };
+  window._noop_old_bt = function() {};
 
   var apDatePicker = document.getElementById('ap_date_picker');
   var apDateText   = document.getElementById('ap_date_text');
@@ -3341,7 +3286,12 @@ function adocOpenEditJob() {
         <div class="row g-3 mb-3 align-items-center">
           <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px">Booking Label:</div>
           <div class="col">
-            <input type="text" id="abk_label" class="form-control" value="New Booking" style="max-width:260px">
+            <div class="position-relative" style="max-width:300px">
+              <input type="text" id="abk_label" class="form-control"
+                     placeholder="Type to search or add new..." autocomplete="off">
+              <input type="hidden" id="abk_bt_id_hidden">
+              <div id="abk_bt_dropdown" class="bt-combo-drop" style="display:none"></div>
+            </div>
           </div>
         </div>
 
@@ -3500,7 +3450,9 @@ function doSendMsg() {
     var dd = String(today.getDate()).padStart(2,'0');
     document.getElementById('abk_date').value = yyyy + '-' + mm + '-' + dd;
     document.getElementById('abk_time').value = '09:00';
-    document.getElementById('abk_label').value = 'New Booking';
+    document.getElementById('abk_label').value = '';
+    var abkHidden = document.getElementById('abk_bt_id_hidden');
+    if (abkHidden) abkHidden.value = '';
     document.getElementById('abk_details').value = '';
     document.getElementById('abk_unassigned').checked = false;
     document.getElementById('abk_staff_section').style.opacity = '1';
@@ -3568,7 +3520,9 @@ function doSendMsg() {
       abkDisable(false);
       if (!data.ok) { errEl.textContent = data.error; errEl.style.display = ''; return; }
       if (addAnother) {
-        document.getElementById('abk_label').value = 'New Booking';
+        document.getElementById('abk_label').value = '';
+        var abkHid = document.getElementById('abk_bt_id_hidden');
+        if (abkHid) abkHid.value = '';
         document.getElementById('abk_details').value = '';
         abkSelectAll(false);
         errEl.textContent = data.count + ' booking(s) saved. Fill in details for the next booking.';
@@ -3577,7 +3531,13 @@ function doSendMsg() {
         setTimeout(function(){ errEl.style.display = 'none'; errEl.className = 'alert alert-danger mb-3'; }, 2500);
       } else {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).hide();
-        window.location.reload();
+        var pageSuccess = document.getElementById('inlineBookingSuccess');
+        if (pageSuccess) {
+          pageSuccess.textContent = data.count + ' booking(s) saved successfully.';
+          pageSuccess.style.display = '';
+          setTimeout(function(){ pageSuccess.style.display = 'none'; }, 3000);
+        }
+        if (typeof refreshScheduleTable === 'function') refreshScheduleTable();
       }
     })
     .catch(function() {
@@ -3793,6 +3753,242 @@ function axSaveClient() {
 }
 </script>
 {% endif %}
+
+<script>
+(function() {
+  var BT_DATA = [
+    {% for bt in booking_types %}{"id":{{ bt.id }},"name":{{ bt.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+  ];
+
+  var BT_RECENT_KEY = 'axionx_bt_recent';
+  function getRecentIds() {
+    try { return JSON.parse(localStorage.getItem(BT_RECENT_KEY) || '[]'); } catch(e) { return []; }
+  }
+  function pushRecent(id) {
+    var recent = getRecentIds().filter(function(x){ return x !== id; });
+    recent.unshift(id);
+    if (recent.length > 5) recent = recent.slice(0, 5);
+    try { localStorage.setItem(BT_RECENT_KEY, JSON.stringify(recent)); } catch(e) {}
+  }
+
+  function sortedBtData(q) {
+    var recent = getRecentIds();
+    var filtered = BT_DATA;
+    if (q) {
+      q = q.toLowerCase();
+      filtered = BT_DATA.filter(function(bt) { return bt.name.toLowerCase().indexOf(q) !== -1; });
+    }
+    var recentItems = [];
+    var others = [];
+    filtered.forEach(function(bt) {
+      if (recent.indexOf(bt.id) !== -1) recentItems.push(bt);
+      else others.push(bt);
+    });
+    recentItems.sort(function(a,b) { return recent.indexOf(a.id) - recent.indexOf(b.id); });
+    return recentItems.concat(others);
+  }
+
+  function addBtToData(id, name) {
+    for (var i = 0; i < BT_DATA.length; i++) {
+      if (BT_DATA[i].id === id) return;
+    }
+    BT_DATA.push({id: id, name: name});
+  }
+
+  function initBtCombo(searchEl, hiddenIdEl, hiddenNameEl, dropEl, opts) {
+    opts = opts || {};
+
+    function renderDrop(items, rawQ) {
+      dropEl.innerHTML = '';
+      var recent = getRecentIds();
+      items.slice(0, 12).forEach(function(bt) {
+        var div = document.createElement('div');
+        div.className = 'bt-combo-item';
+        var isRecent = recent.indexOf(bt.id) !== -1;
+        div.textContent = bt.name;
+        if (isRecent) {
+          var badge = document.createElement('span');
+          badge.className = 'bt-recent';
+          badge.textContent = 'recent';
+          div.appendChild(badge);
+        }
+        div.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          searchEl.value = bt.name;
+          if (hiddenIdEl) hiddenIdEl.value = bt.id;
+          if (hiddenNameEl) hiddenNameEl.value = bt.name;
+          pushRecent(bt.id);
+          dropEl.style.display = 'none';
+        });
+        dropEl.appendChild(div);
+      });
+
+      var trimmed = (rawQ || '').replace(/\s+/g, ' ').trim();
+      if (trimmed) {
+        var exists = BT_DATA.some(function(bt) { return bt.name.toLowerCase() === trimmed.toLowerCase(); });
+        if (!exists) {
+          var addDiv = document.createElement('div');
+          addDiv.className = 'bt-combo-item bt-add-new';
+          addDiv.textContent = 'Add new booking type: \u201c' + trimmed + '\u201d';
+          addDiv.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            createNewBt(trimmed, searchEl, hiddenIdEl, hiddenNameEl, dropEl);
+          });
+          dropEl.appendChild(addDiv);
+        }
+      }
+
+      dropEl.style.display = dropEl.children.length ? '' : 'none';
+    }
+
+    searchEl.addEventListener('input', function() {
+      if (hiddenIdEl) hiddenIdEl.value = '';
+      if (hiddenNameEl) hiddenNameEl.value = searchEl.value.trim();
+      renderDrop(sortedBtData(searchEl.value.trim()), searchEl.value);
+    });
+
+    searchEl.addEventListener('focus', function() {
+      var q = searchEl.value.trim();
+      renderDrop(sortedBtData(q), q);
+    });
+
+    searchEl.addEventListener('blur', function() {
+      setTimeout(function() { dropEl.style.display = 'none'; }, 200);
+      if (hiddenIdEl && !hiddenIdEl.value && hiddenNameEl) hiddenNameEl.value = searchEl.value.trim();
+    });
+
+    searchEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var active = dropEl.querySelector('.bt-active');
+        if (active) { active.dispatchEvent(new MouseEvent('mousedown')); return; }
+        var first = dropEl.querySelector('.bt-combo-item');
+        if (first) first.dispatchEvent(new MouseEvent('mousedown'));
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        var items = dropEl.querySelectorAll('.bt-combo-item');
+        if (!items.length) return;
+        var idx = -1;
+        items.forEach(function(el, i) { if (el.classList.contains('bt-active')) idx = i; });
+        items.forEach(function(el) { el.classList.remove('bt-active'); });
+        if (e.key === 'ArrowDown') idx = (idx + 1) % items.length;
+        else idx = (idx - 1 + items.length) % items.length;
+        items[idx].classList.add('bt-active');
+        items[idx].scrollIntoView({block:'nearest'});
+      }
+    });
+  }
+
+  function createNewBt(name, searchEl, hiddenIdEl, hiddenNameEl, dropEl) {
+    var fd = new FormData();
+    fd.append('name', name);
+    fetch('/booking-type/ajax', { method: 'POST', body: fd, headers: {'X-Requested-With':'XMLHttpRequest'} })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok) { alert(data.error || 'Error creating booking type.'); return; }
+        addBtToData(data.id, data.name);
+        searchEl.value = data.name;
+        if (hiddenIdEl) hiddenIdEl.value = data.id;
+        if (hiddenNameEl) hiddenNameEl.value = data.name;
+        pushRecent(data.id);
+        dropEl.style.display = 'none';
+      })
+      .catch(function() { alert('Network error creating booking type.'); });
+  }
+
+  var btSearch = document.getElementById('bt_search');
+  if (btSearch) {
+    initBtCombo(btSearch, document.getElementById('bt_id_hidden'), null, document.getElementById('bt_dropdown'));
+  }
+
+  var apBtSearch = document.getElementById('ap_bt_search');
+  if (apBtSearch) {
+    initBtCombo(apBtSearch, document.getElementById('ap_bt_id_hidden'), document.getElementById('ap_bt_name_hidden'), document.getElementById('ap_bt_dropdown'));
+  }
+
+  var abkLabel = document.getElementById('abk_label');
+  if (abkLabel) {
+    initBtCombo(abkLabel, document.getElementById('abk_bt_id_hidden'), null, document.getElementById('abk_bt_dropdown'));
+  }
+
+  window.inlineSaveBooking = function() {
+    var dateText = document.getElementById('sched_date_text').value.trim();
+    var timeText = document.getElementById('sched_time_text').value.trim();
+    var btId = document.getElementById('bt_id_hidden').value;
+    var btName = document.getElementById('bt_search').value.trim();
+    var notes = document.getElementById('sched_notes').value.trim();
+    var assign = document.getElementById('sched_assign').value;
+    var btn = document.getElementById('inlineBookingSaveBtn');
+    var successEl = document.getElementById('inlineBookingSuccess');
+
+    if (!dateText) { alert('Please enter a date.'); return; }
+    if (!timeText) { alert('Please enter a time.'); return; }
+    if (!btId && !btName) { alert('Please select or enter a booking type.'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    var fd = new FormData();
+    fd.append('schedule_date', dateText);
+    fd.append('schedule_time', timeText);
+    if (btId) fd.append('booking_type_id', btId);
+    fd.append('booking_type_name', btName);
+    if (notes) fd.append('notes', notes);
+    fd.append('assigned_to_user_id', assign);
+
+    fetch('/jobs/{{ job.id }}/schedule', {
+      method: 'POST',
+      body: fd,
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = 'Add Booking';
+      if (!data.ok) { alert(data.error || 'Error saving booking.'); return; }
+      successEl.textContent = 'Booking saved successfully.';
+      successEl.style.display = '';
+      if (data.bt_id) {
+        addBtToData(data.bt_id, data.bt_name || btName);
+        pushRecent(data.bt_id);
+      }
+      document.getElementById('bt_search').value = '';
+      document.getElementById('bt_id_hidden').value = '';
+      document.getElementById('sched_notes').value = '';
+      setTimeout(function() { successEl.style.display = 'none'; }, 3000);
+      refreshScheduleTable();
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Add Booking';
+      alert('Error saving booking. Please try again.');
+    });
+  };
+
+  window.refreshScheduleTable = function() {
+    fetch(window.location.pathname, { headers: {'X-Requested-With': 'XMLHttpRequest'} })
+      .then(function(r) { return r.text(); })
+      .then(function(html) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var newTable = doc.querySelector('#tab-schedule .table-responsive');
+        var oldTable = document.querySelector('#tab-schedule .table-responsive');
+        if (newTable && oldTable) {
+          oldTable.outerHTML = newTable.outerHTML;
+        } else if (newTable && !oldTable) {
+          var form = document.getElementById('inlineBookingForm');
+          if (form) {
+            var wrapper = document.createElement('div');
+            wrapper.innerHTML = newTable.outerHTML;
+            form.parentNode.insertBefore(wrapper.firstChild, form.nextSibling);
+          }
+        }
+      })
+      .catch(function() {});
+  }
+})();
+</script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {

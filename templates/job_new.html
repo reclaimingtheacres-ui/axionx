@@ -818,7 +818,7 @@ function submitNewJobType() {
                        placeholder="Type to search or enter new…" autocomplete="off">
                 <input type="hidden" name="sched_booking_type_id"   id="sched_bt_id_hidden"   form="newJobForm">
                 <input type="hidden" name="sched_booking_type_name" id="sched_bt_name_hidden"  form="newJobForm">
-                <div id="sched_bt_drop" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
+                <div id="sched_bt_drop" class="bt-combo-drop" style="display:none"></div>
               </div>
             </div>
             <div class="col-12 col-lg-3">
@@ -1254,44 +1254,118 @@ document.addEventListener('DOMContentLoaded', function() {
 
   if (!searchEl) return;
 
-  function renderDrop(items) {
+  var BT_RECENT_KEY = 'axionx_bt_recent';
+  function getRecentIds() {
+    try { return JSON.parse(localStorage.getItem(BT_RECENT_KEY) || '[]'); } catch(e) { return []; }
+  }
+  function pushRecent(id) {
+    var recent = getRecentIds().filter(function(x){ return x !== id; });
+    recent.unshift(id);
+    if (recent.length > 5) recent = recent.slice(0, 5);
+    try { localStorage.setItem(BT_RECENT_KEY, JSON.stringify(recent)); } catch(e) {}
+  }
+  function sortedData(q) {
+    var recent = getRecentIds();
+    var filtered = BT_DATA;
+    if (q) {
+      q = q.toLowerCase();
+      filtered = BT_DATA.filter(function(bt) { return bt.name.toLowerCase().indexOf(q) !== -1; });
+    }
+    var r = [], o = [];
+    filtered.forEach(function(bt) { if (recent.indexOf(bt.id) !== -1) r.push(bt); else o.push(bt); });
+    r.sort(function(a,b) { return recent.indexOf(a.id) - recent.indexOf(b.id); });
+    return r.concat(o);
+  }
+
+  function renderDrop(items, rawQ) {
     dropEl.innerHTML = '';
-    if (!items.length) { dropEl.style.display = 'none'; return; }
+    var recent = getRecentIds();
     items.slice(0, 12).forEach(function (bt) {
       var div = document.createElement('div');
-      div.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:.9rem;border-bottom:1px solid var(--line);color:var(--text);';
+      div.className = 'bt-combo-item';
+      var isRecent = recent.indexOf(bt.id) !== -1;
       div.textContent = bt.name;
+      if (isRecent) {
+        var badge = document.createElement('span');
+        badge.className = 'bt-recent';
+        badge.textContent = 'recent';
+        div.appendChild(badge);
+      }
       div.addEventListener('mousedown', function (e) {
         e.preventDefault();
         searchEl.value  = bt.name;
         hiddenId.value  = bt.id;
         hiddenName.value = bt.name;
+        pushRecent(bt.id);
         dropEl.style.display = 'none';
       });
-      div.addEventListener('mouseenter', function () { div.style.background = 'rgba(96,165,250,.12)'; });
-      div.addEventListener('mouseleave', function () { div.style.background = ''; });
       dropEl.appendChild(div);
     });
-    dropEl.style.display = '';
+    var trimmed = (rawQ || '').replace(/\s+/g, ' ').trim();
+    if (trimmed) {
+      var exists = BT_DATA.some(function(bt) { return bt.name.toLowerCase() === trimmed.toLowerCase(); });
+      if (!exists) {
+        var addDiv = document.createElement('div');
+        addDiv.className = 'bt-combo-item bt-add-new';
+        addDiv.textContent = 'Add new booking type: \u201c' + trimmed + '\u201d';
+        addDiv.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          var fd = new FormData(); fd.append('name', trimmed);
+          fetch('/booking-type/ajax', { method: 'POST', body: fd, headers: {'X-Requested-With':'XMLHttpRequest'} })
+            .then(function(r){ return r.json(); })
+            .then(function(data) {
+              if (!data.ok) return;
+              var found = false;
+              for (var i = 0; i < BT_DATA.length; i++) { if (BT_DATA[i].id === data.id) { found = true; break; } }
+              if (!found) BT_DATA.push({id: data.id, name: data.name});
+              searchEl.value = data.name;
+              hiddenId.value = data.id;
+              hiddenName.value = data.name;
+              pushRecent(data.id);
+              dropEl.style.display = 'none';
+            });
+        });
+        dropEl.appendChild(addDiv);
+      }
+    }
+    dropEl.style.display = dropEl.children.length ? '' : 'none';
   }
 
   searchEl.addEventListener('input', function () {
     hiddenId.value = '';
     hiddenName.value = searchEl.value.trim();
-    var q = searchEl.value.trim().toLowerCase();
-    if (!q) { dropEl.style.display = 'none'; return; }
-    renderDrop(BT_DATA.filter(function (bt) { return bt.name.toLowerCase().includes(q); }));
+    var q = searchEl.value.trim();
+    renderDrop(sortedData(q), q);
   });
 
   searchEl.addEventListener('focus', function () {
-    var q = searchEl.value.trim().toLowerCase();
-    if (q) renderDrop(BT_DATA.filter(function (bt) { return bt.name.toLowerCase().includes(q); }));
-    else renderDrop(BT_DATA);
+    var q = searchEl.value.trim();
+    renderDrop(sortedData(q), q);
   });
 
   searchEl.addEventListener('blur', function () {
     setTimeout(function () { dropEl.style.display = 'none'; }, 200);
     if (!hiddenId.value) hiddenName.value = searchEl.value.trim();
+  });
+
+  searchEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      var first = dropEl.querySelector('.bt-combo-item.bt-active') || dropEl.querySelector('.bt-combo-item');
+      if (first) first.dispatchEvent(new MouseEvent('mousedown'));
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      var items = dropEl.querySelectorAll('.bt-combo-item');
+      if (!items.length) return;
+      var idx = -1;
+      items.forEach(function(el, i) { if (el.classList.contains('bt-active')) idx = i; });
+      items.forEach(function(el) { el.classList.remove('bt-active'); });
+      if (e.key === 'ArrowDown') idx = (idx + 1) % items.length;
+      else idx = (idx - 1 + items.length) % items.length;
+      items[idx].classList.add('bt-active');
+      items[idx].scrollIntoView({block:'nearest'});
+    }
   });
 })();
 </script>

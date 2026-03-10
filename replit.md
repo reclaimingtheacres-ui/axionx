@@ -20,6 +20,8 @@ No explicit user preferences were provided in the original `replit.md` file. The
 
 **2. Dynamic Queue System:** Provides an admin-only view with 'Agent Notes – Pending Review' pinned at the top (hidden when empty, sorted by most recently updated), followed by 'Overdue' and 'Currently Due' sections. When a job is rescheduled or updated, its cue items are auto-completed and the queue view refreshes automatically on tab focus via `/queue/active-cue-ids` polling. Direct email composition and job updates available inline.
 
+**2a. Job Scheduling (Booking Type Combobox):** All booking type fields across the system (job detail inline form, schedule prompt modal, add bookings modal, new job form) use a unified searchable combobox with type-to-search, type-to-select, and create-new behaviour. Recently used types appear at the top with a "recent" label. New types are saved via `/booking-type/ajax` with case/spacing normalization to prevent duplicates. After saving a booking, users remain on the same page (AJAX submission) with a success message — no redirect to Jobs or other screens.
+
 **3. Cues System:** Manages `cue_items` (scheduled tasks) with properties like date, visit type, priority, and agent assignment. Supports daily cue access for agents and drag-and-drop assignment for admins, with automatic cue generation for overdue or upcoming schedules.
 
 **4. Audit Log:** Logs all significant system actions, accessible via the admin dashboard.
