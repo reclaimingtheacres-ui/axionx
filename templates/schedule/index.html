@@ -47,7 +47,7 @@
   .sch-agenda-tbl .status-badge{font-size:.7rem;padding:2px 8px;border-radius:6px;color:#fff;font-weight:600}
 
   .sch-popup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:9998;display:none}
-  .sch-popup{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);width:380px;max-width:92vw;padding:0;display:none}
+  .sch-popup{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);width:420px;max-width:92vw;max-height:90vh;overflow-y:auto;padding:0;display:none}
   .sch-popup-hdr{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
   .sch-popup-hdr .title{font-weight:650;font-size:.95rem}
   .sch-popup-hdr .close-btn{cursor:pointer;font-size:1.2rem;color:var(--muted);background:none;border:none;padding:0}
@@ -57,9 +57,6 @@
   .sch-popup-body .info-val{color:var(--text);flex:1}
   .sch-popup-actions{padding:10px 16px 14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
   .sch-popup-actions .btn{font-size:.78rem;padding:4px 12px}
-  .sch-resched-row{display:none;padding:8px 16px;border-top:1px solid var(--line)}
-  .sch-resched-row input{font-size:.85rem;border-radius:8px;border:1px solid var(--line);padding:4px 8px}
-
   .sch-empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:.9rem}
   .sch-loading{text-align:center;padding:30px;color:var(--muted);font-size:.85rem}
 
@@ -117,12 +114,43 @@
     <button class="close-btn" onclick="schClosePopup()">&times;</button>
   </div>
   <div class="sch-popup-body" id="schPopupBody"></div>
-  <div class="sch-resched-row" id="schReschedRow">
-    <div class="d-flex gap-2 align-items-center">
-      <input type="datetime-local" id="schReschedDt" class="form-control form-control-sm" style="width:auto">
-      <button class="btn btn-primary btn-sm" onclick="schDoReschedule()">Confirm</button>
-      <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('schReschedRow').style.display='none'">Cancel</button>
+  <div id="schChangePanel" style="display:none;border-top:1px solid var(--line);padding:12px 16px">
+    <div style="font-size:.8rem;font-weight:650;color:var(--text);margin-bottom:8px">Change Booking</div>
+    <div class="mb-2">
+      <label class="form-label" style="font-size:.78rem">Date &amp; Time</label>
+      <input type="datetime-local" id="schChgDt" class="form-control form-control-sm">
     </div>
+    <div class="mb-2">
+      <label class="form-label" style="font-size:.78rem">Booking Type</label>
+      <select id="schChgBt" class="form-select form-select-sm">
+        {% for bt in booking_types %}
+        <option value="{{ bt.id }}">{{ bt.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if is_admin %}
+    <div class="mb-2">
+      <label class="form-label" style="font-size:.78rem">Assigned Agent</label>
+      <select id="schChgAgent" class="form-select form-select-sm">
+        <option value="">Unassigned</option>
+        {% for a in agents %}
+        <option value="{{ a.id }}">{{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    <div class="mb-2">
+      <label class="form-label" style="font-size:.78rem">Notes</label>
+      <textarea id="schChgNotes" class="form-control form-control-sm" rows="2"></textarea>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary btn-sm" onclick="schSaveChange()">Save Changes</button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="schHideChange()">Cancel</button>
+    </div>
+  </div>
+  <div id="schHistoryPanel" style="display:none;border-top:1px solid var(--line);padding:12px 16px">
+    <div style="font-size:.8rem;font-weight:650;color:var(--text);margin-bottom:8px">Booking History</div>
+    <div id="schHistoryContent" style="max-height:220px;overflow-y:auto"></div>
   </div>
   <div class="sch-popup-actions" id="schPopupActions"></div>
 </div>
@@ -415,26 +443,44 @@ function schShowPopup(eid,ev){
   var e=SCH.events.find(function(x){return x.id===eid});
   if(!e) return;
   SCH.popupEvent=e;
+
+  document.getElementById('schChangePanel').style.display='none';
+  document.getElementById('schHistoryPanel').style.display='none';
+
   document.getElementById('schPopupTitle').textContent=e.display_ref+' — '+e.booking_type;
+
+  var todayStr=_isoDate(new Date());
+  var ds=e.scheduled_for?e.scheduled_for.substr(0,10):'';
+  var isOverdue=ds<todayStr&&e.status!=='Completed'&&e.status!=='Cancelled';
+
   var body='';
-  body+='<div class="info-row"><span class="info-label">Date/Time</span><span class="info-val">'+_formatDateShort(e.scheduled_for)+' '+_formatTime12(e.scheduled_for)+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Date/Time</span><span class="info-val">';
+  body+=_formatDateShort(e.scheduled_for)+' '+_formatTime12(e.scheduled_for);
+  if(isOverdue) body+=' <span style="font-size:.65rem;background:var(--danger);color:#fff;padding:1px 5px;border-radius:4px;margin-left:4px">OVERDUE</span>';
+  body+='</span></div>';
   body+='<div class="info-row"><span class="info-label">Type</span><span class="info-val">'+_esc(e.booking_type)+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Job Ref</span><span class="info-val"><a href="/jobs/'+e.job_id+'" style="color:var(--accent);font-weight:600;text-decoration:none">'+_esc(e.display_ref)+'</a></span></div>';
   body+='<div class="info-row"><span class="info-label">Job Type</span><span class="info-val">'+_esc(e.job_type||'—')+'</span></div>';
   body+='<div class="info-row"><span class="info-label">Customer</span><span class="info-val">'+_esc(e.customer_name||e.customer_label||'—')+'</span></div>';
   body+='<div class="info-row"><span class="info-label">Address</span><span class="info-val">'+_esc(e.job_address||'—')+'</span></div>';
   body+='<div class="info-row"><span class="info-label">Assigned</span><span class="info-val">'+_esc(e.assigned_to_name||'Unassigned')+'</span></div>';
   body+='<div class="info-row"><span class="info-label">Status</span><span class="info-val"><span class="status-badge" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span></span></div>';
-  if(e.notes) body+='<div class="info-row"><span class="info-label">Notes</span><span class="info-val">'+_esc(e.notes)+'</span></div>';
+  if(e.notes) body+='<div class="info-row"><span class="info-label">Notes</span><span class="info-val" style="white-space:pre-wrap">'+_esc(e.notes)+'</span></div>';
   document.getElementById('schPopupBody').innerHTML=body;
 
-  var actions='<a href="/jobs/'+e.job_id+'" class="btn btn-primary">Open Job</a>';
-  if(e.status!=='Completed'&&e.status!=='Cancelled'){
-    actions+='<button class="btn btn-outline-secondary" onclick="schShowReschedule()">Reschedule</button>';
+  var actions='';
+  actions+='<a href="/jobs/'+e.job_id+'" class="btn btn-primary">View Job</a>';
+  var canEdit=SCH.isAdmin||(e.assigned_to_user_id===SCH.userId);
+  if(canEdit&&e.status!=='Completed'&&e.status!=='Cancelled'){
+    actions+='<button class="btn btn-outline-secondary" onclick="schShowChange()">Change Booking</button>';
+  }
+  actions+='<button class="btn btn-outline-secondary" onclick="schShowHistory()">History</button>';
+  if(canEdit&&e.status!=='Completed'&&e.status!=='Cancelled'){
     actions+='<button class="btn btn-outline-success" onclick="schQuickAction(\'complete\')">Complete</button>';
     actions+='<button class="btn btn-outline-danger" onclick="schQuickAction(\'cancel\')">Cancel</button>';
   }
+  actions+='<button class="btn btn-outline-secondary" onclick="schCopyRef()">Copy Ref</button>';
   document.getElementById('schPopupActions').innerHTML=actions;
-  document.getElementById('schReschedRow').style.display='none';
 
   var popup=document.getElementById('schPopup');
   var overlay=document.getElementById('schPopupOverlay');
@@ -445,34 +491,92 @@ function schShowPopup(eid,ev){
 function schClosePopup(){
   document.getElementById('schPopup').style.display='none';
   document.getElementById('schPopupOverlay').style.display='none';
+  document.getElementById('schChangePanel').style.display='none';
+  document.getElementById('schHistoryPanel').style.display='none';
   SCH.popupEvent=null;
 }
 
-function schShowReschedule(){
-  var row=document.getElementById('schReschedRow');
-  row.style.display='';
-  var e=SCH.popupEvent;
-  if(e&&e.scheduled_for) document.getElementById('schReschedDt').value=e.scheduled_for.substr(0,16);
+function schCopyRef(){
+  var e=SCH.popupEvent;if(!e) return;
+  navigator.clipboard.writeText(e.display_ref).then(function(){
+    var btn=document.querySelector('.sch-popup-actions .btn-outline-secondary:last-child');
+    if(btn){var orig=btn.textContent;btn.textContent='Copied!';setTimeout(function(){btn.textContent=orig},1500)}
+  }).catch(function(){});
 }
 
-function schDoReschedule(){
+function schShowChange(){
   var e=SCH.popupEvent;if(!e) return;
-  var newDt=document.getElementById('schReschedDt').value;
-  if(!newDt){alert('Please select a date and time.');return}
-  var fd=new FormData();fd.append('new_datetime',newDt);
-  fetch('/schedule/api/'+e.id+'/reschedule',{method:'POST',body:fd,credentials:'include'})
+  document.getElementById('schHistoryPanel').style.display='none';
+  document.getElementById('schChangePanel').style.display='';
+  document.getElementById('schChgDt').value=e.scheduled_for?e.scheduled_for.substr(0,16):'';
+  var btSel=document.getElementById('schChgBt');
+  if(btSel) btSel.value=e.booking_type_id||'';
+  var agSel=document.getElementById('schChgAgent');
+  if(agSel) agSel.value=e.assigned_to_user_id||'';
+  document.getElementById('schChgNotes').value=e.notes||'';
+}
+
+function schHideChange(){
+  document.getElementById('schChangePanel').style.display='none';
+}
+
+function schSaveChange(){
+  var e=SCH.popupEvent;if(!e) return;
+  var fd=new FormData();
+  fd.append('scheduled_for',document.getElementById('schChgDt').value);
+  fd.append('booking_type_id',document.getElementById('schChgBt').value);
+  fd.append('notes',document.getElementById('schChgNotes').value);
+  var agSel=document.getElementById('schChgAgent');
+  if(agSel) fd.append('assigned_to_user_id',agSel.value);
+  var btn=document.querySelector('#schChangePanel .btn-primary');
+  btn.disabled=true;btn.textContent='Saving...';
+  fetch('/schedule/api/'+e.id+'/update',{method:'POST',body:fd,credentials:'include'})
     .then(function(r){return r.json()})
     .then(function(data){
-      if(!data.ok){alert(data.error||'Error');return}
+      btn.disabled=false;btn.textContent='Save Changes';
+      if(!data.ok){alert(data.error||'Error saving.');return}
       schClosePopup();schLoad();
     })
-    .catch(function(){alert('Network error.')});
+    .catch(function(){btn.disabled=false;btn.textContent='Save Changes';alert('Network error.')});
+}
+
+function schShowHistory(){
+  var e=SCH.popupEvent;if(!e) return;
+  document.getElementById('schChangePanel').style.display='none';
+  var panel=document.getElementById('schHistoryPanel');
+  var content=document.getElementById('schHistoryContent');
+  panel.style.display='';
+  content.innerHTML='<div style="color:var(--muted);font-size:.82rem;padding:8px 0">Loading history...</div>';
+  fetch('/schedule/api/'+e.id+'/history',{credentials:'include'})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      if(!data.ok){content.innerHTML='<div style="color:var(--danger);font-size:.82rem">'+_esc(data.error||'Error loading history.')+'</div>';return}
+      if(!data.history||data.history.length===0){
+        content.innerHTML='<div style="color:var(--muted);font-size:.82rem;padding:8px 0">No history recorded for this booking.</div>';
+        return;
+      }
+      var h='';
+      data.history.forEach(function(item){
+        var actionColors={created:'#16a34a',rescheduled:'#d97706',completed:'#2563eb',cancelled:'#dc2626',updated:'#7c3aed'};
+        var color=actionColors[item.action]||'#6b7280';
+        h+='<div style="border-left:3px solid '+color+';padding:6px 10px;margin-bottom:8px;font-size:.8rem">';
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">';
+        h+='<span style="font-weight:650;text-transform:uppercase;color:'+color+';font-size:.72rem">'+_esc(item.action)+'</span>';
+        h+='<span style="color:var(--muted);font-size:.7rem">'+_formatDateShort(item.created_at)+' '+_formatTime12(item.created_at)+'</span>';
+        h+='</div>';
+        if(item.notes) h+='<div style="color:var(--text);margin-bottom:2px">'+_esc(item.notes)+'</div>';
+        h+='<div style="color:var(--muted);font-size:.72rem">By '+_esc(item.changed_by)+'</div>';
+        h+='</div>';
+      });
+      content.innerHTML=h;
+    })
+    .catch(function(){content.innerHTML='<div style="color:var(--danger);font-size:.82rem">Network error loading history.</div>'});
 }
 
 function schQuickAction(action){
   var e=SCH.popupEvent;if(!e) return;
-  var label=action==='complete'?'Mark as completed':'Cancel this booking';
-  if(!confirm(label+'?')) return;
+  var label=action==='complete'?'Mark this booking as completed?':'Cancel this booking?';
+  if(!confirm(label)) return;
   fetch('/schedule/api/'+e.id+'/'+action,{method:'POST',credentials:'include'})
     .then(function(r){return r.json()})
     .then(function(data){

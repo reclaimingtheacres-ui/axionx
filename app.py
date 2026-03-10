@@ -3383,15 +3383,18 @@ def schedule_index():
     caller_role = session.get("role", "")
     is_admin = caller_role in ("admin", "both")
     agents = []
+    conn = db()
+    cur = conn.cursor()
     if is_admin:
-        conn = db()
-        cur = conn.cursor()
         cur.execute("SELECT id, full_name FROM users WHERE active = 1 AND role IN ('agent','both','admin') ORDER BY full_name")
         agents = [{"id": a["id"], "name": a["full_name"]} for a in cur.fetchall()]
-        conn.close()
+    cur.execute("SELECT id, name FROM booking_types WHERE active = 1 ORDER BY name")
+    booking_types = [{"id": bt["id"], "name": bt["name"]} for bt in cur.fetchall()]
+    conn.close()
     return render_template("schedule/index.html",
                            is_admin=is_admin,
                            agents=agents,
+                           booking_types=booking_types,
                            user_id=session.get("user_id"),
                            default_view="week" if is_admin else "day")
 
@@ -3448,7 +3451,7 @@ def schedule_api_events():
 
     cur.execute(f"""
         SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
-               s.assigned_to_user_id,
+               s.assigned_to_user_id, s.booking_type_id,
                bt.name AS booking_type_name,
                j.display_ref, j.job_address, j.job_type,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_name,
@@ -3476,6 +3479,7 @@ def schedule_api_events():
             "customer_name": r["customer_name"] or "",
             "customer_label": r["customer_label"] or "",
             "booking_type": bt_name,
+            "booking_type_id": r["booking_type_id"],
             "scheduled_for": r["scheduled_for"],
             "assigned_to_name": r["assigned_to_name"] or "",
             "assigned_to_user_id": r["assigned_to_user_id"],
@@ -3575,6 +3579,113 @@ def schedule_api_cancel(sched_id):
     _write_schedule_history(cur, sched_id, sched["job_id"], "cancelled",
                             sched["scheduled_for"], sched["scheduled_for"],
                             old_status, "Cancelled", caller_id, "Cancelled from schedule")
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.get("/schedule/api/<int:sched_id>/history")
+@login_required
+def schedule_api_history(sched_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,))
+    sched = cur.fetchone()
+    if not sched:
+        conn.close()
+        return jsonify({"ok": False, "error": "Booking not found."}), 404
+    caller_id = session.get("user_id")
+    caller_role = session.get("role", "")
+    is_admin = caller_role in ("admin", "both")
+    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Not authorised."}), 403
+    cur.execute("""
+        SELECT sh.*, u.full_name AS changed_by_name
+        FROM schedule_history sh
+        LEFT JOIN users u ON u.id = sh.changed_by_user_id
+        WHERE sh.schedule_id = ?
+        ORDER BY sh.created_at DESC
+    """, (sched_id,))
+    rows = cur.fetchall()
+    history = []
+    for r in rows:
+        history.append({
+            "action": r["action"],
+            "old_scheduled_for": r["old_scheduled_for"] or "",
+            "new_scheduled_for": r["new_scheduled_for"] or "",
+            "old_status": r["old_status"] or "",
+            "new_status": r["new_status"] or "",
+            "changed_by": r["changed_by_name"] or "System",
+            "created_at": r["created_at"] or "",
+            "notes": r["notes"] or "",
+        })
+    conn.close()
+    return jsonify({"ok": True, "history": history})
+
+
+@app.post("/schedule/api/<int:sched_id>/update")
+@login_required
+def schedule_api_update(sched_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,))
+    sched = cur.fetchone()
+    if not sched:
+        conn.close()
+        return jsonify({"ok": False, "error": "Booking not found."}), 404
+    caller_id = session.get("user_id")
+    caller_role = session.get("role", "")
+    is_admin = caller_role in ("admin", "both")
+    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Not authorised."}), 403
+
+    new_dt = (request.form.get("scheduled_for") or "").strip()
+    new_agent = request.form.get("assigned_to_user_id", "").strip()
+    new_bt = request.form.get("booking_type_id", "").strip()
+    new_notes = request.form.get("notes", "").strip()
+
+    changes = []
+    old_dt = sched["scheduled_for"] or ""
+
+    if new_dt:
+        try:
+            datetime.strptime(new_dt[:16], "%Y-%m-%dT%H:%M")
+        except (ValueError, IndexError):
+            conn.close()
+            return jsonify({"ok": False, "error": "Invalid date/time format."}), 400
+        if new_dt[:16] != old_dt[:16]:
+            cur.execute("UPDATE schedules SET scheduled_for = ? WHERE id = ?", (new_dt, sched_id))
+            changes.append(f"Date changed from {old_dt[:16]} to {new_dt[:16]}")
+
+    if is_admin and "assigned_to_user_id" in request.form:
+        old_agent = sched["assigned_to_user_id"]
+        new_agent_id = int(new_agent) if new_agent.isdigit() else None
+        if new_agent_id != old_agent:
+            cur.execute("UPDATE schedules SET assigned_to_user_id = ? WHERE id = ?", (new_agent_id, sched_id))
+            changes.append("Agent reassigned")
+
+    if new_bt and new_bt.isdigit():
+        old_bt = sched["booking_type_id"]
+        if int(new_bt) != old_bt:
+            cur.execute("SELECT id FROM booking_types WHERE id = ? AND active = 1", (int(new_bt),))
+            if not cur.fetchone():
+                conn.close()
+                return jsonify({"ok": False, "error": "Invalid booking type."}), 400
+            cur.execute("UPDATE schedules SET booking_type_id = ? WHERE id = ?", (int(new_bt), sched_id))
+            changes.append("Booking type changed")
+
+    if new_notes != (sched["notes"] or ""):
+        cur.execute("UPDATE schedules SET notes = ? WHERE id = ?", (new_notes, sched_id))
+        changes.append("Notes updated")
+
+    if changes:
+        action = "rescheduled" if any("Date" in c for c in changes) else "updated"
+        _write_schedule_history(cur, sched_id, sched["job_id"], action,
+                                old_dt, new_dt or old_dt, sched["status"], sched["status"],
+                                caller_id, "; ".join(changes))
+
     conn.commit()
     conn.close()
     return jsonify({"ok": True})

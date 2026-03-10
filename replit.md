@@ -53,10 +53,13 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Agent default**: Non-admin users see only their own bookings (forced server-side).
 - **Past/Upcoming/All filter**: Toggle to view historical bookings, upcoming only, or all.
 - **Booking cards**: Show time, job ref, customer name, booking type, address snippet, status badge. Click opens popup preview with full details.
-- **Quick actions from popup**: Open Job, Reschedule (with datetime picker), Mark Complete, Cancel — all via AJAX with booking history tracking.
-- **API**: `GET /schedule/api/events?start=&end=&agent_id=&status_filter=` returns JSON events for the requested range. Lazy-loaded by visible date range only.
-- **Booking history**: `schedule_history` table tracks all mutations (created, rescheduled, cancelled, completed) with old/new state, changed_by, and notes. Preserves original schedule entries even after changes.
-- **Quick action endpoints**: `POST /schedule/api/<id>/reschedule`, `POST /schedule/api/<id>/complete`, `POST /schedule/api/<id>/cancel`.
+- **Popup detail panel**: Click any booking card to open a rich popup with all booking details (date/time with OVERDUE badge, type, job ref link, job type, customer, address, assigned agent, status, notes). Role-aware action buttons: View Job, Change Booking, History, Complete, Cancel, Copy Ref.
+- **Change Booking form**: Inline form in popup to edit date/time, booking type, agent assignment (admin only), and notes. Submits via AJAX to `POST /schedule/api/<id>/update` with minute-level datetime precision comparison, booking type validation, and granular change history tracking. Supports unassign (empty agent).
+- **Booking History panel**: Shows full audit trail fetched from `GET /schedule/api/<id>/history` with colour-coded action labels (created/rescheduled/completed/cancelled/updated), timestamps, notes, and changed-by user.
+- **Quick actions**: Complete and Cancel with confirmation prompts via `POST /schedule/api/<id>/complete` and `POST /schedule/api/<id>/cancel`.
+- **API**: `GET /schedule/api/events?start=&end=&agent_id=&status_filter=` returns JSON events (including `booking_type_id`) for the requested range. Lazy-loaded by visible date range only.
+- **Booking history**: `schedule_history` table tracks all mutations (created, rescheduled, cancelled, completed, updated) with old/new state, changed_by, and notes. Preserves original schedule entries even after changes.
+- **Quick action endpoints**: `POST /schedule/api/<id>/reschedule`, `POST /schedule/api/<id>/complete`, `POST /schedule/api/<id>/cancel`, `POST /schedule/api/<id>/update`, `GET /schedule/api/<id>/history`.
 
 **3. Cues System:** Manages `cue_items` (scheduled tasks) with properties like date, visit type, priority, and agent assignment. Supports daily cue access for agents and drag-and-drop assignment for admins, with automatic cue generation for overdue or upcoming schedules.
 
