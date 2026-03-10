@@ -32,6 +32,12 @@ No explicit user preferences were provided in the original `replit.md` file. The
 
 **8. CSV Job Import:** Allows bulk import of job data via CSV files, with duplicate handling.
 
+**8a. Duplicate Finder (Settings):** Two-mode duplicate detection tool on the Settings page (2nd tab position):
+- **Database Scan:** Finds duplicate jobs (by job number or account number) and duplicate clients (by name) already in the system.
+- **CSV File Scan:** Multi-file upload (accepts multiple CSVs at once) checks for duplicates within the selected files and against existing database records before import.
+- All delete operations use AJAX (`/admin/api/duplicates/delete-job`, `/admin/api/duplicates/delete-client`) so users stay on the Settings page — no redirect to Jobs or Clients lists.
+- Summary bar shows file count, total records scanned, and duplicate count after each scan.
+
 **9. AI Update Builder:** Guided form using OpenAI (gpt-4o-mini) to generate SWPI-style attendance updates, featuring auto-filling, fact toggles, AI narrative generation, editable output, and address validation.
 
 **10. Geomap & Agent Tracking:** Admin-only map view displaying job pins by status and live agent locations, with client-side geocoding and opt-in GPS tracking for agents.

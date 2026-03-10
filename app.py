@@ -7443,6 +7443,189 @@ def admin_api_duplicates():
     return {"dup_jobs": dup_jobs, "dup_clients": dup_clients}
 
 
+@app.post("/admin/api/duplicates/files")
+@login_required
+@admin_required
+def admin_api_duplicates_files():
+    files = request.files.getlist("files")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"ok": False, "error": "No files selected."})
+
+    conn = db()
+    existing_jobs = {}
+    for r in conn.execute("SELECT id, internal_job_number, display_ref, status FROM jobs WHERE internal_job_number IS NOT NULL AND internal_job_number != ''").fetchall():
+        key = (r["internal_job_number"] or "").strip().lower()
+        if key:
+            existing_jobs.setdefault(key, []).append(dict(r))
+    conn.close()
+
+    file_records = []
+    file_names = []
+    parse_errors = []
+    for f in files:
+        if not f.filename:
+            continue
+        file_names.append(f.filename)
+        try:
+            content = f.stream.read().decode("utf-8-sig")
+            reader = csv.DictReader(content.splitlines())
+            for row_num, row in enumerate(reader, start=2):
+                job_num = (row.get("InternalJobNumber") or "").strip()
+                if not job_num:
+                    continue
+                client_ref = (row.get("ClientReference") or "").strip() or None
+                customer_first = (row.get("Customer First Name") or "").strip()
+                customer_last = (row.get("Customer Last Name") or "").strip()
+                customer_name = f"{customer_first} {customer_last}".strip() or None
+                file_records.append({
+                    "file": f.filename,
+                    "row": row_num,
+                    "job_number": job_num,
+                    "client_reference": client_ref,
+                    "customer_name": customer_name,
+                    "status": (row.get("Status") or "").strip() or None,
+                    "job_type": (row.get("JobType") or "").strip() or None,
+                })
+        except Exception as e:
+            parse_errors.append(f"{f.filename}: {str(e)}")
+
+    dup_within_files = []
+    job_num_groups = {}
+    for rec in file_records:
+        key = rec["job_number"].lower()
+        job_num_groups.setdefault(key, []).append(rec)
+    for key, recs in job_num_groups.items():
+        if len(recs) > 1:
+            dup_within_files.append({
+                "key": recs[0]["job_number"],
+                "match_type": "file_duplicate",
+                "records": recs
+            })
+
+    dup_against_db = []
+    for rec in file_records:
+        key = rec["job_number"].lower()
+        if key in existing_jobs:
+            dup_against_db.append({
+                "key": rec["job_number"],
+                "match_type": "exists_in_database",
+                "file_record": rec,
+                "db_jobs": existing_jobs[key]
+            })
+
+    total_dups = len(dup_within_files) + len(dup_against_db)
+    return jsonify({
+        "ok": True,
+        "file_names": file_names,
+        "file_count": len(file_names),
+        "total_records": len(file_records),
+        "dup_within_files": dup_within_files,
+        "dup_against_db": dup_against_db,
+        "total_duplicates": total_dups,
+        "parse_errors": parse_errors
+    })
+
+
+@app.post("/admin/api/duplicates/delete-job")
+@login_required
+@admin_required
+def admin_api_delete_job_ajax():
+    job_id = request.form.get("job_id")
+    if not job_id:
+        return jsonify({"ok": False, "error": "No job ID provided."})
+    try:
+        job_id = int(job_id)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid job ID."})
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, display_ref FROM jobs WHERE id = ?", (job_id,))
+    job = cur.fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."})
+
+    display_ref = job["display_ref"]
+
+    cur.execute("SELECT id FROM job_field_notes WHERE job_id = ?", (job_id,))
+    note_ids = [r["id"] for r in cur.fetchall()]
+    for nid in note_ids:
+        cur.execute("SELECT filename, filepath FROM job_note_files WHERE job_field_note_id = ?", (nid,))
+        for f in cur.fetchall():
+            delete_blob_safely(f["filename"])
+            try: os.remove(f["filepath"])
+            except OSError: pass
+        cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (nid,))
+    cur.execute("DELETE FROM job_field_notes WHERE job_id = ?", (job_id,))
+
+    cur.execute("SELECT stored_filename FROM job_documents WHERE job_id = ?", (job_id,))
+    for f in cur.fetchall():
+        delete_blob_safely(f["stored_filename"])
+    cur.execute("DELETE FROM job_documents WHERE job_id = ?", (job_id,))
+
+    for lpr_tbl in ("lpr_sightings", "lpr_patrol_intel"):
+        try:
+            cur.execute(f"UPDATE {lpr_tbl} SET matched_job_id=NULL WHERE matched_job_id=?", (job_id,))
+        except Exception:
+            pass
+
+    for tbl in (
+        "job_items", "job_assets", "interactions", "cue_items", "schedules",
+        "job_customers", "job_updates", "job_payments",
+        "repo_lock_records", "repo_lock_queue",
+    ):
+        try:
+            cur.execute(f"DELETE FROM {tbl} WHERE job_id = ?", (job_id,))
+        except Exception:
+            pass
+
+    cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+    conn.commit()
+    conn.close()
+
+    audit("job", job_id, "delete", f"Job {display_ref} deleted via Duplicate Finder", {})
+    return jsonify({"ok": True, "job_id": job_id, "display_ref": display_ref})
+
+
+@app.post("/admin/api/duplicates/delete-client")
+@login_required
+@admin_required
+def admin_api_delete_client_ajax():
+    client_id = request.form.get("client_id")
+    if not client_id:
+        return jsonify({"ok": False, "error": "No client ID provided."})
+    try:
+        client_id = int(client_id)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid client ID."})
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM clients WHERE id = ?", (client_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Client not found."})
+
+    name = row["name"]
+    cur.execute(
+        "SELECT COUNT(*) cnt FROM jobs WHERE client_id = ? OR bill_to_client_id = ?",
+        (client_id, client_id)
+    )
+    job_count = cur.fetchone()["cnt"]
+    if job_count > 0:
+        conn.close()
+        return jsonify({"ok": False, "error": f"Cannot delete '{name}' — {job_count} job{'s' if job_count != 1 else ''} linked."})
+
+    cur.execute("DELETE FROM clients WHERE id = ?", (client_id,))
+    conn.commit()
+    conn.close()
+
+    audit("client", client_id, "delete", f"Client '{name}' deleted via Duplicate Finder", {})
+    return jsonify({"ok": True, "client_id": client_id, "name": name})
+
+
 @app.post("/admin/settings")
 @admin_required
 def admin_settings_update():
