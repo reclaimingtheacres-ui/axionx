@@ -12,3 +12,17 @@ cryptography
 httpx[http2]
 PyJWT
 reportlab
+azure-storage-blob==12.22.0
+cryptography
+flask==3.0.3
+gunicorn==21.2.0
+httpx[http2]
+openai
+Pillow
+PyJWT
+pypdf
+pytesseract
+python-docx
+pytz
+reportlab
+werkzeug
