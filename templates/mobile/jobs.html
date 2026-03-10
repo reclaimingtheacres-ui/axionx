@@ -11,12 +11,12 @@
 }
 .jobs-search {
   flex: 1; background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 10px;
-  padding: 9px 12px 9px 34px; font-size: .9rem; color: #111;
+  padding: 9px 34px 9px 12px; font-size: .9rem; color: #111;
   outline: none; -webkit-appearance: none;
 }
 .jobs-search:focus { border-color: #2563eb; background: #fff; }
 .search-icon {
-  position: absolute; left: 26px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
   pointer-events: none; color: #9ca3af;
 }
 .search-wrap { position: relative; flex: 1; }
@@ -208,11 +208,12 @@
        data-id="{{ j.id }}"
        data-lat="{{ j.lat or '' }}"
        data-lng="{{ j.lng or '' }}"
-       data-ref="{{ (j.display_ref or j.internal_job_number or '') | lower }}"
+       data-ref="{{ [j.display_ref or '', j.internal_job_number or '', j.client_reference or '', j.account_number or ''] | join(' ') | lower | trim }}"
        data-customer="{{ (j.customer_name or '') | lower }}"
        data-address="{{ (j.job_address or '') | lower }}"
        data-reg="{{ (j.asset_reg or '') | lower }}"
        data-vin="{{ (j.asset_vin or '') | lower }}"
+       data-lender="{{ (j.lender_name or '') | lower }}"
        data-draft="{{ 'true' if has_draft else 'false' }}"
        data-scheduled="{{ j.next_scheduled or '' }}"
        data-phone="{{ phone }}"
@@ -529,10 +530,102 @@ if(navigator.geolocation){
 // ── Search ──
 const searchBox = document.getElementById('search-box');
 let searchQ = (searchBox.value||'').toLowerCase().trim();
+let _searchTimer = null;
+let _searchAbort = null;
+const _loadedJobIds = new Set(cards.map(c=>c.dataset.id));
+
 searchBox.addEventListener('input', function(){
   searchQ = this.value.toLowerCase().trim();
+  removeServerResults();
   applySortAndFilter();
+  clearTimeout(_searchTimer);
+  if(searchQ.length >= 2){
+    _searchTimer = setTimeout(()=>{ serverSearch(searchQ); }, 350);
+  }
 });
+
+function removeServerResults(){
+  document.querySelectorAll('.server-result-row').forEach(el=>el.remove());
+  const banner = document.getElementById('server-results-banner');
+  if(banner) banner.remove();
+}
+
+function serverSearch(q){
+  if(_searchAbort) _searchAbort.abort();
+  _searchAbort = new AbortController();
+  fetch('/m/api/jobs/search?q='+encodeURIComponent(q), {signal: _searchAbort.signal})
+    .then(r=>r.json())
+    .then(data=>{
+      _searchAbort = null;
+      if(searchQ !== q.toLowerCase().trim()) return;
+      const newJobs = (data.jobs||[]).filter(j=>!_loadedJobIds.has(String(j.id)));
+      if(newJobs.length === 0) return;
+      const list = document.getElementById('job-list');
+      const banner = document.createElement('div');
+      banner.id = 'server-results-banner';
+      banner.style.cssText = 'padding:8px 14px;background:#eff6ff;border-bottom:1px solid #bfdbfe;font-size:.78rem;color:#2563eb;text-align:center;font-weight:600;';
+      banner.textContent = newJobs.length + ' additional result' + (newJobs.length!==1?'s':'') + ' from full search';
+      list.appendChild(banner);
+      newJobs.forEach(j=>{
+        const statusLc = (j.status||'').toLowerCase();
+        let barColor = '#9ca3af';
+        if(['suspended','cancelled'].includes(statusLc)) barColor='#dc2626';
+        else if(['active','new','in progress','ready'].includes(statusLc)) barColor='#16a34a';
+        else if(['pending','hold action','awaiting advice','awaiting info','urgent'].includes(statusLc)) barColor='#f59e0b';
+        const wrap = document.createElement('div');
+        wrap.className = 'job-row-wrap server-result-row';
+        wrap.dataset.id = j.id;
+        const a = document.createElement('a');
+        a.href = '/m/job/'+j.id;
+        a.className = 'job-card';
+        const inner = document.createElement('div');
+        inner.className = 'job-card-inner';
+        const bar = document.createElement('div');
+        bar.className = 'job-status-bar';
+        bar.style.background = barColor;
+        inner.appendChild(bar);
+        const content = document.createElement('div');
+        content.className = 'job-inner-content';
+        const main = document.createElement('div');
+        main.className = 'job-main';
+        const pRow = document.createElement('div');
+        pRow.className = 'job-primary-row';
+        const refSpan = document.createElement('span');
+        refSpan.className = 'job-ref';
+        refSpan.textContent = j.display_ref || j.internal_job_number || '';
+        pRow.appendChild(refSpan);
+        const badge = document.createElement('span');
+        badge.className = 'm-badge m-badge-gray';
+        badge.style.fontSize = '.65rem';
+        badge.textContent = j.status;
+        pRow.appendChild(badge);
+        main.appendChild(pRow);
+        const custDiv = document.createElement('div');
+        custDiv.className = 'job-customer';
+        custDiv.textContent = j.customer_name || '\u2014';
+        main.appendChild(custDiv);
+        if(j.asset_reg){
+          const regDiv = document.createElement('div');
+          regDiv.style.cssText = 'font-size:.76rem;color:#6b7280;margin-top:2px;';
+          regDiv.textContent = j.asset_reg;
+          main.appendChild(regDiv);
+        }
+        if(j.job_address){
+          const addrDiv = document.createElement('div');
+          addrDiv.className = 'job-address';
+          addrDiv.textContent = j.job_address;
+          main.appendChild(addrDiv);
+        }
+        content.appendChild(main);
+        inner.appendChild(content);
+        a.appendChild(inner);
+        wrap.appendChild(a);
+        list.appendChild(wrap);
+      });
+      updateCount();
+    })
+    .catch(e=>{ if(e.name !== 'AbortError') _searchAbort = null; });
+}
 
 // ── Filter state ──
 let currentSort      = SORT_PREF;
@@ -594,7 +687,8 @@ function applySortAndFilter(){
           || c.dataset.customer.includes(searchQ)
           || c.dataset.address.includes(searchQ)
           || c.dataset.reg.includes(searchQ)
-          || c.dataset.vin.includes(searchQ);
+          || c.dataset.vin.includes(searchQ)
+          || (c.dataset.lender || '').includes(searchQ);
     });
   }
 
@@ -622,7 +716,10 @@ function applySortAndFilter(){
 }
 
 function updateCount(n){
-  if(n===undefined) n=cards.filter(c=>c.style.display!=='none').length;
+  if(n===undefined){
+    n=cards.filter(c=>c.style.display!=='none').length;
+    n+=document.querySelectorAll('.server-result-row').length;
+  }
   const el=document.getElementById('results-count');
   if(el) el.textContent=n+' result'+(n!==1?'s':'');
   const hdr=document.getElementById('job-count');

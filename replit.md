@@ -32,10 +32,11 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Single operational date**: Only `next_scheduled` is shown in the job row (as a badge). Overdue dates are highlighted in red with "OVERDUE" prefix. The `updated_at` date has been removed from the list to avoid confusion.
 - Sort options: Oldest Scheduled (default), Active first, Agent A–Z, Job # high–low, Client ref high–low.
 
-**2c. Job List (Mobile — Distance Default):**
+**2c. Job List (Mobile — Distance Default + Search):**
 - Mobile app defaults to **Distance – Nearest First** sorting when GPS is available.
 - If GPS permission is denied, falls back to Visit Date sort with a warning banner.
 - Distance calculated client-side using Haversine formula with server-assisted batch geocoding for missing coordinates.
+- **Search**: Search icon positioned right-aligned in input. Client-side filter checks ref (display_ref, internal_job_number, client_reference, account_number), customer, address, reg, vin, lender. When query ≥ 2 chars, a debounced server-side search (`GET /m/api/jobs/search?q=`) fetches additional results beyond the 300-job client-side cap, appended below a "additional results from full search" banner. Server search covers all reference fields plus client_job_number. When a search query (`q`) is active, scope/completed/status filters are bypassed so matching jobs are always found.
 
 **2d. Add Client Workflow (Import Repair):**
 - Dedicated **Add Client modal** (`#addClientModal`) for linking a missing client to a job — separate from Edit Job.

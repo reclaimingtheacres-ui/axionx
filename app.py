@@ -9454,7 +9454,9 @@ def _mobile_jobs_query(uid, role, params_in):
     where_clauses = []
     params = []
 
-    if is_admin and scope != "mine":
+    has_search = bool(q)
+
+    if is_admin and (scope != "mine" or has_search):
         where_clauses.append("1=1")
     else:
         where_clauses.append(
@@ -9466,23 +9468,25 @@ def _mobile_jobs_query(uid, role, params_in):
         )
         params += [uid, uid]
 
-    # ── Scheduled / Unscheduled scope ──
-    if scope == "scheduled":
-        where_clauses.append(
-            "EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
-        )
-    elif scope == "unscheduled":
-        where_clauses.append(
-            "NOT EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
-        )
+    # ── Scheduled / Unscheduled scope (skip when searching) ──
+    if not has_search:
+        if scope == "scheduled":
+            where_clauses.append(
+                "EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
+            )
+        elif scope == "unscheduled":
+            where_clauses.append(
+                "NOT EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
+            )
 
-    # ── Status filter ──
+    # ── Status filter (skip completed restriction when searching) ──
     completed_statuses = ("Completed", "Invoiced")
-    if status_filter and status_filter not in ("", "all"):
+    if has_search:
+        pass
+    elif status_filter and status_filter not in ("", "all"):
         where_clauses.append("j.status = ?")
         params.append(status_filter)
     else:
-        # Exclude completed unless show_completed is set
         if show_completed == "none":
             where_clauses.append(f"j.status NOT IN {completed_statuses!r}")
         elif show_completed == "day":
@@ -9508,12 +9512,13 @@ def _mobile_jobs_query(uid, role, params_in):
             "(j.display_ref LIKE ? OR j.internal_job_number LIKE ? OR"
             " j.client_reference LIKE ? OR j.job_address LIKE ? OR"
             " j.lender_name LIKE ? OR j.client_job_number LIKE ? OR"
+            " j.account_number LIKE ? OR"
             " (cu.first_name || ' ' || cu.last_name) LIKE ? OR"
             " EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id"
             "   AND (ji.reg LIKE ? OR ji.vin LIKE ?)))"
         )
         like = f"%{q}%"
-        params += [like]*9
+        params += [like]*10
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
@@ -9582,6 +9587,73 @@ def m_jobs():
     return render_template("mobile/jobs.html",
                            jobs=jobs, draft_job_ids=draft_job_ids, prefs=prefs,
                            jobs_geo=jobs_geo, is_admin=is_admin)
+
+
+@app.get("/m/api/jobs/search")
+@mobile_login_required
+def m_api_jobs_search():
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    q    = request.args.get("q", "").strip()
+    if not q or len(q) < 2:
+        return jsonify({"jobs": []})
+    is_admin = role in ("admin", "both")
+    conn = db()
+    like = f"%{q}%"
+    scope_sql = "1=1" if is_admin else (
+        "(j.assigned_user_id = ? OR EXISTS ("
+        "  SELECT 1 FROM schedules s"
+        "  WHERE s.job_id=j.id AND s.assigned_to_user_id=?"
+        "  AND s.status NOT IN ('Cancelled','Completed')"
+        "))")
+    params = [] if is_admin else [uid, uid]
+    params += [like] * 10
+    rows = conn.execute(f"""
+        SELECT j.id, j.display_ref, j.internal_job_number, j.client_reference,
+               j.account_number, j.status, j.job_address, j.lat, j.lng,
+               j.lender_name,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_reg,
+               (SELECT ji.vin FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_vin,
+               (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
+                AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
+               (SELECT cpn.phone_number FROM contact_phone_numbers cpn
+                WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
+                ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE {scope_sql}
+          AND (j.display_ref LIKE ? OR j.internal_job_number LIKE ? OR
+               j.client_reference LIKE ? OR j.job_address LIKE ? OR
+               j.lender_name LIKE ? OR j.client_job_number LIKE ? OR
+               j.account_number LIKE ? OR
+               (cu.first_name || ' ' || cu.last_name) LIKE ? OR
+               EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id
+                 AND (ji.reg LIKE ? OR ji.vin LIKE ?)))
+        ORDER BY j.created_at DESC
+        LIMIT 50
+    """, params).fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        results.append({
+            "id": r["id"],
+            "display_ref": r["display_ref"] or r["internal_job_number"] or "",
+            "internal_job_number": r["internal_job_number"] or "",
+            "client_reference": r["client_reference"] or "",
+            "account_number": r["account_number"] or "",
+            "status": r["status"] or "",
+            "job_address": r["job_address"] or "",
+            "lat": r["lat"],
+            "lng": r["lng"],
+            "lender_name": r["lender_name"] or "",
+            "customer_name": r["customer_name"] or "",
+            "asset_reg": r["asset_reg"] or "",
+            "asset_vin": r["asset_vin"] or "",
+            "next_scheduled": r["next_scheduled"] or "",
+            "customer_phone": r["customer_phone"] or "",
+        })
+    return jsonify({"jobs": results})
 
 
 @app.post("/m/jobs/prefs/save")
