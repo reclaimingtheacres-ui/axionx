@@ -303,6 +303,409 @@
     </div>
   </div>
 </div>
+
+
+<!-- TAB: Duplicate Finder -->
+<div class="tab-pane-custom" id="tab-duplicate-finder" style="display:none">
+
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">Scan Existing Database</div>
+    <div class="ax-card-b">
+      <p class="small mb-3" style="color:var(--muted)">
+        Scans for duplicate <strong>jobs</strong> (same job number or account number) and duplicate <strong>clients</strong> (same name) already in the system.
+      </p>
+      <button class="btn btn-primary btn-sm" onclick="dupScanDB()" id="dupScanDbBtn">Scan Database for Duplicates</button>
+    </div>
+  </div>
+
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">Scan CSV Files Before Import</div>
+    <div class="ax-card-b">
+      <p class="small mb-3" style="color:var(--muted)">
+        Select one or more CSV files to check for duplicates <strong>within the files</strong> and <strong>against existing jobs</strong> in the database before importing.
+      </p>
+      <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+        <input type="file" id="dupFileInput" accept=".csv" multiple class="form-control form-control-sm" style="max-width:400px">
+        <button class="btn btn-primary btn-sm" onclick="dupScanFiles()" id="dupScanFilesBtn">Scan Selected Files</button>
+      </div>
+      <div id="dupFileList" style="display:none" class="mb-3">
+        <div class="small fw-semibold mb-1" style="color:var(--text)">Selected files:</div>
+        <div id="dupFileListInner" class="d-flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="dupSummaryBar" style="display:none;border-radius:8px" class="d-flex align-items-center justify-content-between px-3 py-2 mb-4">
+    <div class="d-flex align-items-center gap-3">
+      <span class="small fw-semibold" id="dupSummaryText"></span>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" onclick="dupClearResults()">Clear Results</button>
+  </div>
+
+  <div id="dupLoading" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.9rem">
+    Scanning...
+  </div>
+
+  <div id="dupResults" style="display:none">
+    <div id="dupFileResultsSection" style="display:none" class="mb-4">
+      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicates Within Files</h6>
+      <div id="dupFileResultsList"></div>
+    </div>
+    <div id="dupDbMatchSection" style="display:none" class="mb-4">
+      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Already Exist in Database</h6>
+      <div id="dupDbMatchList"></div>
+    </div>
+    <div id="dupJobsSection" style="display:none">
+      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Jobs in Database</h6>
+      <div id="dupJobsList"></div>
+    </div>
+    <div id="dupClientsSection" style="display:none" class="mt-4">
+      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Clients (by Name)</h6>
+      <div id="dupClientsList"></div>
+    </div>
+    <div id="dupNoneMsg" style="display:none;padding:24px;text-align:center;color:#16a34a;font-weight:600">
+      &#10003; No duplicates found — your data looks clean!
+    </div>
+  </div>
+</div>
+
+<script>
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function _statusColor(s) {
+  if (s === 'Active') return '#22c55e';
+  if (s === 'Completed') return '#64748b';
+  return '#f59e0b';
+}
+
+function _showSummary(text) {
+  var bar = document.getElementById('dupSummaryBar');
+  bar.style.display = 'flex';
+  bar.style.background = 'rgba(37,99,235,.06)';
+  bar.style.border = '1px solid rgba(37,99,235,.2)';
+  bar.style.borderRadius = '8px';
+  document.getElementById('dupSummaryText').textContent = text;
+}
+
+function dupClearResults() {
+  document.getElementById('dupResults').style.display = 'none';
+  document.getElementById('dupSummaryBar').style.display = 'none';
+  document.getElementById('dupFileList').style.display = 'none';
+  document.getElementById('dupFileInput').value = '';
+  ['dupJobsList','dupClientsList','dupFileResultsList','dupDbMatchList'].forEach(function(id){
+    document.getElementById(id).innerHTML = '';
+  });
+  ['dupJobsSection','dupClientsSection','dupFileResultsSection','dupDbMatchSection','dupNoneMsg'].forEach(function(id){
+    document.getElementById(id).style.display = 'none';
+  });
+}
+
+function _renderJobRow(j) {
+  return '<tr id="dup-job-row-' + j.id + '">' +
+    '<td style="padding:8px 12px;font-size:.85rem"><a href="/jobs/' + j.id + '" target="_blank" style="font-weight:600;color:var(--accent)">' + _esc(j.display_ref || '#'+j.id) + '</a></td>' +
+    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.lender_name || '---') + '</td>' +
+    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.client_name || '---') + '</td>' +
+    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.customer_name || '---') + '</td>' +
+    '<td style="padding:8px 12px"><span class="badge" style="font-size:.7rem;background:' + _statusColor(j.status) + ';color:#fff">' + _esc(j.status||'---') + '</span></td>' +
+    '<td style="padding:8px 12px;white-space:nowrap">' +
+      '<a href="/jobs/' + j.id + '" class="btn btn-outline-primary btn-sm me-1" style="font-size:.72rem" target="_blank">Edit</a>' +
+      '<button class="btn btn-outline-danger btn-sm" style="font-size:.72rem" onclick="dupDeleteJob(' + j.id + ',\'' + _esc(j.display_ref||'#'+j.id).replace(/'/g,"\\'") + '\')">Delete</button>' +
+    '</td></tr>';
+}
+
+function _renderClientRow(c) {
+  return '<tr id="dup-client-row-' + c.id + '">' +
+    '<td style="padding:8px 12px;font-size:.85rem;font-weight:600">' + _esc(c.name) + '</td>' +
+    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.email || '---') + '</td>' +
+    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.phone || '---') + '</td>' +
+    '<td style="padding:8px 12px;white-space:nowrap">' +
+      '<a href="/clients/' + c.id + '/edit" class="btn btn-outline-primary btn-sm me-1" style="font-size:.72rem" target="_blank">Edit</a>' +
+      '<button class="btn btn-outline-danger btn-sm" style="font-size:.72rem" onclick="dupDeleteClient(' + c.id + ',\'' + _esc(c.name).replace(/'/g,"\\'") + '\')">Delete</button>' +
+    '</td></tr>';
+}
+
+var _dupJobTableHead = '<thead><tr style="background:var(--panel2)">' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">REF</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">LENDER</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CLIENT</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CUSTOMER</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">STATUS</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ACTIONS</th>' +
+  '</tr></thead>';
+
+var _dupClientTableHead = '<thead><tr style="background:var(--panel2)">' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">NAME</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">EMAIL</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">PHONE</th>' +
+  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ACTIONS</th>' +
+  '</tr></thead>';
+
+function dupScanDB() {
+  var btn = document.getElementById('dupScanDbBtn');
+  var loading = document.getElementById('dupLoading');
+  var results = document.getElementById('dupResults');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  loading.style.display = '';
+  results.style.display = 'none';
+  document.getElementById('dupSummaryBar').style.display = 'none';
+  document.getElementById('dupFileResultsSection').style.display = 'none';
+  document.getElementById('dupDbMatchSection').style.display = 'none';
+
+  fetch('/admin/api/duplicates', {credentials: 'include'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = 'Scan Database for Duplicates';
+      loading.style.display = 'none';
+      results.style.display = '';
+
+      var jobList = document.getElementById('dupJobsList');
+      var cliList = document.getElementById('dupClientsList');
+      var noneMsg = document.getElementById('dupNoneMsg');
+      var jobSec = document.getElementById('dupJobsSection');
+      var cliSec = document.getElementById('dupClientsSection');
+      jobList.innerHTML = '';
+      cliList.innerHTML = '';
+
+      var dupJobCount = (data.dup_jobs || []).length;
+      var dupClientCount = (data.dup_clients || []).length;
+      var total = dupJobCount + dupClientCount;
+
+      if (total === 0) {
+        jobSec.style.display = 'none';
+        cliSec.style.display = 'none';
+        noneMsg.style.display = '';
+        _showSummary('Duplicate groups found: 0');
+        return;
+      }
+      noneMsg.style.display = 'none';
+      _showSummary('Duplicate groups found: ' + total + ' (' + dupJobCount + ' job groups, ' + dupClientCount + ' client groups)');
+
+      if (dupJobCount === 0) {
+        jobSec.style.display = 'none';
+      } else {
+        jobSec.style.display = '';
+        data.dup_jobs.forEach(function(grp) {
+          var card = document.createElement('div');
+          card.className = 'mb-3';
+          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
+          var matchLabel = grp.match_type === 'job_number' ? 'JOB #' : 'ACCOUNT';
+          var acctExtra = '';
+          if (grp.match_type === 'job_number' && grp.jobs[0] && grp.jobs[0].account_number) {
+            acctExtra = ' &nbsp;<span style="font-weight:400;color:var(--muted)">acct: ' + _esc(grp.jobs[0].account_number) + '</span>';
+          }
+          card.innerHTML = '<div style="background:var(--card);padding:8px 12px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.04em">' +
+            matchLabel + ': ' + _esc(grp.key.toUpperCase()) + acctExtra + ' --- ' + grp.jobs.length + ' jobs</div>' +
+            '<table style="width:100%;border-collapse:collapse">' + _dupJobTableHead +
+            '<tbody>' + grp.jobs.map(_renderJobRow).join('') + '</tbody></table>';
+          jobList.appendChild(card);
+        });
+      }
+
+      if (dupClientCount === 0) {
+        cliSec.style.display = 'none';
+      } else {
+        cliSec.style.display = '';
+        data.dup_clients.forEach(function(grp) {
+          var card = document.createElement('div');
+          card.className = 'mb-3';
+          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
+          card.innerHTML = '<div style="background:var(--card);padding:8px 12px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.04em">' +
+            'CLIENT NAME: ' + _esc(grp.key.toUpperCase()) + ' --- ' + grp.clients.length + ' records</div>' +
+            '<table style="width:100%;border-collapse:collapse">' + _dupClientTableHead +
+            '<tbody>' + grp.clients.map(_renderClientRow).join('') + '</tbody></table>';
+          cliList.appendChild(card);
+        });
+      }
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Scan Database for Duplicates';
+      loading.style.display = 'none';
+      alert('Error scanning for duplicates. Please try again.');
+    });
+}
+
+function dupScanFiles() {
+  var fileInput = document.getElementById('dupFileInput');
+  var files = fileInput.files;
+  if (!files || files.length === 0) {
+    alert('Please select one or more CSV files first.');
+    return;
+  }
+
+  var fileListEl = document.getElementById('dupFileList');
+  var fileListInner = document.getElementById('dupFileListInner');
+  fileListInner.innerHTML = '';
+  for (var i = 0; i < files.length; i++) {
+    var pill = document.createElement('span');
+    pill.className = 'badge';
+    pill.style.cssText = 'background:var(--accent);color:#fff;font-size:.78rem;padding:.35rem .65rem;border-radius:6px';
+    pill.textContent = files[i].name;
+    fileListInner.appendChild(pill);
+  }
+  fileListEl.style.display = '';
+
+  var btn = document.getElementById('dupScanFilesBtn');
+  var loading = document.getElementById('dupLoading');
+  var results = document.getElementById('dupResults');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  loading.style.display = '';
+  results.style.display = 'none';
+  document.getElementById('dupSummaryBar').style.display = 'none';
+  document.getElementById('dupJobsSection').style.display = 'none';
+  document.getElementById('dupClientsSection').style.display = 'none';
+
+  var fd = new FormData();
+  for (var i = 0; i < files.length; i++) {
+    fd.append('files', files[i]);
+  }
+
+  fetch('/admin/api/duplicates/files', {method: 'POST', body: fd, credentials: 'include'})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = 'Scan Selected Files';
+      loading.style.display = 'none';
+
+      if (!data.ok) {
+        alert(data.error || 'Error scanning files.');
+        return;
+      }
+
+      results.style.display = '';
+
+      var fileResSec = document.getElementById('dupFileResultsSection');
+      var fileResList = document.getElementById('dupFileResultsList');
+      var dbMatchSec = document.getElementById('dupDbMatchSection');
+      var dbMatchList = document.getElementById('dupDbMatchList');
+      var noneMsg = document.getElementById('dupNoneMsg');
+      fileResList.innerHTML = '';
+      dbMatchList.innerHTML = '';
+
+      var withinCount = (data.dup_within_files || []).length;
+      var dbCount = (data.dup_against_db || []).length;
+      var total = withinCount + dbCount;
+
+      var summaryParts = [];
+      summaryParts.push('Selected files: ' + data.file_count);
+      summaryParts.push('Total records: ' + data.total_records);
+      summaryParts.push('Duplicate records found: ' + total);
+      _showSummary(summaryParts.join('  |  '));
+
+      if (data.parse_errors && data.parse_errors.length > 0) {
+        var errDiv = document.createElement('div');
+        errDiv.className = 'alert alert-warning small mb-3';
+        errDiv.innerHTML = '<strong>Parse warnings:</strong> ' + data.parse_errors.map(_esc).join('; ');
+        fileResList.parentNode.insertBefore(errDiv, fileResList);
+      }
+
+      if (total === 0) {
+        fileResSec.style.display = 'none';
+        dbMatchSec.style.display = 'none';
+        noneMsg.style.display = '';
+        return;
+      }
+      noneMsg.style.display = 'none';
+
+      if (withinCount === 0) {
+        fileResSec.style.display = 'none';
+      } else {
+        fileResSec.style.display = '';
+        data.dup_within_files.forEach(function(grp) {
+          var card = document.createElement('div');
+          card.className = 'mb-3';
+          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
+          var header = '<div style="background:#fef3c7;padding:8px 12px;font-size:.78rem;font-weight:700;color:#92400e;letter-spacing:.04em">' +
+            'JOB # ' + _esc(grp.key) + ' --- appears ' + grp.records.length + ' times across files</div>';
+          var rows = grp.records.map(function(r) {
+            return '<tr><td style="padding:8px 12px;font-size:.82rem;font-weight:600">' + _esc(r.job_number) + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.file) + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">Row ' + r.row + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.client_reference || '---') + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.customer_name || '---') + '</td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.status || '---') + '</td></tr>';
+          }).join('');
+          card.innerHTML = header + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--panel2)">' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">JOB #</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">FILE</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ROW</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CLIENT REF</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CUSTOMER</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">STATUS</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>';
+          fileResList.appendChild(card);
+        });
+      }
+
+      if (dbCount === 0) {
+        dbMatchSec.style.display = 'none';
+      } else {
+        dbMatchSec.style.display = '';
+        data.dup_against_db.forEach(function(grp) {
+          var card = document.createElement('div');
+          card.className = 'mb-3';
+          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
+          var fr = grp.file_record;
+          var header = '<div style="background:#fee2e2;padding:8px 12px;font-size:.78rem;font-weight:700;color:#991b1b;letter-spacing:.04em">' +
+            'JOB # ' + _esc(grp.key) + ' in file "' + _esc(fr.file) + '" (row ' + fr.row + ') already exists in database</div>';
+          var rows = grp.db_jobs.map(function(j) {
+            return '<tr><td style="padding:8px 12px;font-size:.85rem"><a href="/jobs/' + j.id + '" target="_blank" style="font-weight:600;color:var(--accent)">' + _esc(j.display_ref || '#'+j.id) + '</a></td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.internal_job_number || '---') + '</td>' +
+              '<td style="padding:8px 12px"><span class="badge" style="font-size:.7rem;background:' + _statusColor(j.status) + ';color:#fff">' + _esc(j.status||'---') + '</span></td>' +
+              '<td style="padding:8px 12px;font-size:.82rem">Already in system</td></tr>';
+          }).join('');
+          card.innerHTML = header + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--panel2)">' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">EXISTING REF</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">JOB #</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">STATUS</th>' +
+            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">NOTE</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>';
+          dbMatchList.appendChild(card);
+        });
+      }
+    })
+    .catch(function() {
+      btn.disabled = false;
+      btn.textContent = 'Scan Selected Files';
+      loading.style.display = 'none';
+      alert('Error scanning files. Please try again.');
+    });
+}
+
+function dupDeleteJob(jobId, displayRef) {
+  if (!confirm('Delete job ' + displayRef + '? This cannot be undone.')) return;
+  var fd = new FormData();
+  fd.append('job_id', jobId);
+  fetch('/admin/api/duplicates/delete-job', {method:'POST', body:fd, credentials:'include'})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (!data.ok) { alert(data.error); return; }
+      var row = document.getElementById('dup-job-row-' + jobId);
+      if (row) row.remove();
+    })
+    .catch(function(){ alert('Error deleting job. Please try again.'); });
+}
+
+function dupDeleteClient(clientId, name) {
+  if (!confirm('Delete client ' + name + '? This cannot be undone.')) return;
+  var fd = new FormData();
+  fd.append('client_id', clientId);
+  fetch('/admin/api/duplicates/delete-client', {method:'POST', body:fd, credentials:'include'})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (!data.ok) { alert(data.error); return; }
+      var row = document.getElementById('dup-client-row-' + clientId);
+      if (row) row.remove();
+    })
+    .catch(function(){ alert('Error deleting client. Please try again.'); });
+}
+</script>
+
 {% endblock %}
 
 {% block modals %}
@@ -721,404 +1124,3 @@ function savePassword() {
 }
 </script>
 
-<!-- TAB: Duplicate Finder -->
-<div class="tab-pane-custom" id="tab-duplicate-finder" style="display:none">
-
-  <div class="ax-card mb-4">
-    <div class="ax-card-h">Scan Existing Database</div>
-    <div class="ax-card-b">
-      <p class="small mb-3" style="color:var(--muted)">
-        Scans for duplicate <strong>jobs</strong> (same job number or account number) and duplicate <strong>clients</strong> (same name) already in the system.
-      </p>
-      <button class="btn btn-primary btn-sm" onclick="dupScanDB()" id="dupScanDbBtn">Scan Database for Duplicates</button>
-    </div>
-  </div>
-
-  <div class="ax-card mb-4">
-    <div class="ax-card-h">Scan CSV Files Before Import</div>
-    <div class="ax-card-b">
-      <p class="small mb-3" style="color:var(--muted)">
-        Select one or more CSV files to check for duplicates <strong>within the files</strong> and <strong>against existing jobs</strong> in the database before importing.
-      </p>
-      <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
-        <input type="file" id="dupFileInput" accept=".csv" multiple class="form-control form-control-sm" style="max-width:400px">
-        <button class="btn btn-primary btn-sm" onclick="dupScanFiles()" id="dupScanFilesBtn">Scan Selected Files</button>
-      </div>
-      <div id="dupFileList" style="display:none" class="mb-3">
-        <div class="small fw-semibold mb-1" style="color:var(--text)">Selected files:</div>
-        <div id="dupFileListInner" class="d-flex flex-wrap gap-2"></div>
-      </div>
-    </div>
-  </div>
-
-  <div id="dupSummaryBar" style="display:none;border-radius:8px" class="d-flex align-items-center justify-content-between px-3 py-2 mb-4">
-    <div class="d-flex align-items-center gap-3">
-      <span class="small fw-semibold" id="dupSummaryText"></span>
-    </div>
-    <button class="btn btn-outline-secondary btn-sm" onclick="dupClearResults()">Clear Results</button>
-  </div>
-
-  <div id="dupLoading" style="display:none;padding:24px;text-align:center;color:var(--muted);font-size:.9rem">
-    Scanning...
-  </div>
-
-  <div id="dupResults" style="display:none">
-    <div id="dupFileResultsSection" style="display:none" class="mb-4">
-      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicates Within Files</h6>
-      <div id="dupFileResultsList"></div>
-    </div>
-    <div id="dupDbMatchSection" style="display:none" class="mb-4">
-      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Already Exist in Database</h6>
-      <div id="dupDbMatchList"></div>
-    </div>
-    <div id="dupJobsSection" style="display:none">
-      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Jobs in Database</h6>
-      <div id="dupJobsList"></div>
-    </div>
-    <div id="dupClientsSection" style="display:none" class="mt-4">
-      <h6 class="fw-bold mb-3" style="color:var(--text);font-size:.9rem;letter-spacing:.03em;text-transform:uppercase">Duplicate Clients (by Name)</h6>
-      <div id="dupClientsList"></div>
-    </div>
-    <div id="dupNoneMsg" style="display:none;padding:24px;text-align:center;color:#16a34a;font-weight:600">
-      &#10003; No duplicates found — your data looks clean!
-    </div>
-  </div>
-</div>
-
-<script>
-function _esc(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function _statusColor(s) {
-  if (s === 'Active') return '#22c55e';
-  if (s === 'Completed') return '#64748b';
-  return '#f59e0b';
-}
-
-function _showSummary(text) {
-  var bar = document.getElementById('dupSummaryBar');
-  bar.style.display = 'flex';
-  bar.style.background = 'rgba(37,99,235,.06)';
-  bar.style.border = '1px solid rgba(37,99,235,.2)';
-  bar.style.borderRadius = '8px';
-  document.getElementById('dupSummaryText').textContent = text;
-}
-
-function dupClearResults() {
-  document.getElementById('dupResults').style.display = 'none';
-  document.getElementById('dupSummaryBar').style.display = 'none';
-  document.getElementById('dupFileList').style.display = 'none';
-  document.getElementById('dupFileInput').value = '';
-  ['dupJobsList','dupClientsList','dupFileResultsList','dupDbMatchList'].forEach(function(id){
-    document.getElementById(id).innerHTML = '';
-  });
-  ['dupJobsSection','dupClientsSection','dupFileResultsSection','dupDbMatchSection','dupNoneMsg'].forEach(function(id){
-    document.getElementById(id).style.display = 'none';
-  });
-}
-
-function _renderJobRow(j) {
-  return '<tr id="dup-job-row-' + j.id + '">' +
-    '<td style="padding:8px 12px;font-size:.85rem"><a href="/jobs/' + j.id + '" target="_blank" style="font-weight:600;color:var(--accent)">' + _esc(j.display_ref || '#'+j.id) + '</a></td>' +
-    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.lender_name || '---') + '</td>' +
-    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.client_name || '---') + '</td>' +
-    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.customer_name || '---') + '</td>' +
-    '<td style="padding:8px 12px"><span class="badge" style="font-size:.7rem;background:' + _statusColor(j.status) + ';color:#fff">' + _esc(j.status||'---') + '</span></td>' +
-    '<td style="padding:8px 12px;white-space:nowrap">' +
-      '<a href="/jobs/' + j.id + '" class="btn btn-outline-primary btn-sm me-1" style="font-size:.72rem" target="_blank">Edit</a>' +
-      '<button class="btn btn-outline-danger btn-sm" style="font-size:.72rem" onclick="dupDeleteJob(' + j.id + ',\'' + _esc(j.display_ref||'#'+j.id).replace(/'/g,"\\'") + '\')">Delete</button>' +
-    '</td></tr>';
-}
-
-function _renderClientRow(c) {
-  return '<tr id="dup-client-row-' + c.id + '">' +
-    '<td style="padding:8px 12px;font-size:.85rem;font-weight:600">' + _esc(c.name) + '</td>' +
-    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.email || '---') + '</td>' +
-    '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.phone || '---') + '</td>' +
-    '<td style="padding:8px 12px;white-space:nowrap">' +
-      '<a href="/clients/' + c.id + '/edit" class="btn btn-outline-primary btn-sm me-1" style="font-size:.72rem" target="_blank">Edit</a>' +
-      '<button class="btn btn-outline-danger btn-sm" style="font-size:.72rem" onclick="dupDeleteClient(' + c.id + ',\'' + _esc(c.name).replace(/'/g,"\\'") + '\')">Delete</button>' +
-    '</td></tr>';
-}
-
-var _dupJobTableHead = '<thead><tr style="background:var(--panel2)">' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">REF</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">LENDER</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CLIENT</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CUSTOMER</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">STATUS</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ACTIONS</th>' +
-  '</tr></thead>';
-
-var _dupClientTableHead = '<thead><tr style="background:var(--panel2)">' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">NAME</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">EMAIL</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">PHONE</th>' +
-  '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ACTIONS</th>' +
-  '</tr></thead>';
-
-function dupScanDB() {
-  var btn = document.getElementById('dupScanDbBtn');
-  var loading = document.getElementById('dupLoading');
-  var results = document.getElementById('dupResults');
-  btn.disabled = true;
-  btn.textContent = 'Scanning...';
-  loading.style.display = '';
-  results.style.display = 'none';
-  document.getElementById('dupSummaryBar').style.display = 'none';
-  document.getElementById('dupFileResultsSection').style.display = 'none';
-  document.getElementById('dupDbMatchSection').style.display = 'none';
-
-  fetch('/admin/api/duplicates', {credentials: 'include'})
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      btn.disabled = false;
-      btn.textContent = 'Scan Database for Duplicates';
-      loading.style.display = 'none';
-      results.style.display = '';
-
-      var jobList = document.getElementById('dupJobsList');
-      var cliList = document.getElementById('dupClientsList');
-      var noneMsg = document.getElementById('dupNoneMsg');
-      var jobSec = document.getElementById('dupJobsSection');
-      var cliSec = document.getElementById('dupClientsSection');
-      jobList.innerHTML = '';
-      cliList.innerHTML = '';
-
-      var dupJobCount = (data.dup_jobs || []).length;
-      var dupClientCount = (data.dup_clients || []).length;
-      var total = dupJobCount + dupClientCount;
-
-      if (total === 0) {
-        jobSec.style.display = 'none';
-        cliSec.style.display = 'none';
-        noneMsg.style.display = '';
-        _showSummary('Duplicate groups found: 0');
-        return;
-      }
-      noneMsg.style.display = 'none';
-      _showSummary('Duplicate groups found: ' + total + ' (' + dupJobCount + ' job groups, ' + dupClientCount + ' client groups)');
-
-      if (dupJobCount === 0) {
-        jobSec.style.display = 'none';
-      } else {
-        jobSec.style.display = '';
-        data.dup_jobs.forEach(function(grp) {
-          var card = document.createElement('div');
-          card.className = 'mb-3';
-          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
-          var matchLabel = grp.match_type === 'job_number' ? 'JOB #' : 'ACCOUNT';
-          var acctExtra = '';
-          if (grp.match_type === 'job_number' && grp.jobs[0] && grp.jobs[0].account_number) {
-            acctExtra = ' &nbsp;<span style="font-weight:400;color:var(--muted)">acct: ' + _esc(grp.jobs[0].account_number) + '</span>';
-          }
-          card.innerHTML = '<div style="background:var(--card);padding:8px 12px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.04em">' +
-            matchLabel + ': ' + _esc(grp.key.toUpperCase()) + acctExtra + ' --- ' + grp.jobs.length + ' jobs</div>' +
-            '<table style="width:100%;border-collapse:collapse">' + _dupJobTableHead +
-            '<tbody>' + grp.jobs.map(_renderJobRow).join('') + '</tbody></table>';
-          jobList.appendChild(card);
-        });
-      }
-
-      if (dupClientCount === 0) {
-        cliSec.style.display = 'none';
-      } else {
-        cliSec.style.display = '';
-        data.dup_clients.forEach(function(grp) {
-          var card = document.createElement('div');
-          card.className = 'mb-3';
-          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
-          card.innerHTML = '<div style="background:var(--card);padding:8px 12px;font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.04em">' +
-            'CLIENT NAME: ' + _esc(grp.key.toUpperCase()) + ' --- ' + grp.clients.length + ' records</div>' +
-            '<table style="width:100%;border-collapse:collapse">' + _dupClientTableHead +
-            '<tbody>' + grp.clients.map(_renderClientRow).join('') + '</tbody></table>';
-          cliList.appendChild(card);
-        });
-      }
-    })
-    .catch(function() {
-      btn.disabled = false;
-      btn.textContent = 'Scan Database for Duplicates';
-      loading.style.display = 'none';
-      alert('Error scanning for duplicates. Please try again.');
-    });
-}
-
-function dupScanFiles() {
-  var fileInput = document.getElementById('dupFileInput');
-  var files = fileInput.files;
-  if (!files || files.length === 0) {
-    alert('Please select one or more CSV files first.');
-    return;
-  }
-
-  var fileListEl = document.getElementById('dupFileList');
-  var fileListInner = document.getElementById('dupFileListInner');
-  fileListInner.innerHTML = '';
-  for (var i = 0; i < files.length; i++) {
-    var pill = document.createElement('span');
-    pill.className = 'badge';
-    pill.style.cssText = 'background:var(--accent);color:#fff;font-size:.78rem;padding:.35rem .65rem;border-radius:6px';
-    pill.textContent = files[i].name;
-    fileListInner.appendChild(pill);
-  }
-  fileListEl.style.display = '';
-
-  var btn = document.getElementById('dupScanFilesBtn');
-  var loading = document.getElementById('dupLoading');
-  var results = document.getElementById('dupResults');
-  btn.disabled = true;
-  btn.textContent = 'Scanning...';
-  loading.style.display = '';
-  results.style.display = 'none';
-  document.getElementById('dupSummaryBar').style.display = 'none';
-  document.getElementById('dupJobsSection').style.display = 'none';
-  document.getElementById('dupClientsSection').style.display = 'none';
-
-  var fd = new FormData();
-  for (var i = 0; i < files.length; i++) {
-    fd.append('files', files[i]);
-  }
-
-  fetch('/admin/api/duplicates/files', {method: 'POST', body: fd, credentials: 'include'})
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      btn.disabled = false;
-      btn.textContent = 'Scan Selected Files';
-      loading.style.display = 'none';
-
-      if (!data.ok) {
-        alert(data.error || 'Error scanning files.');
-        return;
-      }
-
-      results.style.display = '';
-
-      var fileResSec = document.getElementById('dupFileResultsSection');
-      var fileResList = document.getElementById('dupFileResultsList');
-      var dbMatchSec = document.getElementById('dupDbMatchSection');
-      var dbMatchList = document.getElementById('dupDbMatchList');
-      var noneMsg = document.getElementById('dupNoneMsg');
-      fileResList.innerHTML = '';
-      dbMatchList.innerHTML = '';
-
-      var withinCount = (data.dup_within_files || []).length;
-      var dbCount = (data.dup_against_db || []).length;
-      var total = withinCount + dbCount;
-
-      var summaryParts = [];
-      summaryParts.push('Selected files: ' + data.file_count);
-      summaryParts.push('Total records: ' + data.total_records);
-      summaryParts.push('Duplicate records found: ' + total);
-      _showSummary(summaryParts.join('  |  '));
-
-      if (data.parse_errors && data.parse_errors.length > 0) {
-        var errDiv = document.createElement('div');
-        errDiv.className = 'alert alert-warning small mb-3';
-        errDiv.innerHTML = '<strong>Parse warnings:</strong> ' + data.parse_errors.map(_esc).join('; ');
-        fileResList.parentNode.insertBefore(errDiv, fileResList);
-      }
-
-      if (total === 0) {
-        fileResSec.style.display = 'none';
-        dbMatchSec.style.display = 'none';
-        noneMsg.style.display = '';
-        return;
-      }
-      noneMsg.style.display = 'none';
-
-      if (withinCount === 0) {
-        fileResSec.style.display = 'none';
-      } else {
-        fileResSec.style.display = '';
-        data.dup_within_files.forEach(function(grp) {
-          var card = document.createElement('div');
-          card.className = 'mb-3';
-          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
-          var header = '<div style="background:#fef3c7;padding:8px 12px;font-size:.78rem;font-weight:700;color:#92400e;letter-spacing:.04em">' +
-            'JOB # ' + _esc(grp.key) + ' --- appears ' + grp.records.length + ' times across files</div>';
-          var rows = grp.records.map(function(r) {
-            return '<tr><td style="padding:8px 12px;font-size:.82rem;font-weight:600">' + _esc(r.job_number) + '</td>' +
-              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.file) + '</td>' +
-              '<td style="padding:8px 12px;font-size:.82rem">Row ' + r.row + '</td>' +
-              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.client_reference || '---') + '</td>' +
-              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.customer_name || '---') + '</td>' +
-              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(r.status || '---') + '</td></tr>';
-          }).join('');
-          card.innerHTML = header + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--panel2)">' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">JOB #</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">FILE</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">ROW</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CLIENT REF</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">CUSTOMER</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">STATUS</th>' +
-            '</tr></thead><tbody>' + rows + '</tbody></table>';
-          fileResList.appendChild(card);
-        });
-      }
-
-      if (dbCount === 0) {
-        dbMatchSec.style.display = 'none';
-      } else {
-        dbMatchSec.style.display = '';
-        data.dup_against_db.forEach(function(grp) {
-          var card = document.createElement('div');
-          card.className = 'mb-3';
-          card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
-          var fr = grp.file_record;
-          var header = '<div style="background:#fee2e2;padding:8px 12px;font-size:.78rem;font-weight:700;color:#991b1b;letter-spacing:.04em">' +
-            'JOB # ' + _esc(grp.key) + ' in file "' + _esc(fr.file) + '" (row ' + fr.row + ') already exists in database</div>';
-          var rows = grp.db_jobs.map(function(j) {
-            return '<tr><td style="padding:8px 12px;font-size:.85rem"><a href="/jobs/' + j.id + '" target="_blank" style="font-weight:600;color:var(--accent)">' + _esc(j.display_ref || '#'+j.id) + '</a></td>' +
-              '<td style="padding:8px 12px;font-size:.82rem">' + _esc(j.internal_job_number || '---') + '</td>' +
-              '<td style="padding:8px 12px"><span class="badge" style="font-size:.7rem;background:' + _statusColor(j.status) + ';color:#fff">' + _esc(j.status||'---') + '</span></td>' +
-              '<td style="padding:8px 12px;font-size:.82rem">Already in system</td></tr>';
-          }).join('');
-          card.innerHTML = header + '<table style="width:100%;border-collapse:collapse"><thead><tr style="background:var(--panel2)">' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">EXISTING REF</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">JOB #</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">STATUS</th>' +
-            '<th style="padding:6px 12px;font-size:.72rem;color:var(--muted);font-weight:600">NOTE</th>' +
-            '</tr></thead><tbody>' + rows + '</tbody></table>';
-          dbMatchList.appendChild(card);
-        });
-      }
-    })
-    .catch(function() {
-      btn.disabled = false;
-      btn.textContent = 'Scan Selected Files';
-      loading.style.display = 'none';
-      alert('Error scanning files. Please try again.');
-    });
-}
-
-function dupDeleteJob(jobId, displayRef) {
-  if (!confirm('Delete job ' + displayRef + '? This cannot be undone.')) return;
-  var fd = new FormData();
-  fd.append('job_id', jobId);
-  fetch('/admin/api/duplicates/delete-job', {method:'POST', body:fd, credentials:'include'})
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (!data.ok) { alert(data.error); return; }
-      var row = document.getElementById('dup-job-row-' + jobId);
-      if (row) row.remove();
-    })
-    .catch(function(){ alert('Error deleting job. Please try again.'); });
-}
-
-function dupDeleteClient(clientId, name) {
-  if (!confirm('Delete client ' + name + '? This cannot be undone.')) return;
-  var fd = new FormData();
-  fd.append('client_id', clientId);
-  fetch('/admin/api/duplicates/delete-client', {method:'POST', body:fd, credentials:'include'})
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (!data.ok) { alert(data.error); return; }
-      var row = document.getElementById('dup-client-row-' + clientId);
-      if (row) row.remove();
-    })
-    .catch(function(){ alert('Error deleting client. Please try again.'); });
-}
-</script>
-{% endblock %}
