@@ -14,6 +14,7 @@ import uuid
 import mimetypes
 import traceback
 import threading
+import secrets
 import pytesseract
 from PIL import Image, ImageFilter, ImageEnhance
 from datetime import date, datetime
@@ -740,6 +741,19 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "user_mobile_settings", "show_status_on_visits",  "INTEGER NOT NULL DEFAULT 1")
     add_column_if_missing(cur, "job_field_notes",       "note_type",             "TEXT NOT NULL DEFAULT 'text'")
     add_column_if_missing(cur, "job_field_notes",       "audio_filename",        "TEXT")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS mobile_auth_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token TEXT NOT NULL UNIQUE,
+        user_id INTEGER NOT NULL,
+        device_name TEXT,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        revoked_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS repo_lock_records (
@@ -9220,8 +9234,118 @@ def m_login_post():
 
 @app.get("/m/logout")
 def m_logout():
+    token = request.args.get("token", "").strip()
+    if token:
+        conn = db()
+        conn.execute(
+            "UPDATE mobile_auth_tokens SET revoked_at=? WHERE token=? AND revoked_at IS NULL",
+            (now_ts(), token))
+        conn.commit()
+        conn.close()
     session.clear()
     return redirect(url_for("m_login"))
+
+
+@app.post("/m/api/auth/create-token")
+@mobile_login_required
+def m_api_auth_create_token():
+    uid = session.get("user_id")
+    device_name = request.get_json(silent=True) or {}
+    device_name = device_name.get("device_name", "iOS Device")
+    token = secrets.token_urlsafe(48)
+    ts = now_ts()
+    expires = (datetime.now(_melbourne) + _td(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+    conn = db()
+    conn.execute(
+        "INSERT INTO mobile_auth_tokens (token, user_id, device_name, created_at, expires_at) VALUES (?,?,?,?,?)",
+        (token, uid, device_name, ts, expires))
+    conn.commit()
+    conn.close()
+    return jsonify({"token": token, "expires_at": expires})
+
+
+@app.post("/m/api/auth/token-login")
+def m_api_auth_token_login():
+    data = request.get_json(silent=True) or {}
+    token = data.get("token", "").strip()
+    if not token:
+        return jsonify({"success": False, "error": "Token required"}), 400
+
+    conn = db()
+    row = conn.execute(
+        "SELECT t.*, u.full_name, u.role, u.active FROM mobile_auth_tokens t "
+        "JOIN users u ON u.id = t.user_id "
+        "WHERE t.token=? AND t.revoked_at IS NULL", (token,)).fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({"success": False, "error": "Invalid or revoked token"}), 401
+
+    now = datetime.now(_melbourne).strftime("%Y-%m-%d %H:%M:%S")
+    if row["expires_at"] < now:
+        conn.execute("UPDATE mobile_auth_tokens SET revoked_at=? WHERE token=?", (now_ts(), token))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": False, "error": "Token expired"}), 401
+
+    if not row["active"]:
+        conn.close()
+        return jsonify({"success": False, "error": "Account disabled"}), 401
+
+    conn.close()
+    session.permanent = True
+    session["user_id"] = row["user_id"]
+    session["user_name"] = row["full_name"]
+    session["role"] = row["role"]
+    return jsonify({"success": True, "user_name": row["full_name"], "role": row["role"]})
+
+
+@app.post("/m/api/auth/revoke-token")
+def m_api_auth_revoke_token():
+    data = request.get_json(silent=True) or {}
+    token = data.get("token", "").strip()
+    if not token:
+        return jsonify({"success": False}), 400
+    conn = db()
+    conn.execute(
+        "UPDATE mobile_auth_tokens SET revoked_at=? WHERE token=? AND revoked_at IS NULL",
+        (now_ts(), token))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+
+@app.get("/m/api/auth/biometric-status")
+@mobile_login_required
+def m_api_auth_biometric_status():
+    uid = session.get("user_id")
+    now = datetime.now(_melbourne).strftime("%Y-%m-%d %H:%M:%S")
+    conn = db()
+    row = conn.execute(
+        "SELECT created_at, expires_at FROM mobile_auth_tokens "
+        "WHERE user_id=? AND revoked_at IS NULL AND expires_at>? ORDER BY created_at DESC LIMIT 1",
+        (uid, now)).fetchone()
+    conn.close()
+    if row:
+        return jsonify({
+            "has_active_token": True,
+            "token_created_at": row["created_at"],
+            "token_expires_at": row["expires_at"]
+        })
+    return jsonify({"has_active_token": False})
+
+
+@app.post("/m/api/auth/revoke-all-tokens")
+@mobile_login_required
+def m_api_auth_revoke_all_tokens():
+    uid = session.get("user_id")
+    conn = db()
+    conn.execute(
+        "UPDATE mobile_auth_tokens SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL",
+        (now_ts(), uid))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
 
 
 @app.get("/m/schedule/today")

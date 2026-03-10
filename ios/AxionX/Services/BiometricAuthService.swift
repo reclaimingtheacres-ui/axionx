@@ -2,55 +2,12 @@ import Foundation
 import LocalAuthentication
 import WebKit
 
-// MARK: - Stored cookie model
-
-/// Codable representation of an HTTPCookie.
-/// Stores only the fields needed to reconstruct it on the next launch.
-private struct StoredCookie: Codable {
-    let name:       String
-    let value:      String
-    let domain:     String
-    let path:       String
-    let isSecure:   Bool
-    let expiresDate: Date?
-
-    init(from cookie: HTTPCookie) {
-        name        = cookie.name
-        value       = cookie.value
-        domain      = cookie.domain
-        path        = cookie.path
-        isSecure    = cookie.isSecure
-        expiresDate = cookie.expiresDate
-    }
-
-    var asHTTPCookie: HTTPCookie? {
-        var props: [HTTPCookiePropertyKey: Any] = [
-            .name:   name,
-            .value:  value,
-            .domain: domain,
-            .path:   path,
-        ]
-        if isSecure    { props[.secure]  = "TRUE" }
-        if let expires = expiresDate { props[.expires] = expires }
-        return HTTPCookie(properties: props)
-    }
-
-    var isExpired: Bool {
-        guard let expires = expiresDate else { return false }
-        return expires <= Date()
-    }
-}
-
-// MARK: - Biometric errors
-
 enum BiometricError: Error {
     case notAvailable
     case cancelled
     case failed
     case noSavedSession
 }
-
-// MARK: - Biometric type
 
 enum BiometricType {
     case none, faceID, touchID
@@ -70,13 +27,22 @@ enum BiometricType {
         case .none:    return ""
         }
     }
+
+    var settingsLabel: String {
+        switch self {
+        case .faceID:  return "Face ID"
+        case .touchID: return "Touch ID"
+        case .none:    return "Biometric"
+        }
+    }
 }
 
-// MARK: - Service
+private enum Prefs {
+    static let optedInKey  = "biometric_opted_in"
+    static let declinedKey = "biometric_declined"
+}
 
 enum BiometricAuthService {
-
-    // MARK: - Device capability
 
     static var biometricType: BiometricType {
         let ctx = LAContext()
@@ -91,19 +57,38 @@ enum BiometricAuthService {
         }
     }
 
-    // MARK: - Session availability
-
-    static var hasSavedSession: Bool {
-        guard let data = KeychainService.load() else { return false }
-        guard let stored = try? JSONDecoder().decode(StoredCookie.self, from: data) else { return false }
-        return !stored.isExpired
+    static var hasSavedToken: Bool {
+        KeychainService.hasToken
     }
 
-    // MARK: - Biometric prompt
+    static var isOptedIn: Bool {
+        UserDefaults.standard.bool(forKey: Prefs.optedInKey)
+    }
 
-    /// Presents the Face ID / Touch ID prompt.
-    /// Throws `BiometricError.cancelled` when the user dismisses it.
-    /// Throws `BiometricError.failed` for a scan mismatch or lockout.
+    static var hasDeclined: Bool {
+        UserDefaults.standard.bool(forKey: Prefs.declinedKey)
+    }
+
+    static var shouldPromptOptIn: Bool {
+        biometricType != .none && !isOptedIn && !hasDeclined
+    }
+
+    static func setOptedIn(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: Prefs.optedInKey)
+        if value {
+            UserDefaults.standard.set(false, forKey: Prefs.declinedKey)
+        }
+    }
+
+    static func setDeclined(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: Prefs.declinedKey)
+    }
+
+    static func resetPreferences() {
+        UserDefaults.standard.set(false, forKey: Prefs.optedInKey)
+        UserDefaults.standard.set(false, forKey: Prefs.declinedKey)
+    }
+
     static func authenticate(reason: String) async throws {
         let ctx = LAContext()
         var err: NSError?
@@ -125,37 +110,72 @@ enum BiometricAuthService {
         }
     }
 
-    // MARK: - Session persistence
-
-    /// Saves the Flask session cookie to Keychain.
-    /// Called after every successful manual login so biometric can be used next time.
-    static func saveSession(from cookies: [HTTPCookie]) {
-        guard let sessionCookie = cookies.first(where: { $0.name == "session" }) else { return }
-        guard let data = try? JSONEncoder().encode(StoredCookie(from: sessionCookie)) else { return }
-        KeychainService.save(data)
+    static func saveToken(_ token: String) {
+        KeychainService.saveToken(token)
+        setOptedIn(true)
     }
 
-    /// Injects the Keychain-stored session cookie into WKWebsiteDataStore.
-    /// Returns `true` if a valid, non-expired cookie was found and injected.
     @discardableResult
     static func loadAndInjectSession() async -> Bool {
-        guard let data   = KeychainService.load()                                    else { return false }
-        guard let stored = try? JSONDecoder().decode(StoredCookie.self, from: data)  else { return false }
-        guard !stored.isExpired                                                       else {
-            KeychainService.delete()
+        guard let token = KeychainService.loadToken() else { return false }
+
+        guard let url = URL(string: AppConfig.currentBaseURL + "/m/api/auth/token-login") else { return false }
+
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfig.userAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = try? JSONEncoder().encode(["token": token])
+
+        let config = URLSessionConfiguration.ephemeral
+        let session = URLSession(configuration: config)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return false }
+
+            if http.statusCode == 200 {
+                let headers = http.allHeaderFields as? [String: String] ?? [:]
+                let cookies = HTTPCookie.cookies(withResponseHeaderFields: headers, for: url)
+                await LoginService.injectCookies(cookies)
+                return true
+            }
+
+            if http.statusCode == 401 {
+                clearSession()
+            }
+            return false
+        } catch {
             return false
         }
-        guard let cookie = stored.asHTTPCookie else { return false }
-
-        let store = WKWebsiteDataStore.default().httpCookieStore
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            store.setCookie(cookie) { cont.resume() }
-        }
-        return true
     }
 
-    /// Removes the saved session from Keychain (e.g., on sign-out or auth failure).
     static func clearSession() {
+        if let token = KeychainService.loadToken() {
+            Task {
+                await revokeTokenOnServer(token)
+            }
+        }
+        KeychainService.deleteToken()
         KeychainService.delete()
+    }
+
+    static func disableBiometric() {
+        clearSession()
+        resetPreferences()
+    }
+
+    private static func revokeTokenOnServer(_ token: String) async {
+        guard let url = URL(string: AppConfig.currentBaseURL + "/m/api/auth/revoke-token") else { return }
+
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfig.userAgent, forHTTPHeaderField: "User-Agent")
+        request.httpBody = try? JSONEncoder().encode(["token": token])
+
+        let config = URLSessionConfiguration.ephemeral
+        let session = URLSession(configuration: config)
+        _ = try? await session.data(for: request)
     }
 }

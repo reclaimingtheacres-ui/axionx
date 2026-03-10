@@ -109,7 +109,14 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **12. Repo Lock (v2):** Per-security-item repossession record accessible on desktop and mobile. Features draft saving and submission workflows, generating formatted notes and linking to PDF generation for VIR, Transport Instructions, and other forms. Includes signature capture and PDF generation via `pdf_gen.py`.
 
-**14. Internal Messaging System:** Staff messaging (admin↔agent, agent↔agent) with job-linked and direct conversations.
+**14. Biometric Login (Face ID / Touch ID):**
+- **Backend**: `mobile_auth_tokens` table (token, user_id, device_name, created_at, expires_at, revoked_at). API: `POST /m/api/auth/create-token` (90-day token), `POST /m/api/auth/token-login` (validates token, creates fresh Flask session), `POST /m/api/auth/revoke-token`, `GET /m/api/auth/biometric-status`, `POST /m/api/auth/revoke-all-tokens`. Logout (`GET /m/logout`) accepts optional `?token=` param for server-side revocation.
+- **iOS Native**: `BiometricAuthService` stores auth token (not session cookie) in Keychain via `KeychainService.saveToken/loadToken`. On biometric auth success, calls `/m/api/auth/token-login` to get fresh session cookies injected into WKWebView. `LoginView` shows opt-in alert after first successful login ("Enable Face ID/Touch ID?"). UserDefaults: `biometric_opted_in`, `biometric_declined`. `ContentView` auth flow: check Keychain token → biometric prompt → token-login → WebView.
+- **Settings Bridge**: `BiometricSettingsHandler` (WKScriptMessageHandler) registered as `biometricSettings` messageHandler. Actions: `getStatus`, `enable`, `disable`, `resetDecline`, `resetSession`. Web settings page communicates via `window._biometricCallback` pattern.
+- **Mobile Settings**: Biometric Login card in `/m/settings` (native wrapper only). Shows biometric type, enable/disable toggle, Reset Saved Login button. Hidden when not in iOS wrapper.
+- **Info.plist**: `NSFaceIDUsageDescription` present.
+
+**15. Internal Messaging System:** Staff messaging (admin↔agent, agent↔agent) with job-linked and direct conversations.
 - Tables: `conversations` (type: direct|job, optional job_id), `conversation_participants`, `messages`, `message_reads`
 - Desktop: Two-panel layout at `/messages` and `/messages/<conv_id>`. Left sidebar = conversation list; right = chat bubbles. Reply with Enter key or Send button.
 - Mobile: Full-screen conversation list at `/m/messages`; chat interface at `/m/messages/<conv_id>` with pinned reply bar.

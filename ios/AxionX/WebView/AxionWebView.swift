@@ -16,6 +16,9 @@ final class WebViewStore: ObservableObject {
         // Required so getUserMedia works without a user gesture on every call
         config.mediaTypesRequiringUserActionForPlayback = []
 
+        let biometricHandler = BiometricSettingsHandler()
+        config.userContentController.add(biometricHandler, name: "biometricSettings")
+
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.backgroundColor = .white
         wv.isOpaque = false   // Prevents black flash before page paints
@@ -28,7 +31,10 @@ final class WebViewStore: ObservableObject {
 
         self.webView = wv
         self.navigationDelegate = delegate
+        self.biometricHandler = biometricHandler
     }
+
+    private let biometricHandler: BiometricSettingsHandler
 
     func loadInitial() {
         webView.load(URLRequest(

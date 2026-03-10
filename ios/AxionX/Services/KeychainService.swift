@@ -1,27 +1,20 @@
 import Foundation
 import Security
 
-/// A minimal Keychain wrapper for storing the AxionX session cookie securely.
-/// Stored under kSecClassGenericPassword with device-only, when-unlocked protection.
 enum KeychainService {
 
     private static let service = "com.axionx.app"
-    private static let account = "session-cookie"
-
-    // MARK: - Public API
+    private static let sessionAccount = "session-cookie"
+    private static let tokenAccount   = "auth-token"
 
     static func save(_ data: Data) {
-        // Delete any existing item first
         delete()
-
         let query: [CFString: Any] = [
-            kSecClass:                kSecClassGenericPassword,
-            kSecAttrService:          service,
-            kSecAttrAccount:          account,
-            kSecValueData:            data,
-            // Accessible only on this device, when the device is unlocked.
-            // Using ThisDeviceOnly prevents migration to a new device via iCloud backup.
-            kSecAttrAccessible:       kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecClass:           kSecClassGenericPassword,
+            kSecAttrService:     service,
+            kSecAttrAccount:     sessionAccount,
+            kSecValueData:       data,
+            kSecAttrAccessible:  kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         SecItemAdd(query as CFDictionary, nil)
     }
@@ -30,7 +23,7 @@ enum KeychainService {
         let query: [CFString: Any] = [
             kSecClass:       kSecClassGenericPassword,
             kSecAttrService: service,
-            kSecAttrAccount: account,
+            kSecAttrAccount: sessionAccount,
             kSecReturnData:  true,
             kSecMatchLimit:  kSecMatchLimitOne,
         ]
@@ -44,10 +37,48 @@ enum KeychainService {
         let query: [CFString: Any] = [
             kSecClass:       kSecClassGenericPassword,
             kSecAttrService: service,
-            kSecAttrAccount: account,
+            kSecAttrAccount: sessionAccount,
         ]
         SecItemDelete(query as CFDictionary)
     }
 
     static var hasItem: Bool { load() != nil }
+
+    static func saveToken(_ token: String) {
+        deleteToken()
+        guard let data = token.data(using: .utf8) else { return }
+        let query: [CFString: Any] = [
+            kSecClass:           kSecClassGenericPassword,
+            kSecAttrService:     service,
+            kSecAttrAccount:     tokenAccount,
+            kSecValueData:       data,
+            kSecAttrAccessible:  kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        SecItemAdd(query as CFDictionary, nil)
+    }
+
+    static func loadToken() -> String? {
+        let query: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: tokenAccount,
+            kSecReturnData:  true,
+            kSecMatchLimit:  kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func deleteToken() {
+        let query: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: service,
+            kSecAttrAccount: tokenAccount,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
+    static var hasToken: Bool { loadToken() != nil }
 }

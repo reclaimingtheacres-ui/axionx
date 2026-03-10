@@ -135,6 +135,38 @@
 
 </form>
 
+{# ── Biometric Login (native wrapper only) ── #}
+<div id="biometricSection" style="display:none;">
+  <div style="padding: 4px 12px 6px;">
+    <div class="set-card-title">Biometric Login</div>
+  </div>
+  <div class="set-card">
+    <div class="set-row" id="biometricTypeRow">
+      <div>
+        <div class="set-label" id="biometricTypeLabel">Face ID / Touch ID</div>
+        <div class="set-sub" id="biometricStatusSub">Checking…</div>
+      </div>
+      <label class="m-toggle" id="biometricToggleWrap">
+        <input type="checkbox" id="biometricToggle" onchange="toggleBiometric(this.checked)">
+        <span class="m-toggle-slider"></span>
+      </label>
+    </div>
+    <div class="set-row" id="biometricResetRow" style="display:none;">
+      <div>
+        <div class="set-label">Reset Saved Login</div>
+        <div class="set-sub">Remove saved session from this device</div>
+      </div>
+      <button type="button" onclick="resetBiometricSession()" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:8px;padding:7px 14px;font-size:.82rem;font-weight:600;cursor:pointer;">Reset</button>
+    </div>
+    <div id="biometricNotAvailRow" class="set-row" style="display:none;">
+      <div>
+        <div class="set-label" style="color:#9ca3af;">Not Available</div>
+        <div class="set-sub">Face ID or Touch ID is not set up on this device</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {# ── Resources ── #}
 <div style="padding: 18px 12px 6px;">
   <div class="set-card-title">Resources</div>
@@ -169,5 +201,73 @@
     <a href="{{ url_for('m_logout') }}" class="m-btn m-btn-secondary">Sign Out</a>
   </div>
 </div>
+
+<script>
+var _isWrapper = navigator.userAgent.indexOf('AxionXiOS') !== -1;
+var _cbCounter = 0;
+var _cbMap = {};
+
+window._biometricCallback = function(id, data) {
+  if (_cbMap[id]) { _cbMap[id](data); delete _cbMap[id]; }
+};
+
+function bioBridge(action, cb) {
+  if (!window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.biometricSettings) return;
+  var cbId = 'bio_' + (++_cbCounter);
+  if (cb) _cbMap[cbId] = cb;
+  window.webkit.messageHandlers.biometricSettings.postMessage({action: action, callbackId: cbId});
+}
+
+function loadBiometricStatus() {
+  if (!_isWrapper) return;
+  document.getElementById('biometricSection').style.display = 'block';
+  bioBridge('getStatus', function(s) {
+    var label = document.getElementById('biometricTypeLabel');
+    var sub = document.getElementById('biometricStatusSub');
+    var toggle = document.getElementById('biometricToggle');
+    var toggleWrap = document.getElementById('biometricToggleWrap');
+    var resetRow = document.getElementById('biometricResetRow');
+    var typeRow = document.getElementById('biometricTypeRow');
+    var notAvail = document.getElementById('biometricNotAvailRow');
+
+    if (!s.available) {
+      typeRow.style.display = 'none';
+      notAvail.style.display = 'flex';
+      resetRow.style.display = 'none';
+      return;
+    }
+
+    label.textContent = s.type + ' Login';
+    toggle.checked = s.enabled;
+    toggleWrap.style.display = '';
+
+    if (s.enabled && s.hasToken) {
+      sub.textContent = 'Enabled — ' + s.type + ' will be used on next sign in';
+      resetRow.style.display = 'flex';
+    } else if (s.enabled && !s.hasToken) {
+      sub.textContent = 'Enabled — sign in once to save your session';
+      resetRow.style.display = 'none';
+    } else {
+      sub.textContent = 'Disabled — you will need to enter your password each time';
+      resetRow.style.display = 'none';
+    }
+  });
+}
+
+function toggleBiometric(on) {
+  bioBridge(on ? 'enable' : 'disable', function() {
+    loadBiometricStatus();
+  });
+}
+
+function resetBiometricSession() {
+  if (!confirm('This will remove your saved login. You will need to enter your password next time.')) return;
+  bioBridge('resetSession', function() {
+    loadBiometricStatus();
+  });
+}
+
+if (_isWrapper) { loadBiometricStatus(); }
+</script>
 
 {% endblock %}

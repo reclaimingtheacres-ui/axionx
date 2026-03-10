@@ -1,51 +1,36 @@
 import SwiftUI
 
-/// Native login screen.
-/// Full-screen AppBackground image — identical to the LaunchScreen — with a
-/// frosted-glass login panel over the lower half.
-///
-/// When a saved Keychain session exists, a Face ID / Touch ID button is shown
-/// at the top of the panel so the user can unlock without re-entering credentials.
-/// Manual email/password login always remains available as fallback.
 struct LoginView: View {
 
     var onLoginSuccess: () -> Void
 
-    // MARK: - State
-
-    @State private var email:          String = ""
-    @State private var password:       String = ""
-    @State private var isLoading:      Bool   = false
-    @State private var isBiometricBusy: Bool  = false
-    @State private var errorMessage:   String?
-    @State private var panelVisible:   Bool   = false
+    @State private var email:           String = ""
+    @State private var password:        String = ""
+    @State private var isLoading:       Bool   = false
+    @State private var isBiometricBusy: Bool   = false
+    @State private var errorMessage:    String?
+    @State private var panelVisible:    Bool   = false
+    @State private var showBiometricPrompt: Bool = false
+    @State private var pendingAuthToken: String?
 
     @FocusState private var focusedField: FormField?
     private enum FormField { case email, password }
 
-    // MARK: - Biometric helpers
-
     private var biometricType: BiometricType { BiometricAuthService.biometricType }
     private var showBiometric: Bool {
-        BiometricAuthService.hasSavedSession && biometricType != .none
+        BiometricAuthService.hasSavedToken && biometricType != .none
     }
 
-    // MARK: - Colours
-
     private let axionBlue = Color(red: 0.149, green: 0.388, blue: 0.922)
-
-    // MARK: - Body
 
     var body: some View {
         ZStack(alignment: .bottom) {
 
-            // ── Background image — identical to LaunchScreen ───────────────
             Image("AppBackground")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .ignoresSafeArea()
 
-            // ── Frosted glass login panel — lower portion ──────────────────
             if panelVisible {
                 loginPanel
                     .padding(.horizontal, 20)
@@ -53,9 +38,6 @@ struct LoginView: View {
                     .transition(.opacity.combined(with: .offset(y: 16)))
             }
 
-            // ── Non-production environment banner ─────────────────────────
-            // Visible in Staging and Local builds so testers are always aware
-            // they are NOT connected to the live production server.
             if !AppConfig.isProduction {
                 VStack {
                     environmentBanner
@@ -71,9 +53,34 @@ struct LoginView: View {
                 panelVisible = true
             }
         }
+        .alert(biometricPromptTitle, isPresented: $showBiometricPrompt) {
+            Button("Enable") {
+                if let token = pendingAuthToken {
+                    BiometricAuthService.saveToken(token)
+                }
+                pendingAuthToken = nil
+                withAnimation(.easeInOut(duration: 0.35)) { onLoginSuccess() }
+            }
+            Button("Not Now", role: .cancel) {
+                BiometricAuthService.setDeclined(true)
+                if let token = pendingAuthToken {
+                    Task { await LoginService.revokeToken(token) }
+                }
+                pendingAuthToken = nil
+                withAnimation(.easeInOut(duration: 0.35)) { onLoginSuccess() }
+            }
+        } message: {
+            Text(biometricPromptMessage)
+        }
     }
 
-    // MARK: - Environment banner
+    private var biometricPromptTitle: String {
+        "Enable \(biometricType.settingsLabel)?"
+    }
+
+    private var biometricPromptMessage: String {
+        "Use \(biometricType.settingsLabel) for faster, secure sign in next time you open AxionX."
+    }
 
     private var environmentBanner: some View {
         HStack(spacing: 6) {
@@ -99,12 +106,9 @@ struct LoginView: View {
         .background(Color(red: 1.0, green: 0.78, blue: 0.17))
     }
 
-    // MARK: - Login panel
-
     private var loginPanel: some View {
         VStack(spacing: 18) {
 
-            // ── Biometric button (shown only when a saved session exists) ──
             if showBiometric {
                 biometricButton
                     .padding(.bottom, 4)
@@ -112,7 +116,6 @@ struct LoginView: View {
                 divider
             }
 
-            // ── Panel heading ─────────────────────────────────────────────
             VStack(spacing: 3) {
                 Text("Sign In")
                     .font(.system(size: 20, weight: .semibold))
@@ -123,7 +126,6 @@ struct LoginView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // ── Email ─────────────────────────────────────────────────────
             VStack(alignment: .leading, spacing: 6) {
                 Text("Email")
                     .font(.system(size: 12, weight: .medium))
@@ -147,7 +149,6 @@ struct LoginView: View {
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.white.opacity(0.18), lineWidth: 1))
             }
 
-            // ── Password ──────────────────────────────────────────────────
             VStack(alignment: .leading, spacing: 6) {
                 Text("Password")
                     .font(.system(size: 12, weight: .medium))
@@ -169,7 +170,6 @@ struct LoginView: View {
                     .onSubmit { Task { await performLogin() } }
             }
 
-            // ── Inline error ──────────────────────────────────────────────
             if let msg = errorMessage {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill").font(.system(size: 13))
@@ -181,7 +181,6 @@ struct LoginView: View {
                 .animation(.easeInOut(duration: 0.2), value: errorMessage)
             }
 
-            // ── Sign In button ────────────────────────────────────────────
             Button(action: { Task { await performLogin() } }) {
                 ZStack {
                     if isLoading {
@@ -210,8 +209,6 @@ struct LoginView: View {
         .overlay { RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.14), lineWidth: 1) }
         .shadow(color: .black.opacity(0.4), radius: 32, x: 0, y: 12)
     }
-
-    // MARK: - Biometric button
 
     private var biometricButton: some View {
         Button(action: { Task { await tryBiometric() } }) {
@@ -247,8 +244,6 @@ struct LoginView: View {
         }
     }
 
-    // MARK: - Auth actions
-
     @MainActor
     private func tryBiometric() async {
         isBiometricBusy = true
@@ -259,12 +254,11 @@ struct LoginView: View {
             if injected {
                 withAnimation(.easeInOut(duration: 0.35)) { onLoginSuccess() }
             } else {
-                // Keychain session was expired — let the user log in manually
                 BiometricAuthService.clearSession()
                 errorMessage = "Your session has expired. Please sign in again."
             }
         } catch BiometricError.cancelled {
-            // User dismissed the prompt — do nothing
+            // User dismissed — do nothing
         } catch {
             errorMessage = "Biometric authentication failed."
         }
@@ -279,10 +273,23 @@ struct LoginView: View {
         isLoading     = true
         errorMessage  = nil
 
+        let needsToken = BiometricAuthService.shouldPromptOptIn || BiometricAuthService.isOptedIn
+
         do {
-            // loginAndPersist: authenticates, injects cookies, saves to Keychain
-            try await LoginService.loginAndPersist(email: email, password: password)
-            withAnimation(.easeInOut(duration: 0.35)) { onLoginSuccess() }
+            let result = try await LoginService.loginAndPersist(
+                email: email, password: password, requestToken: needsToken
+            )
+
+            if let token = result.authToken, BiometricAuthService.shouldPromptOptIn {
+                pendingAuthToken = token
+                isLoading = false
+                showBiometricPrompt = true
+            } else if let token = result.authToken, BiometricAuthService.isOptedIn {
+                BiometricAuthService.saveToken(token)
+                withAnimation(.easeInOut(duration: 0.35)) { onLoginSuccess() }
+            } else {
+                withAnimation(.easeInOut(duration: 0.35)) { onLoginSuccess() }
+            }
         } catch LoginError.invalidCredentials {
             withAnimation { errorMessage = "Incorrect email or password." }
             isLoading = false
@@ -295,8 +302,6 @@ struct LoginView: View {
         }
     }
 }
-
-// MARK: - Preview
 
 #Preview {
     LoginView(onLoginSuccess: {})
