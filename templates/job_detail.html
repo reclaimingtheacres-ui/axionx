@@ -264,29 +264,38 @@
         <div style="padding:.75rem .9rem;border-radius:10px;background:rgba(37,99,235,.06);">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="small fw-bold" style="color:#2563eb;letter-spacing:.04em">CLIENT</div>
-            {% if session.get('role') == 'admin' %}
+            {% if session.get('role') in ('admin', 'both') %}
               {% if job.client_id %}
-                <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axEditClient({{ job.client_id }})">Edit</button>
+                <div class="d-flex gap-1">
+                  <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axEditClient({{ job.client_id }})">Edit</button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenAddClient()">Change</button>
+                </div>
               {% else %}
-                <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenEditJobForClient()">+ Add Client</button>
+                <button type="button" class="btn btn-primary btn-sm" style="font-size:.72rem;padding:3px 10px" onclick="axOpenAddClient()">+ Add Client</button>
               {% endif %}
             {% endif %}
           </div>
-          <div class="fw-semibold small">
-            <span class="client-name-display">{{ job.client_name or "—" }}</span>
-            {% if job.client_nickname %}
-              <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
-            {% endif %}
-          </div>
-          {% if job.client_phone %}
-            <div class="small mt-1">
-              <span class="ax-ph" onclick="axPhone('{{ job.client_phone }}',event)">{{ job.client_phone }}</span>
+          <div id="clientCardBody">
+          {% if job.client_id %}
+            <div class="fw-semibold small">
+              <span class="client-name-display">{{ job.client_name or "—" }}</span>
+              {% if job.client_nickname %}
+                <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
+              {% endif %}
             </div>
+            {% if job.client_phone %}
+              <div class="small mt-1">
+                <span class="ax-ph" onclick="axPhone('{{ job.client_phone }}',event)">{{ job.client_phone }}</span>
+              </div>
+            {% endif %}
+            {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
+            {% if job.bill_to_client_name and job.bill_to_client_name != job.client_name %}
+              <div class="small mt-1" style="color:var(--muted)">Bill to: <strong style="color:var(--text)">{{ job.bill_to_client_name }}</strong></div>
+            {% endif %}
+          {% else %}
+            <div class="small" style="color:#ef4444;font-weight:600;">Not linked — use Add Client to assign</div>
           {% endif %}
-          {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
-          {% if job.bill_to_client_name and job.bill_to_client_name != job.client_name %}
-            <div class="small mt-1" style="color:var(--muted)">Bill to: <strong style="color:var(--text)">{{ job.bill_to_client_name }}</strong></div>
-          {% endif %}
+          </div>
         </div>
       </div>
 
@@ -3607,22 +3616,257 @@ function doSendMsg() {
 })();
 </script>
 
-<!-- ===== EDIT CLIENT HELPERS ===== -->
-{% if session.get('role') == 'admin' %}
+<!-- ===== ADD / CHANGE CLIENT MODAL ===== -->
+{% if session.get('role') in ('admin', 'both') %}
+<div class="modal fade" id="addClientModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
+    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:14px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);padding:14px 20px">
+        <h5 class="modal-title" style="font-size:1rem;font-weight:700;color:var(--text)">
+          {% if job.client_id %}Change Client{% else %}Add Client{% endif %}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <div style="background:var(--bg, #f8f9fa);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:.82rem;">
+          <div style="color:var(--muted);font-size:.72rem;font-weight:600;letter-spacing:.04em;margin-bottom:3px;">JOB CONTEXT</div>
+          <div><strong>{{ job.display_ref }}</strong>{% if job.customer_name %} — {{ job.customer_name }}{% endif %}</div>
+          <div style="color:var(--muted);">Current client: <strong style="color:{% if job.client_id %}var(--text){% else %}#ef4444{% endif %}">{{ job.client_name or 'Not linked' }}</strong></div>
+        </div>
+
+        <div id="acAlertBox" class="alert" style="display:none;font-size:.85rem;margin-bottom:14px"></div>
+
+        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Search or Create Client</label>
+        <div class="position-relative" style="margin-bottom:8px;">
+          <input type="text" class="form-control" id="ac_search"
+                 placeholder="Type client name…" autocomplete="off" spellcheck="false"
+                 value="{{ job.lender_name or '' }}">
+          <input type="hidden" id="ac_client_id" value="">
+          <div id="ac_drop" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15)"></div>
+        </div>
+        <div id="ac_selected_info" style="display:none;padding:8px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:8px;font-size:.84rem;color:#16a34a;margin-bottom:4px;">
+          <strong id="ac_selected_name"></strong> selected
+        </div>
+        <div id="ac_new_info" style="display:none;padding:8px 12px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.25);border-radius:8px;font-size:.84rem;color:#2563eb;margin-bottom:4px;">
+          New client: <strong id="ac_new_name"></strong>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);padding:12px 20px;gap:8px">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="acSaveBtn" onclick="axSaveLinkClient()">Save &amp; Link</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-function axOpenEditJobForClient() {
-  var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editJobModal'));
-  modal.show();
-  setTimeout(function() {
-    var el = document.getElementById('ej_client_search');
-    if (el) { el.focus(); el.scrollIntoView({behavior:'smooth', block:'center'}); }
-  }, 350);
-}
+(function(){
+  var AC_DATA = [
+    {% for c in all_clients %}{"id":{{ c.id }},"label":{{ c.name|tojson }},"nick":{{ (c.nickname or '')|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+  ];
+  var acSearch = document.getElementById('ac_search');
+  var acHidden = document.getElementById('ac_client_id');
+  var acDrop   = document.getElementById('ac_drop');
+  var acSelInfo = document.getElementById('ac_selected_info');
+  var acSelName = document.getElementById('ac_selected_name');
+  var acNewInfo = document.getElementById('ac_new_info');
+  var acNewName = document.getElementById('ac_new_name');
+  var lenderHint = {{ (job.lender_name or '')|tojson }};
+
+  function acRender(items, q){
+    acDrop.innerHTML = '';
+    items.slice(0,15).forEach(function(item){
+      var div = document.createElement('div');
+      div.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:.88rem;border-bottom:1px solid var(--line);color:var(--text)';
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent = item.label;
+      div.appendChild(nameSpan);
+      if(item.nick){
+        var nickSpan = document.createElement('span');
+        nickSpan.textContent = ' (' + item.nick + ')';
+        nickSpan.style.cssText = 'color:var(--muted);font-size:.78rem';
+        div.appendChild(nickSpan);
+      }
+      div.addEventListener('mousedown', function(e){ e.preventDefault(); acSelect(item); });
+      div.addEventListener('mouseenter', function(){ div.style.background='rgba(96,165,250,.12)'; });
+      div.addEventListener('mouseleave', function(){ div.style.background=''; });
+      acDrop.appendChild(div);
+    });
+    if(q && q.length >= 2 && !items.some(function(i){ return i.label.toLowerCase() === q.toLowerCase(); })){
+      var addDiv = document.createElement('div');
+      addDiv.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:.88rem;color:#2563eb;font-weight:600;background:rgba(37,99,235,.04)';
+      addDiv.textContent = '+ Create new client: ' + q;
+      addDiv.addEventListener('mousedown', function(e){
+        e.preventDefault();
+        acHidden.value = '';
+        acSearch.value = q;
+        acSelInfo.style.display = 'none';
+        acNewInfo.style.display = '';
+        acNewName.textContent = q;
+        acDrop.style.display = 'none';
+        acSearch.style.borderColor = '#2563eb';
+        acSearch.style.boxShadow = '0 0 0 2px rgba(37,99,235,.25)';
+      });
+      addDiv.addEventListener('mouseenter', function(){ addDiv.style.background='rgba(37,99,235,.1)'; });
+      addDiv.addEventListener('mouseleave', function(){ addDiv.style.background='rgba(37,99,235,.04)'; });
+      acDrop.appendChild(addDiv);
+    }
+    acDrop.style.display = items.length || (q && q.length >= 2) ? '' : 'none';
+  }
+
+  function acSelect(item){
+    acSearch.value = item.label;
+    acHidden.value = item.id;
+    acDrop.style.display = 'none';
+    acSelInfo.style.display = '';
+    acSelName.textContent = item.label + (item.nick ? ' (' + item.nick + ')' : '');
+    acNewInfo.style.display = 'none';
+    acSearch.style.borderColor = '#22c55e';
+    acSearch.style.boxShadow = '0 0 0 2px rgba(34,197,94,.25)';
+  }
+
+  function acFilter(){
+    var q = acSearch.value.trim().toLowerCase();
+    acHidden.value = '';
+    acSelInfo.style.display = 'none';
+    acNewInfo.style.display = 'none';
+    acSearch.style.borderColor = '';
+    acSearch.style.boxShadow = '';
+    if(!q){ acDrop.style.display = 'none'; return; }
+    var matches = AC_DATA.filter(function(d){
+      return d.label.toLowerCase().indexOf(q) !== -1 || (d.nick && d.nick.toLowerCase().indexOf(q) !== -1);
+    });
+    acRender(matches, acSearch.value.trim());
+  }
+
+  acSearch.addEventListener('input', acFilter);
+  acSearch.addEventListener('focus', function(){
+    var q = acSearch.value.trim().toLowerCase();
+    if(q){
+      var matches = AC_DATA.filter(function(d){
+        return d.label.toLowerCase().indexOf(q) !== -1 || (d.nick && d.nick.toLowerCase().indexOf(q) !== -1);
+      });
+      acRender(matches, acSearch.value.trim());
+    } else {
+      acRender(AC_DATA.slice(0, 15), '');
+    }
+  });
+  acSearch.addEventListener('blur', function(){ setTimeout(function(){ acDrop.style.display='none'; }, 250); });
+
+  window.axOpenAddClient = function(){
+    var alertBox = document.getElementById('acAlertBox');
+    alertBox.style.display = 'none';
+    acHidden.value = '';
+    acSelInfo.style.display = 'none';
+    acNewInfo.style.display = 'none';
+    acSearch.style.borderColor = '';
+    acSearch.style.boxShadow = '';
+    if(lenderHint && !acSearch.value.trim()){
+      acSearch.value = lenderHint;
+    }
+    var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('addClientModal'));
+    modal.show();
+    setTimeout(function(){
+      acSearch.focus();
+      acSearch.select();
+      if(acSearch.value.trim()) acFilter();
+    }, 300);
+  };
+
+  window.axSaveLinkClient = function(){
+    var btn = document.getElementById('acSaveBtn');
+    var alertBox = document.getElementById('acAlertBox');
+    alertBox.style.display = 'none';
+    var clientId = acHidden.value;
+    var newName  = (!clientId && acSearch.value.trim()) ? acSearch.value.trim() : '';
+    if(!clientId && !newName){
+      alertBox.className = 'alert alert-warning';
+      alertBox.textContent = 'Please select an existing client or type a name to create one.';
+      alertBox.style.display = '';
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    var body = new URLSearchParams();
+    if(clientId) body.append('client_id', clientId);
+    if(newName)  body.append('new_client_name', newName);
+    fetch('/jobs/{{ job.id }}/link-client', {
+      method: 'POST',
+      headers: {'X-Requested-With':'XMLHttpRequest'},
+      body: body,
+      credentials: 'include'
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      btn.disabled = false;
+      btn.textContent = 'Save & Link';
+      if(!data.ok){
+        alertBox.className = 'alert alert-danger';
+        alertBox.textContent = data.error || 'Save failed.';
+        alertBox.style.display = '';
+        return;
+      }
+      var c = data.client;
+      var card = document.getElementById('clientCardBody');
+      card.innerHTML = '';
+      var nameDiv = document.createElement('div');
+      nameDiv.className = 'fw-semibold small';
+      var nameSpan = document.createElement('span');
+      nameSpan.className = 'client-name-display';
+      nameSpan.textContent = c.name;
+      nameDiv.appendChild(nameSpan);
+      if(c.nickname){
+        var nick = document.createElement('span');
+        nick.className = 'badge ms-1 py-0 px-1';
+        nick.style.cssText = 'font-size:.68rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;';
+        nick.textContent = c.nickname;
+        nameDiv.appendChild(nick);
+      }
+      card.appendChild(nameDiv);
+      if(c.phone){
+        var phoneDiv = document.createElement('div');
+        phoneDiv.className = 'small mt-1';
+        phoneDiv.textContent = c.phone;
+        card.appendChild(phoneDiv);
+      }
+      if(c.email){
+        var emailDiv = document.createElement('div');
+        emailDiv.className = 'small';
+        emailDiv.textContent = c.email;
+        card.appendChild(emailDiv);
+      }
+      var successDiv = document.createElement('div');
+      successDiv.className = 'small mt-1';
+      successDiv.style.cssText = 'color:#16a34a;font-weight:600;';
+      successDiv.textContent = data.message;
+      card.appendChild(successDiv);
+
+      var headerBtns = card.closest('.col-12').querySelector('.d-flex.justify-content-between .d-flex.gap-1, .d-flex.justify-content-between .btn-primary');
+      if(headerBtns){
+        var parent = headerBtns.parentNode;
+        var newBtns = document.createElement('div');
+        newBtns.className = 'd-flex gap-1';
+        newBtns.innerHTML = '<button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axEditClient('+c.id+')">Edit</button>'
+          + '<button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenAddClient()">Change</button>';
+        parent.replaceChild(newBtns, headerBtns);
+      }
+
+      bootstrap.Modal.getInstance(document.getElementById('addClientModal')).hide();
+    })
+    .catch(function(){
+      btn.disabled = false;
+      btn.textContent = 'Save & Link';
+      alertBox.className = 'alert alert-danger';
+      alertBox.textContent = 'Network error — please try again.';
+      alertBox.style.display = '';
+    });
+  };
+})();
 </script>
 {% endif %}
 
 <!-- ===== EDIT CLIENT MODAL ===== -->
-{% if session.get('role') == 'admin' and job.client_id %}
+{% if session.get('role') in ('admin', 'both') and job.client_id %}
 <div class="modal fade" id="editClientModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:14px;">

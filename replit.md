@@ -37,6 +37,14 @@ Axion Prototype is a Flask-based field operations management application designe
 - If GPS permission is denied, falls back to Visit Date sort with a warning banner.
 - Distance calculated client-side using Haversine formula with server-assisted batch geocoding for missing coordinates.
 
+**2d. Add Client Workflow (Import Repair):**
+- Dedicated **Add Client modal** (`#addClientModal`) for linking a missing client to a job — separate from Edit Job.
+- AJAX-based `POST /jobs/<id>/link-client` route: links existing client or creates and links new client in a single transaction with audit logging.
+- Smart suggestions: if the imported job has a `lender_name`, the search field pre-fills it so likely client matches appear immediately.
+- Inline client card update after save — no page reload. Success confirmation shown in place.
+- Button states: **Add Client** (when no client), **Edit** + **Change** (when client exists). Edit Client and Change Client are separate workflows.
+- Null-safe handling in Edit Job route: `customer_id` safely parsed, `job_type`/`visit_type`/`status`/`priority` default to safe values if missing (fixes Internal Server Error on imported jobs).
+
 **3. Cues System:** Manages `cue_items` (scheduled tasks) with properties like date, visit type, priority, and agent assignment. Supports daily cue access for agents and drag-and-drop assignment for admins, with automatic cue generation for overdue or upcoming schedules.
 
 **4. Audit Log:** Logs all significant system actions, accessible via the admin dashboard.

@@ -2861,7 +2861,7 @@ def job_detail(job_id: int):
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
 
-    cur.execute("SELECT id, name FROM clients ORDER BY name")
+    cur.execute("SELECT id, name, nickname FROM clients ORDER BY name")
     all_clients = cur.fetchall()
 
     cur.execute("SELECT id, first_name, last_name, company, address FROM customers ORDER BY last_name, first_name")
@@ -3736,11 +3736,12 @@ def job_edit(job_id: int):
     client_reference  = request.form.get("client_reference", "").strip() or None
     client_job_number = request.form.get("client_job_number", "").strip() or None
     client_id         = request.form.get("client_id") or None
-    customer_id       = request.form.get("customer_id") or None
-    job_type          = request.form.get("job_type", "").strip()
-    visit_type        = request.form.get("visit_type", "").strip()
-    status            = request.form.get("status", "").strip()
-    priority          = request.form.get("priority", "").strip()
+    _cust_raw         = request.form.get("customer_id", "").strip()
+    customer_id       = int(_cust_raw) if _cust_raw.isdigit() else None
+    job_type          = request.form.get("job_type", "").strip() or "Recovery"
+    visit_type        = request.form.get("visit_type", "").strip() or "Initial"
+    status            = request.form.get("status", "").strip() or "Active"
+    priority          = request.form.get("priority", "").strip() or "Normal"
     job_address       = request.form.get("job_address", "").strip() or None
     description       = request.form.get("description", "").strip() or None
     assigned_user_id  = request.form.get("assigned_user_id") or None
@@ -3774,16 +3775,15 @@ def job_edit(job_id: int):
           job_address, description, assigned_user_id,
           now, job_id))
 
-    # Sync primary job_customers entry if customer changed
     if customer_id:
         cur.execute("SELECT id FROM job_customers WHERE job_id = ? AND role = 'Primary'", (job_id,))
         existing = cur.fetchone()
         if existing:
             cur.execute("UPDATE job_customers SET customer_id = ? WHERE id = ?",
-                        (int(customer_id), existing["id"]))
+                        (customer_id, existing["id"]))
         else:
             cur.execute("""INSERT INTO job_customers (job_id, customer_id, role, sort_order, created_at)
-                           VALUES (?, ?, 'Primary', 0, ?)""", (job_id, int(customer_id), now))
+                           VALUES (?, ?, 'Primary', 0, ?)""", (job_id, customer_id, now))
 
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
@@ -3798,6 +3798,61 @@ def job_edit(job_id: int):
 
     flash("Job updated.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/link-client")
+@login_required
+@admin_required
+def job_link_client(job_id: int):
+    conn = db()
+    cur = conn.cursor()
+    job = cur.execute("SELECT id, internal_job_number, display_ref FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+
+    client_id = request.form.get("client_id", "").strip()
+    new_client_name = " ".join(request.form.get("new_client_name", "").split()).strip()
+    now = now_ts()
+    action_label = ""
+
+    try:
+        if client_id and client_id.isdigit():
+            client = cur.execute("SELECT id, name, nickname, email, phone FROM clients WHERE id=?", (int(client_id),)).fetchone()
+            if not client:
+                conn.close()
+                return jsonify({"ok": False, "error": "Selected client not found."}), 404
+            cur.execute("UPDATE jobs SET client_id=?, updated_at=? WHERE id=?", (int(client_id), now, job_id))
+            action_label = f"Client linked: {client['name']}"
+            result_client = {"id": client["id"], "name": client["name"], "nickname": client["nickname"] or "", "email": client["email"] or "", "phone": client["phone"] or ""}
+        elif new_client_name:
+            existing = cur.execute("SELECT id, name, nickname, email, phone FROM clients WHERE LOWER(TRIM(name))=LOWER(?)", (new_client_name,)).fetchone()
+            if existing:
+                cur.execute("UPDATE jobs SET client_id=?, updated_at=? WHERE id=?", (existing["id"], now, job_id))
+                action_label = f"Client linked (existing match): {existing['name']}"
+                result_client = {"id": existing["id"], "name": existing["name"], "nickname": existing["nickname"] or "", "email": existing["email"] or "", "phone": existing["phone"] or ""}
+            else:
+                cur.execute("INSERT INTO clients (name, created_at) VALUES (?, ?)", (new_client_name, now))
+                new_id = cur.lastrowid
+                cur.execute("UPDATE jobs SET client_id=?, updated_at=? WHERE id=?", (new_id, now, job_id))
+                action_label = f"Client created and linked: {new_client_name}"
+                result_client = {"id": new_id, "name": new_client_name, "nickname": "", "email": "", "phone": ""}
+        else:
+            conn.close()
+            return jsonify({"ok": False, "error": "Please select an existing client or enter a name to create one."})
+
+        cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                       VALUES (?, 'Client Link', ?, ?, ?)""", (job_id, action_label, now, now))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": "An unexpected error occurred. Please try again."}), 500
+
+    conn.close()
+    return jsonify({"ok": True, "message": action_label, "client": result_client})
 
 
 @app.post("/jobs/<int:job_id>/lender")
