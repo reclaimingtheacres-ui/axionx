@@ -68,9 +68,14 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **7. Job Creation Enhancements:** Improved job creation flow with client job number tracking, reference search, and a "Clone" functionality for pre-filling new job forms.
 
-**8. CSV Job Import:** Allows bulk import of job data via CSV files, with duplicate handling.
+**8. CSV Job Import:** Bulk import of job data via CSV files, with duplicate handling. Accessed from Settings & Resources → Import & Data tab (no longer in the main nav). Form posts to `POST /import/jobs`, redirects back to settings after completion. `GET /import/jobs` redirects to `/admin/settings#import-data`.
 
-**8a. Duplicate Finder (Settings):** Two-mode duplicate detection tool on the Settings page (2nd tab position):
+**8a. Import & Data Management (Settings):** The "Import & Data" tab in Settings groups all data management tools:
+- **Import Jobs**: CSV upload form (inline within settings)
+- **Duplicate Finder**: Quick link to the Duplicate Finder tab
+- **Future placeholders**: Data Repair Tools, Bulk Client Linking, System Data Cleanup, Import History (structured but not yet implemented)
+
+**8b. Duplicate Finder (Settings):** Two-mode duplicate detection tool on the Settings page:
 - **Database Scan:** Finds duplicate jobs (by job number or account number) and duplicate clients (by name) already in the system.
 - **CSV File Scan:** Multi-file upload (accepts multiple CSVs at once) checks for duplicates within the selected files and against existing database records before import.
 - All delete operations use AJAX (`/admin/api/duplicates/delete-job`, `/admin/api/duplicates/delete-client`) so users stay on the Settings page — no redirect to Jobs or Clients lists.

@@ -41,7 +41,7 @@
       <a class="nav-link" href="#job-numbers" data-tab="job-numbers">Job Number Settings</a>
     </li>
     <li class="nav-item">
-      <a class="nav-link" href="#duplicate-finder" data-tab="duplicate-finder">&#128270; Duplicate Finder</a>
+      <a class="nav-link" href="#import-data" data-tab="import-data">Import & Data</a>
     </li>
     <li class="nav-item">
       <a class="nav-link" href="#booking-types" data-tab="booking-types">Booking Types</a>
@@ -95,6 +95,91 @@
       </form>
     </div>
   </div>
+</div>
+
+<!-- TAB: Import & Data Management -->
+<div class="tab-pane-custom" id="tab-import-data" style="display:none">
+
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">Import Jobs from CSV</div>
+    <div class="ax-card-b">
+      <p class="small mb-3" style="color:var(--muted)">
+        Upload a GeoOp CSV export to bulk-import jobs. Duplicate job numbers are automatically skipped.
+      </p>
+
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-bordered small mb-2">
+          <thead class="table-light">
+            <tr><th>GeoOp Column</th><th>Maps To</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>InternalJobNumber</code></td><td>Job Number</td><td><strong>Required.</strong> Duplicate numbers are skipped.</td></tr>
+            <tr><td><code>ClientReference</code></td><td>Contract Number</td><td></td></tr>
+            <tr><td><code>Job Start Date</code></td><td>Due Date</td><td>Format: 27-Mar-26 or DD/MM/YYYY</td></tr>
+            <tr><td><code>Job Address 1, 2, City, State, Postcode</code></td><td>Job Address</td><td>Combined into a single address</td></tr>
+            <tr><td><code>JobType</code></td><td>Job Type</td><td>Detects: Repo/Collect, Field Call, etc.</td></tr>
+            <tr><td><code>Status</code></td><td>Status</td><td>Mapped to Axion statuses</td></tr>
+            <tr><td><code>Priority</code></td><td>Priority</td><td>Normal, High, Urgent, Low</td></tr>
+            <tr><td><code>Job Description</code></td><td>Description</td><td></td></tr>
+            <tr><td><code>Bill Client Code</code></td><td>Client</td><td>Matched by initials</td></tr>
+            <tr><td><code>Staff</code></td><td>Assigned Agent</td><td>Matched by first name</td></tr>
+            <tr><td><code>Customer fields</code></td><td>Customer</td><td>Creates or matches existing customer</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="small mb-3" style="color:var(--muted)">
+        <strong>Duplicate rows:</strong> Same <code>InternalJobNumber</code> across multiple rows are deduplicated — only the first row is imported.<br>
+        <strong>Unknown client codes:</strong> Unmatched codes create a new client record using the code as the name.
+      </div>
+
+      <form method="post" action="/import/jobs" enctype="multipart/form-data">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <input class="form-control form-control-sm" type="file" name="file" accept=".csv" required style="max-width:400px">
+          <button class="btn btn-primary btn-sm">Upload &amp; Import</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">Duplicate Finder</div>
+    <div class="ax-card-b">
+      <p class="small mb-2" style="color:var(--muted)">
+        Scan for duplicate jobs and clients in the database, or check CSV files before importing.
+      </p>
+      <button class="btn btn-outline-primary btn-sm" onclick="showTab('duplicate-finder')">Open Duplicate Finder</button>
+    </div>
+  </div>
+
+  <div class="ax-card mb-4">
+    <div class="ax-card-h" style="color:var(--muted)">Coming Soon</div>
+    <div class="ax-card-b">
+      <div class="row g-3">
+        <div class="col-sm-6 col-lg-4">
+          <div style="padding:12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.85rem">
+            <strong>Data Repair Tools</strong><br>Fix incomplete or malformed records
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-4">
+          <div style="padding:12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.85rem">
+            <strong>Bulk Client Linking</strong><br>Link multiple jobs to clients at once
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-4">
+          <div style="padding:12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.85rem">
+            <strong>System Data Cleanup</strong><br>Archive old data and clean records
+          </div>
+        </div>
+        <div class="col-sm-6 col-lg-4">
+          <div style="padding:12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.85rem">
+            <strong>Import History</strong><br>Review previous import logs
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- TAB: Booking Types -->
@@ -809,7 +894,7 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 });
 
 (function() {
-  var validTabs = ['job-numbers', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder'];
+  var validTabs = ['job-numbers', 'import-data', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder'];
   var hash = location.hash.replace('#', '');
   showTab(validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers');
 })();

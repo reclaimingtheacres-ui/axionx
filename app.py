@@ -7298,7 +7298,7 @@ def user_delete(user_id: int):
 @app.get("/import/jobs")
 @admin_required
 def import_jobs_form():
-    return render_template("import_jobs.html")
+    return redirect(url_for("admin_settings") + "#import-data")
 
 
 @app.post("/import/jobs")
@@ -7307,7 +7307,7 @@ def import_jobs():
     file = request.files.get("file")
     if not file:
         flash("No file uploaded.", "danger")
-        return redirect(url_for("import_jobs_form"))
+        return redirect(url_for("admin_settings") + "#import-data")
 
     conn = db()
     cur = conn.cursor()
@@ -7573,7 +7573,7 @@ def import_jobs():
             f"Go to Clients to update their full names."
         )
     flash(msg, "success")
-    return redirect(url_for("import_jobs_form"))
+    return redirect(url_for("admin_settings") + "#import-data")
 
 
 # -------- Admin dashboard --------
