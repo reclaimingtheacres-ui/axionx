@@ -4567,12 +4567,36 @@ def interaction_add(job_id: int):
 @login_required
 @admin_required
 def clients_list():
+    q = request.args.get("q", "").strip()
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM clients ORDER BY name")
+    if q:
+        like = f"%{q}%"
+        cur.execute("""
+            SELECT DISTINCT c.* FROM clients c
+            LEFT JOIN contact_phone_numbers cp ON cp.entity_type='client' AND cp.entity_id=c.id
+            LEFT JOIN contact_emails ce ON ce.entity_type='client' AND ce.entity_id=c.id
+            WHERE c.name LIKE ? COLLATE NOCASE
+               OR c.nickname LIKE ? COLLATE NOCASE
+               OR c.phone LIKE ? COLLATE NOCASE
+               OR c.email LIKE ? COLLATE NOCASE
+               OR c.address LIKE ? COLLATE NOCASE
+               OR c.notes LIKE ? COLLATE NOCASE
+               OR cp.phone_number LIKE ? COLLATE NOCASE
+               OR ce.email LIKE ? COLLATE NOCASE
+            ORDER BY c.name
+        """, (like, like, like, like, like, like, like, like))
+    else:
+        cur.execute("SELECT * FROM clients ORDER BY name")
     rows = cur.fetchall()
     conn.close()
-    return render_template("clients.html", clients=rows)
+    if request.headers.get("X-Requested-With") == "search":
+        results = []
+        for c in rows:
+            results.append({"id": c["id"], "name": c["name"],
+                            "email": c["email"] or "", "address": c["address"] or ""})
+        return jsonify(results)
+    return render_template("clients.html", clients=rows, search_q=q)
 
 
 
@@ -4894,12 +4918,45 @@ def api_client_get(client_id: int):
 @login_required
 @admin_required
 def customers_list():
+    q = request.args.get("q", "").strip()
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM customers ORDER BY last_name, first_name")
+    if q:
+        like = f"%{q}%"
+        cur.execute("""
+            SELECT DISTINCT cu.* FROM customers cu
+            LEFT JOIN contact_phone_numbers cp ON cp.entity_type='customer' AND cp.entity_id=cu.id
+            LEFT JOIN contact_emails ce ON ce.entity_type='customer' AND ce.entity_id=cu.id
+            LEFT JOIN jobs j ON j.customer_id=cu.id
+            LEFT JOIN job_customers jc ON jc.customer_id=cu.id
+            LEFT JOIN jobs j2 ON j2.id=jc.job_id
+            WHERE cu.first_name LIKE ? COLLATE NOCASE
+               OR cu.last_name LIKE ? COLLATE NOCASE
+               OR (cu.first_name || ' ' || cu.last_name) LIKE ? COLLATE NOCASE
+               OR (cu.last_name || ', ' || cu.first_name) LIKE ? COLLATE NOCASE
+               OR cu.company LIKE ? COLLATE NOCASE
+               OR cu.email LIKE ? COLLATE NOCASE
+               OR cu.address LIKE ? COLLATE NOCASE
+               OR cp.phone_number LIKE ? COLLATE NOCASE
+               OR ce.email LIKE ? COLLATE NOCASE
+               OR j.client_reference LIKE ? COLLATE NOCASE
+               OR j.account_number LIKE ? COLLATE NOCASE
+               OR j2.client_reference LIKE ? COLLATE NOCASE
+               OR j2.account_number LIKE ? COLLATE NOCASE
+            ORDER BY cu.last_name, cu.first_name
+        """, (like,) * 13)
+    else:
+        cur.execute("SELECT * FROM customers ORDER BY last_name, first_name")
     rows = cur.fetchall()
     conn.close()
-    return render_template("customers.html", customers=rows)
+    if request.headers.get("X-Requested-With") == "search":
+        results = []
+        for c in rows:
+            results.append({"id": c["id"], "first_name": c["first_name"],
+                            "last_name": c["last_name"], "company": c["company"] or "",
+                            "id_image_path": c["id_image_path"] or ""})
+        return jsonify(results)
+    return render_template("customers.html", customers=rows, search_q=q)
 
 
 @app.post("/customers/delete")

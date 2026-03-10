@@ -126,6 +126,18 @@ Axion Prototype is a Flask-based field operations management application designe
 - Job-linked conversations show a yellow banner with clickable link to the job.
 - Shared API: `GET /api/messages/unread-count`, `POST /messages/<conv_id>/read`
 
+**16. Customer & Client List Search:**
+- Both `/customers` and `/clients` pages include a search field at the top of the list.
+- **Customer search** queries: first_name, last_name, full name (both orders), company, email, address, phone numbers (via contact_phone_numbers), emails (via contact_emails), and linked job references (client_reference, account_number).
+- **Client search** queries: name, nickname, phone, email, address, notes, and linked phone numbers/emails from contact tables.
+- All searches: partial match, case-insensitive, trimmed input, debounced 300ms search-as-you-type.
+- Server-backed via `X-Requested-With: search` header returning JSON — searches full dataset, not just visible rows.
+- Search persistence: `sessionStorage` saves the active query so navigating to a record and coming back restores the search.
+- Clear button (×) and Escape key reset search and restore full list.
+- Empty results show "No customers or contacts found" / "No clients found".
+- Result count shown below search field.
+- Consistent UI between both lists: identical field placement, placeholder style, clear button, status line.
+
 **15. Customer Call/SMS Actions:**
 - `customer_detail.html`: Phone numbers show inline Call (green) + SMS (blue) buttons with `tel:` and `sms:` schemes.
 - `job_detail.html`: Linked customer rows show primary phone with Call + SMS buttons. Client phone shows Call button.

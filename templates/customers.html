@@ -15,6 +15,18 @@
     </div>
   </div>
 
+  <div class="px-3 pt-3 pb-2" style="border-bottom:1px solid var(--line)">
+    <div class="position-relative">
+      <input type="text" id="custSearch" class="form-control form-control-sm"
+             placeholder="Search customer, contact, phone, email, address..."
+             value="{{ search_q|default('',true) }}" autocomplete="off"
+             style="padding-right:2.2rem">
+      <button type="button" id="custSearchClear" class="btn btn-link btn-sm position-absolute end-0 top-50 translate-middle-y text-decoration-none"
+              style="color:var(--muted);font-size:1.1rem;display:none;line-height:1;padding:0 .5rem" title="Clear search">&times;</button>
+    </div>
+    <div id="custSearchStatus" class="small mt-1" style="color:var(--muted);display:none"></div>
+  </div>
+
   {% if session.get('role') == 'admin' and customers %}
   <div id="custWarning" style="display:none; background:rgba(220,38,38,.08); border-bottom:1px solid rgba(220,38,38,.20); padding:10px 20px;">
     <span style="color:#dc2626; font-size:.875rem;">&#9888; Warning: deleting a customer is permanent and cannot be undone. Customers with linked jobs will be skipped.</span>
@@ -23,7 +35,7 @@
 
   <div class="ax-card-b">
     {% if session.get('role') == 'admin' and customers %}
-    <div class="px-3 py-2 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
+    <div id="custSelectRow" class="px-3 py-2 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
       <input type="checkbox" id="custSelectAll" class="form-check-input mt-0"
              onchange="custToggleAll(this)" title="Select all">
       <label for="custSelectAll" class="small mb-0" style="color:var(--muted);cursor:pointer">Select all</label>
@@ -31,7 +43,7 @@
     {% endif %}
 
     <form id="custDeleteForm" method="post" action="/customers/delete">
-      <div class="list-group list-group-flush">
+      <div id="custListContainer" class="list-group list-group-flush">
         {% for c in customers %}
           <div class="list-group-item d-flex align-items-center gap-3 px-3" style="background:transparent;border-color:var(--line)">
             {% if session.get('role') == 'admin' %}
@@ -54,26 +66,133 @@
   </div>
 </div>
 
-{% if session.get('role') == 'admin' %}
 <script>
-  function custUpdateDeleteBtn() {
-    var checked = document.querySelectorAll('.cust-cb:checked').length;
-    var btn = document.getElementById('custDeleteBtn');
-    var warn = document.getElementById('custWarning');
-    if (btn) btn.style.display = checked > 0 ? '' : 'none';
-    if (warn) warn.style.display = checked > 0 ? '' : 'none';
+(function(){
+  var isAdmin = {{ 'true' if session.get('role') == 'admin' else 'false' }};
+  var searchInput = document.getElementById('custSearch');
+  var clearBtn = document.getElementById('custSearchClear');
+  var statusEl = document.getElementById('custSearchStatus');
+  var container = document.getElementById('custListContainer');
+  var selectRow = document.getElementById('custSelectRow');
+  var timer = null;
+  var controller = null;
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
   }
 
-  function custToggleAll(cb) {
-    document.querySelectorAll('.cust-cb').forEach(function(el) { el.checked = cb.checked; });
-    custUpdateDeleteBtn();
+  function renderResults(data, query) {
+    container.innerHTML = '';
+    if (!data.length) {
+      container.innerHTML = '<div style="color:var(--muted)" class="py-3 text-center">No customers or contacts found.</div>';
+      if (selectRow) selectRow.style.display = 'none';
+      statusEl.style.display = 'none';
+      return;
+    }
+    if (selectRow) selectRow.style.display = '';
+    statusEl.textContent = data.length + ' customer' + (data.length !== 1 ? 's' : '') + ' found';
+    statusEl.style.display = '';
+    data.forEach(function(c) {
+      var row = document.createElement('div');
+      row.className = 'list-group-item d-flex align-items-center gap-3 px-3';
+      row.style.cssText = 'background:transparent;border-color:var(--line)';
+      var html = '';
+      if (isAdmin) {
+        html += '<input type="checkbox" name="customer_ids" value="' + c.id + '" class="form-check-input mt-0 cust-cb" onchange="custUpdateDeleteBtn()">';
+      }
+      html += '<a href="/customers/' + c.id + '" class="flex-grow-1 text-decoration-none">';
+      html += '<div class="fw-semibold" style="color:var(--text)">' + escHtml(c.last_name) + ', ' + escHtml(c.first_name);
+      if (c.company) html += ' <span class="small" style="color:var(--muted)">(' + escHtml(c.company) + ')</span>';
+      html += '</div></a>';
+      if (c.id_image_path) {
+        html += '<span class="badge ms-2" style="background:rgba(96,165,250,.12);color:var(--accent);border:1px solid rgba(96,165,250,.25);font-size:.75rem">ID on file</span>';
+      }
+      row.innerHTML = html;
+      container.appendChild(row);
+    });
   }
 
-  function submitCustomerDelete() {
-    var checked = document.querySelectorAll('.cust-cb:checked').length;
-    if (!checked) return;
-    document.getElementById('custDeleteForm').submit();
+  function doSearch() {
+    var q = searchInput.value.trim();
+    clearBtn.style.display = q ? '' : 'none';
+    if (controller) controller.abort();
+    if (!q) {
+      sessionStorage.removeItem('custSearch');
+      statusEl.style.display = 'none';
+      window.location.href = '/customers';
+      return;
+    }
+    sessionStorage.setItem('custSearch', q);
+    controller = new AbortController();
+    fetch('/customers?q=' + encodeURIComponent(q), {
+      headers: {'X-Requested-With': 'search'},
+      signal: controller.signal
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Server error');
+      return r.json();
+    })
+    .then(function(data) { renderResults(data, q); })
+    .catch(function(e) {
+      if (e.name === 'AbortError') return;
+      container.innerHTML = '<div style="color:var(--danger)" class="py-3 text-center">Search failed. Please try again.</div>';
+      statusEl.style.display = 'none';
+    });
   }
+
+  searchInput.addEventListener('input', function() {
+    clearTimeout(timer);
+    timer = setTimeout(doSearch, 300);
+  });
+
+  clearBtn.addEventListener('click', function() {
+    searchInput.value = '';
+    clearBtn.style.display = 'none';
+    statusEl.style.display = 'none';
+    sessionStorage.removeItem('custSearch');
+    window.location.href = '/customers';
+  });
+
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      clearBtn.style.display = 'none';
+      statusEl.style.display = 'none';
+      sessionStorage.removeItem('custSearch');
+      window.location.href = '/customers';
+    }
+  });
+
+  var saved = sessionStorage.getItem('custSearch');
+  if (saved && !searchInput.value.trim()) {
+    searchInput.value = saved;
+    doSearch();
+  } else if (searchInput.value.trim()) {
+    clearBtn.style.display = '';
+    statusEl.textContent = '{{ customers|length }} customer' + ({{ customers|length }} !== 1 ? 's' : '') + ' found';
+    statusEl.style.display = '';
+  }
+})();
+
+function custUpdateDeleteBtn() {
+  var checked = document.querySelectorAll('.cust-cb:checked').length;
+  var btn = document.getElementById('custDeleteBtn');
+  var warn = document.getElementById('custWarning');
+  if (btn) btn.style.display = checked > 0 ? '' : 'none';
+  if (warn) warn.style.display = checked > 0 ? '' : 'none';
+}
+
+function custToggleAll(cb) {
+  document.querySelectorAll('.cust-cb').forEach(function(el) { el.checked = cb.checked; });
+  custUpdateDeleteBtn();
+}
+
+function submitCustomerDelete() {
+  var checked = document.querySelectorAll('.cust-cb:checked').length;
+  if (!checked) return;
+  document.getElementById('custDeleteForm').submit();
+}
 </script>
-{% endif %}
 {% endblock %}

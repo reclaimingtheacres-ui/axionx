@@ -14,16 +14,29 @@
       {% endif %}
     </div>
   </div>
+
+  <div class="px-3 pt-3 pb-2" style="border-bottom:1px solid var(--line)">
+    <div class="position-relative">
+      <input type="text" id="clientSearch" class="form-control form-control-sm"
+             placeholder="Search client, business, contact, phone, email..."
+             value="{{ search_q|default('',true) }}" autocomplete="off"
+             style="padding-right:2.2rem">
+      <button type="button" id="clientSearchClear" class="btn btn-link btn-sm position-absolute end-0 top-50 translate-middle-y text-decoration-none"
+              style="color:var(--muted);font-size:1.1rem;display:none;line-height:1;padding:0 .5rem" title="Clear search">&times;</button>
+    </div>
+    <div id="clientSearchStatus" class="small mt-1" style="color:var(--muted);display:none"></div>
+  </div>
+
   <div class="ax-card-b">
     {% if session.get('role') == 'admin' and clients %}
-    <div class="px-3 py-2 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
+    <div id="clientSelectRow" class="px-3 py-2 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
       <input type="checkbox" id="selectAll" class="form-check-input mt-0"
              onchange="toggleAll(this)" title="Select all">
       <label for="selectAll" class="small mb-0" style="color:var(--muted);cursor:pointer">Select all</label>
     </div>
     {% endif %}
     <form id="deleteForm" method="post" action="/clients/delete">
-      <div class="list-group list-group-flush">
+      <div id="clientListContainer" class="list-group list-group-flush">
         {% for c in clients %}
           <div class="list-group-item d-flex align-items-center gap-3 px-3" style="background:transparent;border-color:var(--line)">
             {% if session.get('role') == 'admin' %}
@@ -38,7 +51,7 @@
             </a>
           </div>
         {% else %}
-          <div style="color:var(--muted)" class="py-3 text-center">No clients yet.</div>
+          <div id="clientEmptyMsg" style="color:var(--muted)" class="py-3 text-center">No clients yet.</div>
         {% endfor %}
       </div>
     </form>
@@ -68,30 +81,137 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <script>
-  function updateDeleteBtn() {
-    var checked = document.querySelectorAll('.client-cb:checked').length;
-    var btn = document.getElementById('deleteBtn');
-    btn.style.display = checked > 0 ? '' : 'none';
+(function(){
+  var isAdmin = {{ 'true' if session.get('role') == 'admin' else 'false' }};
+  var searchInput = document.getElementById('clientSearch');
+  var clearBtn = document.getElementById('clientSearchClear');
+  var statusEl = document.getElementById('clientSearchStatus');
+  var container = document.getElementById('clientListContainer');
+  var selectRow = document.getElementById('clientSelectRow');
+  var timer = null;
+  var controller = null;
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
   }
 
-  function toggleAll(cb) {
-    document.querySelectorAll('.client-cb').forEach(function(el) { el.checked = cb.checked; });
-    updateDeleteBtn();
+  function renderResults(data, query) {
+    container.innerHTML = '';
+    if (!data.length) {
+      container.innerHTML = '<div style="color:var(--muted)" class="py-3 text-center">No clients found.</div>';
+      if (selectRow) selectRow.style.display = 'none';
+      statusEl.style.display = 'none';
+      return;
+    }
+    if (selectRow) selectRow.style.display = '';
+    statusEl.textContent = data.length + ' client' + (data.length !== 1 ? 's' : '') + ' found';
+    statusEl.style.display = '';
+    data.forEach(function(c) {
+      var row = document.createElement('div');
+      row.className = 'list-group-item d-flex align-items-center gap-3 px-3';
+      row.style.cssText = 'background:transparent;border-color:var(--line)';
+      var html = '';
+      if (isAdmin) {
+        html += '<input type="checkbox" name="client_ids" value="' + c.id + '" class="form-check-input mt-0 client-cb" onchange="updateDeleteBtn()">';
+      }
+      html += '<a href="/clients/' + c.id + '" class="flex-grow-1 text-decoration-none">';
+      html += '<div class="fw-semibold" style="color:var(--text)">' + escHtml(c.name) + '</div>';
+      if (c.email) html += '<div class="small" style="color:var(--muted)">' + escHtml(c.email) + '</div>';
+      if (c.address) html += '<div class="small" style="color:var(--muted)">' + escHtml(c.address) + '</div>';
+      html += '</a>';
+      row.innerHTML = html;
+      container.appendChild(row);
+    });
   }
 
-  function confirmDelete() {
-    var checked = document.querySelectorAll('.client-cb:checked').length;
-    if (!checked) return;
-    document.getElementById('deleteCount').textContent =
-      checked === 1 ? '1 client' : checked + ' clients';
-    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+  function doSearch() {
+    var q = searchInput.value.trim();
+    clearBtn.style.display = q ? '' : 'none';
+    if (controller) controller.abort();
+    if (!q) {
+      sessionStorage.removeItem('clientSearch');
+      statusEl.style.display = 'none';
+      window.location.href = '/clients';
+      return;
+    }
+    sessionStorage.setItem('clientSearch', q);
+    controller = new AbortController();
+    fetch('/clients?q=' + encodeURIComponent(q), {
+      headers: {'X-Requested-With': 'search'},
+      signal: controller.signal
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Server error');
+      return r.json();
+    })
+    .then(function(data) { renderResults(data, q); })
+    .catch(function(e) {
+      if (e.name === 'AbortError') return;
+      container.innerHTML = '<div style="color:var(--danger)" class="py-3 text-center">Search failed. Please try again.</div>';
+      statusEl.style.display = 'none';
+    });
   }
 
-  function submitDelete() {
-    document.getElementById('deleteForm').submit();
+  searchInput.addEventListener('input', function() {
+    clearTimeout(timer);
+    timer = setTimeout(doSearch, 300);
+  });
+
+  clearBtn.addEventListener('click', function() {
+    searchInput.value = '';
+    clearBtn.style.display = 'none';
+    statusEl.style.display = 'none';
+    sessionStorage.removeItem('clientSearch');
+    window.location.href = '/clients';
+  });
+
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      searchInput.value = '';
+      clearBtn.style.display = 'none';
+      statusEl.style.display = 'none';
+      sessionStorage.removeItem('clientSearch');
+      window.location.href = '/clients';
+    }
+  });
+
+  var saved = sessionStorage.getItem('clientSearch');
+  if (saved && !searchInput.value.trim()) {
+    searchInput.value = saved;
+    doSearch();
+  } else if (searchInput.value.trim()) {
+    clearBtn.style.display = '';
+    statusEl.textContent = '{{ clients|length }} client' + ({{ clients|length }} !== 1 ? 's' : '') + ' found';
+    statusEl.style.display = '';
   }
+})();
+
+function updateDeleteBtn() {
+  var checked = document.querySelectorAll('.client-cb:checked').length;
+  var btn = document.getElementById('deleteBtn');
+  if (btn) btn.style.display = checked > 0 ? '' : 'none';
+}
+
+function toggleAll(cb) {
+  document.querySelectorAll('.client-cb').forEach(function(el) { el.checked = cb.checked; });
+  updateDeleteBtn();
+}
+
+function confirmDelete() {
+  var checked = document.querySelectorAll('.client-cb:checked').length;
+  if (!checked) return;
+  document.getElementById('deleteCount').textContent =
+    checked === 1 ? '1 client' : checked + ' clients';
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+function submitDelete() {
+  document.getElementById('deleteForm').submit();
+}
 </script>
-{% endif %}
 {% endblock %}
