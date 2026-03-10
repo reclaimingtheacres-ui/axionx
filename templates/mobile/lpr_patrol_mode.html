@@ -254,6 +254,18 @@
   </div>
 </div>
 
+{# Diagnostics panel (tap scan count 5 times to reveal) #}
+<div class="pm-layer" id="pmDiagPanel" style="display:none;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:88vw;max-width:380px;background:rgba(0,0,0,.92);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:18px 16px;z-index:15;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <span style="font-size:.82rem;font-weight:800;color:rgba(255,255,255,.9);letter-spacing:.08em;text-transform:uppercase;">Patrol Diagnostics</span>
+    <button type="button" onclick="document.getElementById('pmDiagPanel').style.display='none'"
+      style="background:none;border:none;color:rgba(255,255,255,.6);font-size:1.2rem;cursor:pointer;padding:0 4px;">&times;</button>
+  </div>
+  <div id="pmDiagContent" style="font-size:.78rem;color:rgba(255,255,255,.7);line-height:1.9;font-family:monospace;"></div>
+</div>
+
 {# Hidden canvas for frame capture #}
 <canvas id="pmCanvas" style="display:none;"></canvas>
 
@@ -285,24 +297,61 @@ var video   = document.getElementById('patrolVideo');
 var canvas  = document.getElementById('pmCanvas');
 var ctx     = canvas.getContext('2d');
 
+/* ── Camera state detection ─────────────────────────────── */
+var _cameraState = 'unknown';
+
+function _setCameraState(state, statusText, subtitle, pulseColor, pulseAnim) {
+  _cameraState = state;
+  document.getElementById('pmStatusText').textContent = statusText;
+  document.getElementById('pmSubtitle').textContent = subtitle;
+  document.getElementById('pmPulseDot').style.background = pulseColor || '#ef4444';
+  document.getElementById('pmPulseDot').style.animation = pulseAnim === false ? 'none' : 'pm-pulse 1s infinite';
+  _updateDiagnostics();
+}
+
+function _detectCameraSupport() {
+  if (!window.isSecureContext) return 'insecure_context';
+  if (!navigator.mediaDevices) return 'api_missing';
+  if (!navigator.mediaDevices.getUserMedia) return 'getUserMedia_missing';
+  return 'available';
+}
+
 /* ── Camera init ────────────────────────────────────────── */
 async function startCamera() {
   _recovering = false;
 
-  // Defensive check: navigator.mediaDevices may be undefined in restricted
-  // WebView environments (e.g. older WKWebView builds without camera permission
-  // delegate).  Show a clear, actionable message instead of throwing a raw
-  // TypeError.
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    document.getElementById('pmStatusText').textContent = 'CAMERA UNAVAILABLE';
-    document.getElementById('pmSubtitle').textContent =
-      'Camera API not available in this build — update the app and ensure camera permission is granted in iOS Settings';
-    document.getElementById('pmPulseDot').style.background = '#ef4444';
-    document.getElementById('pmPulseDot').style.animation = 'none';
+  var support = _detectCameraSupport();
+
+  if (support !== 'available') {
+    var msg, status;
+    if (support === 'insecure_context') {
+      status = 'INSECURE CONTEXT';
+      msg = 'Camera requires a secure (HTTPS) connection. Please access AxionX via HTTPS.';
+    } else if (_isNativeWrapper) {
+      status = 'BUILD UPDATE REQUIRED';
+      msg = 'This installed build does not include camera support. Please install the latest AxionX mobile build.';
+    } else {
+      status = 'CAMERA UNAVAILABLE';
+      msg = 'Camera API is not available in this browser. Use the latest AxionX mobile app or a supported browser.';
+    }
+    _setCameraState('api_missing', status, msg, '#ef4444', false);
     return;
   }
 
   try {
+    var permResult = null;
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        permResult = await navigator.permissions.query({ name: 'camera' });
+        if (permResult.state === 'denied') {
+          _setCameraState('permission_denied', 'CAMERA BLOCKED',
+            'Camera access is turned off for AxionX. Enable Camera in iPhone Settings → AxionX → Camera.',
+            '#ef4444', false);
+          return;
+        }
+      } catch(pErr) {}
+    }
+
     _stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
@@ -310,7 +359,6 @@ async function startCamera() {
     video.srcObject = _stream;
     await video.play();
 
-    // Check torch support
     var track = _stream.getVideoTracks()[0];
     if (track) {
       var caps = track.getCapabilities ? track.getCapabilities() : {};
@@ -318,26 +366,50 @@ async function startCamera() {
       if (!_torchSupported) {
         document.getElementById('pmTorchBtn').style.opacity = '.35';
       }
-      // Detect mid-session camera interruption (permission revoked, incoming call, etc.)
       track.addEventListener('ended', function() {
         if (_scanning) pmCameraRecovery('Camera interrupted — tap to retry');
       });
     }
 
-    document.getElementById('pmSubtitle').textContent = 'Scanning plates automatically · Matches trigger an alert';
-    document.getElementById('pmPulseDot').style.background = '#ef4444';
+    _setCameraState('active', 'PATROL MODE ACTIVE',
+      'Scanning plates automatically · Matches trigger an alert', '#ef4444', true);
     _scanning = true;
     _scanInterval = setInterval(captureAndScan, SCAN_INTERVAL);
   } catch(err) {
-    var msg = (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
-      ? 'Camera permission denied — go to iOS Settings → AxionX → Camera'
-      : (err.name === 'NotFoundError')
-      ? 'No camera found on this device'
-      : (err.message || 'Camera unavailable');
-    document.getElementById('pmStatusText').textContent = 'CAMERA ERROR';
-    document.getElementById('pmSubtitle').textContent = msg;
-    document.getElementById('pmPulseDot').style.background = '#ef4444';
-    document.getElementById('pmPulseDot').style.animation = 'none';
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      _setCameraState('permission_denied', 'CAMERA BLOCKED',
+        'Camera access is turned off for AxionX. Enable Camera in iPhone Settings → AxionX → Camera.',
+        '#ef4444', false);
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      _setCameraState('no_hardware', 'NO CAMERA',
+        'No camera found on this device.',
+        '#ef4444', false);
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      _setCameraState('init_failed', 'CAMERA ERROR',
+        'Camera failed to start. Please close Patrol Mode and try again. Another app may be using the camera.',
+        '#ef4444', false);
+    } else if (err.name === 'OverconstrainedError') {
+      _setCameraState('init_failed', 'CAMERA ERROR',
+        'Camera does not support the required settings. Retrying with basic settings…',
+        '#f59e0b', true);
+      try {
+        _stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = _stream;
+        await video.play();
+        _setCameraState('active', 'PATROL MODE ACTIVE',
+          'Scanning plates automatically · Matches trigger an alert', '#ef4444', true);
+        _scanning = true;
+        _scanInterval = setInterval(captureAndScan, SCAN_INTERVAL);
+      } catch(e2) {
+        _setCameraState('init_failed', 'CAMERA ERROR',
+          'Camera failed to start: ' + (e2.message || 'unknown error'),
+          '#ef4444', false);
+      }
+    } else {
+      _setCameraState('init_failed', 'CAMERA ERROR',
+        'Camera failed to start: ' + (err.message || 'unknown error') + '. Close Patrol Mode and try again.',
+        '#ef4444', false);
+    }
   }
 }
 
@@ -353,12 +425,9 @@ function pmCameraRecovery(reason) {
     _stream = null;
   }
   video.srcObject = null;
-  document.getElementById('pmStatusText').textContent = 'PAUSED';
-  document.getElementById('pmSubtitle').textContent = reason || 'Camera paused — resuming…';
-  document.getElementById('pmPulseDot').style.background = '#f59e0b';
-  // Auto-retry after 1.5 s
+  _setCameraState('recovering', 'PAUSED', reason || 'Camera paused — resuming…', '#f59e0b', true);
   setTimeout(function(){
-    document.getElementById('pmSubtitle').textContent = 'Restarting camera…';
+    _setCameraState('recovering', 'PAUSED', 'Restarting camera…', '#f59e0b', true);
     startCamera();
   }, 1500);
 }
@@ -710,6 +779,71 @@ function escH(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+/* ── Diagnostics panel (5-tap to reveal) ──────────────────── */
+var _diagTapCount = 0;
+var _diagTapTimer = null;
+(function(){
+  var scanCountEl = document.getElementById('pmScanCount');
+  if (scanCountEl) {
+    scanCountEl.style.cursor = 'pointer';
+    scanCountEl.addEventListener('click', function() {
+      _diagTapCount++;
+      clearTimeout(_diagTapTimer);
+      _diagTapTimer = setTimeout(function(){ _diagTapCount = 0; }, 2000);
+      if (_diagTapCount >= 5) {
+        _diagTapCount = 0;
+        _updateDiagnostics();
+        document.getElementById('pmDiagPanel').style.display = '';
+      }
+    });
+  }
+})();
+
+function _updateDiagnostics() {
+  var el = document.getElementById('pmDiagContent');
+  if (!el) return;
+
+  var support = _detectCameraSupport();
+  var nativeBridge = _isNativeWrapper
+    ? ((window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startPatrolMode) ? 'yes' : 'no')
+    : 'n/a';
+  var permStatus = 'unknown';
+  if (_cameraState === 'permission_denied') permStatus = 'denied';
+  else if (_cameraState === 'active') permStatus = 'granted';
+  else if (_cameraState === 'api_missing') permStatus = 'not applicable';
+  else permStatus = 'not requested';
+
+  var lines = [
+    ['Platform', /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'iOS' : /Android/.test(navigator.userAgent) ? 'Android' : 'Web'],
+    ['Native wrapper', _isNativeWrapper ? 'yes (AxionXiOS)' : 'no'],
+    ['Native bridge', nativeBridge],
+    ['Secure context', window.isSecureContext ? 'yes' : 'no'],
+    ['mediaDevices', navigator.mediaDevices ? 'yes' : 'no'],
+    ['getUserMedia', (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ? 'yes' : 'no'],
+    ['Camera support', support],
+    ['Camera state', _cameraState],
+    ['Permission', permStatus],
+    ['Scanner active', _scanning ? 'yes' : 'no'],
+    ['Torch supported', _torchSupported ? 'yes' : 'no'],
+    ['Torch on', _torchOn ? 'yes' : 'no'],
+    ['Scans count', String(_scanCount)],
+    ['User agent', navigator.userAgent.substring(0, 80)]
+  ];
+
+  var h = '';
+  lines.forEach(function(row) {
+    var valColor = 'rgba(255,255,255,.8)';
+    var val = row[1];
+    if (val === 'yes' || val === 'granted' || val === 'active' || val === 'available') valColor = '#4ade80';
+    else if (val === 'no' || val === 'denied' || val === 'api_missing' || val === 'permission_denied') valColor = '#f87171';
+    h += '<div style="display:flex;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08);padding:2px 0;">';
+    h += '<span>' + escH(row[0]) + '</span>';
+    h += '<span style="color:' + valColor + ';font-weight:600;text-align:right;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escH(val) + '</span>';
+    h += '</div>';
+  });
+  el.innerHTML = h;
+}
+
 /* ── Background / foreground handling ───────────────────────
  * When the app is backgrounded (home button, incoming call, etc.)
  * iOS will freeze the camera stream.  On returning to foreground
@@ -718,23 +852,15 @@ function escH(s) {
 document.addEventListener('visibilitychange', function() {
   if (!_isNativeWrapper) {
     if (document.hidden) {
-      // App going to background — pause scanning but leave interval running
-      // (it checks _scanning / _alertOpen flags and will skip frames)
       _scanning = false;
-      document.getElementById('pmStatusText').textContent = 'PAUSED';
-      document.getElementById('pmSubtitle').textContent = 'Paused — return to resume';
-      document.getElementById('pmPulseDot').style.background = '#f59e0b';
+      _setCameraState('paused', 'PAUSED', 'Paused — return to resume', '#f59e0b', true);
     } else {
-      // App returned to foreground
       if (!_stream || _stream.getTracks().some(function(t){ return t.readyState === 'ended'; })) {
-        // Stream is dead — do a full recovery
         pmCameraRecovery('Resuming camera…');
       } else {
-        // Stream alive — resume scanning
         _scanning = true;
-        document.getElementById('pmStatusText').textContent = 'PATROL MODE ACTIVE';
-        document.getElementById('pmSubtitle').textContent = 'Scanning plates automatically · Matches trigger an alert';
-        document.getElementById('pmPulseDot').style.background = '#ef4444';
+        _setCameraState('active', 'PATROL MODE ACTIVE',
+          'Scanning plates automatically · Matches trigger an alert', '#ef4444', true);
       }
     }
   }
@@ -820,16 +946,22 @@ window.axionPatrolStopped = function() {
 
 /* ── Kickoff ─────────────────────────────────────────────── */
 if (_isNativeWrapper) {
-  // Hand off to native Swift scanner; web layer stands by for bridge callbacks
-  document.getElementById('pmSubtitle').textContent = 'Native scanner active · Matches trigger an alert';
-  document.getElementById('patrolVideo').style.display = 'none';
-  document.getElementById('pmScanLine').style.display  = 'none';
+  var _nativeBridgeAvailable = false;
   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startPatrolMode) {
+    _nativeBridgeAvailable = true;
+    document.getElementById('patrolVideo').style.display = 'none';
+    document.getElementById('pmScanLine').style.display  = 'none';
+    _setCameraState('native_active', 'PATROL MODE ACTIVE', 'Native scanner active · Matches trigger an alert', '#ef4444', true);
     window.webkit.messageHandlers.startPatrolMode.postMessage({});
   } else if (window.AxionXBridge && window.AxionXBridge.startPatrolMode) {
+    _nativeBridgeAvailable = true;
+    document.getElementById('patrolVideo').style.display = 'none';
+    document.getElementById('pmScanLine').style.display  = 'none';
+    _setCameraState('native_active', 'PATROL MODE ACTIVE', 'Native scanner active · Matches trigger an alert', '#ef4444', true);
     window.AxionXBridge.startPatrolMode();
   } else {
-    // iOS wrapper detected but bridge not available yet — fall back to web camera
+    // iOS wrapper detected but native scanner bridge not wired — try web camera
+    // Video/scanline stay visible for web camera fallback
     startCamera();
   }
   // Override torch and stop to route through native bridge
