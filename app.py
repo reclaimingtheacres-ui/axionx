@@ -637,6 +637,25 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS schedule_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        schedule_id INTEGER NOT NULL,
+        job_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        old_scheduled_for TEXT,
+        new_scheduled_for TEXT,
+        old_status TEXT,
+        new_status TEXT,
+        changed_by_user_id INTEGER,
+        created_at TEXT NOT NULL,
+        notes TEXT,
+        FOREIGN KEY(schedule_id) REFERENCES schedules(id),
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(changed_by_user_id) REFERENCES users(id)
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -855,6 +874,19 @@ def _ensure_db():
 def now_ts():
     melb = pytz.timezone("Australia/Melbourne")
     return datetime.now(melb).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _write_schedule_history(cur, schedule_id, job_id, action,
+                            old_scheduled_for=None, new_scheduled_for=None,
+                            old_status=None, new_status=None,
+                            changed_by_user_id=None, notes=None):
+    cur.execute("""
+        INSERT INTO schedule_history
+            (schedule_id, job_id, action, old_scheduled_for, new_scheduled_for,
+             old_status, new_status, changed_by_user_id, created_at, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (schedule_id, job_id, action, old_scheduled_for, new_scheduled_for,
+          old_status, new_status, changed_by_user_id, now_ts(), notes))
 
 
 def normalise_registration(reg_text: str) -> str:
@@ -2723,6 +2755,9 @@ def job_create():
                 VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?)
             """, (job_id, resolved_sched_bt, sched_dt, sched_notes,
                   int(sched_user_id) if sched_user_id else None, now, now))
+            _write_schedule_history(cur, cur.lastrowid, job_id, "created",
+                                    new_scheduled_for=sched_dt, new_status="Scheduled",
+                                    changed_by_user_id=session.get("user_id"))
 
     # Link autofill document to the new job
     autofill_id = request.form.get("autofill_id", "").strip()
@@ -3146,6 +3181,10 @@ def add_schedule(job_id: int):
                                assigned_to_user_id, created_by_user_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (job_id, resolved_bt_id, dt_str, bt_status, notes, assigned_to, caller_id, ts))
+    new_sched_id = cur.lastrowid
+    _write_schedule_history(cur, new_sched_id, job_id, "created",
+                            new_scheduled_for=dt_str, new_status=bt_status,
+                            changed_by_user_id=caller_id)
     _auto_complete_schedule_cues(cur, job_id, ts)
     conn.commit()
     conn.close()
@@ -3195,7 +3234,11 @@ def add_schedule_ajax(job_id: int):
             (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_by_user_id, created_at)
             VALUES (?, ?, ?, ?, ?, NULL, ?, ?)""",
             (job_id, bt_id, dt_str, bt_name, notes, caller_id, now))
-        created.append({"id": cur.lastrowid, "assigned_to": None})
+        new_sid = cur.lastrowid
+        created.append({"id": new_sid, "assigned_to": None})
+        _write_schedule_history(cur, new_sid, job_id, "created",
+                                new_scheduled_for=dt_str, new_status=bt_name,
+                                changed_by_user_id=caller_id)
     else:
         for uid in user_ids:
             try:
@@ -3206,7 +3249,11 @@ def add_schedule_ajax(job_id: int):
                 (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_by_user_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (job_id, bt_id, dt_str, bt_name, notes, uid_int, caller_id, now))
-            created.append({"id": cur.lastrowid, "assigned_to": uid_int})
+            new_sid = cur.lastrowid
+            created.append({"id": new_sid, "assigned_to": uid_int})
+            _write_schedule_history(cur, new_sid, job_id, "created",
+                                    new_scheduled_for=dt_str, new_status=bt_name,
+                                    changed_by_user_id=caller_id)
 
     cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
                    VALUES (?, 'Schedule', ?, ?, ?)""",
@@ -3318,6 +3365,9 @@ def job_activate(job_id):
                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                             (job_id, resolved_bt_id, dt_str, bt_status, notes,
                              assigned_int, caller_id, now_ts()))
+                _write_schedule_history(cur, cur.lastrowid, job_id, "created",
+                                        new_scheduled_for=dt_str, new_status=bt_status,
+                                        changed_by_user_id=caller_id)
                 _auto_complete_schedule_cues(cur, job_id, now)
         except Exception:
             flash("Schedule date/time invalid — status updated but no schedule created.", "warning")
@@ -3329,57 +3379,205 @@ def job_activate(job_id):
 
 @app.get("/schedule")
 @login_required
-@admin_required
 def schedule_index():
-    from datetime import timedelta
-    now    = datetime.now()
-    horizon = now + timedelta(days=30)
-    now_str = now.isoformat(timespec="seconds")
-    hor_str = horizon.isoformat(timespec="seconds")
+    caller_role = session.get("role", "")
+    is_admin = caller_role in ("admin", "both")
+    agents = []
+    if is_admin:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("SELECT id, full_name FROM users WHERE active = 1 AND role IN ('agent','both','admin') ORDER BY full_name")
+        agents = [{"id": a["id"], "name": a["full_name"]} for a in cur.fetchall()]
+        conn.close()
+    return render_template("schedule/index.html",
+                           is_admin=is_admin,
+                           agents=agents,
+                           user_id=session.get("user_id"),
+                           default_view="week" if is_admin else "day")
+
+
+_BOOKING_TYPE_COLORS = {
+    "New Visit": "#2563eb",
+    "Re-attend": "#7c3aed",
+    "Urgent New Visit": "#dc2626",
+    "Update Required": "#d97706",
+    "Urgent Update Required": "#b91c1c",
+}
+
+@app.get("/schedule/api/events")
+@login_required
+def schedule_api_events():
+    caller_id   = session.get("user_id")
+    caller_role = session.get("role", "")
+    is_admin    = caller_role in ("admin", "both")
+
+    start_str     = request.args.get("start", "")
+    end_str       = request.args.get("end", "")
+    agent_id_raw  = request.args.get("agent_id", "all")
+    status_filter = request.args.get("status_filter", "all")
+
+    if not start_str or not end_str:
+        return jsonify({"error": "start and end query params required"}), 400
 
     conn = db()
     cur  = conn.cursor()
-    caller_id   = session.get("user_id")
-    caller_role = session.get("role", "")
 
-    if caller_role in ("admin", "both"):
-        cur.execute("""
-            SELECT s.*, bt.name booking_type_name,
-                   j.internal_job_number, j.client_reference, j.display_ref, j.id job_id,
-                   u.full_name assigned_to_name,
-                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label
-            FROM schedules s
-            JOIN booking_types bt ON bt.id = s.booking_type_id
-            JOIN jobs j ON j.id = s.job_id
-            LEFT JOIN users u ON u.id = s.assigned_to_user_id
-            LEFT JOIN customers cu ON cu.id = j.customer_id
-            WHERE s.status NOT IN ('Completed', 'Cancelled')
-              AND s.scheduled_for >= ?
-              AND s.scheduled_for <= ?
-            ORDER BY s.scheduled_for ASC
-        """, (now_str, hor_str))
+    where_clauses = ["s.scheduled_for >= ?", "s.scheduled_for <= ?"]
+    params = [start_str, end_str]
+
+    if status_filter == "upcoming":
+        where_clauses.append("s.status NOT IN ('Completed', 'Cancelled')")
+    elif status_filter == "past":
+        where_clauses.append("s.status IN ('Completed', 'Cancelled')")
+
+    if is_admin:
+        if agent_id_raw == "unassigned":
+            where_clauses.append("s.assigned_to_user_id IS NULL")
+        elif agent_id_raw and agent_id_raw != "all":
+            try:
+                aid = int(agent_id_raw)
+                where_clauses.append("s.assigned_to_user_id = ?")
+                params.append(aid)
+            except ValueError:
+                pass
     else:
-        cur.execute("""
-            SELECT s.*, bt.name booking_type_name,
-                   j.internal_job_number, j.client_reference, j.display_ref, j.id job_id,
-                   u.full_name assigned_to_name,
-                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label
-            FROM schedules s
-            JOIN booking_types bt ON bt.id = s.booking_type_id
-            JOIN jobs j ON j.id = s.job_id
-            LEFT JOIN users u ON u.id = s.assigned_to_user_id
-            LEFT JOIN customers cu ON cu.id = j.customer_id
-            WHERE s.status NOT IN ('Completed', 'Cancelled')
-              AND s.assigned_to_user_id = ?
-              AND s.scheduled_for >= ?
-              AND s.scheduled_for <= ?
-            ORDER BY s.scheduled_for ASC
-        """, (caller_id, now_str, hor_str))
+        where_clauses.append("s.assigned_to_user_id = ?")
+        params.append(caller_id)
 
-    bookings = cur.fetchall()
+    where_sql = " AND ".join(where_clauses)
+
+    cur.execute(f"""
+        SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
+               s.assigned_to_user_id,
+               bt.name AS booking_type_name,
+               j.display_ref, j.job_address, j.job_type,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_name,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''),
+                        TRIM(COALESCE(cu.first_name,'') || ' ' || COALESCE(cu.last_name,''))) AS customer_label,
+               u.full_name AS assigned_to_name
+        FROM schedules s
+        JOIN booking_types bt ON bt.id = s.booking_type_id
+        JOIN jobs j ON j.id = s.job_id
+        LEFT JOIN users u ON u.id = s.assigned_to_user_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE {where_sql}
+        ORDER BY s.scheduled_for ASC
+    """, params)
+
+    rows = cur.fetchall()
+
+    events = []
+    for r in rows:
+        bt_name = r["booking_type_name"] or ""
+        events.append({
+            "id": r["id"],
+            "job_id": r["job_id"],
+            "display_ref": r["display_ref"] or f"Job #{r['job_id']}",
+            "customer_name": r["customer_name"] or "",
+            "customer_label": r["customer_label"] or "",
+            "booking_type": bt_name,
+            "scheduled_for": r["scheduled_for"],
+            "assigned_to_name": r["assigned_to_name"] or "",
+            "assigned_to_user_id": r["assigned_to_user_id"],
+            "job_address": r["job_address"] or "",
+            "job_type": r["job_type"] or "",
+            "status": r["status"] or "Booked",
+            "notes": r["notes"] or "",
+            "booking_type_color": _BOOKING_TYPE_COLORS.get(bt_name, "#6b7280"),
+        })
+
+    agents = []
+    if is_admin:
+        cur.execute("SELECT id, full_name FROM users WHERE active = 1 AND role IN ('agent','both') ORDER BY full_name")
+        agents = [{"id": a["id"], "name": a["full_name"]} for a in cur.fetchall()]
+
     conn.close()
-    return render_template("schedule/index.html", bookings=bookings,
-                           is_admin=(caller_role in ("admin", "both")))
+    return jsonify({"events": events, "agents": agents})
+
+
+@app.post("/schedule/api/<int:sched_id>/reschedule")
+@login_required
+def schedule_api_reschedule(sched_id):
+    new_dt = (request.form.get("new_datetime") or "").strip()
+    if not new_dt:
+        return jsonify({"ok": False, "error": "New date/time is required."}), 400
+    try:
+        datetime.strptime(new_dt[:16], "%Y-%m-%dT%H:%M")
+    except (ValueError, IndexError):
+        return jsonify({"ok": False, "error": "Invalid date/time format."}), 400
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,))
+    sched = cur.fetchone()
+    if not sched:
+        conn.close()
+        return jsonify({"ok": False, "error": "Booking not found."}), 404
+    caller_id = session.get("user_id")
+    caller_role = session.get("role", "")
+    is_admin = caller_role in ("admin", "both")
+    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Not authorised."}), 403
+    old_dt = sched["scheduled_for"]
+    cur.execute("UPDATE schedules SET scheduled_for = ? WHERE id = ?", (new_dt, sched_id))
+    _write_schedule_history(cur, sched_id, sched["job_id"], "rescheduled",
+                            old_dt, new_dt, sched["status"], sched["status"],
+                            caller_id, f"Rescheduled from {old_dt[:16]} to {new_dt[:16]}")
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/schedule/api/<int:sched_id>/complete")
+@login_required
+def schedule_api_complete(sched_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,))
+    sched = cur.fetchone()
+    if not sched:
+        conn.close()
+        return jsonify({"ok": False, "error": "Booking not found."}), 404
+    caller_id = session.get("user_id")
+    caller_role = session.get("role", "")
+    is_admin = caller_role in ("admin", "both")
+    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Not authorised."}), 403
+    old_status = sched["status"]
+    cur.execute("UPDATE schedules SET status = 'Completed' WHERE id = ?", (sched_id,))
+    _write_schedule_history(cur, sched_id, sched["job_id"], "completed",
+                            sched["scheduled_for"], sched["scheduled_for"],
+                            old_status, "Completed", caller_id, "Marked complete from schedule")
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/schedule/api/<int:sched_id>/cancel")
+@login_required
+def schedule_api_cancel(sched_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,))
+    sched = cur.fetchone()
+    if not sched:
+        conn.close()
+        return jsonify({"ok": False, "error": "Booking not found."}), 404
+    caller_id = session.get("user_id")
+    caller_role = session.get("role", "")
+    is_admin = caller_role in ("admin", "both")
+    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Not authorised."}), 403
+    old_status = sched["status"]
+    cur.execute("UPDATE schedules SET status = 'Cancelled' WHERE id = ?", (sched_id,))
+    _write_schedule_history(cur, sched_id, sched["job_id"], "cancelled",
+                            sched["scheduled_for"], sched["scheduled_for"],
+                            old_status, "Cancelled", caller_id, "Cancelled from schedule")
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.post("/booking-type")
@@ -3585,8 +3783,16 @@ def update_schedule_status(job_id: int, sched_id: int):
         return redirect(url_for("job_detail", job_id=job_id))
     conn = db()
     cur = conn.cursor()
+    sched = cur.execute("SELECT * FROM schedules WHERE id = ? AND job_id = ?", (sched_id, job_id)).fetchone()
+    old_status = sched["status"] if sched else None
+    old_scheduled = sched["scheduled_for"] if sched else None
     cur.execute("UPDATE schedules SET status = ? WHERE id = ? AND job_id = ?",
                 (new_status, sched_id, job_id))
+    action = "completed" if new_status == "Completed" else "cancelled"
+    _write_schedule_history(cur, sched_id, job_id, action,
+                            old_scheduled_for=old_scheduled, new_scheduled_for=old_scheduled,
+                            old_status=old_status, new_status=new_status,
+                            changed_by_user_id=session.get("user_id"))
     conn.commit()
     conn.close()
     flash("Booking updated.", "success")
@@ -3627,6 +3833,7 @@ def delete_job(job_id: int):
 
     # Delete all child rows
     for tbl in (
+        "schedule_history",
         "job_items", "job_assets", "interactions", "cue_items", "schedules",
         "job_customers", "job_updates", "job_payments",
         "repo_lock_records", "repo_lock_queue",
@@ -3667,10 +3874,20 @@ def job_status_update(job_id: int):
     if status in ("Completed", "Invoiced"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
+        pending_scheds = cur.execute(
+            "SELECT id, scheduled_for, status FROM schedules WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')",
+            (job_id,)).fetchall()
         cur.execute("""
             UPDATE schedules SET status = 'Cancelled'
             WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')
         """, (job_id,))
+        for ps in pending_scheds:
+            _write_schedule_history(cur, ps["id"], job_id, "cancelled",
+                                    old_scheduled_for=ps["scheduled_for"],
+                                    new_scheduled_for=ps["scheduled_for"],
+                                    old_status=ps["status"], new_status="Cancelled",
+                                    changed_by_user_id=session.get("user_id"),
+                                    notes=f"Auto-cancelled — job marked '{status}'.")
         cur.execute("""
             INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
             VALUES (?, ?, ?, ?, ?)
@@ -3708,10 +3925,20 @@ def job_update(job_id: int):
     if status in ("Completed", "Invoiced"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
+        pending_scheds = cur.execute(
+            "SELECT id, scheduled_for, status FROM schedules WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')",
+            (job_id,)).fetchall()
         cur.execute("""
             UPDATE schedules SET status = 'Cancelled'
             WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')
         """, (job_id,))
+        for ps in pending_scheds:
+            _write_schedule_history(cur, ps["id"], job_id, "cancelled",
+                                    old_scheduled_for=ps["scheduled_for"],
+                                    new_scheduled_for=ps["scheduled_for"],
+                                    old_status=ps["status"], new_status="Cancelled",
+                                    changed_by_user_id=session.get("user_id"),
+                                    notes=f"Auto-cancelled — job marked '{status}'.")
         cur.execute("""
             INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
             VALUES (?, ?, ?, ?, ?)
@@ -7326,6 +7553,10 @@ def import_jobs():
                         (job_id, booking_type_id, scheduled_for, status, assigned_to_user_id, created_at)
                     VALUES (?, ?, ?, 'Pending', ?, ?)
                 """, (job_id, new_visit_type_id, scheduled_for, assigned_uid, now_ts))
+                _write_schedule_history(cur, cur.lastrowid, job_id, "created",
+                                        new_scheduled_for=scheduled_for, new_status="Pending",
+                                        changed_by_user_id=session.get("user_id"),
+                                        notes="Created via CSV import.")
                 sched_created += 1
 
     conn.commit()
@@ -7664,6 +7895,7 @@ def admin_api_delete_job_ajax():
             pass
 
     for tbl in (
+        "schedule_history",
         "job_items", "job_assets", "interactions", "cue_items", "schedules",
         "job_customers", "job_updates", "job_payments",
         "repo_lock_records", "repo_lock_queue",
@@ -7906,10 +8138,16 @@ def my_schedule_attended(sched_id: int):
         flash("Access denied.", "danger")
         return redirect(url_for("my_today"))
     ts = now_ts()
+    old_status = sched["status"]
+    old_scheduled = sched["scheduled_for"]
     conn.execute(
         "UPDATE schedules SET status='Completed' WHERE id=?",
         (sched_id,)
     )
+    _write_schedule_history(conn.cursor(), sched_id, sched["job_id"], "completed",
+                            old_scheduled_for=old_scheduled, new_scheduled_for=old_scheduled,
+                            old_status=old_status, new_status="Completed",
+                            changed_by_user_id=uid)
     conn.commit()
     conn.close()
     audit("schedule", sched_id, "status_change", "Schedule marked Attended via My Today.")

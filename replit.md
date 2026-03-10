@@ -45,6 +45,19 @@ Axion Prototype is a Flask-based field operations management application designe
 - Button states: **Add Client** (when no client), **Edit** + **Change** (when client exists). Edit Client and Change Client are separate workflows.
 - Null-safe handling in Edit Job route: `customer_id` safely parsed, `job_type`/`visit_type`/`status`/`priority` default to safe values if missing (fixes Internal Server Error on imported jobs).
 
+**2e. Schedule Calendar (Web):**
+- Full calendar-based schedule view replacing the old "next 30 days" table.
+- **Views**: Day (default for agents), Week (default for admin), Month, Agenda/List — all toggled via toolbar buttons.
+- **Date navigation**: Date picker, Today button, Previous/Next arrows. All view changes are AJAX-driven (no full page reload).
+- **Admin agent filter**: Dropdown to view All Agents, specific agent, or Unassigned. Colour-coded bookings by agent when "All Agents" is selected.
+- **Agent default**: Non-admin users see only their own bookings (forced server-side).
+- **Past/Upcoming/All filter**: Toggle to view historical bookings, upcoming only, or all.
+- **Booking cards**: Show time, job ref, customer name, booking type, address snippet, status badge. Click opens popup preview with full details.
+- **Quick actions from popup**: Open Job, Reschedule (with datetime picker), Mark Complete, Cancel — all via AJAX with booking history tracking.
+- **API**: `GET /schedule/api/events?start=&end=&agent_id=&status_filter=` returns JSON events for the requested range. Lazy-loaded by visible date range only.
+- **Booking history**: `schedule_history` table tracks all mutations (created, rescheduled, cancelled, completed) with old/new state, changed_by, and notes. Preserves original schedule entries even after changes.
+- **Quick action endpoints**: `POST /schedule/api/<id>/reschedule`, `POST /schedule/api/<id>/complete`, `POST /schedule/api/<id>/cancel`.
+
 **3. Cues System:** Manages `cue_items` (scheduled tasks) with properties like date, visit type, priority, and agent assignment. Supports daily cue access for agents and drag-and-drop assignment for admins, with automatic cue generation for overdue or upcoming schedules.
 
 **4. Audit Log:** Logs all significant system actions, accessible via the admin dashboard.

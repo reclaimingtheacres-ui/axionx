@@ -1,60 +1,489 @@
 {% extends "layout.html" %}
-{% block title %}Axion | Schedule{% endblock %}
+{% block title %}Axionx | Schedule{% endblock %}
 {% block page_title %}Schedule{% endblock %}
 
 {% block content %}
-<div class="ax-card">
-  <div class="ax-card-h d-flex justify-content-between align-items-center">
-    <div>Upcoming Bookings <span style="color:var(--muted);font-size:.85rem;font-weight:400">— next 30 days</span></div>
+<style>
+  .sch-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .sch-toolbar .btn-group .btn{font-size:.82rem;padding:4px 14px}
+  .sch-toolbar .btn-group .btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .sch-date-nav{display:flex;align-items:center;gap:6px}
+  .sch-date-nav .btn{padding:4px 10px;font-size:.85rem}
+  .sch-date-label{font-weight:650;font-size:1rem;min-width:160px;text-align:center}
+  .sch-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .sch-filters select,.sch-filters input[type=date]{font-size:.85rem;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--text)}
+
+  .sch-day-grid{display:grid;grid-template-columns:60px 1fr;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .sch-hour-label{font-size:.72rem;color:var(--muted);padding:2px 6px;text-align:right;border-bottom:1px solid var(--line);min-height:48px;display:flex;align-items:flex-start;justify-content:flex-end;padding-top:4px}
+  .sch-hour-cell{border-bottom:1px solid var(--line);min-height:48px;position:relative;padding:2px 4px}
+
+  .sch-week-grid{display:grid;grid-template-columns:60px repeat(7,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .sch-week-hdr{font-size:.75rem;font-weight:600;text-align:center;padding:8px 4px;background:var(--panel2);border-bottom:1px solid var(--line);color:var(--muted)}
+  .sch-week-hdr.today-col{background:rgba(37,99,235,.08);color:var(--accent)}
+  .sch-week-hour-label{font-size:.72rem;color:var(--muted);padding:2px 6px;text-align:right;border-bottom:1px solid var(--line);min-height:40px;display:flex;align-items:flex-start;justify-content:flex-end;padding-top:2px}
+  .sch-week-cell{border-bottom:1px solid var(--line);border-left:1px solid var(--line);min-height:40px;position:relative;padding:1px 2px}
+
+  .sch-month-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .sch-month-hdr{font-size:.75rem;font-weight:600;text-align:center;padding:8px 4px;background:var(--panel2);border-bottom:1px solid var(--line);color:var(--muted)}
+  .sch-month-cell{border-bottom:1px solid var(--line);border-left:1px solid var(--line);min-height:90px;padding:4px;position:relative}
+  .sch-month-cell:nth-child(7n+1){border-left:0}
+  .sch-month-day-num{font-size:.75rem;font-weight:600;color:var(--muted);margin-bottom:2px}
+  .sch-month-day-num.today{color:#fff;background:var(--accent);border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center}
+  .sch-month-cell.other-month{background:var(--panel2);opacity:.5}
+  .sch-month-dot{font-size:.7rem;padding:1px 4px;border-radius:4px;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:#fff;cursor:pointer;line-height:1.4}
+  .sch-month-more{font-size:.68rem;color:var(--accent);cursor:pointer;font-weight:600}
+
+  .sch-evt{font-size:.72rem;padding:3px 6px;border-radius:6px;margin-bottom:2px;color:#fff;cursor:pointer;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;position:relative}
+  .sch-evt:hover{opacity:.85;filter:brightness(1.1)}
+  .sch-evt .sch-evt-time{font-weight:700}
+  .sch-evt.status-completed{opacity:.55;text-decoration:line-through}
+  .sch-evt.status-cancelled{opacity:.4;text-decoration:line-through}
+
+  .sch-agenda-tbl{width:100%;border-collapse:collapse}
+  .sch-agenda-tbl th{font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;background:var(--panel2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+  .sch-agenda-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);font-size:.85rem;vertical-align:middle}
+  .sch-agenda-tbl tr:hover{background:rgba(37,99,235,.03)}
+  .sch-agenda-tbl tr.overdue td:first-child{border-left:3px solid var(--danger)}
+  .sch-agenda-tbl .status-badge{font-size:.7rem;padding:2px 8px;border-radius:6px;color:#fff;font-weight:600}
+
+  .sch-popup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:9998;display:none}
+  .sch-popup{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);width:380px;max-width:92vw;padding:0;display:none}
+  .sch-popup-hdr{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .sch-popup-hdr .title{font-weight:650;font-size:.95rem}
+  .sch-popup-hdr .close-btn{cursor:pointer;font-size:1.2rem;color:var(--muted);background:none;border:none;padding:0}
+  .sch-popup-body{padding:14px 16px}
+  .sch-popup-body .info-row{display:flex;gap:8px;margin-bottom:8px;font-size:.85rem}
+  .sch-popup-body .info-label{color:var(--muted);min-width:80px;font-weight:500}
+  .sch-popup-body .info-val{color:var(--text);flex:1}
+  .sch-popup-actions{padding:10px 16px 14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+  .sch-popup-actions .btn{font-size:.78rem;padding:4px 12px}
+  .sch-resched-row{display:none;padding:8px 16px;border-top:1px solid var(--line)}
+  .sch-resched-row input{font-size:.85rem;border-radius:8px;border:1px solid var(--line);padding:4px 8px}
+
+  .sch-empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:.9rem}
+  .sch-loading{text-align:center;padding:30px;color:var(--muted);font-size:.85rem}
+
+  @media(max-width:768px){
+    .sch-toolbar{flex-direction:column;align-items:flex-start}
+    .sch-date-label{min-width:auto;text-align:left}
+    .sch-week-grid{grid-template-columns:40px repeat(7,1fr)}
+    .sch-popup{width:95vw;left:2.5vw !important;right:2.5vw !important}
+  }
+</style>
+
+<div class="sch-toolbar">
+  <div class="sch-date-nav">
+    <button class="btn btn-outline-secondary" onclick="schNav(-1)" title="Previous">&lsaquo;</button>
+    <button class="btn btn-outline-primary" onclick="schToday()">Today</button>
+    <button class="btn btn-outline-secondary" onclick="schNav(1)" title="Next">&rsaquo;</button>
+    <input type="date" id="schDatePicker" class="form-control form-control-sm" style="width:auto;border-radius:8px" onchange="schPickDate(this.value)">
   </div>
-  <div class="ax-card-b">
-    {% if bookings %}
-    <div class="table-responsive">
-      <table class="table table-sm mb-0">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Time</th>
-            <th>Type</th>
-            <th>Job</th>
-            {% if is_admin %}<th>Assigned</th>{% endif %}
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for b in bookings %}
-          <tr>
-            <td>{{ b.scheduled_for[:10].split('-')|reverse|join('/') }}</td>
-            <td>
-              {% set hr = b.scheduled_for[11:13]|int %}
-              {% set mn = b.scheduled_for[14:16] %}
-              {% if hr == 0 %}12:{{ mn }} am
-              {% elif hr < 12 %}{{ '%02d'|format(hr) }}:{{ mn }} am
-              {% elif hr == 12 %}12:{{ mn }} pm
-              {% else %}{{ '%02d'|format(hr - 12) }}:{{ mn }} pm
-              {% endif %}
-            </td>
-            <td>{{ b.booking_type_name }}</td>
-            <td>
-              <a href="/jobs/{{ b.job_id }}"
-                 style="color:var(--accent);text-decoration:none;font-weight:600">
-                {{ b.display_ref or b.internal_job_number or b.client_reference or ('Job #' ~ b.job_id) }}{% if b.customer_label %} &mdash; {{ b.customer_label }}{% endif %}
-              </a>
-            </td>
-            {% if is_admin %}
-            <td style="color:var(--muted)">{{ b.assigned_to_name or '—' }}</td>
-            {% endif %}
-            <td style="color:var(--muted);font-size:.85rem">{{ b.notes or '—' }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="py-4 text-center" style="color:var(--muted)">
-      No bookings scheduled in the next 30 days.
-    </div>
+  <div class="sch-date-label" id="schDateLabel"></div>
+
+  <div class="btn-group" id="schViewBtns">
+    <button class="btn btn-outline-secondary" data-view="day" onclick="schSetView('day')">Day</button>
+    <button class="btn btn-outline-secondary" data-view="week" onclick="schSetView('week')">Week</button>
+    <button class="btn btn-outline-secondary" data-view="month" onclick="schSetView('month')">Month</button>
+    <button class="btn btn-outline-secondary" data-view="agenda" onclick="schSetView('agenda')">Agenda</button>
+  </div>
+
+  <div class="sch-filters">
+    {% if is_admin %}
+    <select id="schAgentFilter" onchange="schLoad()">
+      <option value="all">All Agents</option>
+      <option value="unassigned">Unassigned</option>
+      {% for a in agents %}
+      <option value="{{ a.id }}">{{ a.name }}</option>
+      {% endfor %}
+    </select>
     {% endif %}
+    <select id="schStatusFilter" onchange="schLoad()">
+      <option value="all">All Bookings</option>
+      <option value="upcoming" selected>Upcoming</option>
+      <option value="past">Past</option>
+    </select>
   </div>
 </div>
+
+<div id="schContainer" class="ax-card" style="overflow:auto">
+  <div class="sch-loading" id="schLoading">Loading schedule...</div>
+  <div id="schContent"></div>
+</div>
+
+<div class="sch-popup-overlay" id="schPopupOverlay" onclick="schClosePopup()"></div>
+<div class="sch-popup" id="schPopup">
+  <div class="sch-popup-hdr">
+    <span class="title" id="schPopupTitle"></span>
+    <button class="close-btn" onclick="schClosePopup()">&times;</button>
+  </div>
+  <div class="sch-popup-body" id="schPopupBody"></div>
+  <div class="sch-resched-row" id="schReschedRow">
+    <div class="d-flex gap-2 align-items-center">
+      <input type="datetime-local" id="schReschedDt" class="form-control form-control-sm" style="width:auto">
+      <button class="btn btn-primary btn-sm" onclick="schDoReschedule()">Confirm</button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('schReschedRow').style.display='none'">Cancel</button>
+    </div>
+  </div>
+  <div class="sch-popup-actions" id="schPopupActions"></div>
+</div>
+
+{% endblock %}
+
+{% block modals %}
+<script>
+var SCH = {
+  view: '{{ default_view }}',
+  date: new Date(),
+  events: [],
+  isAdmin: {{ 'true' if is_admin else 'false' }},
+  userId: {{ user_id }},
+  agentColors: {},
+  colorPalette: ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#4f46e5','#be185d','#65a30d','#0d9488','#9333ea','#ea580c'],
+  colorIdx: 0,
+  popupEvent: null
+};
+
+function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function _pad(n){return n<10?'0'+n:''+n}
+function _isoDate(d){return d.getFullYear()+'-'+_pad(d.getMonth()+1)+'-'+_pad(d.getDate())}
+function _formatTime12(iso){
+  if(!iso||iso.length<16) return '';
+  var h=parseInt(iso.substr(11,2),10),m=iso.substr(14,2);
+  var ap=h>=12?'pm':'am';h=h%12||12;
+  return h+':'+m+' '+ap;
+}
+function _formatDateShort(iso){
+  if(!iso||iso.length<10) return '';
+  var parts=iso.substr(0,10).split('-');
+  return parts[2]+'/'+parts[1]+'/'+parts[0].substr(2);
+}
+function _statusColor(s){
+  if(s==='Completed') return '#16a34a';
+  if(s==='Cancelled') return '#94a3b8';
+  if(s==='Booked') return '#2563eb';
+  return '#d97706';
+}
+function _agentColor(uid){
+  if(!uid) return '#94a3b8';
+  if(!SCH.agentColors[uid]){
+    SCH.agentColors[uid]=SCH.colorPalette[SCH.colorIdx%SCH.colorPalette.length];
+    SCH.colorIdx++;
+  }
+  return SCH.agentColors[uid];
+}
+
+function _weekStart(d){var r=new Date(d);var day=r.getDay();var diff=day===0?-6:1-day;r.setDate(r.getDate()+diff);return r}
+function _weekEnd(d){var s=_weekStart(d);var e=new Date(s);e.setDate(e.getDate()+6);return e}
+function _monthStart(d){return new Date(d.getFullYear(),d.getMonth(),1)}
+function _monthEnd(d){return new Date(d.getFullYear(),d.getMonth()+1,0)}
+function _sameDay(a,b){return _isoDate(a)===_isoDate(b)}
+
+function _dateRange(){
+  var d=SCH.date;
+  if(SCH.view==='day') return {start:_isoDate(d),end:_isoDate(d)+'T23:59:59'};
+  if(SCH.view==='week'){var s=_weekStart(d);var e=_weekEnd(d);return{start:_isoDate(s),end:_isoDate(e)+'T23:59:59'}}
+  if(SCH.view==='month'){
+    var ms=_monthStart(d);var me=_monthEnd(d);
+    var calStart=_weekStart(ms);
+    var calEnd=_weekEnd(me);
+    return{start:_isoDate(calStart),end:_isoDate(calEnd)+'T23:59:59'}
+  }
+  if(SCH.view==='agenda'){
+    var s2=new Date(d);s2.setDate(s2.getDate()-30);
+    var e2=new Date(d);e2.setDate(e2.getDate()+60);
+    return{start:_isoDate(s2),end:_isoDate(e2)+'T23:59:59'}
+  }
+  return{start:_isoDate(d),end:_isoDate(d)+'T23:59:59'}
+}
+
+function _updateLabel(){
+  var d=SCH.date;
+  var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var lbl='';
+  if(SCH.view==='day') lbl=days[d.getDay()]+' '+d.getDate()+' '+months[d.getMonth()]+' '+d.getFullYear();
+  else if(SCH.view==='week'){var ws=_weekStart(d);var we=_weekEnd(d);lbl=ws.getDate()+' '+months[ws.getMonth()]+' — '+we.getDate()+' '+months[we.getMonth()]+' '+we.getFullYear()}
+  else if(SCH.view==='month') lbl=months[d.getMonth()]+' '+d.getFullYear();
+  else lbl='Agenda — '+months[d.getMonth()]+' '+d.getFullYear();
+  document.getElementById('schDateLabel').textContent=lbl;
+  document.getElementById('schDatePicker').value=_isoDate(d);
+}
+
+function schSetView(v){
+  SCH.view=v;
+  document.querySelectorAll('#schViewBtns .btn').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});
+  schLoad();
+}
+
+function schToday(){SCH.date=new Date();schLoad()}
+function schPickDate(v){if(v){SCH.date=new Date(v+'T12:00:00');schLoad()}}
+function schNav(dir){
+  var d=SCH.date;
+  if(SCH.view==='day') d.setDate(d.getDate()+dir);
+  else if(SCH.view==='week') d.setDate(d.getDate()+(dir*7));
+  else if(SCH.view==='month') d.setMonth(d.getMonth()+dir);
+  else d.setDate(d.getDate()+(dir*30));
+  SCH.date=d;
+  schLoad();
+}
+
+function schLoad(){
+  _updateLabel();
+  var range=_dateRange();
+  var agentId=SCH.isAdmin?(document.getElementById('schAgentFilter').value):'';
+  var statusFilter=document.getElementById('schStatusFilter').value;
+  var url='/schedule/api/events?start='+encodeURIComponent(range.start)+'&end='+encodeURIComponent(range.end);
+  if(agentId) url+='&agent_id='+encodeURIComponent(agentId);
+  if(statusFilter) url+='&status_filter='+encodeURIComponent(statusFilter);
+
+  document.getElementById('schLoading').style.display='';
+  document.getElementById('schContent').innerHTML='';
+
+  fetch(url,{credentials:'include'})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      document.getElementById('schLoading').style.display='none';
+      SCH.events=data.events||[];
+      _render();
+    })
+    .catch(function(){
+      document.getElementById('schLoading').style.display='none';
+      document.getElementById('schContent').innerHTML='<div class="sch-empty">Error loading schedule. Please try again.</div>';
+    });
+}
+
+function _render(){
+  if(SCH.view==='day') _renderDay();
+  else if(SCH.view==='week') _renderWeek();
+  else if(SCH.view==='month') _renderMonth();
+  else _renderAgenda();
+}
+
+function _evtHtml(e,compact){
+  var bgColor=SCH.isAdmin&&document.getElementById('schAgentFilter')&&document.getElementById('schAgentFilter').value==='all'?_agentColor(e.assigned_to_user_id):(e.booking_type_color||'#6b7280');
+  var cls='sch-evt';
+  if(e.status==='Completed') cls+=' status-completed';
+  if(e.status==='Cancelled') cls+=' status-cancelled';
+  var label='<span class="sch-evt-time">'+_formatTime12(e.scheduled_for)+'</span> '+_esc(e.display_ref);
+  if(!compact) label+=' — '+_esc(e.booking_type);
+  if(!compact&&e.customer_name) label+=' — '+_esc(e.customer_name);
+  return '<span class="'+cls+'" style="background:'+bgColor+'" data-eid="'+e.id+'" onclick="schShowPopup('+e.id+',event)">'+label+'</span>';
+}
+
+function _renderDay(){
+  var todayStr=_isoDate(SCH.date);
+  var html='<div class="sch-day-grid">';
+  for(var h=6;h<=20;h++){
+    var hLabel=(h%12||12)+(h<12?' am':' pm');
+    html+='<div class="sch-hour-label">'+hLabel+'</div>';
+    html+='<div class="sch-hour-cell" data-hour="'+h+'">';
+    SCH.events.forEach(function(e){
+      if(!e.scheduled_for||e.scheduled_for.substr(0,10)!==todayStr) return;
+      var eHour=parseInt(e.scheduled_for.substr(11,2),10);
+      if(eHour===h) html+=_evtHtml(e,false);
+    });
+    html+='</div>';
+  }
+  html+='</div>';
+  var unslotted=SCH.events.filter(function(e){
+    if(!e.scheduled_for||e.scheduled_for.substr(0,10)!==todayStr) return false;
+    var eH=parseInt(e.scheduled_for.substr(11,2),10);
+    return eH<6||eH>20;
+  });
+  if(unslotted.length){
+    html+='<div style="padding:8px 12px;border-top:1px solid var(--line)">';
+    html+='<div style="font-size:.75rem;color:var(--muted);font-weight:600;margin-bottom:4px">OTHER TIMES</div>';
+    unslotted.forEach(function(e){html+=_evtHtml(e,false)});
+    html+='</div>';
+  }
+  if(SCH.events.length===0) html='<div class="sch-empty">No bookings for this day.</div>';
+  document.getElementById('schContent').innerHTML=html;
+}
+
+function _renderWeek(){
+  var ws=_weekStart(SCH.date);
+  var days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  var todayStr=_isoDate(new Date());
+  var dayDates=[];
+  for(var i=0;i<7;i++){var dd=new Date(ws);dd.setDate(dd.getDate()+i);dayDates.push(dd)}
+
+  var html='<div class="sch-week-grid">';
+  html+='<div class="sch-week-hdr"></div>';
+  dayDates.forEach(function(dd,i){
+    var ds=_isoDate(dd);
+    var isToday=ds===todayStr;
+    html+='<div class="sch-week-hdr'+(isToday?' today-col':'')+'">'+days[i]+' '+dd.getDate()+'</div>';
+  });
+
+  for(var h=6;h<=20;h++){
+    var hLabel=(h%12||12)+(h<12?'a':'p');
+    html+='<div class="sch-week-hour-label">'+hLabel+'</div>';
+    dayDates.forEach(function(dd){
+      var ds=_isoDate(dd);
+      html+='<div class="sch-week-cell" data-date="'+ds+'" data-hour="'+h+'">';
+      SCH.events.forEach(function(e){
+        if(!e.scheduled_for||e.scheduled_for.substr(0,10)!==ds) return;
+        var eH=parseInt(e.scheduled_for.substr(11,2),10);
+        if(eH===h) html+=_evtHtml(e,true);
+      });
+      html+='</div>';
+    });
+  }
+  html+='</div>';
+  if(SCH.events.length===0) html='<div class="sch-empty">No bookings this week.</div>';
+  document.getElementById('schContent').innerHTML=html;
+}
+
+function _renderMonth(){
+  var ms=_monthStart(SCH.date);
+  var me=_monthEnd(SCH.date);
+  var calStart=_weekStart(ms);
+  var todayStr=_isoDate(new Date());
+  var thisMonth=SCH.date.getMonth();
+
+  var dayNames=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  var html='<div class="sch-month-grid">';
+  dayNames.forEach(function(n){html+='<div class="sch-month-hdr">'+n+'</div>'});
+
+  var cur=new Date(calStart);
+  for(var row=0;row<6;row++){
+    for(var col=0;col<7;col++){
+      var ds=_isoDate(cur);
+      var isOther=cur.getMonth()!==thisMonth;
+      var isToday=ds===todayStr;
+      html+='<div class="sch-month-cell'+(isOther?' other-month':'')+'">';
+      html+='<div class="sch-month-day-num'+(isToday?' today':'')+'">'+cur.getDate()+'</div>';
+      var dayEvts=SCH.events.filter(function(e){return e.scheduled_for&&e.scheduled_for.substr(0,10)===ds});
+      var shown=0;
+      dayEvts.forEach(function(e){
+        if(shown<3){
+          var bgColor=SCH.isAdmin&&document.getElementById('schAgentFilter')&&document.getElementById('schAgentFilter').value==='all'?_agentColor(e.assigned_to_user_id):(e.booking_type_color||'#6b7280');
+          html+='<span class="sch-month-dot" style="background:'+bgColor+'" onclick="schShowPopup('+e.id+',event)">'+_formatTime12(e.scheduled_for)+' '+_esc(e.display_ref)+'</span>';
+          shown++;
+        }
+      });
+      if(dayEvts.length>3) html+='<span class="sch-month-more" onclick="schDrillDay(\''+ds+'\')">+'+(dayEvts.length-3)+' more</span>';
+      html+='</div>';
+      cur.setDate(cur.getDate()+1);
+    }
+    if(cur>me&&cur.getDay()===1) break;
+  }
+  html+='</div>';
+  document.getElementById('schContent').innerHTML=html;
+}
+
+function schDrillDay(ds){
+  SCH.date=new Date(ds+'T12:00:00');
+  schSetView('day');
+}
+
+function _renderAgenda(){
+  if(SCH.events.length===0){
+    document.getElementById('schContent').innerHTML='<div class="sch-empty">No bookings found.</div>';
+    return;
+  }
+  var todayStr=_isoDate(new Date());
+  var html='<div class="table-responsive"><table class="sch-agenda-tbl"><thead><tr>';
+  html+='<th>Date</th><th>Time</th><th>Type</th><th>Job</th><th>Customer</th>';
+  if(SCH.isAdmin) html+='<th>Assigned</th>';
+  html+='<th>Address</th><th>Status</th><th></th>';
+  html+='</tr></thead><tbody>';
+
+  SCH.events.forEach(function(e){
+    var ds=e.scheduled_for?e.scheduled_for.substr(0,10):'';
+    var isOverdue=ds<todayStr&&e.status!=='Completed'&&e.status!=='Cancelled';
+    html+='<tr class="'+(isOverdue?'overdue':'')+'" style="cursor:pointer" onclick="schShowPopup('+e.id+',event)">';
+    html+='<td style="white-space:nowrap'+(isOverdue?';color:var(--danger);font-weight:600':'')+'">'+_formatDateShort(e.scheduled_for)+(isOverdue?' <span style="font-size:.65rem;background:var(--danger);color:#fff;padding:1px 5px;border-radius:4px">OVERDUE</span>':'')+'</td>';
+    html+='<td style="white-space:nowrap">'+_formatTime12(e.scheduled_for)+'</td>';
+    html+='<td>'+_esc(e.booking_type)+'</td>';
+    html+='<td><a href="/jobs/'+e.job_id+'" style="color:var(--accent);text-decoration:none;font-weight:600" onclick="event.stopPropagation()">'+_esc(e.display_ref)+'</a></td>';
+    html+='<td>'+_esc(e.customer_name||e.customer_label||'—')+'</td>';
+    if(SCH.isAdmin) html+='<td style="color:var(--muted)">'+_esc(e.assigned_to_name||'Unassigned')+'</td>';
+    var addrSnippet=e.job_address?(e.job_address.length>35?e.job_address.substr(0,35)+'…':e.job_address):'—';
+    html+='<td style="font-size:.82rem;color:var(--muted)">'+_esc(addrSnippet)+'</td>';
+    html+='<td><span class="status-badge" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span></td>';
+    html+='<td><a href="/jobs/'+e.job_id+'" class="btn btn-outline-primary btn-sm" style="font-size:.72rem" onclick="event.stopPropagation()">Open</a></td>';
+    html+='</tr>';
+  });
+
+  html+='</tbody></table></div>';
+  document.getElementById('schContent').innerHTML=html;
+}
+
+function schShowPopup(eid,ev){
+  ev&&ev.stopPropagation();
+  var e=SCH.events.find(function(x){return x.id===eid});
+  if(!e) return;
+  SCH.popupEvent=e;
+  document.getElementById('schPopupTitle').textContent=e.display_ref+' — '+e.booking_type;
+  var body='';
+  body+='<div class="info-row"><span class="info-label">Date/Time</span><span class="info-val">'+_formatDateShort(e.scheduled_for)+' '+_formatTime12(e.scheduled_for)+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Type</span><span class="info-val">'+_esc(e.booking_type)+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Job Type</span><span class="info-val">'+_esc(e.job_type||'—')+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Customer</span><span class="info-val">'+_esc(e.customer_name||e.customer_label||'—')+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Address</span><span class="info-val">'+_esc(e.job_address||'—')+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Assigned</span><span class="info-val">'+_esc(e.assigned_to_name||'Unassigned')+'</span></div>';
+  body+='<div class="info-row"><span class="info-label">Status</span><span class="info-val"><span class="status-badge" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span></span></div>';
+  if(e.notes) body+='<div class="info-row"><span class="info-label">Notes</span><span class="info-val">'+_esc(e.notes)+'</span></div>';
+  document.getElementById('schPopupBody').innerHTML=body;
+
+  var actions='<a href="/jobs/'+e.job_id+'" class="btn btn-primary">Open Job</a>';
+  if(e.status!=='Completed'&&e.status!=='Cancelled'){
+    actions+='<button class="btn btn-outline-secondary" onclick="schShowReschedule()">Reschedule</button>';
+    actions+='<button class="btn btn-outline-success" onclick="schQuickAction(\'complete\')">Complete</button>';
+    actions+='<button class="btn btn-outline-danger" onclick="schQuickAction(\'cancel\')">Cancel</button>';
+  }
+  document.getElementById('schPopupActions').innerHTML=actions;
+  document.getElementById('schReschedRow').style.display='none';
+
+  var popup=document.getElementById('schPopup');
+  var overlay=document.getElementById('schPopupOverlay');
+  popup.style.top='50%';popup.style.left='50%';popup.style.transform='translate(-50%,-50%)';
+  overlay.style.display='';popup.style.display='';
+}
+
+function schClosePopup(){
+  document.getElementById('schPopup').style.display='none';
+  document.getElementById('schPopupOverlay').style.display='none';
+  SCH.popupEvent=null;
+}
+
+function schShowReschedule(){
+  var row=document.getElementById('schReschedRow');
+  row.style.display='';
+  var e=SCH.popupEvent;
+  if(e&&e.scheduled_for) document.getElementById('schReschedDt').value=e.scheduled_for.substr(0,16);
+}
+
+function schDoReschedule(){
+  var e=SCH.popupEvent;if(!e) return;
+  var newDt=document.getElementById('schReschedDt').value;
+  if(!newDt){alert('Please select a date and time.');return}
+  var fd=new FormData();fd.append('new_datetime',newDt);
+  fetch('/schedule/api/'+e.id+'/reschedule',{method:'POST',body:fd,credentials:'include'})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      if(!data.ok){alert(data.error||'Error');return}
+      schClosePopup();schLoad();
+    })
+    .catch(function(){alert('Network error.')});
+}
+
+function schQuickAction(action){
+  var e=SCH.popupEvent;if(!e) return;
+  var label=action==='complete'?'Mark as completed':'Cancel this booking';
+  if(!confirm(label+'?')) return;
+  fetch('/schedule/api/'+e.id+'/'+action,{method:'POST',credentials:'include'})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      if(!data.ok){alert(data.error||'Error');return}
+      schClosePopup();schLoad();
+    })
+    .catch(function(){alert('Network error.')});
+}
+
+(function(){
+  schSetView(SCH.view);
+})();
+</script>
 {% endblock %}
