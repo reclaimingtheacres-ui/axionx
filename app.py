@@ -3109,11 +3109,13 @@ def add_schedule(job_id: int):
 
     bt_row = cur.execute("SELECT name FROM booking_types WHERE id = ?", (resolved_bt_id,)).fetchone()
     bt_status = bt_row["name"] if bt_row else "Active"
+    ts = now_ts()
     cur.execute("""
         INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes,
                                assigned_to_user_id, created_by_user_id, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (job_id, resolved_bt_id, dt_str, bt_status, notes, assigned_to, caller_id, now_ts()))
+    """, (job_id, resolved_bt_id, dt_str, bt_status, notes, assigned_to, caller_id, ts))
+    _auto_complete_schedule_cues(cur, job_id, ts)
     conn.commit()
     conn.close()
 
@@ -3175,6 +3177,7 @@ def add_schedule_ajax(job_id: int):
     cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
                    VALUES (?, 'Schedule', ?, ?, ?)""",
                 (job_id, f"Booking '{bt_name}' added for {dt_str[:10]}.", now, now))
+    _auto_complete_schedule_cues(cur, job_id, now)
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "count": len(created)})
@@ -3281,6 +3284,7 @@ def job_activate(job_id):
                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                             (job_id, resolved_bt_id, dt_str, bt_status, notes,
                              assigned_int, caller_id, now_ts()))
+                _auto_complete_schedule_cues(cur, job_id, now)
         except Exception:
             flash("Schedule date/time invalid — status updated but no schedule created.", "warning")
 
@@ -3635,6 +3639,10 @@ def job_status_update(job_id: int):
         """, (job_id, "System",
                 f"Agent unassigned and pending schedules cancelled — job marked '{status}'.",
                 now, now))
+        cur.execute("""
+            UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+            WHERE job_id=? AND status IN ('Pending','In Progress')
+        """, (now, now, job_id))
     conn.commit()
     conn.close()
     return redirect(url_for("job_detail", job_id=job_id))
@@ -3672,6 +3680,10 @@ def job_update(job_id: int):
         """, (job_id, "System",
                 f"Agent unassigned and pending schedules cancelled — job marked '{status}'.",
                 now, now))
+        cur.execute("""
+            UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+            WHERE job_id=? AND status IN ('Pending','In Progress')
+        """, (now, now, job_id))
 
     conn.commit()
     conn.close()
@@ -7527,7 +7539,7 @@ def job_queue():
 
     cur.execute(_queue_row_sql() + """
         WHERE ci.visit_type = ? AND ci.status = 'Pending'
-        ORDER BY ci.created_at DESC
+        ORDER BY ci.updated_at DESC, ci.created_at DESC
     """, (note_type,))
     agent_notes = cur.fetchall()
 
@@ -7712,6 +7724,35 @@ def queue_dismiss(cue_id: int):
     conn.close()
     audit("cue", cue_id, "dismiss", f"Queue item {cue_id} dismissed.")
     return jsonify({"ok": True})
+
+
+@app.get("/queue/active-cue-ids")
+@admin_required
+def queue_active_cue_ids():
+    conn = db()
+    rows = conn.execute("""
+        SELECT id FROM cue_items
+        WHERE (
+            (visit_type IN ('Urgent: Schedule Overdue', 'Schedule Due Today', 'Schedule Due Tomorrow')
+             AND status IN ('Pending', 'In Progress'))
+            OR
+            (visit_type = 'Agent Note Review' AND status = 'Pending')
+        )
+    """).fetchall()
+    conn.close()
+    return jsonify({"ok": True, "ids": [r["id"] for r in rows]})
+
+
+def _auto_complete_schedule_cues(cur, job_id, ts=None):
+    if ts is None:
+        ts = now_ts()
+    cur.execute("""
+        UPDATE cue_items
+        SET status = 'Completed', completed_at = ?, updated_at = ?
+        WHERE job_id = ?
+          AND visit_type IN ('Urgent: Schedule Overdue', 'Schedule Due Today', 'Schedule Due Tomorrow')
+          AND status IN ('Pending', 'In Progress')
+    """, (ts, ts, job_id))
 
 
 @app.post("/queue/send-email")

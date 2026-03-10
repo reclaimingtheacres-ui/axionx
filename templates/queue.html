@@ -102,6 +102,57 @@
   or <strong>Update</strong> to go directly into the job.
 </div>
 
+<!-- ── AGENT NOTES – PENDING REVIEW (pinned to top) ────────────────── -->
+{% if agent_notes %}
+<div class="queue-section" id="notes-section">
+  <div class="queue-section-title notes">Agent Notes – Pending Review [{{ agent_notes|length }}]</div>
+  <table class="queue-table">
+    <thead>
+      <tr>
+        <th style="width:24px"></th>
+        <th>Job</th>
+        <th>Date/Time</th>
+        <th>Client</th>
+        <th>Borrower(s)</th>
+        <th>Given Address</th>
+        <th>Note</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="notes-body">
+      {% for c in agent_notes %}
+      <tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}">
+        <td>
+          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
+        </td>
+        <td>
+          <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
+        </td>
+        <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
+        <td>{{ c.client_name or '—' }}</td>
+        <td>{{ c.customer_label or c.customer_name or '—' }}</td>
+        <td>{{ c.job_address or '—' }}</td>
+        <td class="q-action-text">{{ c.instructions or '—' }}</td>
+        <td>
+          <div class="q-actions">
+            <button class="q-email-btn"
+              data-job-id="{{ c.job_id }}"
+              data-job-ref="{{ c.display_ref|e }}"
+              data-client-email="{{ (c.client_email or '')|e }}"
+              data-agent-email="{{ (c.agent_email or '')|e }}"
+              data-agent-name="{{ (c.agent_name or '')|e }}"
+              data-client-name="{{ (c.client_name or 'Client')|e }}"
+              onclick="openEmailModal(this)">Email</button>
+            <a class="q-update-btn" href="/jobs/{{ c.job_id }}?add_note=1" target="_blank">Update</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <!-- ── OVERDUE ─────────────────────────────────────────────────────── -->
 <div class="queue-section">
   <div class="queue-section-title overdue">Overdue [{{ overdue|length }}]</div>
@@ -120,7 +171,7 @@
     </thead>
     <tbody id="overdue-body">
       {% for c in overdue %}
-      <tr id="qrow-{{ c.id }}">
+      <tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}">
         <td>
           <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
         </td>
@@ -171,7 +222,7 @@
     </thead>
     <tbody id="due-body">
       {% for c in due_tomorrow %}
-      <tr id="qrow-{{ c.id }}">
+      <tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}">
         <td>
           <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
         </td>
@@ -204,57 +255,6 @@
   </table>
 </div>
 
-<!-- ── AGENT NOTES ─────────────────────────────────────────────────── -->
-<div class="queue-section">
-  <div class="queue-section-title notes">Agent Notes — Pending Review [{{ agent_notes|length }}]</div>
-  <table class="queue-table">
-    <thead>
-      <tr>
-        <th style="width:24px"></th>
-        <th>Job</th>
-        <th>Date/Time</th>
-        <th>Client</th>
-        <th>Borrower(s)</th>
-        <th>Given Address</th>
-        <th>Note</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="notes-body">
-      {% for c in agent_notes %}
-      <tr id="qrow-{{ c.id }}">
-        <td>
-          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
-        </td>
-        <td>
-          <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
-        </td>
-        <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
-        <td>{{ c.client_name or '—' }}</td>
-        <td>{{ c.customer_label or c.customer_name or '—' }}</td>
-        <td>{{ c.job_address or '—' }}</td>
-        <td class="q-action-text">{{ c.instructions or '—' }}</td>
-        <td>
-          <div class="q-actions">
-            <button class="q-email-btn"
-              data-job-id="{{ c.job_id }}"
-              data-job-ref="{{ c.display_ref|e }}"
-              data-client-email="{{ (c.client_email or '')|e }}"
-              data-agent-email="{{ (c.agent_email or '')|e }}"
-              data-agent-name="{{ (c.agent_name or '')|e }}"
-              data-client-name="{{ (c.client_name or 'Client')|e }}"
-              onclick="openEmailModal(this)">Email</button>
-            <a class="q-update-btn" href="/jobs/{{ c.job_id }}?add_note=1" target="_blank">Update</a>
-          </div>
-        </td>
-      </tr>
-      {% else %}
-      <tr class="q-empty"><td colspan="8">No agent notes pending review.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-
 <script>
 /* ── Dismiss ──────────────────────────────────────────────────────── */
 function dismissItem(cueId) {
@@ -275,16 +275,50 @@ function dismissItem(cueId) {
 
 function updateSectionCounts() {
   [
+    {body: 'notes-body',   cls: '.queue-section-title.notes',   section: 'notes-section'},
     {body: 'overdue-body', cls: '.queue-section-title.overdue'},
-    {body: 'due-body',     cls: '.queue-section-title.due'},
-    {body: 'notes-body',   cls: '.queue-section-title.notes'}
+    {body: 'due-body',     cls: '.queue-section-title.due'}
   ].forEach(function(s) {
     var tbody = document.getElementById(s.body);
     var title = document.querySelector(s.cls);
     if (!tbody || !title) return;
     var n = tbody.querySelectorAll('tr:not(.q-empty)').length;
     title.textContent = title.textContent.replace(/\[\d+\]/, '[' + n + ']');
+    if (s.section) {
+      var sec = document.getElementById(s.section);
+      if (sec) sec.style.display = n === 0 ? 'none' : '';
+    }
   });
+}
+
+/* ── Auto-refresh on tab focus ────────────────────────────────────── */
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    refreshQueueState();
+  }
+});
+
+function refreshQueueState() {
+  fetch('/queue/active-cue-ids', {
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (!data.ok) return;
+    var activeIds = {};
+    data.ids.forEach(function(id){ activeIds[id] = true; });
+    var allRows = document.querySelectorAll('tr[id^="qrow-"]');
+    var removed = false;
+    allRows.forEach(function(row) {
+      var cueId = parseInt(row.id.replace('qrow-', ''), 10);
+      if (!activeIds[cueId]) {
+        row.remove();
+        removed = true;
+      }
+    });
+    if (removed) updateSectionCounts();
+  })
+  .catch(function(){});
 }
 
 /* ── Email modal ──────────────────────────────────────────────────── */
