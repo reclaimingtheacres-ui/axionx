@@ -489,6 +489,7 @@ def init_db():
         ("regulation_type","TEXT"),
         ("engine_number",  "TEXT"),
         ("deliver_to",     "TEXT"),
+        ("colour",         "TEXT"),
     ]:
         add_column_if_missing(cur, "job_items", col, coltype)
 
@@ -1054,6 +1055,202 @@ def _parse_instruction_text(text):
                 return val[:max_chars].strip() if val else None
         return None
 
+    # ── ACS (Australian Collection Services) worksheet detection ─────────
+    is_acs = bool(
+        re.search(r"auscollect\.com\.au", text, re.IGNORECASE)
+        or re.search(r"WORKSHEET\s*-\s*REPOSSESSION\s*/\s*COLLECTION", text, re.IGNORECASE)
+        or (re.search(r"Australian\s*Collection\s*Services", text, re.IGNORECASE)
+            and re.search(r"Job\s*No\.?", text, re.IGNORECASE))
+    )
+
+    if is_acs:
+        acs_job_no = find_after([r"Job\s*No\.?\s*:?\s*([A-Za-z0-9\-\/]+)"])
+        acs_client_line = find_after([
+            r"(?:^|\n)\s*Client\s*:?\s*([^\n]{3,80}?)(?:\s*Contract\s*#|\s{2,}|\s*$)",
+        ])
+        acs_contract = find_after([r"Contract\s*#\s*([A-Za-z0-9\-\/]+)"])
+        acs_con_type = find_after([r"Con\s*Type\s*:?\s*([A-Za-z][A-Za-z ]{2,30}?)(?:\s*\n|\s{2,}|$)"])
+        acs_job_type = find_after([
+            r"Job\s*Type\s*:?\s*([^\n]{3,40}?)(?:\s+Con\s*Type|\s{2,}|\s*$)",
+        ])
+
+        acs_customer = find_after([
+            r"Customer\s*:?\s*([A-Z][A-Z ,.'&\-]{2,60}?)(?:\s{2,}|\s*DOB|\s*$)",
+        ])
+        acs_dob = find_after([r"DOB\s*:?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})"])
+
+        acs_address = find_after([r"(?:^|\n)\s*Address\s*:?\s*([^\n]{3,120})"])
+        acs_suburb = find_after([r"(?:^|\n)\s*Suburb\s*:?\s*([^\n]{3,80})"])
+        acs_full_addr = None
+        if acs_address:
+            acs_full_addr = acs_address.strip().rstrip(",")
+            if acs_suburb:
+                acs_full_addr += ", " + acs_suburb.strip()
+
+        acs_mobile = find_after([r"(?:^|\n)\s*Mob\s*:?\s+([+0-9\(\)\s\-]{8,20})"])
+        acs_ph_home = find_after([r"Ph\s*Hm\s*:?\s*([+0-9\(\)\s\-]{8,20})"])
+        acs_ph_bus = find_after([r"Ph\s*Bus\s*:?\s*([+0-9\(\)\s\-]{8,20})"])
+        acs_email_raw = find_after([r"Email\s*:?\s*([^\s@]+@[^\s]+)"])
+        acs_email = None
+        if acs_email_raw and "auscollect" not in acs_email_raw.lower():
+            acs_email = acs_email_raw
+        acs_dl = find_after([r"D[\/\\]?L\s*:?\s*([A-Za-z0-9]{5,15})"])
+
+        acs_deliver = find_after([r"Deliver\s*(?:to|vehicle\s*to)\s*:?\s*([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|$)"])
+        acs_make_model = find_after([r"Make\s*/\s*Model\s*:?\s*([A-Za-z0-9][A-Za-z0-9 \-]{1,40}?)(?:\s{2,}|Year|\s*$)"])
+        acs_year = find_after([r"Year\s*:?\s*([12][0-9]{3})"])
+        acs_colour = find_after([r"Colou?r\s*:?\s*([A-Za-z][A-Za-z ]{1,20}?)(?:\s{2,}|Regn|\s*$)"])
+
+        acs_regn_raw = find_after([r"Regn\s*:?\s*([^\n]{2,30}?)(?:\s{2,}|\s*\n|\s*$)"])
+        acs_rego = None
+        acs_reg_note = None
+        _REG_STATUS_TOKENS = {"unreg", "unregistered", "expired", "cancelled", "suspended", "stolen", "written off", "defected"}
+        if acs_regn_raw:
+            regn_parts = re.split(r'\s*-\s*', acs_regn_raw.strip(), maxsplit=1)
+            if len(regn_parts) > 1 and regn_parts[1].strip().lower() in _REG_STATUS_TOKENS:
+                acs_rego = regn_parts[0].strip()
+                acs_reg_note = regn_parts[1].strip()
+            else:
+                acs_rego = acs_regn_raw.strip()
+
+        acs_vin = find_after([
+            r"VIN\s*#?\s*:?\s*([A-HJ-NPR-Z0-9]{11,17})",
+            r"VIN\s*/?\s*Chassis\s*:?\s*([A-HJ-NPR-Z0-9]{11,17})",
+        ])
+        acs_engine = find_after([r"Engine\s*:?\s+([A-Za-z0-9\-\/]{3,20}?)(?:\s{2,}|\s*\n|\s*$)"])
+        if acs_engine and acs_engine.strip().lower() in ('reg', 'regn', 'vin', 'color', 'colour'):
+            acs_engine = None
+        acs_reg_exp = find_after([r"Reg\s*Exp\s*:?\s*([^\n]{3,40}?)(?:\s{2,}|\s*\n|\s*$)"])
+
+        acs_arrears = find_after([r"Arrears\s*\$?\s*([0-9,]+\.?\d{0,2})"])
+        acs_install_due = find_after([r"Install\s*due\s*\$?\s*([0-9,]+\.?\d{0,2})"])
+        acs_next_due = find_after([r"Next\s*Due\s*:?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})"])
+        acs_total_collect = find_after([r"Total\s*collect\s*\$?\s*([0-9,]+\.?\d{0,2})"])
+
+        acs_make = acs_model = None
+        if acs_make_model:
+            parts = acs_make_model.strip().split(None, 1)
+            acs_make = parts[0].upper()
+            acs_model = parts[1].upper() if len(parts) > 1 else None
+
+        acs_lender = acs_client_line.strip().rstrip(".,") if acs_client_line else None
+        acs_account_name = find_after([r"Account\s*Name\s*:?\s+([^\n]{3,60}?)(?:\s*\n|$)"])
+        if acs_account_name and acs_lender:
+            if len(acs_account_name.strip()) > len(acs_lender):
+                acs_lender = acs_account_name.strip().rstrip(".,")
+        elif acs_account_name and not acs_lender:
+            acs_lender = acs_account_name.strip().rstrip(".,")
+
+
+        acs_reg_type = None
+        if acs_con_type:
+            ct = acs_con_type.lower().strip()
+            if any(k in ct for k in _UNREGULATED_TYPES) or "unregulated" in ct:
+                acs_reg_type = "UNREGULATED"
+            elif any(k in ct for k in _REGULATED_TYPES) or "regulated" in ct:
+                acs_reg_type = "REGULATED"
+
+        acs_instructions_parts = []
+        if acs_job_type:
+            acs_instructions_parts.append(f"Job Type: {acs_job_type.strip()}")
+        if acs_reg_type:
+            acs_instructions_parts.append(f"Contract Type: {acs_reg_type}")
+        if acs_reg_note:
+            acs_instructions_parts.append(f"Registration Status: {acs_reg_note}")
+        if acs_reg_exp:
+            acs_instructions_parts.append(f"Rego Expiry: {acs_reg_exp.strip()}")
+
+        spec_instr = find_block([
+            r"Special\s*Instructions?\s*:?\s*\n+([\s\S]+?)(?=\n\s*Security\b|\n\s*FINANCIALS\b|\Z)",
+        ])
+        if not spec_instr:
+            spec_instr = find_after([r"Special\s*Instructions?\s*:?\s*([^\n]{10,})"])
+
+        if spec_instr:
+            lines = spec_instr.strip().split('\n')
+            formatted = []
+            for line in lines:
+                line = line.strip()
+                if line:
+                    formatted.append(line)
+            acs_instructions_parts.append("")
+            acs_instructions_parts.append("Special Instructions:")
+            acs_instructions_parts.extend(formatted)
+
+        if acs_deliver:
+            acs_instructions_parts.append("")
+            acs_instructions_parts.append(f"Deliver to: {acs_deliver.strip()}")
+
+        if acs_dl:
+            acs_instructions_parts.append(f"Driver's Licence: {acs_dl}")
+
+        acs_instructions = "\n".join(acs_instructions_parts) if acs_instructions_parts else None
+
+        acs_desc_parts = [p for p in [acs_year, acs_make, acs_model, acs_colour] if p]
+        acs_auto_desc = " ".join(acs_desc_parts) if acs_desc_parts else None
+
+        acs_phone = _normalise_phone(acs_mobile) or _normalise_phone(acs_ph_bus)
+
+        acs_confidence = {}
+        acs_field_map = {
+            "lender_name": acs_lender, "client_reference": acs_contract,
+            "account_number": acs_contract, "regulated_type": acs_reg_type,
+            "customer_name": acs_customer, "customer_phone": acs_phone,
+            "customer_address": acs_full_addr, "deliver_to": acs_deliver,
+            "rego": acs_rego, "vin": acs_vin, "engine_number": acs_engine,
+            "year": acs_year, "make": acs_make, "model": acs_model,
+            "colour": acs_colour, "instructions": acs_instructions,
+            "arrears": acs_arrears, "our_ref": acs_job_no,
+        }
+        for k, v in acs_field_map.items():
+            acs_confidence[k] = "extracted" if v else None
+        if acs_lender and acs_account_name and acs_lender.lower() != acs_account_name.strip().lower():
+            acs_confidence["lender_name"] = "review"
+
+        return {
+            "client_reference":  acs_contract,
+            "contract_number":   acs_contract,
+            "account_number":    acs_contract,
+            "our_ref":           acs_job_no,
+            "regulated_type":    acs_reg_type,
+            "lender_name":       acs_lender,
+            "from_name":         "Australian Collection Services",
+            "deliver_to":        acs_deliver.strip().rstrip(".,") if acs_deliver else None,
+            "costs":             None,
+            "instalment_amount": acs_install_due,
+            "total_collect":     acs_total_collect,
+            "security_type":     "Vehicle",
+            "customer": {
+                "full_name": acs_customer.strip() if acs_customer else None,
+                "company":   None,
+                "dob":       acs_dob,
+                "email":     acs_email,
+                "mobile":    acs_phone,
+            },
+            "job_address_full": acs_full_addr,
+            "asset_address":    None,
+            "security": {
+                "year":          acs_year,
+                "make":          acs_make,
+                "model":         acs_model,
+                "rego":          acs_rego,
+                "vin":           acs_vin,
+                "engine_number": acs_engine,
+                "colour":        acs_colour,
+                "description":   acs_auto_desc,
+                "reg_expiry":    acs_reg_exp,
+                "reg_note":      acs_reg_note,
+            },
+            "financials": {
+                "arrears":   (acs_arrears or "").replace(",", "") or None,
+                "due_date":  acs_next_due,
+            },
+            "instructions_raw": acs_instructions,
+            "_confidence":      acs_confidence,
+            "_filled_count":    sum(1 for v in acs_confidence.values() if v),
+            "_source":          "acs_worksheet",
+        }
+
     # ── Wise Group document detection ──────────────────────────────────────
     is_wise = bool(re.search(r"WISE\s*GROUP\s*CASE\s*NUMBER", text, re.IGNORECASE))
 
@@ -1254,8 +1451,8 @@ def _parse_instruction_text(text):
     ])
     email = find_after([r"Email[:\s]*([^\s@]+@[^\s]+)"])
     vin   = find_after([
-        r"V\.?I\.?N\.?[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
-        r"\bVIN\b[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
+        r"V\.?I\.?N\.?\s*#?[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
+        r"\bVIN\b\s*#?[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
         r"VIN[\/]Chassis[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
         r"Chassis\s*(?:No\.?|Number)[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
     ])
@@ -1271,6 +1468,14 @@ def _parse_instruction_text(text):
     year   = find_after([r"\bYear\b[:\s]*([12][0-9]{3})", r"\b((?:19|20)[0-9]{2})\b"])
     make   = find_after([r"\bMake\b[:\s]*([A-Za-z][A-Za-z0-9\- ]{1,25}?)(?:\s*\n|$|\s{2,})"])
     model  = find_after([r"\bModel\b[:\s]*([A-Za-z0-9][A-Za-z0-9\- ]{1,35}?)(?:\s*\n|$|\s{2,})"])
+    if not make and not model:
+        make_model_combined = find_after([
+            r"Make\s*/\s*Model[:\s]*([A-Za-z0-9][A-Za-z0-9 \-]{2,40}?)(?:\s*\n|\s{2,}|$)",
+        ])
+        if make_model_combined:
+            mm_parts = make_model_combined.strip().split(None, 1)
+            make = mm_parts[0]
+            model = mm_parts[1] if len(mm_parts) > 1 else None
 
     # ── Security type ─────────────────────────────────────────────────────
     sec_type_raw = find_after([
@@ -2722,6 +2927,7 @@ def job_create():
     years         = request.form.getlist("asset_year[]")
     makes         = request.form.getlist("asset_make[]")
     models        = request.form.getlist("asset_model[]")
+    colours       = request.form.getlist("asset_colour[]")
     engines       = request.form.getlist("asset_engine[]")
     addresses     = request.form.getlist("asset_address[]")
     serials       = request.form.getlist("asset_serial[]")
@@ -2738,19 +2944,20 @@ def job_create():
         a_year   = _al(years,       i).strip()
         a_make   = _al(makes,       i).strip()
         a_model  = _al(models,      i).strip()
+        a_colour = _al(colours,     i).strip()
         a_engine = _al(engines,     i).strip()
         a_addr   = _al(addresses,   i).strip()
         a_ser    = _al(serials,     i).strip()
         a_note   = _al(asset_notes, i).strip()
-        if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year, a_engine]):
+        if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year, a_engine, a_colour]):
             continue
         cur.execute("""
             INSERT INTO job_items
-            (job_id, item_type, description, reg, vin, make, model, year, engine_number, property_address, serial_number, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (job_id, item_type, description, reg, vin, make, model, year, colour, engine_number, property_address, serial_number, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (job_id, (a_type or "other").lower(),
               a_desc or None, a_rego or None, a_vin or None, a_make or None, a_model or None, a_year or None,
-              a_engine or None, a_addr or None, a_ser or None, a_note or None, now))
+              a_colour or None, a_engine or None, a_addr or None, a_ser or None, a_note or None, now))
 
     sched_date = request.form.get("sched_date", "").strip()
     sched_time = request.form.get("sched_time", "").strip()

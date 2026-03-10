@@ -14,6 +14,8 @@
         <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#16a34a;color:#fff;vertical-align:middle;" title="Matched to database record">Matched</span>
       {%- elif c == 'extracted' -%}
         <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#2563eb;color:#fff;vertical-align:middle;" title="Extracted from document">Extracted</span>
+      {%- elif c == 'review' -%}
+        <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#f59e0b;color:#fff;vertical-align:middle;" title="Needs review — possible match">Review</span>
       {%- endif -%}
     {%- endmacro -%}
 
@@ -25,12 +27,26 @@
         {%- if _needs_review_fields.append(k) -%}{%- endif -%}
       {%- endfor -%}
     {%- endif -%}
+    {%- set _source_label = '' -%}
+    {%- set _af_source = autofill.get('_source', '') if autofill else '' -%}
+    {%- if _af_source == 'acs_worksheet' -%}
+      {%- set _source_label = 'ACS Worksheet' -%}
+    {%- elif _af_source == 'wise_group' -%}
+      {%- set _source_label = 'Wise Group' -%}
+    {%- endif -%}
+    {%- set _review_count = 0 -%}
+    {%- if autofill_confidence -%}
+      {%- for k, v in autofill_confidence.items() if v == 'review' -%}
+        {%- if loop.first %}{%- set _review_count = loop.length -%}{%- endif -%}
+      {%- endfor -%}
+    {%- endif -%}
     <div class="mb-3 p-3 d-flex align-items-start gap-3"
          style="background:rgba(96,165,250,.08);border:1.5px solid rgba(96,165,250,.35);border-radius:14px;">
       <span style="font-size:1.4rem;line-height:1;flex-shrink:0;">&#128196;</span>
       <div class="flex-grow-1">
         <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
           <strong style="color:var(--text)">Auto-filled from document</strong>
+          {% if _source_label %}<span class="badge me-1" style="background:#6366f1;color:#fff;font-weight:600;font-size:.72rem;">{{ _source_label }}</span>{% endif %}
           {% if autofill_filename %}<span class="text-muted" style="font-size:.82rem;">— {{ autofill_filename }}</span>{% endif %}
         </div>
         <div style="font-size:.83rem;color:var(--muted);line-height:1.5;">
@@ -218,10 +234,12 @@
           var year   = (row.querySelector('.asset-year')   || {}).value || '';
           var make   = (row.querySelector('.asset-make')   || {}).value || '';
           var model  = (row.querySelector('.asset-model')  || {}).value || '';
+          var colour = (row.querySelector('.asset-colour') || {}).value || '';
           var engine = (row.querySelector('.asset-engine') || {}).value || '';
           var rego   = (row.querySelector('.asset-rego')   || {}).value || '';
           var vin    = (row.querySelector('.asset-vin')    || {}).value || '';
           var parts  = [year, make, model].filter(function(v){ return v.trim(); });
+          if (colour.trim()) parts.push(colour.trim());
           if (engine.trim()) parts.push('ENG: ' + engine.trim());
           if (rego.trim())   parts.push('REG: ' + rego.trim());
           if (vin.trim())    parts.push('VIN: ' + vin.trim());
@@ -274,6 +292,7 @@
             e.target.classList.contains('asset-year')   ||
             e.target.classList.contains('asset-make')   ||
             e.target.classList.contains('asset-model')  ||
+            e.target.classList.contains('asset-colour') ||
             e.target.classList.contains('asset-engine') ||
             e.target.classList.contains('asset-rego')   ||
             e.target.classList.contains('asset-vin')
@@ -623,6 +642,8 @@ function submitNewJobType() {
     <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#16a34a;color:#fff;vertical-align:middle;" title="Matched to database record">Matched</span>
   {%- elif c == 'extracted' -%}
     <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#2563eb;color:#fff;vertical-align:middle;" title="Extracted from document">Extracted</span>
+  {%- elif c == 'review' -%}
+    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#f59e0b;color:#fff;vertical-align:middle;" title="Needs review — possible match">Review</span>
   {%- endif -%}
 {%- endmacro -%}
 <!-- ── Details & Schedule modal ──────────────────────────────────────── -->
@@ -735,13 +756,17 @@ function submitNewJobType() {
                   <input class="form-control asset-year" name="asset_year[]" form="newJobForm" placeholder="Year"
                          value="{{ _sec.year if _sec else '' }}">
                 </div>
-                <div class="col-6 col-md-5">
+                <div class="col-6 col-md-3">
                   <input class="form-control asset-make" name="asset_make[]" form="newJobForm" placeholder="Make"
                          value="{{ _sec.make if _sec else '' }}">
                 </div>
-                <div class="col-12 col-md-5">
+                <div class="col-6 col-md-3">
                   <input class="form-control asset-model" name="asset_model[]" form="newJobForm" placeholder="Model"
                          value="{{ _sec.model if _sec else '' }}">
+                </div>
+                <div class="col-6 col-md-4">
+                  <input class="form-control asset-colour" name="asset_colour[]" form="newJobForm" placeholder="Colour"
+                         value="{{ _sec.colour if _sec else '' }}">
                 </div>
               </div>
               <div class="row g-2 mt-2">
@@ -770,7 +795,8 @@ function submitNewJobType() {
               </div>
               <div class="row g-2 mt-2">
                 <div class="col-12">
-                  <input class="form-control" name="asset_notes[]" form="newJobForm" placeholder="Notes (optional)">
+                  <input class="form-control" name="asset_notes[]" form="newJobForm" placeholder="Notes (rego expiry, status, etc.)"
+                         value="{% if _sec and _sec.reg_expiry %}Rego: {{ _sec.reg_expiry }}{% endif %}{% if _sec and _sec.reg_note %}{% if _sec and _sec.reg_expiry %} | {% endif %}{{ _sec.reg_note }}{% endif %}">
                 </div>
               </div>
               <div class="mt-2 d-flex justify-content-end">
@@ -778,7 +804,9 @@ function submitNewJobType() {
               </div>
             </div>
           </div>
-          <button type="button" class="btn btn-outline-secondary btn-sm mt-1" onclick="addAssetRow()">+ Add Security</button>
+          <div class="mt-2 mb-3">
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addAssetRow()">+ Add Security</button>
+          </div>
         </div>
 
         <!-- ── Tab 2: Details & Instructions ─────────────────────────── -->
