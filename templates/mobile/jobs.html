@@ -509,14 +509,21 @@ if(navigator.geolocation){
     },
     ()=>{
       if(currentSort==='distance'){
+        currentSort = 'visit_date';
+        document.getElementById('sort-label').textContent = 'Visit Date';
         const w = document.getElementById('dist-warn');
-        if(w){ w.textContent = 'Location access is off. Distance-based ordering is unavailable — sorted by visit date instead.'; w.style.display='block'; }
+        if(w){ w.textContent = 'Location access is off — sorting by visit date instead.'; w.style.display='block'; }
+        applySortAndFilter();
       }
     },
     {enableHighAccuracy:true, timeout:15000, maximumAge:60000}
   );
 } else if(SORT_PREF==='distance'){
-  document.getElementById('dist-warn').style.display='block';
+  currentSort = 'visit_date';
+  document.getElementById('sort-label').textContent = 'Visit Date';
+  const w = document.getElementById('dist-warn');
+  if(w){ w.textContent = 'Location not supported — sorting by visit date instead.'; w.style.display='block'; }
+  applySortAndFilter();
 }
 
 // ── Search ──
@@ -636,7 +643,7 @@ document.getElementById('apply-btn').addEventListener('click',()=>{
 });
 
 document.getElementById('reset-btn').addEventListener('click',()=>{
-  currentSort='visit_date'; currentDir='asc'; currentScope=IS_ADMIN?'all':'mine';
+  currentSort='distance'; currentDir='asc'; currentScope=IS_ADMIN?'all':'mine';
   currentCompleted='week'; activeStatuses.clear();
   ['seg-scope','seg-completed','seg-sort','seg-dir','seg-distunit'].forEach(id=>{
     const wrap=document.getElementById(id);
@@ -645,7 +652,7 @@ document.getElementById('reset-btn').addEventListener('click',()=>{
       b.classList.toggle('sel',
         (id==='seg-scope'     && b.dataset.val===(IS_ADMIN?'all':'mine')) ||
         (id==='seg-completed' && b.dataset.val==='week') ||
-        (id==='seg-sort'      && b.dataset.val==='visit_date') ||
+        (id==='seg-sort'      && b.dataset.val==='distance') ||
         (id==='seg-dir'       && b.dataset.val==='asc') ||
         (id==='seg-distunit'  && b.dataset.val==='km')
       );

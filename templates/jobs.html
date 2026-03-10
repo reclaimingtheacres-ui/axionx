@@ -4,19 +4,18 @@
 
 {% block content %}
 <div class="ax-card">
-  <div class="ax-card-h d-flex justify-content-between align-items-center">
-    <div>Jobs</div>
-    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
-  </div>
-  <div class="ax-card-b">
+  <div class="jobs-sticky-header" style="position:sticky;top:0;z-index:20;background:var(--bg, #f8f9fa);padding-bottom:4px;">
+    <div class="ax-card-h d-flex justify-content-between align-items-center" style="background:var(--card);border-radius:12px 12px 0 0;">
+      <div>Jobs</div>
+      {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
+    </div>
+    <div style="background:var(--card);padding:0 1rem;">
 
-    {# ── Filters + Sort ── #}
     {% set has_advanced = filter_client or filter_agent or filter_btype or filter_date_from or filter_date_to %}
-    <form class="mb-3" method="get" id="jobs-filter-form">
+    <form class="mb-2" method="get" id="jobs-filter-form">
 
-      {# Row 1: search + status + sort + toggle #}
       <div class="row g-2 mb-2">
-        <div class="col-12 col-lg-5">
+        <div class="col-12 col-lg-4">
           <input class="form-control" name="q" placeholder="Search job no., client, customer, rego, VIN, address..." value="{{ q }}">
         </div>
         <div class="col-6 col-lg-2">
@@ -29,11 +28,11 @@
         </div>
         <div class="col-6 col-lg-2">
           <select class="form-select" name="sort">
-            <option value="" {% if sort == '' %}selected{% endif %}>Sort: Default</option>
-            <option value="active"      {% if sort == 'active' %}selected{% endif %}>Sort: Active first</option>
-            <option value="agent"       {% if sort == 'agent' %}selected{% endif %}>Sort: Agent A–Z</option>
-            <option value="job_number"  {% if sort == 'job_number' %}selected{% endif %}>Sort: Job # high–low</option>
-            <option value="client_ref"  {% if sort == 'client_ref' %}selected{% endif %}>Sort: Client ref high–low</option>
+            <option value="scheduled"  {% if sort == 'scheduled' %}selected{% endif %}>Sort: Oldest Scheduled</option>
+            <option value="active"     {% if sort == 'active' %}selected{% endif %}>Sort: Active first</option>
+            <option value="agent"      {% if sort == 'agent' %}selected{% endif %}>Sort: Agent A–Z</option>
+            <option value="job_number" {% if sort == 'job_number' %}selected{% endif %}>Sort: Job # high–low</option>
+            <option value="client_ref" {% if sort == 'client_ref' %}selected{% endif %}>Sort: Client ref high–low</option>
           </select>
         </div>
         <div class="col-6 col-lg-2">
@@ -46,9 +45,17 @@
         <div class="col-6 col-lg-1">
           <button class="btn btn-outline-secondary w-100" type="submit">Filter</button>
         </div>
+        <div class="col-12 col-lg-1">
+          <select class="form-select" name="per_page" onchange="document.getElementById('jobs-filter-form').submit()">
+            <option value="25"  {% if per_page == 25 %}selected{% endif %}>25 / page</option>
+            <option value="50"  {% if per_page == 50 %}selected{% endif %}>50 / page</option>
+            <option value="100" {% if per_page == 100 %}selected{% endif %}>100 / page</option>
+          </select>
+        </div>
       </div>
 
-      {# Row 2: advanced filters (collapsible) #}
+      <input type="hidden" name="page" value="1">
+
       <div id="adv-filters" style="display:{% if has_advanced %}flex{% else %}none{% endif %};flex-wrap:wrap;gap:8px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:4px;">
 
         <div style="flex:1;min-width:140px;">
@@ -103,6 +110,17 @@
 
     </form>
 
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 2px 6px;font-size:.78rem;color:var(--muted);border-bottom:1px solid var(--line, #e5e7eb);">
+      {% if total_jobs > 0 %}
+        <span>Showing {{ ((page - 1) * per_page) + 1 }}–{{ [page * per_page, total_jobs] | min }} of {{ total_jobs }} job{{ 's' if total_jobs != 1 }}</span>
+        <span>Page {{ page }} of {{ total_pages }}</span>
+      {% else %}
+        <span>No jobs found</span>
+      {% endif %}
+    </div>
+
+    </div>
+
     <script>
     function axToggleAdv() {
       var el  = document.getElementById('adv-filters');
@@ -113,8 +131,10 @@
       arr.textContent   = open ? '▼' : '▲';
     }
     </script>
+  </div>
 
-    {# ── Job rows ── #}
+  <div class="ax-card-b">
+
     {% for j in jobs %}
       {% set is_suspended = j.status in ['Suspended', 'Awaiting Instructions'] %}
       {% set bt = j.next_booking_type or '' %}
@@ -155,9 +175,19 @@
               </span>
             {% endif %}
             {% if j.next_scheduled %}
-              <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
+              {% set is_overdue = j.next_scheduled < now_iso %}
+              {% if is_overdue %}
+                {% set sched_bg = 'rgba(239,68,68,.12)' %}
+                {% set sched_color = '#ef4444' %}
+                {% set sched_border = 'rgba(239,68,68,.3)' %}
+              {% else %}
+                {% set sched_bg = 'rgba(52,211,153,.12)' %}
+                {% set sched_color = '#34d399' %}
+                {% set sched_border = 'rgba(52,211,153,.25)' %}
+              {% endif %}
+              <span style="display:inline-flex;align-items:center;gap:4px;background:{{ sched_bg }};color:{{ sched_color }};border:1px solid {{ sched_border }};border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.8"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></svg>
-                {{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[:4] }} {{ j.next_scheduled[11:16] }}
+                {% if is_overdue %}OVERDUE {% endif %}{{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[:4] }} {{ j.next_scheduled[11:16] }}
               </span>
             {% endif %}
           </div>
@@ -213,13 +243,46 @@
               {{ j.status }}
             </span>
           {% endif %}
-          <div class="small" style="color:var(--muted)">{% if j.updated_at %}{{ j.updated_at[8:10] }}/{{ j.updated_at[5:7] }}/{{ j.updated_at[:4] }}{% endif %}</div>
         </div>
 
       </div>
     {% else %}
       <div style="color:var(--muted)" class="py-3 text-center">No jobs found.</div>
     {% endfor %}
+
+    {% if total_pages > 1 %}
+    <nav style="display:flex;justify-content:center;align-items:center;gap:4px;padding:16px 0 8px;flex-wrap:wrap;">
+      {% set base_params = 'q=' ~ (q|urlencode) ~ '&status=' ~ (status|urlencode) ~ '&sort=' ~ (sort|urlencode) ~ '&per_page=' ~ per_page ~ '&client_id=' ~ (filter_client|urlencode) ~ '&agent_id=' ~ (filter_agent|urlencode) ~ '&booking_type_id=' ~ (filter_btype|urlencode) ~ '&date_from=' ~ (filter_date_from|urlencode) ~ '&date_to=' ~ (filter_date_to|urlencode) %}
+      {% if page > 1 %}
+        <a href="/jobs?{{ base_params }}&page={{ page - 1 }}" style="padding:6px 12px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--accent);text-decoration:none;">← Previous</a>
+      {% endif %}
+
+      {% set start_page = [1, page - 2] | max %}
+      {% set end_page = [total_pages, page + 2] | min %}
+
+      {% if start_page > 1 %}
+        <a href="/jobs?{{ base_params }}&page=1" style="padding:6px 10px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--text);text-decoration:none;">1</a>
+        {% if start_page > 2 %}<span style="padding:0 4px;color:var(--muted);">…</span>{% endif %}
+      {% endif %}
+
+      {% for p in range(start_page, end_page + 1) %}
+        {% if p == page %}
+          <span style="padding:6px 10px;border:1px solid var(--accent);border-radius:8px;font-size:.82rem;color:#fff;background:var(--accent);font-weight:600;">{{ p }}</span>
+        {% else %}
+          <a href="/jobs?{{ base_params }}&page={{ p }}" style="padding:6px 10px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--text);text-decoration:none;">{{ p }}</a>
+        {% endif %}
+      {% endfor %}
+
+      {% if end_page < total_pages %}
+        {% if end_page < total_pages - 1 %}<span style="padding:0 4px;color:var(--muted);">…</span>{% endif %}
+        <a href="/jobs?{{ base_params }}&page={{ total_pages }}" style="padding:6px 10px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--text);text-decoration:none;">{{ total_pages }}</a>
+      {% endif %}
+
+      {% if page < total_pages %}
+        <a href="/jobs?{{ base_params }}&page={{ page + 1 }}" style="padding:6px 12px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--accent);text-decoration:none;">Next →</a>
+      {% endif %}
+    </nav>
+    {% endif %}
 
   </div>
 </div>

@@ -25,6 +25,18 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **2a. Job Scheduling (Booking Type Combobox):** All booking type fields across the system (job detail inline form, schedule prompt modal, add bookings modal, new job form) use a unified searchable combobox with type-to-search, type-to-select, and create-new behaviour. Recently used types appear at the top with a "recent" label. New types are saved via `/booking-type/ajax` with case/spacing normalization to prevent duplicates. After saving a booking, users remain on the same page (AJAX submission) with a success message — no redirect to Jobs or other screens.
 
+**2b. Job List (Web — Sorting, Pagination, Sticky Header):**
+- Default sort: **Oldest Scheduled** — overdue jobs first, then earliest upcoming, then unscheduled. The `next_scheduled` subquery includes all pending schedules (not just future ones), so overdue dates surface at the top.
+- Server-side **pagination**: 25 jobs per page (configurable 25/50/100 via dropdown). Count query + LIMIT/OFFSET.
+- **Sticky header**: Jobs heading, search, status filter, sort, more filters, and filter button stay fixed at the top while scrolling, with a subtle background.
+- **Single operational date**: Only `next_scheduled` is shown in the job row (as a badge). Overdue dates are highlighted in red with "OVERDUE" prefix. The `updated_at` date has been removed from the list to avoid confusion.
+- Sort options: Oldest Scheduled (default), Active first, Agent A–Z, Job # high–low, Client ref high–low.
+
+**2c. Job List (Mobile — Distance Default):**
+- Mobile app defaults to **Distance – Nearest First** sorting when GPS is available.
+- If GPS permission is denied, falls back to Visit Date sort with a warning banner.
+- Distance calculated client-side using Haversine formula with server-assisted batch geocoding for missing coordinates.
+
 **3. Cues System:** Manages `cue_items` (scheduled tasks) with properties like date, visit type, priority, and agent assignment. Supports daily cue access for agents and drag-and-drop assignment for admins, with automatic cue generation for overdue or upcoming schedules.
 
 **4. Audit Log:** Logs all significant system actions, accessible via the admin dashboard.

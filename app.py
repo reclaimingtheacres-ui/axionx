@@ -841,6 +841,7 @@ def inject_globals():
         "GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
         "google_maps_api_key": os.getenv("GOOGLE_MAPS_API_KEY", ""),
         "pending_draft_count": pending_drafts,
+        "now_iso": now_ts(),
     }
 
 
@@ -2095,7 +2096,14 @@ def jobs_list():
     conn = db()
     cur = conn.cursor()
 
-    sql = """
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 25, type=int)
+    if per_page not in (25, 50, 100):
+        per_page = 25
+    if page < 1:
+        page = 1
+
+    select_cols = """
     SELECT j.*,
            COALESCE(c.nickname, c.name) AS client_name,
            cu.last_name AS customer_last_name,
@@ -2111,17 +2119,17 @@ def jobs_list():
            ) AS assigned_name,
            (SELECT s.scheduled_for FROM schedules s
             WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
-              AND s.scheduled_for >= datetime('now')
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled,
            (SELECT bt.name FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
             WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
-              AND s.scheduled_for >= datetime('now')
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_booking_type,
            (SELECT s.id FROM schedules s
             WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
-              AND s.scheduled_for >= datetime('now')
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id
+    """
+
+    from_where = """
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
     LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -2131,7 +2139,7 @@ def jobs_list():
     params = []
 
     if role == "agent":
-        sql += """ AND (j.assigned_user_id = ? OR EXISTS (
+        from_where += """ AND (j.assigned_user_id = ? OR EXISTS (
             SELECT 1 FROM schedules s
             WHERE s.job_id = j.id AND s.assigned_to_user_id = ?
               AND s.status NOT IN ('Cancelled')
@@ -2140,13 +2148,13 @@ def jobs_list():
 
     if status:
         if status == "Active":
-            sql += " AND j.status LIKE 'Active%'"
+            from_where += " AND j.status LIKE 'Active%'"
         else:
-            sql += " AND j.status = ?"
+            from_where += " AND j.status = ?"
             params.append(status)
 
     if q:
-        sql += """
+        from_where += """
          AND (
            j.internal_job_number LIKE ? OR
            j.client_reference     LIKE ? OR
@@ -2167,35 +2175,44 @@ def jobs_list():
         params.extend([like] * 12)
 
     if filter_client:
-        sql += " AND j.client_id = ?"
+        from_where += " AND j.client_id = ?"
         params.append(filter_client)
 
     if filter_agent and role in ("admin", "both"):
-        sql += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled')))"
+        from_where += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled')))"
         params.extend([filter_agent, filter_agent])
 
     if filter_btype:
-        sql += " AND EXISTS (SELECT 1 FROM schedules sb JOIN booking_types btf ON btf.id = sb.booking_type_id WHERE sb.job_id = j.id AND sb.booking_type_id = ? AND sb.status NOT IN ('Completed', 'Cancelled') AND sb.scheduled_for >= datetime('now'))"
+        from_where += " AND EXISTS (SELECT 1 FROM schedules sb JOIN booking_types btf ON btf.id = sb.booking_type_id WHERE sb.job_id = j.id AND sb.booking_type_id = ? AND sb.status NOT IN ('Completed', 'Cancelled'))"
         params.append(filter_btype)
 
     if filter_date_from:
-        sql += " AND date(j.updated_at) >= ?"
+        from_where += " AND date(j.updated_at) >= ?"
         params.append(filter_date_from)
 
     if filter_date_to:
-        sql += " AND date(j.updated_at) <= ?"
+        from_where += " AND date(j.updated_at) <= ?"
         params.append(filter_date_to)
 
+    count_sql = "SELECT COUNT(*) " + from_where
+    total_jobs = cur.execute(count_sql, params).fetchone()[0]
+    total_pages = max(1, (total_jobs + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
+
     _SORT_MAP = {
+        "scheduled":  "CASE WHEN j.status='Invoiced' THEN 1 ELSE 0 END, CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC",
         "agent":      "LOWER(COALESCE(u.full_name,'')) ASC, j.updated_at DESC",
         "active":     "CASE WHEN j.status LIKE 'Active%' THEN 0 ELSE 1 END ASC, j.updated_at DESC",
         "job_number": "CAST(j.internal_job_number AS INTEGER) DESC, j.updated_at DESC",
         "client_ref": "CAST(j.client_reference AS INTEGER) DESC, j.updated_at DESC",
     }
-    order_clause = _SORT_MAP.get(sort, "CASE WHEN j.status='Invoiced' THEN 1 ELSE 0 END, CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC")
-    sql += f" ORDER BY {order_clause}"
-
-    cur.execute(sql, params)
+    if not sort:
+        sort = "scheduled"
+    order_clause = _SORT_MAP.get(sort, _SORT_MAP["scheduled"])
+    offset = (page - 1) * per_page
+    full_sql = select_cols + from_where + f" ORDER BY {order_clause} LIMIT ? OFFSET ?"
+    cur.execute(full_sql, params + [per_page, offset])
     rows = cur.fetchall()
 
     clients_list = cur.execute(
@@ -2235,6 +2252,10 @@ def jobs_list():
         filter_btype=filter_btype,
         filter_date_from=filter_date_from,
         filter_date_to=filter_date_to,
+        page=page,
+        per_page=per_page,
+        total_jobs=total_jobs,
+        total_pages=total_pages,
     )
 
 
@@ -8876,7 +8897,7 @@ def _mobile_jobs_query(uid, role, params_in):
             cv = None
         return cv or default
 
-    sort           = pref_col("sort",       "list_sort",  "visit_date")
+    sort           = pref_col("sort",       "list_sort",  "distance")
     direction      = pref_col("dir",        "list_dir",   "asc")
     scope          = pref_col("scope",     "job_scope",      "all" if is_admin else "mine")
     status_filter  = pref("status_filter", "")
