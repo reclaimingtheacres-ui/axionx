@@ -3454,6 +3454,8 @@ def schedule_api_events():
                s.assigned_to_user_id, s.booking_type_id,
                bt.name AS booking_type_name,
                j.display_ref, j.job_address, j.job_type,
+               j.lender_name,
+               cl.name AS client_name,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_name,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''),
                         TRIM(COALESCE(cu.first_name,'') || ' ' || COALESCE(cu.last_name,''))) AS customer_label,
@@ -3463,6 +3465,7 @@ def schedule_api_events():
         JOIN jobs j ON j.id = s.job_id
         LEFT JOIN users u ON u.id = s.assigned_to_user_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients cl ON cl.id = j.client_id
         WHERE {where_sql}
         ORDER BY s.scheduled_for ASC
     """, params)
@@ -3485,6 +3488,8 @@ def schedule_api_events():
             "assigned_to_user_id": r["assigned_to_user_id"],
             "job_address": r["job_address"] or "",
             "job_type": r["job_type"] or "",
+            "client_name": r["client_name"] or "",
+            "lender_name": r["lender_name"] or "",
             "status": r["status"] or "Booked",
             "notes": r["notes"] or "",
             "booking_type_color": _BOOKING_TYPE_COLORS.get(bt_name, "#6b7280"),
@@ -3503,6 +3508,7 @@ def schedule_api_events():
 @login_required
 def schedule_api_reschedule(sched_id):
     new_dt = (request.form.get("new_datetime") or "").strip()
+    change_method = (request.form.get("change_method") or "").strip()
     if not new_dt:
         return jsonify({"ok": False, "error": "New date/time is required."}), 400
     try:
@@ -3524,9 +3530,10 @@ def schedule_api_reschedule(sched_id):
         return jsonify({"ok": False, "error": "Not authorised."}), 403
     old_dt = sched["scheduled_for"]
     cur.execute("UPDATE schedules SET scheduled_for = ? WHERE id = ?", (new_dt, sched_id))
+    method_note = " (drag & drop)" if change_method == "drag_drop" else ""
     _write_schedule_history(cur, sched_id, sched["job_id"], "rescheduled",
                             old_dt, new_dt, sched["status"], sched["status"],
-                            caller_id, f"Rescheduled from {old_dt[:16]} to {new_dt[:16]}")
+                            caller_id, f"Rescheduled from {old_dt[:16]} to {new_dt[:16]}{method_note}")
     conn.commit()
     conn.close()
     return jsonify({"ok": True})

@@ -33,11 +33,31 @@
   .sch-month-dot{font-size:.7rem;padding:1px 4px;border-radius:4px;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:#fff;cursor:pointer;line-height:1.4}
   .sch-month-more{font-size:.68rem;color:var(--accent);cursor:pointer;font-weight:600}
 
-  .sch-evt{font-size:.72rem;padding:3px 6px;border-radius:6px;margin-bottom:2px;color:#fff;cursor:pointer;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;position:relative}
+  .sch-evt{font-size:.72rem;padding:3px 6px;border-radius:6px;margin-bottom:2px;color:#fff;cursor:pointer;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;position:relative;user-select:none;-webkit-user-select:none}
   .sch-evt:hover{opacity:.85;filter:brightness(1.1)}
   .sch-evt .sch-evt-time{font-weight:700}
+  .sch-evt .sch-evt-cust{opacity:.85;font-size:.68rem}
   .sch-evt.status-completed{opacity:.55;text-decoration:line-through}
   .sch-evt.status-cancelled{opacity:.4;text-decoration:line-through}
+  .sch-evt.admin-draggable{cursor:grab}
+  .sch-evt.admin-draggable:active{cursor:grabbing}
+  .sch-evt.dragging{opacity:.4}
+
+  .sch-hover-tip{position:fixed;z-index:10000;background:#1e293b;color:#e2e8f0;border-radius:10px;padding:10px 14px;font-size:.78rem;line-height:1.5;pointer-events:none;max-width:320px;box-shadow:0 4px 16px rgba(0,0,0,.25);white-space:normal}
+  .sch-hover-tip .ht-row{display:flex;gap:6px;margin-bottom:2px}
+  .sch-hover-tip .ht-lbl{color:#94a3b8;min-width:64px;font-weight:500;flex-shrink:0}
+  .sch-hover-tip .ht-val{color:#f1f5f9;flex:1}
+  .sch-hover-tip .ht-status{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.68rem;font-weight:600;color:#fff}
+
+  .sch-drop-target{background:rgba(37,99,235,.08)!important;outline:2px dashed var(--accent);outline-offset:-2px}
+
+  .sch-drag-confirm{position:fixed;z-index:10001;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.2);padding:20px 24px;width:380px;max-width:92vw}
+  .sch-drag-confirm .dc-title{font-weight:700;font-size:.95rem;margin-bottom:12px}
+  .sch-drag-confirm .dc-row{display:flex;gap:8px;margin-bottom:6px;font-size:.85rem}
+  .sch-drag-confirm .dc-lbl{color:var(--muted);min-width:60px;font-weight:500}
+  .sch-drag-confirm .dc-val{color:var(--text);flex:1}
+  .sch-drag-confirm .dc-arrow{color:var(--accent);font-weight:700;margin:0 4px}
+  .sch-drag-confirm .dc-actions{margin-top:14px;display:flex;gap:8px}
 
   .sch-agenda-tbl{width:100%;border-collapse:collapse}
   .sch-agenda-tbl th{font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;background:var(--panel2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
@@ -155,6 +175,18 @@
   <div class="sch-popup-actions" id="schPopupActions"></div>
 </div>
 
+<div class="sch-hover-tip" id="schHoverTip" style="display:none"></div>
+
+<div class="sch-popup-overlay" id="schDragOverlay" style="display:none"></div>
+<div class="sch-drag-confirm" id="schDragConfirm" style="display:none">
+  <div class="dc-title">Confirm Reschedule</div>
+  <div id="schDragConfirmBody"></div>
+  <div class="dc-actions">
+    <button class="btn btn-primary btn-sm" id="schDragConfirmBtn" onclick="schDragDoSave()">Confirm Change</button>
+    <button class="btn btn-outline-secondary btn-sm" onclick="schDragCancel()">Cancel</button>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block modals %}
@@ -168,7 +200,11 @@ var SCH = {
   agentColors: {},
   colorPalette: ['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#4f46e5','#be185d','#65a30d','#0d9488','#9333ea','#ea580c'],
   colorIdx: 0,
-  popupEvent: null
+  popupEvent: null,
+  hoverTimer: null,
+  isDragging: false,
+  dragEvent: null,
+  dragPending: null
 };
 
 function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -292,10 +328,18 @@ function _evtHtml(e,compact){
   var cls='sch-evt';
   if(e.status==='Completed') cls+=' status-completed';
   if(e.status==='Cancelled') cls+=' status-cancelled';
+  var canDrag=SCH.isAdmin&&e.status!=='Completed'&&e.status!=='Cancelled'&&(SCH.view==='day'||SCH.view==='week');
+  if(canDrag) cls+=' admin-draggable';
   var label='<span class="sch-evt-time">'+_formatTime12(e.scheduled_for)+'</span> '+_esc(e.display_ref);
-  if(!compact) label+=' — '+_esc(e.booking_type);
-  if(!compact&&e.customer_name) label+=' — '+_esc(e.customer_name);
-  return '<span class="'+cls+'" style="background:'+bgColor+'" data-eid="'+e.id+'" onclick="schShowPopup('+e.id+',event)">'+label+'</span>';
+  if(!compact&&e.booking_type) label+=' — '+_esc(e.booking_type);
+  if(!compact&&(e.customer_name||e.customer_label)) label+='<br><span class="sch-evt-cust">'+_esc(e.customer_name||e.customer_label)+'</span>';
+  else if(compact&&(e.customer_name||e.customer_label)){
+    var cn=e.customer_name||e.customer_label;
+    if(cn.length>18) cn=cn.substr(0,18)+'…';
+    label+=' '+_esc(cn);
+  }
+  var dragAttr=canDrag?' draggable="true" ondragstart="schDragStart('+e.id+',event)" ondragend="schDragEnd(event)"':'';
+  return '<span class="'+cls+'" style="background:'+bgColor+'" data-eid="'+e.id+'"'+dragAttr+' onmouseenter="schHoverIn('+e.id+',event)" onmouseleave="schHoverOut()" ontouchstart="schTouchStart('+e.id+',event)" onclick="schEvtClick('+e.id+',event)">'+label+'</span>';
 }
 
 function _renderDay(){
@@ -304,7 +348,9 @@ function _renderDay(){
   for(var h=6;h<=20;h++){
     var hLabel=(h%12||12)+(h<12?' am':' pm');
     html+='<div class="sch-hour-label">'+hLabel+'</div>';
-    html+='<div class="sch-hour-cell" data-hour="'+h+'">';
+    html+='<div class="sch-hour-cell" data-hour="'+h+'" data-date="'+todayStr+'"';
+    if(SCH.isAdmin) html+=' ondragover="schDragOver(event)" ondragleave="schDragLeave(event)" ondrop="schDrop(event)"';
+    html+='>';
     SCH.events.forEach(function(e){
       if(!e.scheduled_for||e.scheduled_for.substr(0,10)!==todayStr) return;
       var eHour=parseInt(e.scheduled_for.substr(11,2),10);
@@ -348,7 +394,9 @@ function _renderWeek(){
     html+='<div class="sch-week-hour-label">'+hLabel+'</div>';
     dayDates.forEach(function(dd){
       var ds=_isoDate(dd);
-      html+='<div class="sch-week-cell" data-date="'+ds+'" data-hour="'+h+'">';
+      html+='<div class="sch-week-cell" data-date="'+ds+'" data-hour="'+h+'"';
+      if(SCH.isAdmin) html+=' ondragover="schDragOver(event)" ondragleave="schDragLeave(event)" ondrop="schDrop(event)"';
+      html+='>';
       SCH.events.forEach(function(e){
         if(!e.scheduled_for||e.scheduled_for.substr(0,10)!==ds) return;
         var eH=parseInt(e.scheduled_for.substr(11,2),10);
@@ -386,7 +434,7 @@ function _renderMonth(){
       dayEvts.forEach(function(e){
         if(shown<3){
           var bgColor=SCH.isAdmin&&document.getElementById('schAgentFilter')&&document.getElementById('schAgentFilter').value==='all'?_agentColor(e.assigned_to_user_id):(e.booking_type_color||'#6b7280');
-          html+='<span class="sch-month-dot" style="background:'+bgColor+'" onclick="schShowPopup('+e.id+',event)">'+_formatTime12(e.scheduled_for)+' '+_esc(e.display_ref)+'</span>';
+          html+='<span class="sch-month-dot" style="background:'+bgColor+'" onmouseenter="schHoverIn('+e.id+',event)" onmouseleave="schHoverOut()" ontouchstart="schTouchStart('+e.id+',event)" onclick="schEvtClick('+e.id+',event)">'+_formatTime12(e.scheduled_for)+' '+_esc(e.display_ref)+'</span>';
           shown++;
         }
       });
@@ -420,7 +468,7 @@ function _renderAgenda(){
   SCH.events.forEach(function(e){
     var ds=e.scheduled_for?e.scheduled_for.substr(0,10):'';
     var isOverdue=ds<todayStr&&e.status!=='Completed'&&e.status!=='Cancelled';
-    html+='<tr class="'+(isOverdue?'overdue':'')+'" style="cursor:pointer" onclick="schShowPopup('+e.id+',event)">';
+    html+='<tr class="'+(isOverdue?'overdue':'')+'" style="cursor:pointer" onclick="schEvtClick('+e.id+',event)">';
     html+='<td style="white-space:nowrap'+(isOverdue?';color:var(--danger);font-weight:600':'')+'">'+_formatDateShort(e.scheduled_for)+(isOverdue?' <span style="font-size:.65rem;background:var(--danger);color:#fff;padding:1px 5px;border-radius:4px">OVERDUE</span>':'')+'</td>';
     html+='<td style="white-space:nowrap">'+_formatTime12(e.scheduled_for)+'</td>';
     html+='<td>'+_esc(e.booking_type)+'</td>';
@@ -436,6 +484,190 @@ function _renderAgenda(){
 
   html+='</tbody></table></div>';
   document.getElementById('schContent').innerHTML=html;
+}
+
+function _addrSuburb(addr){
+  if(!addr) return '';
+  var parts=addr.split(',');
+  if(parts.length>=2) return parts[parts.length-2].trim();
+  return addr.length>40?addr.substr(0,40)+'…':addr;
+}
+
+function schHoverIn(eid,ev){
+  if(SCH.isDragging) return;
+  schHoverOut();
+  SCH.hoverTimer=setTimeout(function(){
+    var e=SCH.events.find(function(x){return x.id===eid});
+    if(!e||SCH.isDragging) return;
+    var tip=document.getElementById('schHoverTip');
+    var h='';
+    h+='<div class="ht-row"><span class="ht-lbl">Job</span><span class="ht-val" style="font-weight:650">'+_esc(e.display_ref)+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Customer</span><span class="ht-val">'+_esc(e.customer_name||e.customer_label||'—')+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Type</span><span class="ht-val">'+_esc(e.booking_type)+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Agent</span><span class="ht-val">'+_esc(e.assigned_to_name||'Unassigned')+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">When</span><span class="ht-val">'+_formatDateShort(e.scheduled_for)+' '+_formatTime12(e.scheduled_for)+'</span></div>';
+    var suburb=_addrSuburb(e.job_address);
+    if(suburb) h+='<div class="ht-row"><span class="ht-lbl">Suburb</span><span class="ht-val">'+_esc(suburb)+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Status</span><span class="ht-val"><span class="ht-status" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span></span></div>';
+    if(e.client_name) h+='<div class="ht-row"><span class="ht-lbl">Client</span><span class="ht-val">'+_esc(e.client_name)+'</span></div>';
+    if(e.lender_name) h+='<div class="ht-row"><span class="ht-lbl">Lender</span><span class="ht-val">'+_esc(e.lender_name)+'</span></div>';
+    tip.innerHTML=h;
+    var rect=ev.target.closest('.sch-evt,.sch-month-dot').getBoundingClientRect();
+    var tipW=320,tipH=tip.offsetHeight||180;
+    var x=rect.right+8,y=rect.top;
+    if(x+tipW>window.innerWidth) x=rect.left-tipW-8;
+    if(x<4) x=4;
+    if(y+tipH>window.innerHeight-8) y=window.innerHeight-tipH-8;
+    if(y<4) y=4;
+    tip.style.left=x+'px';tip.style.top=y+'px';tip.style.display='';
+  },200);
+}
+
+function schHoverOut(){
+  clearTimeout(SCH.hoverTimer);
+  document.getElementById('schHoverTip').style.display='none';
+}
+
+var _touchTimer=null;
+var _touchPreviewActive=false;
+function schTouchStart(eid,ev){
+  _touchPreviewActive=false;
+  _touchTimer=setTimeout(function(){
+    _touchPreviewActive=true;
+    var e=SCH.events.find(function(x){return x.id===eid});
+    if(!e) return;
+    var tip=document.getElementById('schHoverTip');
+    var h='';
+    h+='<div class="ht-row"><span class="ht-lbl">Job</span><span class="ht-val" style="font-weight:650">'+_esc(e.display_ref)+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Customer</span><span class="ht-val">'+_esc(e.customer_name||e.customer_label||'—')+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Type</span><span class="ht-val">'+_esc(e.booking_type)+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Agent</span><span class="ht-val">'+_esc(e.assigned_to_name||'Unassigned')+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">When</span><span class="ht-val">'+_formatDateShort(e.scheduled_for)+' '+_formatTime12(e.scheduled_for)+'</span></div>';
+    var suburb=_addrSuburb(e.job_address);
+    if(suburb) h+='<div class="ht-row"><span class="ht-lbl">Suburb</span><span class="ht-val">'+_esc(suburb)+'</span></div>';
+    h+='<div class="ht-row"><span class="ht-lbl">Status</span><span class="ht-val"><span class="ht-status" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span></span></div>';
+    if(e.client_name) h+='<div class="ht-row"><span class="ht-lbl">Client</span><span class="ht-val">'+_esc(e.client_name)+'</span></div>';
+    if(e.lender_name) h+='<div class="ht-row"><span class="ht-lbl">Lender</span><span class="ht-val">'+_esc(e.lender_name)+'</span></div>';
+    tip.innerHTML=h;
+    var cx=ev.touches&&ev.touches[0]?ev.touches[0].clientX:100;
+    var cy=ev.touches&&ev.touches[0]?ev.touches[0].clientY:100;
+    var tipW=320;
+    var x=cx-tipW/2;if(x<4) x=4;if(x+tipW>window.innerWidth-4) x=window.innerWidth-tipW-4;
+    var y=cy-tip.offsetHeight-16;if(y<4) y=cy+24;
+    tip.style.left=x+'px';tip.style.top=y+'px';tip.style.display='';
+  },500);
+  var el=ev.target.closest('.sch-evt,.sch-month-dot');
+  if(el){
+    el.addEventListener('touchend',function te(){
+      clearTimeout(_touchTimer);
+      if(_touchPreviewActive){
+        setTimeout(function(){schHoverOut();_touchPreviewActive=false},2000);
+      }
+      el.removeEventListener('touchend',te);
+    },{once:true});
+    el.addEventListener('touchmove',function tm(){
+      clearTimeout(_touchTimer);
+      el.removeEventListener('touchmove',tm);
+    },{once:true});
+  }
+}
+
+function schEvtClick(eid,ev){
+  ev&&ev.stopPropagation();
+  schHoverOut();
+  if(SCH.isDragging){SCH.isDragging=false;return}
+  if(_touchPreviewActive){_touchPreviewActive=false;return}
+  schShowPopup(eid,ev);
+}
+
+function schDragStart(eid,ev){
+  if(!SCH.isAdmin) return;
+  SCH.isDragging=true;
+  schHoverOut();
+  var e=SCH.events.find(function(x){return x.id===eid});
+  if(!e) return;
+  SCH.dragEvent=e;
+  ev.dataTransfer.effectAllowed='move';
+  ev.dataTransfer.setData('text/plain',String(eid));
+  var el=ev.target.closest('.sch-evt');
+  if(el) el.classList.add('dragging');
+}
+
+function schDragEnd(ev){
+  SCH.isDragging=false;
+  var el=ev.target.closest('.sch-evt');
+  if(el) el.classList.remove('dragging');
+  document.querySelectorAll('.sch-drop-target').forEach(function(c){c.classList.remove('sch-drop-target')});
+}
+
+function schDragOver(ev){
+  if(!SCH.dragEvent) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect='move';
+  var cell=ev.target.closest('.sch-hour-cell,.sch-week-cell');
+  if(cell&&!cell.classList.contains('sch-drop-target')) cell.classList.add('sch-drop-target');
+}
+
+function schDragLeave(ev){
+  var cell=ev.target.closest('.sch-hour-cell,.sch-week-cell');
+  if(cell) cell.classList.remove('sch-drop-target');
+}
+
+function schDrop(ev){
+  ev.preventDefault();
+  document.querySelectorAll('.sch-drop-target').forEach(function(c){c.classList.remove('sch-drop-target')});
+  var cell=ev.target.closest('.sch-hour-cell,.sch-week-cell');
+  if(!cell||!SCH.dragEvent) return;
+  var newDate=cell.dataset.date;
+  var newHour=parseInt(cell.dataset.hour,10);
+  if(isNaN(newHour)||!newDate) return;
+  var e=SCH.dragEvent;
+  var oldMin=e.scheduled_for?e.scheduled_for.substr(14,2):'00';
+  var newDt=newDate+'T'+_pad(newHour)+':'+oldMin;
+  if(newDt===e.scheduled_for.substr(0,16)){SCH.dragEvent=null;return}
+  SCH.dragPending={event:e,newDt:newDt,oldDt:e.scheduled_for};
+  _showDragConfirm(e,newDt);
+}
+
+function _showDragConfirm(e,newDt){
+  var body='';
+  body+='<div class="dc-row"><span class="dc-lbl">Job</span><span class="dc-val" style="font-weight:650">'+_esc(e.display_ref)+'</span></div>';
+  body+='<div class="dc-row"><span class="dc-lbl">Type</span><span class="dc-val">'+_esc(e.booking_type)+'</span></div>';
+  body+='<div class="dc-row"><span class="dc-lbl">Agent</span><span class="dc-val">'+_esc(e.assigned_to_name||'Unassigned')+'</span></div>';
+  body+='<div class="dc-row" style="margin-top:8px"><span class="dc-lbl">From</span><span class="dc-val">'+_formatDateShort(e.scheduled_for)+' '+_formatTime12(e.scheduled_for)+'</span></div>';
+  body+='<div class="dc-row"><span class="dc-lbl">To</span><span class="dc-val" style="color:var(--accent);font-weight:650">'+_formatDateShort(newDt+':00')+' '+_formatTime12(newDt+':00')+'</span></div>';
+  document.getElementById('schDragConfirmBody').innerHTML=body;
+  document.getElementById('schDragOverlay').style.display='';
+  document.getElementById('schDragConfirm').style.display='';
+}
+
+function schDragCancel(){
+  document.getElementById('schDragOverlay').style.display='none';
+  document.getElementById('schDragConfirm').style.display='none';
+  SCH.dragPending=null;
+  SCH.dragEvent=null;
+}
+
+function schDragDoSave(){
+  var p=SCH.dragPending;
+  if(!p) return;
+  var btn=document.getElementById('schDragConfirmBtn');
+  btn.disabled=true;btn.textContent='Saving...';
+  var fd=new FormData();
+  fd.append('new_datetime',p.newDt);
+  fd.append('change_method','drag_drop');
+  fetch('/schedule/api/'+p.event.id+'/reschedule',{method:'POST',body:fd,credentials:'include'})
+    .then(function(r){return r.json()})
+    .then(function(data){
+      btn.disabled=false;btn.textContent='Confirm Change';
+      if(!data.ok){alert(data.error||'Reschedule failed.');return}
+      schDragCancel();
+      schLoad();
+    })
+    .catch(function(){
+      btn.disabled=false;btn.textContent='Confirm Change';
+      alert('Network error — booking was NOT moved.');
+    });
 }
 
 function schShowPopup(eid,ev){

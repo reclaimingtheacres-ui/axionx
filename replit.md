@@ -52,12 +52,15 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Admin agent filter**: Dropdown to view All Agents, specific agent, or Unassigned. Colour-coded bookings by agent when "All Agents" is selected.
 - **Agent default**: Non-admin users see only their own bookings (forced server-side).
 - **Past/Upcoming/All filter**: Toggle to view historical bookings, upcoming only, or all.
-- **Booking cards**: Show time, job ref, customer name, booking type, address snippet, status badge. Click opens popup preview with full details.
+- **Hover preview**: Desktop hover shows a dark tooltip with job ref, customer, booking type, agent, date/time, suburb, status, client, lender. Appears after 200ms, disappears on mouse leave. On mobile, long-press (500ms) opens the same preview. Hover does not block click or drag.
+- **Booking cards**: Show time, job ref, customer name, booking type. Day view shows full detail, Week view shows compact. Admin sees grab cursor on draggable bookings.
+- **Drag-and-drop rescheduling (admin only)**: Admin can drag booking cards to different hour/day cells in Day and Week views. Non-admin users see no drag affordance. After drop, a confirmation overlay shows old/new date/time, job ref, type, and agent — requires explicit Confirm or Cancel. On confirm, posts to `/schedule/api/<id>/reschedule` with `change_method=drag_drop`. On failure, booking snaps back with error message. All drag changes are recorded in booking history with "(drag & drop)" method note.
+- **Interaction separation**: hover = preview tooltip, click = action popup, drag = reschedule. Drag threshold prevents accidental moves. Hover hides on drag start. Click suppressed after drag action.
 - **Popup detail panel**: Click any booking card to open a rich popup with all booking details (date/time with OVERDUE badge, type, job ref link, job type, customer, address, assigned agent, status, notes). Role-aware action buttons: View Job, Change Booking, History, Complete, Cancel, Copy Ref.
 - **Change Booking form**: Inline form in popup to edit date/time, booking type, agent assignment (admin only), and notes. Submits via AJAX to `POST /schedule/api/<id>/update` with minute-level datetime precision comparison, booking type validation, and granular change history tracking. Supports unassign (empty agent).
 - **Booking History panel**: Shows full audit trail fetched from `GET /schedule/api/<id>/history` with colour-coded action labels (created/rescheduled/completed/cancelled/updated), timestamps, notes, and changed-by user.
 - **Quick actions**: Complete and Cancel with confirmation prompts via `POST /schedule/api/<id>/complete` and `POST /schedule/api/<id>/cancel`.
-- **API**: `GET /schedule/api/events?start=&end=&agent_id=&status_filter=` returns JSON events (including `booking_type_id`) for the requested range. Lazy-loaded by visible date range only.
+- **API**: `GET /schedule/api/events?start=&end=&agent_id=&status_filter=` returns JSON events (including `booking_type_id`, `client_name`, `lender_name`) for the requested range. Lazy-loaded by visible date range only.
 - **Booking history**: `schedule_history` table tracks all mutations (created, rescheduled, cancelled, completed, updated) with old/new state, changed_by, and notes. Preserves original schedule entries even after changes.
 - **Quick action endpoints**: `POST /schedule/api/<id>/reschedule`, `POST /schedule/api/<id>/complete`, `POST /schedule/api/<id>/cancel`, `POST /schedule/api/<id>/update`, `GET /schedule/api/<id>/history`.
 
