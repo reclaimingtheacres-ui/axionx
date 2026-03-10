@@ -110,6 +110,16 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **12. Repo Lock (v2):** Per-security-item repossession record accessible on desktop and mobile. Features draft saving and submission workflows, generating formatted notes and linking to PDF generation for VIR, Transport Instructions, and other forms. Includes signature capture and PDF generation via `pdf_gen.py`.
 
+**17. Unified Authentication Routing:**
+- `_is_mobile_request()` detects mobile context via path prefix (`/m/`), native app UA (`AxionX/`), or iOS/Android device UAs (iPhone, iPad, iPod, Android).
+- `_login_redirect()` routes unauthenticated users to `/m/login` (mobile) or `/login` (web) based on device detection.
+- `login_required` and `admin_required` decorators both use `_login_redirect()`.
+- `/login` GET redirects mobile UAs to `/m/login` — ensures all auth states (session expiry, logout, failed login) converge on the same mobile login template.
+- `/logout` detects mobile and redirects to `/m/login` instead of `/login`.
+- `/` root route detects mobile and redirects authenticated users to `/m/schedule/today`, unauthenticated to `/m/login`.
+- Inline auth checks in `/my/settings` and `/jobs/<id>/note-update-emailed` use `_login_redirect()`.
+- Web login CSS: login card vertically centered on mobile screens (<860px) via flexbox `justify-content:center` and `min-height:100dvh`.
+
 **14. Biometric Login (Face ID / Touch ID):**
 - **Backend**: `mobile_auth_tokens` table (token, user_id, device_name, created_at, expires_at, revoked_at). API: `POST /m/api/auth/create-token` (90-day token), `POST /m/api/auth/token-login` (validates token, creates fresh Flask session), `POST /m/api/auth/revoke-token`, `GET /m/api/auth/biometric-status`, `POST /m/api/auth/revoke-all-tokens`. Logout (`GET /m/logout`) accepts optional `?token=` param for server-side revocation.
 - **iOS Native**: `BiometricAuthService` stores auth token (not session cookie) in Keychain via `KeychainService.saveToken/loadToken`. On biometric auth success, calls `/m/api/auth/token-login` to get fresh session cookies injected into WKWebView. `LoginView` shows opt-in alert after first successful login ("Enable Face ID/Touch ID?"). UserDefaults: `biometric_opted_in`, `biometric_declined`. `ContentView` auth flow: check Keychain token → biometric prompt → token-login → WebView.

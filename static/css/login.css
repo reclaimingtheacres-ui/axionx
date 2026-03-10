@@ -191,7 +191,13 @@
 @media(max-width:860px){
   .login-shell{grid-template-columns:1fr;}
   .login-right{display:none;}
-  .login-left{padding:32px 24px;}
+  .login-left{
+    padding:32px 24px;
+    min-height:100vh;
+    min-height:100dvh;
+    justify-content:center;
+  }
+  .login-brand{margin-bottom:32px;}
 }
 
 /* --- Right panel: cross-fade rotator (CSS-only) --- */

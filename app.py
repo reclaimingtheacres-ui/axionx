@@ -1867,11 +1867,29 @@ def audit(entity_type, entity_id, action, message, meta=None):
 
 
 # -------- Auth helpers --------
+def _is_mobile_request():
+    ua = (request.headers.get("User-Agent") or "").lower()
+    if request.path.startswith("/m/") or request.path == "/m":
+        return True
+    if "axionx/" in ua:
+        return True
+    if any(tok in ua for tok in ("iphone", "ipad", "ipod", "android")) and "mobile" in ua:
+        return True
+    if any(tok in ua for tok in ("iphone", "ipad", "ipod")) and "applewebkit" in ua:
+        return True
+    return False
+
+def _login_redirect():
+    if _is_mobile_request():
+        next_path = request.path
+        return redirect(url_for("m_login") + f"?next={next_path}")
+    return redirect(url_for("login"))
+
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
-            return redirect(url_for("login"))
+            return _login_redirect()
         return f(*args, **kwargs)
     return wrapper
 
@@ -1880,7 +1898,7 @@ def admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
-            return redirect(url_for("login"))
+            return _login_redirect()
         if session.get("role") not in ("admin", "both"):
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
@@ -2055,13 +2073,15 @@ def reset_password_post(token):
     conn.commit()
     conn.close()
     flash("Password updated. Please sign in.", "success")
-    return redirect(url_for("login"))
+    return _login_redirect()
 
 
 @app.get("/login")
 def login():
     if session.get("user_id"):
         return redirect(url_for("index"))
+    if _is_mobile_request():
+        return redirect(url_for("m_login"))
     return render_template("login.html")
 
 
@@ -2147,9 +2167,12 @@ def logout():
     reason = request.args.get("reason", "")
     user_id = session.get("user_id")
     user_name = session.get("user_name", "Unknown")
+    mobile = _is_mobile_request()
     if reason == "timeout" and user_id:
         audit("user", user_id, "logout", f"Session auto-expired due to inactivity: {user_name}", {})
     session.clear()
+    if mobile:
+        return redirect(url_for("m_login"))
     if reason == "timeout":
         flash("Your session expired due to inactivity. Please sign in again.", "warning")
     return redirect(url_for("login"))
@@ -2159,8 +2182,10 @@ def logout():
 @app.get("/")
 def index():
     if session.get("user_id"):
+        if _is_mobile_request():
+            return redirect(url_for("m_today"))
         return redirect(url_for("jobs_list"))
-    return redirect(url_for("login"))
+    return _login_redirect()
 
 
 
@@ -8961,7 +8986,7 @@ def my_today():
 @app.get("/my/settings")
 def my_settings():
     if not session.get("user_id"):
-        return redirect(url_for("login"))
+        return _login_redirect()
     return render_template("my_settings.html")
 
 
@@ -8969,7 +8994,7 @@ def my_settings():
 def my_settings_password():
     user_id = session.get("user_id")
     if not user_id:
-        return redirect(url_for("login"))
+        return _login_redirect()
     current = request.form.get("current_password", "").strip()
     new_pw = request.form.get("new_password", "").strip()
     confirm = request.form.get("confirm_password", "").strip()
@@ -9005,7 +9030,7 @@ def note_update_emailed(job_id: int):
     user_name = session.get("user_name", "Unknown")
     role = session.get("role")
     if not user_id:
-        return redirect(url_for("login"))
+        return _login_redirect()
 
     conn = db()
     job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
