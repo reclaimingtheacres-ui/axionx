@@ -9147,11 +9147,20 @@ def job_queue():
     """, (note_type,))
     agent_notes = cur.fetchall()
 
+    agents_list = cur.execute(
+        "SELECT id, full_name, email FROM users WHERE role IN ('agent','both','admin') AND active=1 ORDER BY full_name"
+    ).fetchall()
+    clients_list = cur.execute(
+        "SELECT id, name FROM clients ORDER BY name"
+    ).fetchall()
+
     conn.close()
     return render_template("queue.html",
                            overdue=overdue,
                            due_tomorrow=due_tomorrow,
                            agent_notes=agent_notes,
+                           agents_list=agents_list,
+                           clients_list=clients_list,
                            now_melb=mel_now)
 
 
@@ -9490,6 +9499,111 @@ def queue_send_email():
 
     audit("job", int(job_id), "email_sent", note_txt)
     return jsonify({"ok": True, "sent_to": ", ".join(to_list), "smtp_skipped": smtp_skipped})
+
+
+@app.post("/queue/email-agent-queue")
+@admin_required
+def queue_email_agent_queue():
+    agent_id = request.form.get("agent_id", "").strip()
+    filter_client = request.form.get("filter_client", "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "Please select an agent."})
+
+    conn = db()
+    agent = conn.execute("SELECT id, full_name, email FROM users WHERE id=?", (agent_id,)).fetchone()
+    if not agent or not agent["email"]:
+        conn.close()
+        return jsonify({"ok": False, "error": "Agent not found or has no email address."})
+
+    cur = conn.cursor()
+    overdue_types = ("Urgent: Schedule Overdue", "Schedule Due Today")
+    tomorrow_type = "Schedule Due Tomorrow"
+    note_type = "Agent Note Review"
+
+    all_items = []
+    for label, sql_where, params in [
+        ("OVERDUE", "ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')", overdue_types),
+        ("CURRENTLY DUE", "ci.visit_type = ? AND ci.status IN ('Pending','In Progress')", (tomorrow_type,)),
+        ("AGENT NOTES", "ci.visit_type = ? AND ci.status = 'Pending'", (note_type,)),
+    ]:
+        cur.execute(_queue_row_sql() + " WHERE " + sql_where + " ORDER BY ci.priority DESC, ci.created_at DESC", params)
+        rows = cur.fetchall()
+        for r in rows:
+            if str(r["job_assigned_uid"] or "") != str(agent_id):
+                continue
+            if filter_client and str(r["client_name"] or "") != filter_client:
+                continue
+            all_items.append((label, r))
+
+    conn.close()
+
+    if not all_items:
+        return jsonify({"ok": False, "error": f"No queue items found for {agent['full_name']}."})
+
+    mel_now = datetime.now(_melbourne)
+    date_str = mel_now.strftime("%A %d %B %Y")
+
+    from markupsafe import escape as _h
+    rows_html = ""
+    current_section = ""
+    for section, item in all_items:
+        if section != current_section:
+            current_section = section
+            rows_html += f'<tr><td colspan="6" style="background:#f3f4f6;font-weight:700;font-size:13px;padding:8px 10px;border-top:2px solid #d1d5db">{_h(section)}</td></tr>'
+        ref = _h(item["display_ref"] or item["internal_job_number"] or "")
+        client = _h(item["client_name"] or "—")
+        borrower = _h(item["customer_label"] or item["customer_name"] or "—")
+        address = _h(item["job_address"] or "—")
+        status = _h(item["job_status"] or "—")
+        action = _h(item["instructions"] or item["visit_type"] or "—")
+        rows_html += f'''<tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">{ref}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">{client}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">{borrower}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px">{address}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">{status}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px">{action}</td>
+        </tr>'''
+
+    body_html = f"""<div style="font-family:sans-serif;max-width:800px">
+<h2 style="margin:0 0 4px;font-size:18px">Your Queue — {_h(date_str)}</h2>
+<p style="color:#6b7280;font-size:13px;margin:0 0 16px">Hi {_h(agent['full_name'])}, here is your current queue ({len(all_items)} item{'s' if len(all_items) != 1 else ''}):</p>
+<table style="width:100%;border-collapse:collapse;font-size:13px;font-family:sans-serif">
+<thead><tr style="background:#1e3a5f;color:#fff">
+  <th style="padding:8px 10px;text-align:left">Job</th>
+  <th style="padding:8px 10px;text-align:left">Client</th>
+  <th style="padding:8px 10px;text-align:left">Borrower</th>
+  <th style="padding:8px 10px;text-align:left">Address</th>
+  <th style="padding:8px 10px;text-align:left">Status</th>
+  <th style="padding:8px 10px;text-align:left">Action</th>
+</tr></thead>
+<tbody>{rows_html}</tbody>
+</table>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0 10px">
+<p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+</div>"""
+
+    body_txt = f"Your Queue — {date_str}\n\nHi {agent['full_name']}, here is your current queue ({len(all_items)} items):\n\n"
+    for section, item in all_items:
+        ref = item["display_ref"] or ""
+        body_txt += f"[{section}] {ref} | {item['client_name'] or '—'} | {item['customer_label'] or item['customer_name'] or '—'} | {item['job_address'] or '—'} | {item['instructions'] or item['visit_type'] or '—'}\n"
+
+    subject = f"Your AxionX Queue — {date_str} ({len(all_items)} items)"
+    to_list = [agent["email"]]
+
+    smtp_ok = bool(os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASS"))
+    smtp_skipped = False
+    if smtp_ok:
+        try:
+            send_email(to_list, subject, body_txt, body_html)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"SMTP error: {exc}"})
+    else:
+        smtp_skipped = True
+
+    audit("queue", 0, "queue_emailed", f"Queue emailed to {agent['full_name']} ({agent['email']}) — {len(all_items)} items")
+    return jsonify({"ok": True, "sent_to": agent["email"], "agent_name": agent["full_name"],
+                    "item_count": len(all_items), "smtp_skipped": smtp_skipped})
 
 
 # -------- Assignment board --------

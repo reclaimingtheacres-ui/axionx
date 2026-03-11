@@ -22,6 +22,11 @@ Axion Prototype is a Flask-based field operations management application designe
 **1. Role-Based Access Control:** Differentiates 'Admin' and 'Agent' roles with tailored access to features like job visibility, dashboards, cues, assignment boards, reports, and user management.
 
 **2. Dynamic Queue System:** Provides an admin-only view with 'Agent Notes – Pending Review' pinned at the top (hidden when empty, sorted by most recently updated), followed by 'Overdue' and 'Currently Due' sections. When a job is rescheduled or updated, its cue items are auto-completed and the queue view refreshes automatically on tab focus via `/queue/active-cue-ids` polling. Direct email composition and job updates available inline.
+- **Agent ID column**: Every queue row shows the assigned agent as a styled badge (blue for assigned, amber for unassigned).
+- **Queue Summary bar**: Live counts at top showing Total Jobs, per-Agent counts, and per-Client counts. Each count chip is clickable and acts as a one-click filter. Summary updates automatically as items are dismissed or filtered.
+- **Queue filters**: Agent dropdown (All Agents / specific agent / Unassigned), Client dropdown (All Clients / specific client), and a free-text search field (job #, customer name, address). Filters combine independently. Clear Filters button resets all. Active filters also apply to the email-queue function.
+- **Email Queue to Agent**: `POST /queue/email-agent-queue` sends a clean HTML table of the agent's entire queue. Respects active client filter. Email includes job ref, client, borrower, address, status, and action required — grouped by section (Overdue / Currently Due / Agent Notes). Accessible via "Email Queue to Agent" button next to the summary bar.
+- Routes: `POST /queue/email-agent-queue`.
 
 **2a. Job Scheduling (Booking Type Combobox):** All booking type fields across the system (job detail inline form, schedule prompt modal, add bookings modal, new job form) use a unified searchable combobox with type-to-search, type-to-select, and create-new behaviour. Recently used types appear at the top with a "recent" label. New types are saved via `/booking-type/ajax` with case/spacing normalization to prevent duplicates. After saving a booking, users remain on the same page (AJAX submission) with a success message — no redirect to Jobs or other screens.
 

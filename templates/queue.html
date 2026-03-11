@@ -87,9 +87,74 @@
   .q-update-btn:hover { opacity: .75; }
   .q-empty td { color: var(--muted); font-style: italic; text-align: center; padding: .75rem; }
   .q-action-text { color: var(--text); max-width: 260px; }
+  .q-agent-badge {
+    font-size: .72rem; font-weight: 600; padding: .15rem .45rem;
+    border-radius: 4px; background: #e0e7ff; color: #3730a3;
+    white-space: nowrap; display: inline-block;
+  }
+  .q-agent-badge.unassigned { background: #fef3c7; color: #92400e; }
+
+  .q-summary-bar {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: .85rem 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .q-summary-title {
+    font-size: .82rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--muted); margin-bottom: .5rem;
+  }
+  .q-summary-total {
+    font-size: 1.6rem; font-weight: 700; color: var(--accent);
+    margin-bottom: .5rem;
+  }
+  .q-summary-group { margin-bottom: .4rem; }
+  .q-summary-label {
+    font-size: .75rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .03em; margin-right: .5rem;
+  }
+  .q-summary-chip {
+    display: inline-block; font-size: .78rem; padding: .2rem .55rem;
+    border-radius: 6px; margin: .15rem .25rem .15rem 0;
+    cursor: pointer; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); transition: all .15s;
+  }
+  .q-summary-chip:hover { background: #e0e7ff; border-color: #6366f1; }
+  .q-summary-chip.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .q-summary-chip .chip-count {
+    font-weight: 700; margin-left: .2rem;
+  }
+
+  .q-filter-bar {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: .65rem 1rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+  }
+  .q-filter-bar label {
+    font-size: .78rem; font-weight: 600; color: var(--muted);
+    white-space: nowrap;
+  }
+  .q-filter-bar select, .q-filter-bar input[type=text] {
+    font-size: .84rem; border-radius: 8px; max-width: 220px;
+  }
+  .q-filter-clear {
+    font-size: .78rem; color: var(--accent); cursor: pointer;
+    text-decoration: underline; background: none; border: none; padding: 0;
+  }
+  .q-email-queue-btn {
+    font-size: .78rem; padding: .3rem .7rem; border-radius: 6px;
+    white-space: nowrap;
+  }
+  .q-row-hidden { display: none !important; }
 </style>
 
-<!-- Header bar -->
 <div class="queue-header-bar">
   <strong>{{ session.get('user_name', 'Admin') }}</strong>
   &nbsp;/&nbsp; Status = logged in
@@ -102,7 +167,95 @@
   or <strong>Update</strong> to go directly into the job.
 </div>
 
-<!-- ── AGENT NOTES – PENDING REVIEW (pinned to top) ────────────────── -->
+<div class="q-summary-bar" id="queueSummaryBar">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+    <div>
+      <div class="q-summary-title">Queue Summary</div>
+      <div class="q-summary-total">Total Jobs: <span id="summaryTotal">0</span></div>
+    </div>
+    <button class="btn btn-outline-primary btn-sm q-email-queue-btn" onclick="openEmailQueueModal()">
+      Email Queue to Agent
+    </button>
+  </div>
+  <div class="q-summary-group">
+    <span class="q-summary-label">Agents</span>
+    <span id="summaryAgents"></span>
+  </div>
+  <div class="q-summary-group">
+    <span class="q-summary-label">Clients</span>
+    <span id="summaryClients"></span>
+  </div>
+</div>
+
+<div class="q-filter-bar" id="queueFilterBar">
+  <label for="filterAgent">Agent:</label>
+  <select class="form-select form-select-sm" id="filterAgent" onchange="applyFilters()">
+    <option value="">All Agents</option>
+    {% for a in agents_list %}
+    <option value="{{ a.full_name|e }}">{{ a.full_name }}</option>
+    {% endfor %}
+    <option value="__unassigned__">Unassigned</option>
+  </select>
+
+  <label for="filterClient">Client:</label>
+  <select class="form-select form-select-sm" id="filterClient" onchange="applyFilters()">
+    <option value="">All Clients</option>
+    {% for cl in clients_list %}
+    <option value="{{ cl.name|e }}">{{ cl.name }}</option>
+    {% endfor %}
+  </select>
+
+  <label for="filterSearch">Search:</label>
+  <input type="text" class="form-control form-control-sm" id="filterSearch"
+         placeholder="Job #, customer, address..." oninput="applyFilters()" style="min-width:180px">
+
+  <button class="q-filter-clear" onclick="clearFilters()" id="clearFiltersBtn" style="display:none">Clear Filters</button>
+</div>
+
+{% macro queue_row(c, show_note_col=false) %}
+<tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}"
+    data-agent="{{ (c.agent_name or '')|e }}"
+    data-agent-id="{{ c.job_assigned_uid or '' }}"
+    data-client="{{ (c.client_name or '')|e }}"
+    data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}">
+  <td>
+    <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
+  </td>
+  <td>
+    <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
+  </td>
+  <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
+  <td>{{ c.client_name or '—' }}</td>
+  <td>{{ c.customer_label or c.customer_name or '—' }}</td>
+  <td>{{ c.job_address or '—' }}</td>
+  <td>
+    {% if c.agent_name %}
+    <span class="q-agent-badge">{{ c.agent_name }}</span>
+    {% else %}
+    <span class="q-agent-badge unassigned">Unassigned</span>
+    {% endif %}
+  </td>
+  {% if show_note_col %}
+  <td class="q-action-text">{{ c.instructions or '—' }}</td>
+  {% else %}
+  <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
+  {% endif %}
+  <td>
+    <div class="q-actions">
+      <button class="q-email-btn"
+        data-job-id="{{ c.job_id }}"
+        data-job-ref="{{ c.display_ref|e }}"
+        data-client-email="{{ (c.client_email or '')|e }}"
+        data-agent-email="{{ (c.agent_email or '')|e }}"
+        data-agent-name="{{ (c.agent_name or '')|e }}"
+        data-client-name="{{ (c.client_name or 'Client')|e }}"
+        onclick="openEmailModal(this)">Email</button>
+      <a class="q-update-btn" href="/jobs/{{ c.job_id }}?add_note=1" target="_blank">Update</a>
+    </div>
+  </td>
+</tr>
+{% endmacro %}
+
 {% if agent_notes %}
 <div class="queue-section" id="notes-section">
   <div class="queue-section-title notes">Agent Notes – Pending Review [{{ agent_notes|length }}]</div>
@@ -115,45 +268,20 @@
         <th>Client</th>
         <th>Borrower(s)</th>
         <th>Given Address</th>
+        <th>Agent</th>
         <th>Note</th>
         <th></th>
       </tr>
     </thead>
     <tbody id="notes-body">
       {% for c in agent_notes %}
-      <tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}">
-        <td>
-          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
-        </td>
-        <td>
-          <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
-        </td>
-        <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
-        <td>{{ c.client_name or '—' }}</td>
-        <td>{{ c.customer_label or c.customer_name or '—' }}</td>
-        <td>{{ c.job_address or '—' }}</td>
-        <td class="q-action-text">{{ c.instructions or '—' }}</td>
-        <td>
-          <div class="q-actions">
-            <button class="q-email-btn"
-              data-job-id="{{ c.job_id }}"
-              data-job-ref="{{ c.display_ref|e }}"
-              data-client-email="{{ (c.client_email or '')|e }}"
-              data-agent-email="{{ (c.agent_email or '')|e }}"
-              data-agent-name="{{ (c.agent_name or '')|e }}"
-              data-client-name="{{ (c.client_name or 'Client')|e }}"
-              onclick="openEmailModal(this)">Email</button>
-            <a class="q-update-btn" href="/jobs/{{ c.job_id }}?add_note=1" target="_blank">Update</a>
-          </div>
-        </td>
-      </tr>
+      {{ queue_row(c, show_note_col=true) }}
       {% endfor %}
     </tbody>
   </table>
 </div>
 {% endif %}
 
-<!-- ── OVERDUE ─────────────────────────────────────────────────────── -->
 <div class="queue-section">
   <div class="queue-section-title overdue">Overdue [{{ overdue|length }}]</div>
   <table class="queue-table">
@@ -165,46 +293,21 @@
         <th>Client</th>
         <th>Borrower(s)</th>
         <th>Given Address</th>
+        <th>Agent</th>
         <th>Action Required</th>
         <th></th>
       </tr>
     </thead>
     <tbody id="overdue-body">
       {% for c in overdue %}
-      <tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}">
-        <td>
-          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
-        </td>
-        <td>
-          <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
-        </td>
-        <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
-        <td>{{ c.client_name or '—' }}</td>
-        <td>{{ c.customer_label or c.customer_name or '—' }}</td>
-        <td>{{ c.job_address or '—' }}</td>
-        <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
-        <td>
-          <div class="q-actions">
-            <button class="q-email-btn"
-              data-job-id="{{ c.job_id }}"
-              data-job-ref="{{ c.display_ref|e }}"
-              data-client-email="{{ (c.client_email or '')|e }}"
-              data-agent-email="{{ (c.agent_email or '')|e }}"
-              data-agent-name="{{ (c.agent_name or '')|e }}"
-              data-client-name="{{ (c.client_name or 'Client')|e }}"
-              onclick="openEmailModal(this)">Email</button>
-            <a class="q-update-btn" href="/jobs/{{ c.job_id }}?add_note=1" target="_blank">Update</a>
-          </div>
-        </td>
-      </tr>
+      {{ queue_row(c) }}
       {% else %}
-      <tr class="q-empty"><td colspan="8">No overdue items.</td></tr>
+      <tr class="q-empty"><td colspan="9">No overdue items.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
-<!-- ── CURRENTLY DUE ───────────────────────────────────────────────── -->
 <div class="queue-section">
   <div class="queue-section-title due">Currently Due [{{ due_tomorrow|length }}]</div>
   <table class="queue-table">
@@ -216,47 +319,26 @@
         <th>Client</th>
         <th>Borrower(s)</th>
         <th>Given Address</th>
+        <th>Agent</th>
         <th>Action Required</th>
         <th></th>
       </tr>
     </thead>
     <tbody id="due-body">
       {% for c in due_tomorrow %}
-      <tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}">
-        <td>
-          <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
-        </td>
-        <td>
-          <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
-        </td>
-        <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
-        <td>{{ c.client_name or '—' }}</td>
-        <td>{{ c.customer_label or c.customer_name or '—' }}</td>
-        <td>{{ c.job_address or '—' }}</td>
-        <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
-        <td>
-          <div class="q-actions">
-            <button class="q-email-btn"
-              data-job-id="{{ c.job_id }}"
-              data-job-ref="{{ c.display_ref|e }}"
-              data-client-email="{{ (c.client_email or '')|e }}"
-              data-agent-email="{{ (c.agent_email or '')|e }}"
-              data-agent-name="{{ (c.agent_name or '')|e }}"
-              data-client-name="{{ (c.client_name or 'Client')|e }}"
-              onclick="openEmailModal(this)">Email</button>
-            <a class="q-update-btn" href="/jobs/{{ c.job_id }}?add_note=1" target="_blank">Update</a>
-          </div>
-        </td>
-      </tr>
+      {{ queue_row(c) }}
       {% else %}
-      <tr class="q-empty"><td colspan="8">No items due tomorrow.</td></tr>
+      <tr class="q-empty"><td colspan="9">No items due tomorrow.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
 <script>
-/* ── Dismiss ──────────────────────────────────────────────────────── */
+function _esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function dismissItem(cueId) {
   var row = document.getElementById('qrow-' + cueId);
   fetch('/queue/' + cueId + '/dismiss', {
@@ -268,6 +350,7 @@ function dismissItem(cueId) {
     if (data.ok) {
       if (row) row.remove();
       updateSectionCounts();
+      updateSummary();
     }
   })
   .catch(function(){ alert('Could not dismiss item. Please try again.'); });
@@ -282,7 +365,7 @@ function updateSectionCounts() {
     var tbody = document.getElementById(s.body);
     var title = document.querySelector(s.cls);
     if (!tbody || !title) return;
-    var n = tbody.querySelectorAll('tr:not(.q-empty)').length;
+    var n = tbody.querySelectorAll('tr:not(.q-empty):not(.q-row-hidden)').length;
     title.textContent = title.textContent.replace(/\[\d+\]/, '[' + n + ']');
     if (s.section) {
       var sec = document.getElementById(s.section);
@@ -291,7 +374,6 @@ function updateSectionCounts() {
   });
 }
 
-/* ── Auto-refresh on tab focus ────────────────────────────────────── */
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'visible') {
     refreshQueueState();
@@ -316,100 +398,208 @@ function refreshQueueState() {
         removed = true;
       }
     });
-    if (removed) updateSectionCounts();
+    if (removed) {
+      updateSectionCounts();
+      updateSummary();
+    }
   })
   .catch(function(){});
 }
 
-/* ── Email modal ──────────────────────────────────────────────────── */
-var _em = { jobId: null, clientEmail: '', agentEmail: '', agentName: '' };
+function applyFilters() {
+  var agentVal  = document.getElementById('filterAgent').value;
+  var clientVal = document.getElementById('filterClient').value;
+  var searchVal = document.getElementById('filterSearch').value.trim().toLowerCase();
 
-function openEmailModal(btn) {
-  var d = btn.dataset;
-  _em.jobId       = d.jobId;
-  _em.clientEmail = d.clientEmail  || '';
-  _em.agentEmail  = d.agentEmail   || '';
-  _em.agentName   = d.agentName    || '';
+  var hasFilter = agentVal || clientVal || searchVal;
+  document.getElementById('clearFiltersBtn').style.display = hasFilter ? '' : 'none';
 
-  document.getElementById('em_job_id').value      = _em.jobId;
-  document.getElementById('em_job_ref').textContent = d.jobRef || _em.jobId;
-  document.getElementById('em_subject').value     = 'Job Update \u2014 ' + (d.jobRef || _em.jobId);
-  document.getElementById('em_body').value        = '';
-  document.getElementById('em_to_addresses').value = _em.clientEmail;
-  document.getElementById('em_error').style.display   = 'none';
-  document.getElementById('em_success').style.display = 'none';
-  document.getElementById('em_send_btn').disabled = false;
+  var allRows = document.querySelectorAll('tr[id^="qrow-"]');
+  allRows.forEach(function(row) {
+    var show = true;
+    if (agentVal) {
+      var rowAgent = row.getAttribute('data-agent') || '';
+      if (agentVal === '__unassigned__') {
+        if (rowAgent !== '') show = false;
+      } else {
+        if (rowAgent !== agentVal) show = false;
+      }
+    }
+    if (show && clientVal) {
+      var rowClient = row.getAttribute('data-client') || '';
+      if (rowClient !== clientVal) show = false;
+    }
+    if (show && searchVal) {
+      var searchData = row.getAttribute('data-search') || '';
+      if (searchData.indexOf(searchVal) === -1) show = false;
+    }
+    if (show) {
+      row.classList.remove('q-row-hidden');
+    } else {
+      row.classList.add('q-row-hidden');
+    }
+  });
 
-  _updateToHint();
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('emailModal')).show();
+  updateSectionCounts();
+  updateSummary();
 }
 
-function quickFill(who) {
-  var parts = [];
-  if ((who === 'client' || who === 'both') && _em.clientEmail) parts.push(_em.clientEmail);
-  if ((who === 'agent'  || who === 'both') && _em.agentEmail)  parts.push(_em.agentEmail);
-  document.getElementById('em_to_addresses').value = parts.join(', ');
-  _updateToHint();
+function clearFilters() {
+  document.getElementById('filterAgent').value = '';
+  document.getElementById('filterClient').value = '';
+  document.getElementById('filterSearch').value = '';
+  applyFilters();
 }
 
-function _updateToHint() {
-  var lines = [];
-  if (_em.clientEmail) lines.push('Client: ' + _em.clientEmail);
-  else                 lines.push('Client: (no email on file)');
-  if (_em.agentName)   lines.push('Agent: ' + _em.agentName + (_em.agentEmail ? ' \u2014 ' + _em.agentEmail : ' (no email)'));
-  else                 lines.push('Agent: (unassigned)');
-  document.getElementById('em_to_hint').textContent = lines.join('  |  ');
+function updateSummary() {
+  var visibleRows = document.querySelectorAll('tr[id^="qrow-"]:not(.q-row-hidden)');
+  var allRows = document.querySelectorAll('tr[id^="qrow-"]');
+
+  var agentCounts = {};
+  var clientCounts = {};
+  var total = 0;
+
+  allRows.forEach(function(row) {
+    if (row.classList.contains('q-row-hidden')) return;
+    total++;
+    var agent = row.getAttribute('data-agent') || '';
+    var client = row.getAttribute('data-client') || '';
+    var agentKey = agent || 'Unassigned';
+    agentCounts[agentKey] = (agentCounts[agentKey] || 0) + 1;
+    if (client) {
+      clientCounts[client] = (clientCounts[client] || 0) + 1;
+    }
+  });
+
+  document.getElementById('summaryTotal').textContent = total;
+
+  var activeAgent = document.getElementById('filterAgent').value;
+  var activeClient = document.getElementById('filterClient').value;
+
+  var agentContainer = document.getElementById('summaryAgents');
+  agentContainer.innerHTML = '';
+  var agentKeys = Object.keys(agentCounts).sort(function(a, b) {
+    if (a === 'Unassigned') return 1;
+    if (b === 'Unassigned') return -1;
+    return agentCounts[b] - agentCounts[a];
+  });
+  if (agentKeys.length === 0) {
+    agentContainer.innerHTML = '<span style="font-size:.78rem;color:var(--muted)">—</span>';
+  } else {
+    agentKeys.forEach(function(name) {
+      var isActive = (activeAgent === name) || (activeAgent === '__unassigned__' && name === 'Unassigned');
+      var chip = document.createElement('span');
+      chip.className = 'q-summary-chip' + (isActive ? ' active' : '');
+      chip.textContent = name + ' ';
+      var cnt = document.createElement('span');
+      cnt.className = 'chip-count';
+      cnt.textContent = '(' + agentCounts[name] + ')';
+      chip.appendChild(cnt);
+      chip.addEventListener('click', (function(n){ return function(){ filterByAgent(n); }; })(name));
+      agentContainer.appendChild(chip);
+    });
+  }
+
+  var clientContainer = document.getElementById('summaryClients');
+  clientContainer.innerHTML = '';
+  var clientKeys = Object.keys(clientCounts).sort(function(a, b) {
+    return clientCounts[b] - clientCounts[a];
+  });
+  if (clientKeys.length === 0) {
+    clientContainer.innerHTML = '<span style="font-size:.78rem;color:var(--muted)">—</span>';
+  } else {
+    clientKeys.forEach(function(name) {
+      var isActive = activeClient === name;
+      var chip = document.createElement('span');
+      chip.className = 'q-summary-chip' + (isActive ? ' active' : '');
+      chip.textContent = name + ' ';
+      var cnt = document.createElement('span');
+      cnt.className = 'chip-count';
+      cnt.textContent = '(' + clientCounts[name] + ')';
+      chip.appendChild(cnt);
+      chip.addEventListener('click', (function(n){ return function(){ filterByClient(n); }; })(name));
+      clientContainer.appendChild(chip);
+    });
+  }
 }
 
-function sendQueueEmail() {
-  var toAddresses = document.getElementById('em_to_addresses').value.trim();
-  var subject     = document.getElementById('em_subject').value.trim();
-  var body        = document.getElementById('em_body').value.trim();
-  var errEl       = document.getElementById('em_error');
-  var okEl        = document.getElementById('em_success');
+function filterByAgent(name) {
+  var sel = document.getElementById('filterAgent');
+  if (name === 'Unassigned') {
+    sel.value = sel.value === '__unassigned__' ? '' : '__unassigned__';
+  } else {
+    sel.value = sel.value === name ? '' : name;
+  }
+  applyFilters();
+}
+
+function filterByClient(name) {
+  var sel = document.getElementById('filterClient');
+  sel.value = sel.value === name ? '' : name;
+  applyFilters();
+}
+
+updateSummary();
+
+function openEmailQueueModal() {
+  document.getElementById('eqm_agent').value = '';
+  var filterVal = document.getElementById('filterAgent').value;
+  if (filterVal && filterVal !== '__unassigned__') {
+    var visibleRows = document.querySelectorAll('tr[id^="qrow-"]:not(.q-row-hidden)');
+    for (var i = 0; i < visibleRows.length; i++) {
+      var rowAgent = visibleRows[i].getAttribute('data-agent') || '';
+      var rowAgentId = visibleRows[i].getAttribute('data-agent-id') || '';
+      if (rowAgent === filterVal && rowAgentId) {
+        document.getElementById('eqm_agent').value = rowAgentId;
+        break;
+      }
+    }
+  }
+  document.getElementById('eqm_error').style.display = 'none';
+  document.getElementById('eqm_success').style.display = 'none';
+  document.getElementById('eqm_send_btn').disabled = false;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('emailQueueModal')).show();
+}
+
+function sendAgentQueue() {
+  var agentId = document.getElementById('eqm_agent').value;
+  var errEl = document.getElementById('eqm_error');
+  var okEl = document.getElementById('eqm_success');
   errEl.style.display = 'none';
-  okEl.style.display  = 'none';
+  okEl.style.display = 'none';
 
-  if (!toAddresses) { errEl.textContent = 'Please enter at least one email address.'; errEl.style.display = ''; return; }
-  if (!body)         { errEl.textContent = 'Please enter a message.';                  errEl.style.display = ''; return; }
+  if (!agentId) {
+    errEl.textContent = 'Please select an agent.';
+    errEl.style.display = '';
+    return;
+  }
 
-  var who = 'custom';
-  if (toAddresses === _em.clientEmail) who = 'client';
-  else if (toAddresses === _em.agentEmail) who = 'agent';
-  else if (_em.clientEmail && _em.agentEmail && toAddresses.indexOf(_em.clientEmail) !== -1 && toAddresses.indexOf(_em.agentEmail) !== -1) who = 'both';
-
-  document.getElementById('em_send_btn').disabled = true;
+  document.getElementById('eqm_send_btn').disabled = true;
   var fd = new FormData();
-  fd.append('job_id',       _em.jobId);
-  fd.append('recipient',    who);
-  fd.append('to_addresses', toAddresses);
-  fd.append('subject',      subject);
-  fd.append('body',         body);
+  fd.append('agent_id', agentId);
+  var clientFilter = document.getElementById('filterClient').value;
+  if (clientFilter) fd.append('filter_client', clientFilter);
 
-  fetch('/queue/send-email', {
-    method: 'POST', body: fd,
-    headers: {'X-Requested-With': 'XMLHttpRequest'}
-  })
+  fetch('/queue/email-agent-queue', {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}})
   .then(function(r){ return r.json(); })
   .then(function(data){
-    document.getElementById('em_send_btn').disabled = false;
+    document.getElementById('eqm_send_btn').disabled = false;
     if (!data.ok) {
       errEl.textContent = data.error;
       errEl.style.display = '';
     } else {
       var msg = data.smtp_skipped
-        ? 'Logged \u2014 email will be sent once SMTP is configured. (Addressed to: ' + data.sent_to + ')'
-        : 'Email sent to ' + data.sent_to;
+        ? 'Logged — will send once SMTP is configured. (' + data.agent_name + ', ' + data.item_count + ' items)'
+        : 'Queue sent to ' + data.agent_name + ' (' + data.sent_to + ') — ' + data.item_count + ' items';
       okEl.textContent = msg;
       okEl.style.display = '';
-      document.getElementById('em_body').value = '';
       setTimeout(function(){
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('emailModal')).hide();
-      }, 2500);
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('emailQueueModal')).hide();
+      }, 3000);
     }
   })
   .catch(function(){
-    document.getElementById('em_send_btn').disabled = false;
+    document.getElementById('eqm_send_btn').disabled = false;
     errEl.textContent = 'Network error. Please try again.';
     errEl.style.display = '';
   });
@@ -418,7 +608,35 @@ function sendQueueEmail() {
 {% endblock %}
 
 {% block modals %}
-<!-- ── EMAIL MODAL ─────────────────────────────────────────────────── -->
+<div class="modal fade" id="emailQueueModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+    <div class="modal-content" style="border-radius:14px;border:1px solid var(--line);overflow:hidden">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);padding:.75rem 1.25rem">
+        <h5 class="modal-title fw-semibold" style="font-size:.95rem">Email Queue to Agent</h5>
+        <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="padding:1.2rem 1.4rem">
+        <p class="small text-muted mb-3">
+          Send a complete queue summary to the selected agent by email. If client filters are active, only matching items will be included.
+        </p>
+        <label class="form-label small fw-bold">Select Agent</label>
+        <select class="form-select form-select-sm mb-3" id="eqm_agent">
+          <option value="">— Select Agent —</option>
+          {% for a in agents_list %}
+          <option value="{{ a.id }}">{{ a.full_name }} ({{ a.email or 'no email' }})</option>
+          {% endfor %}
+        </select>
+        <div id="eqm_error" class="alert alert-danger py-2 small" style="display:none"></div>
+        <div id="eqm_success" class="alert alert-success py-2 small" style="display:none"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);padding:.6rem 1.2rem">
+        <button type="button" class="btn btn-primary btn-sm px-4" id="eqm_send_btn" onclick="sendAgentQueue()">Send Queue</button>
+        <button type="button" class="btn btn-link btn-sm ms-auto text-muted" data-bs-dismiss="modal" style="text-decoration:none">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
 .em-modal-body { display:flex; min-height:520px; }
 .em-left  { flex:0 0 54%; padding:1.25rem 1.4rem; overflow-y:auto; border-right:1px solid var(--line); }
@@ -491,11 +709,9 @@ function sendQueueEmail() {
 
       <div class="em-modal-body">
 
-        <!-- ── LEFT: compose ── -->
         <div class="em-left">
           <input type="hidden" id="em_job_id">
 
-          <!-- Send To -->
           <div class="em-row">
             <div class="em-field-label">Send To:</div>
             <div style="flex:1">
@@ -505,7 +721,6 @@ function sendQueueEmail() {
             </div>
           </div>
 
-          <!-- Copy To -->
           <div class="em-row">
             <div class="em-field-label">Copy To:</div>
             <div style="flex:1">
@@ -523,7 +738,6 @@ function sendQueueEmail() {
             </div>
           </div>
 
-          <!-- Reply to -->
           <div class="em-row">
             <div class="em-field-label"></div>
             <div style="flex:1">
@@ -535,7 +749,6 @@ function sendQueueEmail() {
             </div>
           </div>
 
-          <!-- Subject -->
           <div class="em-row">
             <div class="em-field-label">Subject:</div>
             <div style="flex:1">
@@ -544,25 +757,21 @@ function sendQueueEmail() {
             </div>
           </div>
 
-          <!-- Message -->
           <div class="em-section-title" style="color:#6b7280;font-size:.8rem;font-weight:600;text-transform:none;letter-spacing:0">Message:</div>
           <textarea id="em_body" class="form-control" rows="5"
                     placeholder="Enter your message..."
                     style="border-radius:8px;font-size:.88rem;resize:vertical"></textarea>
 
-          <!-- Signature -->
           <div class="em-section-title" style="margin-top:.8rem;color:#2563eb;font-size:.8rem;font-weight:600;text-transform:none;letter-spacing:0">Email Signature:</div>
           <textarea id="em_signature" class="form-control" rows="3"
                     placeholder="e.g. Regards,&#10;Your Company"
                     style="border-radius:8px;font-size:.88rem;resize:vertical"></textarea>
 
-          <!-- Include logo -->
           <div class="d-flex align-items-center gap-2 mt-2 mb-1">
             <input type="checkbox" id="em_include_logo" checked style="width:15px;height:15px">
             <label for="em_include_logo" style="font-size:.85rem;cursor:pointer">Include company logo</label>
           </div>
 
-          <!-- Quick inserts + Send me a copy -->
           <div class="d-flex align-items-start justify-content-between mt-1">
             <div>
               <a class="em-quick-link" onclick="_emAddJobDetails()">Add Job Details</a>
@@ -575,21 +784,18 @@ function sendQueueEmail() {
             </div>
           </div>
 
-          <!-- Feedback -->
           <div id="em_error"   class="alert alert-danger  py-2 small mt-2" style="display:none"></div>
           <div id="em_success" class="alert alert-success py-2 small mt-2" style="display:none"></div>
         </div>
 
-        <!-- ── RIGHT: attach ── -->
         <div class="em-right">
-          <!-- Notes & Files -->
           <div class="em-attach-title">Attach Notes or Files</div>
           <div class="em-attach-sub">Select the notes and/or files that you wish to attach to your email below:</div>
           <div id="em_attach_loading" style="color:var(--muted);font-size:.82rem">Loading&hellip;</div>
           <table class="em-attach-table" id="em_notes_table" style="display:none">
             <thead>
               <tr>
-                <th style="width:22px"><input type="checkbox" id="em_check_all_notes" style="width:14px;height:14px" onchange="_emToggleAll('em_note_check',this.checked)"></th>
+                <th style="width:22px"><input type="checkbox" id="em_check_all_notes" style="width:14px;height:14px" onchange="_emToggleAll('em-note-check',this.checked)"></th>
                 <th>Added</th>
                 <th></th>
                 <th>Description</th>
@@ -599,13 +805,12 @@ function sendQueueEmail() {
             <tbody id="em_notes_body"></tbody>
           </table>
 
-          <!-- Forms -->
           <div class="em-attach-title mt-3" id="em_forms_section" style="display:none">Attach Forms</div>
           <div class="em-attach-sub" id="em_forms_sub" style="display:none">Select the forms that you wish to attach to your email below:</div>
           <table class="em-attach-table" id="em_forms_table" style="display:none">
             <thead>
               <tr>
-                <th style="width:22px"><input type="checkbox" id="em_check_all_forms" style="width:14px;height:14px" onchange="_emToggleAll('em_form_check',this.checked)"></th>
+                <th style="width:22px"><input type="checkbox" id="em_check_all_forms" style="width:14px;height:14px" onchange="_emToggleAll('em-form-check',this.checked)"></th>
                 <th>Added</th>
                 <th>Description</th>
                 <th>Status</th>
@@ -616,7 +821,6 @@ function sendQueueEmail() {
         </div>
       </div>
 
-      <!-- Footer -->
       <div class="modal-footer" style="border-top:1px solid var(--line);padding:.6rem 1.2rem;justify-content:flex-start;gap:1rem">
         <button type="button" class="btn btn-primary btn-sm px-4" id="em_send_btn" onclick="sendQueueEmail()">Send</button>
         <div class="d-flex align-items-center gap-2">
@@ -631,7 +835,6 @@ function sendQueueEmail() {
 </div>
 
 <script>
-/* ── Email modal state ─────────────────────────────────────────────── */
 var _em = {
   jobId: null, jobRef: '', jobAddress: '', jobDescription: '',
   clientEmail: '', clientName: '',
@@ -793,7 +996,6 @@ function _emAppendToBody(txt) {
   ta.focus();
 }
 
-/* ── Attachments right panel ─────────────────────────────────── */
 function _emResetAttach() {
   document.getElementById('em_attach_loading').style.display = '';
   document.getElementById('em_attach_loading').textContent   = 'Loading\u2026';
@@ -863,11 +1065,6 @@ function _emToggleAll(cls, checked) {
   document.querySelectorAll('.' + cls).forEach(function(el) { el.checked = checked; });
 }
 
-function _esc(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-/* ── Send ────────────────────────────────────────────────────── */
 function sendQueueEmail() {
   var jobId   = document.getElementById('em_job_id').value;
   var subject = document.getElementById('em_subject').value.trim();
