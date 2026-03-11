@@ -8104,6 +8104,24 @@ def update_builder_save(job_id: int):
                          (ts, ts, cue_today["id"]))
             conn.commit()
 
+    try:
+        existing_review = conn.execute(
+            "SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review' AND status='Pending'",
+            (job_id,)
+        ).fetchone()
+        if not existing_review:
+            from datetime import datetime as _dt2
+            _today = _dt2.now(_melbourne).date().isoformat()
+            conn.execute("""
+                INSERT INTO cue_items
+                  (job_id, visit_type, due_date, priority, status,
+                   instructions, created_by_user_id, created_at, updated_at)
+                VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?)
+            """, (job_id, _today, final_text[:200], uid, ts, ts))
+            conn.commit()
+    except Exception:
+        pass
+
     conn.close()
     audit("job_update", draft_id or 0, "save",
           f"Field update saved for job {job_id}",
