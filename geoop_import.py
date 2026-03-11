@@ -516,6 +516,17 @@ def scan_attachment_dirs(dirs, conn=None):
                 parts = rel_path.replace("\\", "/").split("/")
                 files_loc = "/".join(parts[:-1]) + "/" if len(parts) > 1 else ""
 
+                geoop_job_id = ""
+                geoop_note_id = ""
+                if len(parts) >= 4:
+                    geoop_job_id = parts[0]
+                    geoop_note_id = parts[1]
+                elif len(parts) == 3:
+                    geoop_job_id = parts[0]
+                    geoop_note_id = parts[1]
+                elif len(parts) == 2:
+                    geoop_job_id = parts[0]
+
                 try:
                     fsize = os.path.getsize(full_path)
                     with open(full_path, 'rb') as fh:
@@ -532,7 +543,7 @@ def scan_attachment_dirs(dirs, conn=None):
                             original_path, file_hash, file_size, mime_type, found_on_disk, disk_path, created_at
                         ) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)
                     """, (
-                        "disk_scan", "", "", files_loc, fname,
+                        "disk_scan", geoop_job_id, geoop_note_id, files_loc, fname,
                         full_path, fhash, fsize, mime, full_path, ts
                     ))
                     found += 1

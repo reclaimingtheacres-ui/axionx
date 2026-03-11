@@ -8372,6 +8372,26 @@ def geoop_import_execute():
     return redirect(url_for("geoop_import_page"))
 
 
+@app.post("/admin/geoop-import/scan-attachments")
+@admin_required
+def geoop_import_scan_attachments():
+    attach_path = (request.form.get("attachments_path") or "").strip()
+    if not attach_path or not os.path.isdir(attach_path):
+        flash(f"Invalid path: directory does not exist.", "danger")
+        return redirect(url_for("geoop_import_page"))
+
+    conn = db()
+    try:
+        _geoop.ensure_staging_tables(conn)
+        result = _geoop.scan_attachment_dirs([attach_path], conn)
+        flash(f"Attachment scan complete: {result['found']} files indexed, {result['skipped']} duplicates skipped.", "success")
+    except Exception as e:
+        flash(f"Attachment scan failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
 @app.post("/admin/geoop-import/reset")
 @admin_required
 def geoop_import_reset():

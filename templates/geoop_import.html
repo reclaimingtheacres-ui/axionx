@@ -77,6 +77,28 @@
         </div>
       </form>
 
+      <hr class="my-3">
+      <p class="small text-muted mb-2">
+        <strong>Attachment Scan:</strong> If the GeoOp <code>attachments/</code> folder has been uploaded to the server,
+        enter the path below to scan and index files by Job ID and Note ID.
+        Structure: <code>attachments/{job_id}/{note_id}/{file_id}/{filename}</code>
+      </p>
+      <form method="post" action="{{ url_for('geoop_import_scan_attachments') }}">
+        <div class="row g-2">
+          <div class="col-md-8">
+            <input type="text" class="form-control form-control-sm" name="attachments_path"
+                   placeholder="e.g. /home/runner/workspace/uploads/geoop_attachments" value="{{ stats.get('last_scan_path', '') }}">
+          </div>
+          <div class="col-md-4">
+            <button type="submit" class="btn btn-outline-primary btn-sm w-100"
+                    onclick="this.disabled=true;this.textContent='Scanning…';this.form.submit();">
+              Scan Attachments
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <hr class="my-3">
       <div class="small text-muted">
         <strong>Field mapping:</strong>
       </div>
