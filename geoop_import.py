@@ -1050,12 +1050,11 @@ def import_staged_notes(conn=None):
         job_map[r["geoop_job_id"]] = r["axion_job_id"]
 
     batch_size = 5000
-    offset = 0
     while True:
         notes = conn.execute("""
             SELECT * FROM geoop_staging_notes WHERE import_status='pending'
-            ORDER BY id LIMIT ? OFFSET ?
-        """, (batch_size, offset)).fetchall()
+            ORDER BY id LIMIT ?
+        """, (batch_size,)).fetchall()
 
         if not notes:
             break
@@ -1108,7 +1107,6 @@ def import_staged_notes(conn=None):
                 errors += 1
 
         conn.commit()
-        offset += batch_size
 
     conn.commit()
     if close:
