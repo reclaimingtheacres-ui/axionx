@@ -79,8 +79,21 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **8a. Import & Data Management (Settings):** The "Import & Data" tab in Settings groups all data management tools:
 - **Import Jobs**: CSV upload form (inline within settings)
+- **GeoOp Import Pipeline**: Link to dedicated `/admin/geoop-import` page
 - **Duplicate Finder**: Quick link to the Duplicate Finder tab
-- **Future placeholders**: Data Repair Tools, Bulk Client Linking, System Data Cleanup, Import History (structured but not yet implemented)
+- **Future placeholders**: Data Repair Tools, Bulk Client Linking, System Data Cleanup (structured but not yet implemented)
+
+**8c. GeoOp Staged Import Pipeline (`/admin/geoop-import`):**
+- 3-step pipeline: Stage CSV → Review Diagnostics → Execute Import
+- Uses `geoop_import.py` module with 4 staging tables (`geoop_staging_jobs`, `geoop_staging_notes`, `geoop_staging_files`, `geoop_import_runs`)
+- `parse_description()` extracts from free-text GeoOp Description field: client name, account number, regulation type, amounts, costs, NMPD, security vehicle details (colour/year/make/model/REG/VIN), and deliver_to
+- Stage: Upload jobs.csv and notes.csv, parsed into staging tables with description field extraction
+- Diagnostics: JSON API showing parse coverage percentages, status breakdown, sample parsed jobs, unparsed samples
+- Import: Insert-only or update mode; creates jobs, customers, security items, phone numbers, schedules, and optionally notes
+- Import history table tracks all stage/import runs with stats
+- Reset button clears all staging data
+- Routes: `GET /admin/geoop-import`, `POST /admin/geoop-import/stage`, `GET /admin/geoop-import/diagnostics`, `POST /admin/geoop-import/execute`, `POST /admin/geoop-import/reset`
+- Template: `templates/geoop_import.html`
 
 **8b. Duplicate Finder (Settings):** Two-mode duplicate detection tool on the Settings page:
 - **Database Scan:** Finds duplicate jobs (by job number or account number) and duplicate clients (by name) already in the system.

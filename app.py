@@ -8194,6 +8194,194 @@ def import_jobs():
     return redirect(url_for("admin_settings") + "#import-data")
 
 
+# -------- GeoOp Staged Import --------
+import geoop_import as _geoop
+
+@app.get("/admin/geoop-import")
+@admin_required
+def geoop_import_page():
+    conn = db()
+    _geoop.ensure_staging_tables(conn)
+    stats = {
+        "staged_jobs": conn.execute("SELECT COUNT(*) c FROM geoop_staging_jobs").fetchone()["c"],
+        "staged_notes": conn.execute("SELECT COUNT(*) c FROM geoop_staging_notes").fetchone()["c"],
+        "staged_files": conn.execute("SELECT COUNT(*) c FROM geoop_staging_files").fetchone()["c"],
+        "imported_jobs": conn.execute("SELECT COUNT(*) c FROM geoop_staging_jobs WHERE import_status='imported'").fetchone()["c"],
+        "imported_notes": conn.execute("SELECT COUNT(*) c FROM geoop_staging_notes WHERE import_status='imported'").fetchone()["c"],
+    }
+    runs = conn.execute("SELECT * FROM geoop_import_runs ORDER BY id DESC LIMIT 10").fetchall()
+    conn.close()
+    return render_template("geoop_import.html", stats=stats, runs=runs)
+
+
+@app.post("/admin/geoop-import/stage")
+@admin_required
+def geoop_import_stage():
+    jobs_file = request.files.get("jobs_csv")
+    notes_file = request.files.get("notes_csv")
+
+    conn = db()
+    try:
+        _geoop.ensure_staging_tables(conn)
+        ts = _geoop._now()
+        uid = session.get("user_id")
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO geoop_import_runs (run_type, status, started_at, run_by_user_id)
+            VALUES ('stage', 'running', ?, ?)
+        """, (ts, uid))
+        run_id = cur.lastrowid
+        conn.commit()
+
+        total_jobs = 0
+        total_notes = 0
+
+        if jobs_file and jobs_file.filename:
+            jobs_path = os.path.join(_geoop.GEOOP_IMPORT_DIR, f"jobs_{run_id}.csv")
+            jobs_file.save(jobs_path)
+            r = _geoop.stage_jobs_csv(jobs_path, conn)
+            total_jobs = r["inserted"]
+
+        if notes_file and notes_file.filename:
+            notes_path = os.path.join(_geoop.GEOOP_IMPORT_DIR, f"notes_{run_id}.csv")
+            notes_file.save(notes_path)
+            r = _geoop.stage_notes_csv(notes_path, conn)
+            total_notes = r["inserted"]
+
+        _geoop.build_file_manifest_from_csv(conn)
+
+        diag = _geoop.generate_diagnostics(conn)
+
+        conn.execute("""
+            UPDATE geoop_import_runs SET status='completed', total_jobs=?, total_notes=?,
+            diagnostics_json=?, completed_at=? WHERE id=?
+        """, (total_jobs, total_notes, json.dumps(diag), _geoop._now(), run_id))
+        conn.commit()
+
+        flash(f"Staging complete: {total_jobs} jobs and {total_notes} notes staged.", "success")
+    except Exception as e:
+        try:
+            conn.execute(
+                "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=? AND status='running'",
+                (_geoop._now(), run_id)
+            )
+            conn.commit()
+        except Exception:
+            pass
+        flash(f"Staging failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/diagnostics")
+@admin_required
+def geoop_import_diagnostics():
+    conn = db()
+    _geoop.ensure_staging_tables(conn)
+    diag = _geoop.generate_diagnostics(conn)
+
+    sample = conn.execute("""
+        SELECT geoop_job_id, reference_no, job_title, status_label,
+               parsed_client_name, parsed_account_number, parsed_regulation_type,
+               parsed_amount_type, parsed_amount_cents, parsed_costs_cents,
+               parsed_reg, parsed_vin, parsed_security_make, parsed_security_model,
+               parsed_security_colour, parsed_security_year, parsed_deliver_to
+        FROM geoop_staging_jobs ORDER BY id LIMIT 20
+    """).fetchall()
+
+    unparsed = conn.execute("""
+        SELECT geoop_job_id, reference_no, job_title, raw_description
+        FROM geoop_staging_jobs
+        WHERE parsed_client_name = '' AND parsed_reg = '' AND parsed_vin = ''
+        LIMIT 10
+    """).fetchall()
+
+    conn.close()
+    return jsonify({"diagnostics": diag, "sample_parsed": [dict(r) for r in sample],
+                     "unparsed_samples": [dict(r) for r in unparsed]})
+
+
+@app.post("/admin/geoop-import/execute")
+@admin_required
+def geoop_import_execute():
+    mode = request.form.get("mode", "insert_only")
+    if mode not in ("insert_only", "update"):
+        mode = "insert_only"
+    import_notes = request.form.get("import_notes") == "1"
+
+    conn = db()
+    run_id = None
+    try:
+        _geoop.ensure_staging_tables(conn)
+        ts = _geoop._now()
+        uid = session.get("user_id")
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO geoop_import_runs (run_type, status, started_at, run_by_user_id)
+            VALUES ('import', 'running', ?, ?)
+        """, (ts, uid))
+        run_id = cur.lastrowid
+        conn.commit()
+
+        job_result = _geoop.import_staged_jobs(mode=mode, conn=conn)
+
+        note_result = {"imported": 0, "skipped": 0, "unmatched": 0, "errors": 0}
+        if import_notes:
+            note_result = _geoop.import_staged_notes(conn)
+
+        conn.execute("""
+            UPDATE geoop_import_runs SET status='completed',
+            jobs_imported=?, notes_imported=?,
+            jobs_skipped=?, notes_skipped=?,
+            errors=?, completed_at=?
+            WHERE id=?
+        """, (
+            job_result["imported"], note_result["imported"],
+            job_result["skipped"], note_result["skipped"],
+            job_result["errors"] + note_result["errors"],
+            _geoop._now(), run_id
+        ))
+        conn.commit()
+
+        msg = (
+            f"Import complete: {job_result['imported']} jobs imported, "
+            f"{job_result['skipped']} skipped, {job_result['errors']} errors."
+        )
+        if import_notes:
+            msg += (
+                f" Notes: {note_result['imported']} imported, "
+                f"{note_result['unmatched']} unmatched, {note_result['errors']} errors."
+            )
+        flash(msg, "success")
+    except Exception as e:
+        try:
+            if run_id:
+                conn.execute(
+                    "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=? AND status='running'",
+                    (_geoop._now(), run_id)
+                )
+                conn.commit()
+        except Exception:
+            pass
+        flash(f"Import failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.post("/admin/geoop-import/reset")
+@admin_required
+def geoop_import_reset():
+    conn = db()
+    _geoop.reset_staging(conn)
+    conn.close()
+    flash("All staging data cleared.", "info")
+    return redirect(url_for("geoop_import_page"))
+
+
 # -------- Admin dashboard --------
 @app.get("/admin")
 @admin_required

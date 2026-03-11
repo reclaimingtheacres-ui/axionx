@@ -1,0 +1,289 @@
+{% extends "layout.html" %}
+{% block title %}GeoOp Import — AxionX{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width:1100px;">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h4 class="mb-1" style="font-weight:700;">GeoOp Import Pipeline</h4>
+      <p class="text-muted small mb-0">Stage, review, and import GeoOp export data into AxionX</p>
+    </div>
+    <a href="{{ url_for('admin_settings') }}#import-data" class="btn btn-outline-secondary btn-sm">Back to Settings</a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+    {{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ stats.staged_jobs | default(0) }}</div>
+        <div class="text-muted small">Staged Jobs</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ stats.staged_notes | default(0) }}</div>
+        <div class="text-muted small">Staged Notes</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ stats.staged_files | default(0) }}</div>
+        <div class="text-muted small">File Records</div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#16a34a;">{{ stats.imported_jobs | default(0) }}</div>
+        <div class="text-muted small">Jobs Imported</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header"><strong>Step 1: Stage CSV Data</strong></div>
+    <div class="card-body">
+      <p class="small text-muted mb-3">
+        Upload the GeoOp <code>jobs.csv</code> and <code>notes.csv</code> exports. Data is loaded into staging tables
+        for review before importing. The Description field is parsed to extract client, account, regulation type,
+        amounts, security details, registration, VIN, and delivery instructions.
+      </p>
+      <form method="post" action="{{ url_for('geoop_import_stage') }}" enctype="multipart/form-data">
+        <div class="row g-3 mb-3">
+          <div class="col-md-5">
+            <label class="form-label small fw-bold">Jobs CSV</label>
+            <input type="file" class="form-control form-control-sm" name="jobs_csv" accept=".csv">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small fw-bold">Notes CSV</label>
+            <input type="file" class="form-control form-control-sm" name="notes_csv" accept=".csv">
+          </div>
+          <div class="col-md-2 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary btn-sm w-100" id="stageBtn"
+                    onclick="this.disabled=true;this.textContent='Staging…';this.form.submit();">
+              Stage Data
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <div class="small text-muted">
+        <strong>Field mapping:</strong>
+      </div>
+      <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered small mb-0">
+          <thead class="table-light">
+            <tr><th>GeoOp Field</th><th>AxionX Field</th><th>Parsing</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>Job ID</code></td><td><code>client_job_number</code></td><td>External key for matching</td></tr>
+            <tr><td><code>Reference no.</code></td><td><code>internal_job_number</code>, <code>display_ref</code></td><td>Primary job reference</td></tr>
+            <tr><td><code>Job Title</code></td><td>Used for <code>job_type</code> detection</td><td>Detects Repo/Collect, Field Call, Repo Only</td></tr>
+            <tr><td><code>Description</code></td><td>Multiple fields</td><td>Parsed: client, account, reg type, amounts, NMPD, security, VIN, deliver to</td></tr>
+            <tr><td><code>Status Label</code></td><td><code>status</code></td><td>Mapped to AxionX statuses</td></tr>
+            <tr><td><code>Address + Suburb + City + Postcode</code></td><td><code>job_address</code></td><td>Combined</td></tr>
+            <tr><td><code>Firstname + Lastname + Company + Email</code></td><td>Customer record</td><td>Creates or matches</td></tr>
+            <tr><td><code>Phone + Mobile</code></td><td><code>contact_phone_numbers</code></td><td>Linked to customer</td></tr>
+            <tr><td><code>File Locations</code></td><td>File manifest</td><td>Indexed for attachment matching</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Step 2: Review Diagnostics</strong>
+      <button class="btn btn-outline-primary btn-sm" onclick="loadDiagnostics()">Load Diagnostics</button>
+    </div>
+    <div class="card-body" id="diagPanel">
+      <p class="text-muted small" id="diagPlaceholder">Click "Load Diagnostics" to generate a report from the staged data.</p>
+      <div id="diagContent" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header"><strong>Step 3: Execute Import</strong></div>
+    <div class="card-body">
+      <p class="small text-muted mb-3">
+        Import staged data into AxionX. Jobs, customers, security items, and optionally notes will be created.
+        Existing jobs matched by reference number or GeoOp Job ID will be skipped (insert-only mode) or updated.
+      </p>
+      <form method="post" action="{{ url_for('geoop_import_execute') }}">
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label small fw-bold">Import Mode</label>
+            <select name="mode" class="form-select form-select-sm">
+              <option value="insert_only">Insert Only (skip existing)</option>
+              <option value="update">Update existing by GeoOp ID</option>
+            </select>
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="importNotes" name="import_notes" value="1" checked>
+              <label class="form-check-label small" for="importNotes">Import notes</label>
+            </div>
+          </div>
+          <div class="col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-success btn-sm w-100"
+                    onclick="if(!confirm('This will import staged data into AxionX. Continue?')){event.preventDefault();return;}this.disabled=true;this.textContent='Importing…';this.form.submit();">
+              Execute Import
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Import History</strong>
+      <form method="post" action="{{ url_for('geoop_import_reset') }}" class="m-0"
+            onsubmit="return confirm('Clear ALL staging data? This cannot be undone.');">
+        <button type="submit" class="btn btn-outline-danger btn-sm">Reset Staging</button>
+      </form>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0 small">
+          <thead class="table-light">
+            <tr><th>Run</th><th>Type</th><th>Status</th><th>Jobs</th><th>Notes</th><th>Errors</th><th>Started</th><th>Completed</th></tr>
+          </thead>
+          <tbody>
+            {% for run in runs %}
+            <tr>
+              <td>#{{ run.id }}</td>
+              <td>{{ run.run_type }}</td>
+              <td><span class="badge {% if run.status == 'completed' %}bg-success{% elif run.status == 'running' %}bg-warning{% else %}bg-danger{% endif %}">{{ run.status }}</span></td>
+              <td>{{ run.total_jobs or run.jobs_imported or 0 }}</td>
+              <td>{{ run.total_notes or run.notes_imported or 0 }}</td>
+              <td>{{ run.errors or 0 }}</td>
+              <td>{{ run.started_at[:16] if run.started_at else '' }}</td>
+              <td>{{ run.completed_at[:16] if run.completed_at else '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-muted py-3">No import runs yet</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function _esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function loadDiagnostics() {
+  var btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  fetch('{{ url_for("geoop_import_diagnostics") }}')
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = 'Load Diagnostics';
+    document.getElementById('diagPlaceholder').style.display = 'none';
+    var el = document.getElementById('diagContent');
+    el.style.display = 'block';
+
+    var d = data.diagnostics;
+    var html = '<div class="row g-3 mb-3">';
+    var cards = [
+      ['Staged Jobs', d.total_staged_jobs, '#2563eb'],
+      ['Staged Notes', d.total_staged_notes, '#2563eb'],
+      ['Notes Matched to Jobs', d.notes_matched_to_jobs, '#16a34a'],
+      ['Notes Unmatched', d.notes_unmatched_to_jobs, d.notes_unmatched_to_jobs > 0 ? '#dc2626' : '#6b7280'],
+      ['File Records', d.total_file_records, '#2563eb'],
+      ['Notes with Files', d.notes_with_file_references, '#7c3aed'],
+    ];
+    cards.forEach(function(c) {
+      html += '<div class="col-6 col-lg-3"><div class="border rounded p-2 text-center">';
+      html += '<div style="font-size:1.3rem;font-weight:700;color:' + c[2] + '">' + (c[1]||0).toLocaleString() + '</div>';
+      html += '<div class="text-muted" style="font-size:.75rem">' + _esc(c[0]) + '</div></div></div>';
+    });
+    html += '</div>';
+
+    if (d.job_status_breakdown) {
+      html += '<h6 class="mt-3 mb-2" style="font-size:.85rem;font-weight:700">Job Status Breakdown</h6>';
+      html += '<div class="d-flex flex-wrap gap-2 mb-3">';
+      for (var st in d.job_status_breakdown) {
+        html += '<span class="badge bg-secondary">' + _esc(st) + ': ' + _esc(String(d.job_status_breakdown[st])) + '</span>';
+      }
+      html += '</div>';
+    }
+
+    if (d.parse_coverage) {
+      var pc = d.parse_coverage;
+      html += '<h6 class="mt-3 mb-2" style="font-size:.85rem;font-weight:700">Description Parse Coverage</h6>';
+      html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-3"><thead class="table-light">';
+      html += '<tr><th>Field</th><th>Parsed</th><th>Coverage</th></tr></thead><tbody>';
+      var fields = [
+        ['Client Name', pc.client_name], ['Account Number', pc.account_number],
+        ['Regulation Type', pc.regulation_type], ['Amount', pc.amount],
+        ['Registration', pc.registration], ['VIN', pc.vin],
+        ['Security Make', pc.security_make], ['Costs', pc.costs],
+        ['Deliver To', pc.deliver_to]
+      ];
+      fields.forEach(function(f) {
+        var pct = pc.total > 0 ? ((f[1] / pc.total) * 100).toFixed(1) : 0;
+        var color = pct > 80 ? '#16a34a' : pct > 50 ? '#d97706' : '#dc2626';
+        html += '<tr><td>' + _esc(f[0]) + '</td><td>' + (f[1]||0).toLocaleString() + ' / ' + pc.total.toLocaleString() + '</td>';
+        html += '<td><span style="color:' + color + ';font-weight:600">' + pct + '%</span></td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    if (data.sample_parsed && data.sample_parsed.length > 0) {
+      html += '<h6 class="mt-3 mb-2" style="font-size:.85rem;font-weight:700">Sample Parsed Jobs (first 20)</h6>';
+      html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-3">';
+      html += '<thead class="table-light"><tr><th>Ref</th><th>Client</th><th>Account</th><th>Reg Type</th>';
+      html += '<th>Amount</th><th>REG</th><th>VIN</th><th>Make</th><th>Model</th><th>Deliver To</th></tr></thead><tbody>';
+      data.sample_parsed.forEach(function(j) {
+        var amt = j.parsed_amount_cents ? ('$' + (j.parsed_amount_cents/100).toFixed(2)) : '';
+        html += '<tr><td>' + _esc(j.reference_no||'') + '</td><td>' + _esc(j.parsed_client_name||'') + '</td>';
+        html += '<td>' + _esc(j.parsed_account_number||'') + '</td><td>' + _esc(j.parsed_regulation_type||'') + '</td>';
+        html += '<td>' + _esc(amt) + '</td><td><code>' + _esc(j.parsed_reg||'') + '</code></td>';
+        html += '<td style="font-size:.7rem">' + _esc(j.parsed_vin||'') + '</td>';
+        html += '<td>' + _esc(j.parsed_security_make||'') + '</td><td>' + _esc(j.parsed_security_model||'') + '</td>';
+        html += '<td>' + _esc(j.parsed_deliver_to||'') + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    if (data.unparsed_samples && data.unparsed_samples.length > 0) {
+      html += '<h6 class="mt-3 mb-2" style="font-size:.85rem;font-weight:700">Unparsed Samples (no client/reg/VIN extracted)</h6>';
+      html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-0">';
+      html += '<thead class="table-light"><tr><th>Ref</th><th>Title</th><th>Description</th></tr></thead><tbody>';
+      data.unparsed_samples.forEach(function(j) {
+        html += '<tr><td>' + _esc(j.reference_no||'') + '</td><td>' + _esc(j.job_title||'') + '</td>';
+        html += '<td style="max-width:500px;white-space:pre-wrap;font-size:.75rem">' + _esc((j.raw_description||'').substring(0,300)) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    el.innerHTML = html;
+  })
+  .catch(function(e) {
+    btn.disabled = false;
+    btn.textContent = 'Load Diagnostics';
+    alert('Failed to load diagnostics: ' + e.message);
+  });
+}
+</script>
+{% endblock %}
