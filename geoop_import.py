@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import io
 import json
 import mimetypes
 import os
@@ -7,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import uuid
+import zipfile
 from datetime import datetime
 
 UPLOAD_FOLDER = "uploads"
@@ -1216,6 +1218,192 @@ def import_matched_files(conn=None):
         conn.close()
 
     return {"imported": imported, "deduplicated": skipped_dupe, "unmatched": skipped_no_disk, "errors": errors}
+
+
+def scan_azure_blob_attachments(container_sas_url, conn=None, upload_fn=None):
+    from azure.storage.blob import ContainerClient
+
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    ensure_staging_tables(conn)
+    ts = _now()
+
+    container_client = ContainerClient.from_container_url(container_sas_url)
+
+    job_map = {}
+    rows = conn.execute(
+        "SELECT geoop_job_id, axion_job_id FROM geoop_staging_jobs WHERE axion_job_id IS NOT NULL"
+    ).fetchall()
+    for r in rows:
+        job_map[r["geoop_job_id"]] = r["axion_job_id"]
+
+    note_map = {}
+    rows = conn.execute(
+        "SELECT geoop_note_id, axion_note_id, geoop_job_id FROM geoop_staging_notes WHERE axion_note_id IS NOT NULL"
+    ).fetchall()
+    for r in rows:
+        note_map[r["geoop_note_id"]] = {
+            "axion_note_id": r["axion_note_id"],
+            "geoop_job_id": r["geoop_job_id"],
+        }
+
+    existing_hashes = set()
+    for r in conn.execute(
+        "SELECT DISTINCT file_hash FROM geoop_staging_files WHERE import_status='imported' AND file_hash IS NOT NULL"
+    ).fetchall():
+        existing_hashes.add(r["file_hash"])
+    for r in conn.execute(
+        "SELECT DISTINCT file_hash FROM geoop_staging_files WHERE file_hash IS NOT NULL AND found_on_disk=1"
+    ).fetchall():
+        existing_hashes.add(r["file_hash"])
+
+    stats = {
+        "blobs_scanned": 0,
+        "files_processed": 0,
+        "attachments_linked": 0,
+        "skipped_no_match": 0,
+        "skipped_duplicate": 0,
+        "skipped_no_note": 0,
+        "errors": 0,
+        "zip_files_processed": 0,
+    }
+
+    def _process_file(data_bytes, filename, geoop_job_id, geoop_note_id, blob_path):
+        file_hash = hashlib.md5(data_bytes).hexdigest()
+
+        if file_hash in existing_hashes:
+            stats["skipped_duplicate"] += 1
+            return
+
+        axion_job_id = job_map.get(geoop_job_id)
+        note_info = note_map.get(geoop_note_id)
+
+        if not axion_job_id and note_info:
+            axion_job_id = job_map.get(note_info["geoop_job_id"])
+
+        if not axion_job_id:
+            stats["skipped_no_match"] += 1
+            return
+
+        axion_note_id = note_info["axion_note_id"] if note_info else None
+
+        if not axion_note_id:
+            stats["skipped_no_note"] += 1
+            return
+
+        ext = os.path.splitext(filename)[1] if filename else ""
+        stored_name = f"{uuid.uuid4().hex}{ext}"
+        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        fsize = len(data_bytes)
+
+        try:
+            if upload_fn:
+                upload_fn(data_bytes, stored_name, mime)
+            else:
+                dest = os.path.join(UPLOAD_FOLDER, stored_name)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as fh:
+                    fh.write(data_bytes)
+
+            conn.execute("""
+                INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                VALUES (?, ?, ?, ?)
+            """, (axion_note_id, stored_name, stored_name, ts))
+
+            files_loc = "/".join(blob_path.replace("\\", "/").split("/")[:-1]) + "/"
+            try:
+                conn.execute("""
+                    INSERT OR IGNORE INTO geoop_staging_files (
+                        source_type, geoop_job_id, geoop_note_id, files_location, file_name,
+                        original_path, file_hash, file_size, mime_type, found_on_disk, disk_path,
+                        import_status, stored_filename, imported_at, created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,1,?,'imported',?,?,?)
+                """, (
+                    "azure_blob", geoop_job_id, geoop_note_id, files_loc, filename,
+                    blob_path, file_hash, fsize, mime, stored_name,
+                    stored_name, ts, ts
+                ))
+            except sqlite3.IntegrityError:
+                pass
+
+            existing_hashes.add(file_hash)
+            stats["attachments_linked"] += 1
+        except Exception:
+            stats["errors"] += 1
+
+    blob_list = container_client.list_blobs(name_starts_with="attachments/")
+    for blob in blob_list:
+        stats["blobs_scanned"] += 1
+        blob_name = blob.name
+
+        parts = blob_name.replace("\\", "/").split("/")
+        if len(parts) < 4 or parts[0] != "attachments":
+            stats["skipped_no_match"] += 1
+            continue
+
+        geoop_job_id = parts[1]
+        geoop_note_id = parts[2]
+
+        if not geoop_job_id or not geoop_note_id:
+            stats["skipped_no_match"] += 1
+            continue
+
+        raw_filename = parts[-1]
+        underscore_idx = raw_filename.find("_")
+        if underscore_idx > 0:
+            filename = raw_filename[underscore_idx + 1:]
+        else:
+            filename = raw_filename
+
+        if not filename:
+            stats["skipped_no_match"] += 1
+            continue
+
+        try:
+            blob_client = container_client.get_blob_client(blob_name)
+            stream = blob_client.download_blob()
+            blob_data = stream.readall()
+        except Exception:
+            stats["errors"] += 1
+            continue
+
+        stats["files_processed"] += 1
+
+        lower_name = filename.lower()
+        if lower_name.endswith(".zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(blob_data)) as zf:
+                    stats["zip_files_processed"] += 1
+                    for entry in zf.namelist():
+                        if entry.endswith("/"):
+                            continue
+                        entry_name = os.path.basename(entry)
+                        if not entry_name:
+                            continue
+                        try:
+                            entry_data = zf.read(entry)
+                            _process_file(
+                                entry_data, entry_name,
+                                geoop_job_id, geoop_note_id, blob_name + "/" + entry
+                            )
+                        except Exception:
+                            stats["errors"] += 1
+            except zipfile.BadZipFile:
+                _process_file(blob_data, filename, geoop_job_id, geoop_note_id, blob_name)
+        else:
+            _process_file(blob_data, filename, geoop_job_id, geoop_note_id, blob_name)
+
+        if stats["files_processed"] % 100 == 0:
+            conn.commit()
+
+    conn.commit()
+    if close:
+        conn.close()
+
+    return stats
 
 
 def reset_staging(conn=None):

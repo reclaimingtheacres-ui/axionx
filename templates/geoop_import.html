@@ -58,6 +58,13 @@
         <div class="text-muted small">Jobs Imported</div>
       </div>
     </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;{% if stats.azure_attachments | default(0) > 0 %}color:#0ea5e9{% else %}color:#6b7280{% endif %};">{{ "{:,}".format(stats.azure_attachments | default(0)) }}</div>
+        <div class="text-muted small">Azure Attachments Linked</div>
+        <div class="text-muted" style="font-size:.65rem">from blob storage</div>
+      </div>
+    </div>
   </div>
 
   <div class="card mb-4">
@@ -89,7 +96,7 @@
 
       <hr class="my-3">
       <p class="small text-muted mb-2">
-        <strong>Attachment Scan:</strong> If the GeoOp <code>attachments/</code> folder has been uploaded to the server,
+        <strong>Attachment Scan (Local):</strong> If the GeoOp <code>attachments/</code> folder has been uploaded to the server,
         enter the path below to scan and index files by Job ID and Note ID.
         Structure: <code>attachments/{job_id}/{note_id}/{file_id}/{filename}</code>
       </p>
@@ -102,7 +109,30 @@
           <div class="col-md-4">
             <button type="submit" class="btn btn-outline-primary btn-sm w-100"
                     onclick="this.disabled=true;this.textContent='Scanning…';this.form.submit();">
-              Scan Attachments
+              Scan Local Attachments
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <hr class="my-3">
+      <p class="small text-muted mb-2">
+        <strong>Attachment Scan (Azure Blob):</strong> Provide an Azure Blob Storage container SAS URL to stream
+        attachments directly from the cloud. Files are matched against imported notes by Job ID and Note ID from
+        the blob path: <code>attachments/{job_id}/{note_id}/{file_id}_{filename}</code>.
+        Zip archives are extracted automatically. Only files matching already-imported notes are linked — no notes are overwritten.
+      </p>
+      <form method="post" action="{{ url_for('geoop_import_scan_azure') }}"
+            onsubmit="if(!confirm('This will stream and attach files from Azure Blob Storage. This may take a while for large containers. Continue?')){event.preventDefault();return;}">
+        <div class="row g-2">
+          <div class="col-md-8">
+            <input type="text" class="form-control form-control-sm" name="azure_sas_url"
+                   placeholder="https://<account>.blob.core.windows.net/<container>?<sas-token>">
+          </div>
+          <div class="col-md-4">
+            <button type="submit" class="btn btn-outline-primary btn-sm w-100" id="azureScanBtn"
+                    onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span>Scanning Azure…';this.form.submit();">
+              Scan Azure Blob
             </button>
           </div>
         </div>

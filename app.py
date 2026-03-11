@@ -8829,6 +8829,7 @@ def geoop_import_page():
         "physical_files": conn.execute("SELECT COUNT(*) c FROM geoop_staging_files WHERE found_on_disk=1").fetchone()["c"],
         "imported_jobs": conn.execute("SELECT COUNT(*) c FROM geoop_staging_jobs WHERE import_status='imported'").fetchone()["c"],
         "imported_notes": conn.execute("SELECT COUNT(*) c FROM geoop_staging_notes WHERE import_status='imported'").fetchone()["c"],
+        "azure_attachments": conn.execute("SELECT COUNT(*) c FROM geoop_staging_files WHERE source_type='azure_blob' AND import_status='imported'").fetchone()["c"],
     }
     runs = conn.execute("SELECT * FROM geoop_import_runs ORDER BY id DESC LIMIT 10").fetchall()
     conn.close()
@@ -9063,6 +9064,85 @@ def geoop_import_scan_attachments():
         flash(f"Attachment scan complete: {result['found']} files indexed, {result['skipped']} duplicates skipped.", "success")
     except Exception as e:
         flash(f"Attachment scan failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.post("/admin/geoop-import/scan-azure")
+@admin_required
+def geoop_import_scan_azure():
+    sas_url = (request.form.get("azure_sas_url") or "").strip()
+    if not sas_url:
+        flash("Please provide a valid Azure Blob Storage container SAS URL.", "danger")
+        return redirect(url_for("geoop_import_page"))
+
+    from urllib.parse import urlparse
+    parsed = urlparse(sas_url)
+    if parsed.scheme != "https" or not parsed.hostname or not parsed.hostname.endswith(".blob.core.windows.net"):
+        flash("Invalid SAS URL. Must be an HTTPS URL to *.blob.core.windows.net.", "danger")
+        return redirect(url_for("geoop_import_page"))
+    if not parsed.query or "sig=" not in parsed.query:
+        flash("SAS URL appears to be missing authentication parameters (sig=).", "danger")
+        return redirect(url_for("geoop_import_page"))
+
+    conn = db()
+    run_id = None
+    try:
+        _geoop.ensure_staging_tables(conn)
+        ts = _geoop._now()
+        uid = session.get("user_id")
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO geoop_import_runs (run_type, status, started_at, run_by_user_id)
+            VALUES ('azure_blob_scan', 'running', ?, ?)
+        """, (ts, uid))
+        run_id = cur.lastrowid
+        conn.commit()
+
+        def _upload_to_storage(data, blob_name, content_type):
+            _save_bytes_to_storage(data, blob_name, content_type)
+
+        result = _geoop.scan_azure_blob_attachments(
+            sas_url, conn=conn, upload_fn=_upload_to_storage
+        )
+
+        conn.execute("""
+            UPDATE geoop_import_runs SET status='completed',
+            notes_imported=?, errors=?, completed_at=?,
+            diagnostics_json=?
+            WHERE id=?
+        """, (
+            result["attachments_linked"], result["errors"],
+            _geoop._now(), json.dumps(result), run_id
+        ))
+        conn.commit()
+
+        flash(
+            f"Azure Blob scan complete: {result['blobs_scanned']} blobs scanned, "
+            f"{result['files_processed']} files processed, "
+            f"{result['attachments_linked']} attachments linked to notes, "
+            f"{result['skipped_duplicate']} duplicates skipped, "
+            f"{result['skipped_no_match']} unmatched jobs, "
+            f"{result['skipped_no_note']} unmatched notes, "
+            f"{result['zip_files_processed']} zip archives extracted, "
+            f"{result['errors']} errors.",
+            "success"
+        )
+    except Exception as e:
+        try:
+            if run_id:
+                conn.execute(
+                    "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=? AND status='running'",
+                    (_geoop._now(), run_id)
+                )
+                conn.commit()
+        except Exception:
+            pass
+        import logging
+        logging.error("Azure Blob scan failed: %s", e, exc_info=True)
+        flash("Azure Blob scan failed. Check server logs for details.", "danger")
     finally:
         conn.close()
     return redirect(url_for("geoop_import_page"))
