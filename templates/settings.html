@@ -58,6 +58,9 @@
     <li class="nav-item">
       <a class="nav-link" href="#change-password" data-tab="change-password">Change Password</a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#data-management" data-tab="data-management">Data Management</a>
+    </li>
   </ul>
 </div>
 
@@ -178,9 +181,9 @@
           </div>
         </div>
         <div class="col-sm-6 col-lg-4">
-          <div style="padding:12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.85rem">
-            <strong>System Data Cleanup</strong><br>Archive old data and clean records
-          </div>
+          <a href="/admin/settings#data-management" onclick="showTab('data-management');return false" style="text-decoration:none;display:block;padding:12px;border:1px solid var(--accent);border-radius:10px;color:var(--accent);font-size:.85rem;background:var(--accent-soft, #3b82f608)">
+            <strong>Archive & Data Management</strong><br>Archive invoiced files, cold storage policies
+          </a>
         </div>
         <div class="col-sm-6 col-lg-4">
           <div style="padding:12px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:.85rem">
@@ -885,6 +888,94 @@ function dupDeleteClient(clientId, name) {
   </div>
 </div>
 
+<div class="tab-pane-custom" id="tab-data-management" style="display:none">
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">Archive & Cold Storage Policy</div>
+    <div class="ax-card-b">
+      <form method="post" action="/admin/settings/archive">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small fw-bold">Archive Mode</label>
+            <select name="archive_mode" class="form-select form-select-sm">
+              <option value="manual" {% if settings.archive_mode == 'manual' %}selected{% endif %}>Manual Only</option>
+              <option value="auto" {% if settings.archive_mode == 'auto' %}selected{% endif %}>Auto-archive eligible files</option>
+            </select>
+            <div class="form-text">Manual: admin archives files individually or in bulk. Auto: system archives eligible files on schedule.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-bold">Archive invoiced files after (days)</label>
+            <input type="number" name="archive_after_days" class="form-control form-control-sm" value="{{ settings.archive_after_days or 90 }}" min="1" max="3650">
+            <div class="form-text">Files with Invoiced/Completed status older than this become eligible for archiving.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-bold">Cold Storage Mode</label>
+            <select name="cold_storage_mode" class="form-select form-select-sm">
+              <option value="manual" {% if settings.cold_storage_mode == 'manual' %}selected{% endif %}>Manual Only</option>
+              <option value="auto" {% if settings.cold_storage_mode == 'auto' %}selected{% endif %}>Automatic</option>
+            </select>
+            <div class="form-text">Cold storage compresses old archived file attachments to lower-cost storage.</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-bold">Cold store archived files after (years)</label>
+            <input type="number" name="cold_store_after_years" class="form-control form-control-sm" value="{{ settings.cold_store_after_years or 3 }}" min="1" max="20">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-bold">Allow restore to active</label>
+            <select name="allow_restore_to_active" class="form-select form-select-sm">
+              <option value="1" {% if settings.allow_restore_to_active != 0 %}selected{% endif %}>Yes</option>
+              <option value="0" {% if settings.allow_restore_to_active == 0 %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-bold">Allow permanent delete</label>
+            <select name="allow_permanent_delete" class="form-select form-select-sm">
+              <option value="0" {% if settings.allow_permanent_delete != 1 %}selected{% endif %}>No</option>
+              <option value="1" {% if settings.allow_permanent_delete == 1 %}selected{% endif %}>Yes (requires additional confirmation)</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-3">
+          <button type="submit" class="btn btn-primary btn-sm">Save Policy Settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">Quick Actions</div>
+    <div class="ax-card-b">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <a href="/admin/archive?mode=eligible" class="btn btn-outline-warning btn-sm w-100">
+            View & Archive Eligible Files
+          </a>
+          <div class="form-text mt-1">Find invoiced/completed files older than the threshold and archive them in bulk.</div>
+        </div>
+        <div class="col-md-6">
+          <a href="/admin/archive?mode=search" class="btn btn-outline-primary btn-sm w-100">
+            Search Archived Files
+          </a>
+          <div class="form-text mt-1">Locate historical archived or cold-stored files by reference, customer, reg, or address.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ax-card">
+    <div class="ax-card-h">Lifecycle Status Reference</div>
+    <div class="ax-card-b">
+      <table class="table table-sm" style="font-size:.85rem">
+        <thead><tr><th>Status</th><th>Description</th><th>Visible In</th></tr></thead>
+        <tbody>
+          <tr><td><span class="badge" style="background:#22c55e20;color:#22c55e;border:1px solid #22c55e40">Active</span></td><td>Current operational files used by admin and agents</td><td>Jobs, Queue, Schedule, Mobile, Dashboard</td></tr>
+          <tr><td><span class="badge" style="background:#d9770620;color:#d97706;border:1px solid #d9770640">Archived - Invoiced</span></td><td>Invoiced/closed files removed from live views but fully searchable</td><td>Archive search, historical view</td></tr>
+          <tr><td><span class="badge" style="background:#6366f120;color:#6366f1;border:1px solid #6366f140">Cold Stored</span></td><td>Old archived files with attachments in compressed cold storage</td><td>Archive search (metadata only, attachments require retrieval)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ── Tab switching ──────────────────────────────────────────────────── */
 function showTab(name) {
@@ -905,7 +996,7 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 });
 
 (function() {
-  var validTabs = ['job-numbers', 'import-data', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder'];
+  var validTabs = ['job-numbers', 'import-data', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder', 'data-management'];
   var hash = location.hash.replace('#', '');
   showTab(validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers');
 })();

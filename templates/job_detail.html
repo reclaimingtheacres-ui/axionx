@@ -14,6 +14,44 @@
 </style>
 <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0">
 
+{% if job.status == 'Archived - Invoiced' %}
+<div style="background:#f59e0b15;border:1.5px solid #f59e0b50;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:1.3rem">&#128451;</span>
+    <div>
+      <strong style="color:#b45309">Archived Historical File</strong>
+      <div style="font-size:.8rem;color:#92400e">Archived {{ job.archived_at[:10] if job.archived_at else '' }} — This file has been removed from active operations.</div>
+    </div>
+  </div>
+  {% if session.get('role') in ('admin', 'both') %}
+  <form method="post" action="/jobs/{{ job.id }}/restore" style="display:inline">
+    <select name="restore_to" class="form-select form-select-sm d-inline-block" style="width:auto;font-size:.8rem;margin-right:4px">
+      <option value="Invoiced">Restore to Invoiced</option>
+      <option value="Completed">Restore to Completed</option>
+      <option value="Active">Restore to Active</option>
+    </select>
+    <button type="submit" class="btn btn-sm btn-warning">Restore</button>
+  </form>
+  {% endif %}
+</div>
+{% elif job.status == 'Cold Stored' %}
+<div style="background:#6366f115;border:1.5px solid #6366f150;border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+  <div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:1.3rem">&#10052;</span>
+    <div>
+      <strong style="color:#4338ca">Cold Storage File</strong>
+      <div style="font-size:.8rem;color:#3730a3">This file is in cold storage. Attachments may need retrieval.</div>
+    </div>
+  </div>
+  {% if session.get('role') in ('admin', 'both') %}
+  <form method="post" action="/jobs/{{ job.id }}/restore" style="display:inline">
+    <input type="hidden" name="restore_to" value="Invoiced">
+    <button type="submit" class="btn btn-sm btn-outline-primary">Request Retrieval</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
   <div>
     <div style="color:var(--muted); font-size:.85rem">
@@ -105,7 +143,10 @@
       {% elif s in ('Suspended', 'Awaiting info from client') %}{% set sc = '#f59e0b' %}
       {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
       {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
+      {% elif s == 'Archived - Invoiced' %}{% set sc = '#d97706' %}
+      {% elif s == 'Cold Stored' %}{% set sc = '#6366f1' %}
       {% else %}{% set sc = '#6b7280' %}{% endif %}
+      {% if s not in ('Archived - Invoiced', 'Cold Stored') %}
       <select name="status" data-current-status="{{ job.status }}" onchange="handleStatusChange(this)"
               style="background:{{ sc }}20; color:{{ sc }}; border:1.5px solid {{ sc }}50;
                      border-radius:999px; padding:4px 12px; font-size:.82rem; font-weight:600;
@@ -116,7 +157,17 @@
           <option value="{{ st }}" {% if st == job.status %}selected{% endif %}>{{ st }}</option>
         {% endfor %}
       </select>
+      {% else %}
+      <span style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;border-radius:999px;padding:4px 14px;font-size:.82rem;font-weight:600">{{ s }}</span>
+      {% endif %}
     </form>
+
+    {% if s in ('Invoiced', 'Completed') %}
+    <form method="post" action="/jobs/{{ job.id }}/archive" style="display:inline"
+          onsubmit="return confirm('Archive this job? It will be removed from active views.')">
+      <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive this file">Archive</button>
+    </form>
+    {% endif %}
 
     {% else %}
     <!-- Agent: AI Assist + status badge only -->

@@ -1,0 +1,245 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Archive{% endblock %}
+{% block page_title %}Archive & Data Management{% endblock %}
+
+{% block content %}
+<style>
+.arch-stats{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.arch-stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 20px;min-width:140px}
+.arch-stat .val{font-size:1.6rem;font-weight:800;color:var(--heading)}
+.arch-stat .lbl{font-size:.78rem;color:var(--muted);margin-top:2px}
+.arch-tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:2px solid var(--line);padding-bottom:0}
+.arch-tab{padding:8px 18px;font-size:.85rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-2px}
+.arch-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.arch-table{width:100%;border-collapse:collapse;font-size:.85rem}
+.arch-table th{background:var(--bg);color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;text-align:left;border-bottom:2px solid var(--line)}
+.arch-table td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.arch-table tr:hover{background:var(--accent-soft, #3b82f608)}
+.arch-badge{font-size:.72rem;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.arch-badge-archived{background:#d9770615;color:#d97706;border:1px solid #d9770640}
+.arch-badge-cold{background:#6366f115;color:#6366f1;border:1px solid #6366f140}
+.arch-badge-active{background:#22c55e15;color:#22c55e;border:1px solid #22c55e40}
+.arch-filter-bar{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.arch-filter-bar label{font-size:.78rem;font-weight:600;color:var(--muted);display:block;margin-bottom:2px}
+.arch-filter-bar input,.arch-filter-bar select{font-size:.85rem}
+.arch-confirm{background:#fef3c7;border:1.5px solid #f59e0b50;border-radius:10px;padding:16px 20px;margin-bottom:16px}
+</style>
+
+{% if archive_stats %}
+<div class="arch-stats">
+  <div class="arch-stat" style="border-left:4px solid #d97706">
+    <div class="val">{{ archive_stats.archived_count or 0 }}</div>
+    <div class="lbl">Archived Files</div>
+  </div>
+  <div class="arch-stat" style="border-left:4px solid #6366f1">
+    <div class="val">{{ archive_stats.cold_stored_count or 0 }}</div>
+    <div class="lbl">Cold Storage</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="arch-tabs">
+  <button class="arch-tab {% if mode == 'search' %}active{% endif %}" onclick="location.href='/admin/archive?mode=search'">Search Archive</button>
+  <button class="arch-tab {% if mode == 'eligible' %}active{% endif %}" onclick="location.href='/admin/archive?mode=eligible'">Archive Eligible Files</button>
+</div>
+
+{% if mode == 'eligible' %}
+<form method="get" action="/admin/archive">
+  <input type="hidden" name="mode" value="eligible">
+  <div class="arch-filter-bar">
+    <div>
+      <label>Closed/Invoiced older than (days)</label>
+      <input type="number" name="days" value="{{ days }}" class="form-control form-control-sm" style="width:100px" min="1">
+    </div>
+    <div>
+      <label>Client</label>
+      <select name="client_id" class="form-select form-select-sm" style="width:180px">
+        <option value="">All Clients</option>
+        {% for cl in clients_list %}
+          <option value="{{ cl.id }}" {% if filter_client == cl.id|string %}selected{% endif %}>{{ cl.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="align-self:end">
+      <button type="submit" class="btn btn-sm btn-primary">Find Eligible</button>
+    </div>
+  </div>
+</form>
+
+{% if results %}
+<div class="arch-confirm" id="bulkConfirm" style="display:none">
+  <strong>Confirm Bulk Archive</strong>
+  <p style="margin:6px 0;font-size:.85rem">
+    <span id="bulkCount">0</span> file(s) will be moved to <strong>Archived - Invoiced</strong>.
+    They will no longer appear in active views but remain searchable here.
+  </p>
+  <button class="btn btn-sm btn-warning" onclick="submitBulkArchive()">Confirm Archive</button>
+  <button class="btn btn-sm btn-outline-secondary ms-2" onclick="document.getElementById('bulkConfirm').style.display='none'">Cancel</button>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <span style="font-size:.85rem;color:var(--muted)">{{ results|length }} eligible file(s) found</span>
+  <div>
+    <button class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">Select All</button>
+    <button class="btn btn-sm btn-warning ms-1" onclick="showBulkConfirm()">Archive Selected</button>
+  </div>
+</div>
+
+<form id="bulkForm" method="post" action="/admin/archive/bulk">
+<table class="arch-table">
+  <thead>
+    <tr>
+      <th style="width:32px"><input type="checkbox" id="selectAllCb" onchange="toggleSelectAll(this.checked)"></th>
+      <th>Job</th>
+      <th>Client</th>
+      <th>Customer</th>
+      <th>Address</th>
+      <th>Status</th>
+      <th>Last Updated</th>
+      <th>Notes</th>
+      <th>Docs</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in results %}
+    <tr>
+      <td><input type="checkbox" name="job_ids" value="{{ r.id }}" class="bulk-cb"></td>
+      <td><a href="/jobs/{{ r.id }}">{{ r.display_ref or r.id }}</a></td>
+      <td>{{ r.client_name or '—' }}</td>
+      <td>{{ r.customer_label or '—' }}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.job_address or '—' }}</td>
+      <td><span class="arch-badge arch-badge-active">{{ r.status }}</span></td>
+      <td>{{ r.updated_at[:10] if r.updated_at else '—' }}</td>
+      <td>{{ r.note_count }}</td>
+      <td>{{ r.doc_count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</form>
+{% else %}
+<div style="text-align:center;padding:40px;color:var(--muted)">No eligible files found matching the criteria.</div>
+{% endif %}
+
+{% else %}
+
+<form method="get" action="/admin/archive">
+  <input type="hidden" name="mode" value="search">
+  <div class="arch-filter-bar">
+    <div style="flex:1;min-width:180px">
+      <label>Search (Job, Customer, Reg, VIN, Address)</label>
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Search archived files...">
+    </div>
+    <div>
+      <label>Client</label>
+      <select name="client_id" class="form-select form-select-sm" style="width:180px">
+        <option value="">All Clients</option>
+        {% for cl in clients_list %}
+          <option value="{{ cl.id }}" {% if filter_client == cl.id|string %}selected{% endif %}>{{ cl.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>Status</label>
+      <select name="status" class="form-select form-select-sm" style="width:160px">
+        <option value="">All Archived</option>
+        <option value="Archived - Invoiced" {% if filter_status == 'Archived - Invoiced' %}selected{% endif %}>Archived - Invoiced</option>
+        <option value="Cold Stored" {% if filter_status == 'Cold Stored' %}selected{% endif %}>Cold Stored</option>
+      </select>
+    </div>
+    <div>
+      <label>Archived From</label>
+      <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:140px">
+    </div>
+    <div>
+      <label>Archived To</label>
+      <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width:140px">
+    </div>
+    <div style="align-self:end">
+      <button type="submit" class="btn btn-sm btn-primary">Search</button>
+      <a href="/admin/archive" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+    </div>
+  </div>
+</form>
+
+{% if results %}
+<div style="font-size:.85rem;color:var(--muted);margin-bottom:8px">{{ results|length }} archived file(s) found</div>
+<table class="arch-table">
+  <thead>
+    <tr>
+      <th>Job</th>
+      <th>Client</th>
+      <th>Customer</th>
+      <th>Reg</th>
+      <th>Address</th>
+      <th>Status</th>
+      <th>Archived</th>
+      <th>By</th>
+      <th>Notes</th>
+      <th>Docs</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in results %}
+    <tr>
+      <td><a href="/jobs/{{ r.id }}">{{ r.display_ref or r.id }}</a></td>
+      <td>{{ r.client_name or '—' }}</td>
+      <td>{{ r.customer_label or r.customer_name or '—' }}</td>
+      <td>{{ r.asset_reg or '—' }}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.job_address or '' }}">{{ r.job_address or '—' }}</td>
+      <td>
+        {% if r.status == 'Archived - Invoiced' %}
+          <span class="arch-badge arch-badge-archived">Archived</span>
+        {% elif r.status == 'Cold Stored' %}
+          <span class="arch-badge arch-badge-cold">Cold Stored</span>
+        {% endif %}
+      </td>
+      <td>{{ r.archived_at[:10] if r.archived_at else '—' }}</td>
+      <td>{{ r.archived_by_name or '—' }}</td>
+      <td>{{ r.note_count }}</td>
+      <td>{{ r.doc_count }}</td>
+      <td>
+        <form method="post" action="/jobs/{{ r.id }}/restore" style="display:inline">
+          <input type="hidden" name="restore_to" value="Invoiced">
+          <button type="submit" class="btn btn-sm btn-outline-warning" style="font-size:.75rem;padding:2px 10px">Restore</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% elif q or filter_client or date_from or date_to or filter_status %}
+<div style="text-align:center;padding:40px;color:var(--muted)">No archived files found matching your search.</div>
+{% else %}
+<div style="text-align:center;padding:60px;color:var(--muted)">
+  <div style="font-size:2rem;margin-bottom:10px">&#128451;</div>
+  <div style="font-size:1rem;font-weight:600;margin-bottom:6px">Archive Search</div>
+  <div style="font-size:.85rem">Search for archived and cold-stored files using the filters above.</div>
+</div>
+{% endif %}
+
+{% endif %}
+
+<script>
+function toggleSelectAll(checked) {
+  if (typeof checked === 'undefined') {
+    var cb = document.getElementById('selectAllCb');
+    cb.checked = !cb.checked;
+    checked = cb.checked;
+  }
+  document.querySelectorAll('.bulk-cb').forEach(function(c){ c.checked = checked; });
+}
+
+function showBulkConfirm() {
+  var count = document.querySelectorAll('.bulk-cb:checked').length;
+  if (count === 0) { alert('No files selected.'); return; }
+  document.getElementById('bulkCount').textContent = count;
+  document.getElementById('bulkConfirm').style.display = 'block';
+}
+
+function submitBulkArchive() {
+  document.getElementById('bulkForm').submit();
+}
+</script>
+{% endblock %}

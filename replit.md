@@ -103,6 +103,22 @@ Axion Prototype is a Flask-based field operations management application designe
 - Routes: `GET /admin/geoop-import`, `POST /admin/geoop-import/stage`, `GET /admin/geoop-import/diagnostics`, `POST /admin/geoop-import/execute`, `POST /admin/geoop-import/reset`, `POST /admin/geoop-import/scan-attachments`
 - Template: `templates/geoop_import.html`
 
+**8d. File Lifecycle System (Archive & Cold Storage):**
+- **Three-tier lifecycle**: Active → Archived – Invoiced → Cold Storage. Files progress through tiers based on operational status and age.
+- **Statuses**: `Archived - Invoiced` (removed from active views, fully searchable), `Cold Stored` (metadata searchable, attachments in compressed storage).
+- **Database**: `lifecycle_status` column on `jobs` (`active`, `archived`, `cold_stored`, `retrieval_pending`, `retrieved`). `job_lifecycle_log` audit table tracks all lifecycle transitions. `archived_at`, `archived_by_user_id`, `cold_stored_at`, `cold_stored_by_user_id`, `cold_storage_ref` on `jobs`.
+- **Active view exclusion**: Archived/Cold Stored jobs automatically excluded from: Jobs list (unless status filter explicitly set), Queue, Assignment Board, Schedule, Mobile jobs, LPR watchlist, Dashboard counts. `ARCHIVED_STATUSES` constant defined at module level.
+- **Archive actions**: `POST /jobs/<id>/archive` (single), `POST /jobs/<id>/restore` (restore to Invoiced/Completed/Active), `POST /admin/archive/bulk` (bulk archive with batch_id tracking).
+- **Archive search**: `GET /admin/archive` with two modes: "Search Archive" (search by ref, customer, reg, VIN, address, client, date range) and "Archive Eligible Files" (find Invoiced/Completed older than X days for bulk archiving).
+- **Job detail banners**: Archived jobs show amber "Archived Historical File" banner with restore options. Cold Stored jobs show purple "Cold Storage File" banner with retrieval request.
+- **Settings**: Data Management tab in Settings with archive policy configuration (archive_after_days, cold_store_after_years, archive/cold_storage mode, allow_restore, allow_permanent_delete). Route: `POST /admin/settings/archive`.
+- **Dashboard**: Archived count tile links to archive search page. All active counts exclude archived/cold-stored jobs.
+- **Navigation**: "Archive" link in admin sidebar between Reports and Settings.
+- **Audit**: All archive/restore actions logged in `job_lifecycle_log` and `audit_log`. Interactions logged on the job. Bulk operations tracked by batch_id.
+- **Phase 2/3 foundation**: Cold storage packaging, attachment compression, Azure Blob cold tier, automated retention processing — schema and settings ready, implementation deferred.
+- Routes: `POST /jobs/<id>/archive`, `POST /jobs/<id>/restore`, `POST /admin/archive/bulk`, `GET /admin/archive`, `GET /admin/archive/lifecycle-log/<id>`, `POST /admin/settings/archive`
+- Template: `templates/archive.html`
+
 **8b. Duplicate Finder (Settings):** Two-mode duplicate detection tool on the Settings page:
 - **Database Scan:** Finds duplicate jobs (by job number or account number) and duplicate clients (by name) already in the system.
 - **CSV File Scan:** Multi-file upload (accepts multiple CSVs at once) checks for duplicates within the selected files and against existing database records before import.

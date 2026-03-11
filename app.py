@@ -23,6 +23,8 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 
 _melbourne = pytz.timezone("Australia/Melbourne")
 
+ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
+
 from security import throttle_check, throttle_fail, throttle_success
 from datetime import timedelta as _td
 
@@ -684,6 +686,43 @@ def init_db():
         FOREIGN KEY(changed_by_user_id) REFERENCES users(id)
     )
     """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_lifecycle_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT,
+        performed_by_user_id INTEGER,
+        performed_at TEXT NOT NULL,
+        notes TEXT,
+        batch_id TEXT,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(performed_by_user_id) REFERENCES users(id)
+    )
+    """)
+
+    for col, coltype in [
+        ("archived_at",            "TEXT"),
+        ("archived_by_user_id",    "INTEGER"),
+        ("cold_stored_at",         "TEXT"),
+        ("cold_stored_by_user_id", "INTEGER"),
+        ("cold_storage_ref",       "TEXT"),
+        ("lifecycle_status",       "TEXT DEFAULT 'active'"),
+    ]:
+        add_column_if_missing(cur, "jobs", col, coltype)
+
+    for col, coltype in [
+        ("archive_after_days",        "INTEGER DEFAULT 90"),
+        ("cold_store_after_years",    "INTEGER DEFAULT 3"),
+        ("archive_mode",              "TEXT DEFAULT 'manual'"),
+        ("cold_storage_mode",         "TEXT DEFAULT 'manual'"),
+        ("allow_restore_to_active",   "INTEGER DEFAULT 1"),
+        ("allow_permanent_delete",    "INTEGER DEFAULT 0"),
+        ("archive_exclude_client_ids","TEXT"),
+    ]:
+        add_column_if_missing(cur, "system_settings", col, coltype)
 
     conn.commit()
     conn.close()
@@ -1913,6 +1952,14 @@ def audit(entity_type, entity_id, action, message, meta=None):
     conn.close()
 
 
+def _log_lifecycle(cur, job_id, action, from_status, to_status, user_id, notes=None, batch_id=None):
+    cur.execute("""
+        INSERT INTO job_lifecycle_log
+            (job_id, action, from_status, to_status, performed_by_user_id, performed_at, notes, batch_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, action, from_status, to_status, user_id, now_ts(), notes, batch_id))
+
+
 # -------- Auth helpers --------
 def _is_mobile_request():
     ua = (request.headers.get("User-Agent") or "").lower()
@@ -2254,7 +2301,7 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
             WHERE date(scheduled_for,'localtime') <= ?
             GROUP BY job_id
         ) s ON s.job_id = j.id
-        WHERE j.status NOT IN ('Completed', 'Invoiced', 'New')
+        WHERE j.status NOT IN ('Completed', 'Invoiced', 'New', 'Archived - Invoiced', 'Cold Stored')
     """, (tomorrow,))
     candidates = cur.fetchall()
 
@@ -2353,13 +2400,15 @@ def dashboard():
             cur.execute(sql, (status,))
         return cur.fetchall()
 
+    _excl_arch = f"status NOT IN {ARCHIVED_STATUSES!r}"
+
     if role == "agent":
         base = """(assigned_user_id = ? OR EXISTS (
             SELECT 1 FROM schedules s WHERE s.job_id = jobs.id
             AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
         ))"""
         uu   = (user_id, user_id)
-        jobs_all       = jcount(base, uu)
+        jobs_all       = jcount(base + f" AND {_excl_arch}", uu)
         jobs_new       = jcount(base + " AND status = 'New'",                      (*uu,))
         jobs_active    = jcount(base + " AND status = 'Active'",                   (*uu,))
         jobs_phone     = jcount(base + " AND status = 'Active - Phone work only'", (*uu,))
@@ -2367,8 +2416,9 @@ def dashboard():
         jobs_awaiting  = jcount(base + " AND status = 'Awaiting info from client'",(*uu,))
         jobs_completed = jcount(base + " AND status = 'Completed'",                (*uu,))
         jobs_invoiced  = jcount(base + " AND status = 'Invoiced'",                 (*uu,))
+        jobs_archived  = jcount(base + " AND status = 'Archived - Invoiced'",      (*uu,))
     else:
-        jobs_all       = jcount()
+        jobs_all       = jcount(_excl_arch)
         jobs_new       = jcount("status = 'New'")
         jobs_active    = jcount("status = 'Active'")
         jobs_phone     = jcount("status = 'Active - Phone work only'")
@@ -2376,6 +2426,7 @@ def dashboard():
         jobs_awaiting  = jcount("status = 'Awaiting info from client'")
         jobs_completed = jcount("status = 'Completed'")
         jobs_invoiced  = jcount("status = 'Invoiced'")
+        jobs_archived  = jcount("status = 'Archived - Invoiced'")
 
     rows_by_status = {status: jrows(status) for status, _ in STATUS_LIST}
 
@@ -2394,6 +2445,7 @@ def dashboard():
         jobs_phone=jobs_phone,   jobs_suspended=jobs_suspended,
         jobs_awaiting=jobs_awaiting, jobs_completed=jobs_completed,
         jobs_invoiced=jobs_invoiced,
+        jobs_archived=jobs_archived,
         rows_by_status=rows_by_status,
         status_list=STATUS_LIST,
         today_iso=_today.isoformat(),
@@ -2460,6 +2512,10 @@ def jobs_list():
     WHERE 1=1
     """
     params = []
+
+    include_archived = request.args.get("include_archived", "").strip()
+    if status not in ARCHIVED_STATUSES and not include_archived:
+        from_where += f" AND j.status NOT IN {ARCHIVED_STATUSES!r}"
 
     if role == "agent":
         from_where += """ AND (j.assigned_user_id = ? OR EXISTS (
@@ -2557,7 +2613,8 @@ def jobs_list():
         "Suspended",
         "Awaiting info from client",
         "Completed",
-        "Invoiced"
+        "Invoiced",
+        "Archived - Invoiced",
     ]
 
     return render_template(
@@ -3786,7 +3843,7 @@ def schedule_api_events():
         LEFT JOIN users u ON u.id = s.assigned_to_user_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients cl ON cl.id = j.client_id
-        WHERE {where_sql}
+        WHERE {where_sql} AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY s.scheduled_for ASC
     """, params)
 
@@ -4339,6 +4396,280 @@ def job_status_update(job_id: int):
     conn.commit()
     conn.close()
     return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/archive")
+@login_required
+@admin_required
+def job_archive(job_id: int):
+    conn = db()
+    cur = conn.cursor()
+    job = cur.execute("SELECT id, status, display_ref FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        flash("Job not found.", "danger")
+        return redirect(url_for("jobs_list"))
+    archivable = ("Completed", "Invoiced")
+    if job["status"] in ARCHIVED_STATUSES:
+        conn.close()
+        flash("Job is already archived.", "warning")
+        return redirect(url_for("job_detail", job_id=job_id))
+    if job["status"] not in archivable:
+        conn.close()
+        flash(f"Only Completed or Invoiced jobs can be archived. Current status: {job['status']}.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
+    uid = session.get("user_id")
+    ts = now_ts()
+    old_status = job["status"]
+    cur.execute("""
+        UPDATE jobs SET status = 'Archived - Invoiced', lifecycle_status = 'archived',
+               archived_at = ?, archived_by_user_id = ?, updated_at = ?
+        WHERE id = ?
+    """, (ts, uid, ts, job_id))
+    cur.execute("""
+        UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+        WHERE job_id=? AND status IN ('Pending','In Progress')
+    """, (ts, ts, job_id))
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (job_id, "Lifecycle", f"Job archived from '{old_status}'.", ts, ts))
+    _log_lifecycle(cur, job_id, "archive", old_status, "Archived - Invoiced", uid)
+    conn.commit()
+    conn.close()
+    audit("job", job_id, "archive", f"Job {job['display_ref']} archived.", {"from_status": old_status})
+    flash(f"Job {job['display_ref']} has been archived.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/restore")
+@login_required
+@admin_required
+def job_restore(job_id: int):
+    restore_to = request.form.get("restore_to", "Invoiced").strip()
+    if restore_to not in ("Invoiced", "Completed", "Active", "New"):
+        restore_to = "Invoiced"
+    conn = db()
+    cur = conn.cursor()
+    if restore_to in ("Active", "New"):
+        settings = cur.execute("SELECT allow_restore_to_active FROM system_settings WHERE id = 1").fetchone()
+        if settings and not settings["allow_restore_to_active"]:
+            conn.close()
+            flash("Restoring to active status is disabled by policy.", "danger")
+            return redirect(url_for("job_detail", job_id=job_id))
+    job = cur.execute("SELECT id, status, display_ref FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        flash("Job not found.", "danger")
+        return redirect(url_for("jobs_list"))
+    if job["status"] not in ARCHIVED_STATUSES:
+        conn.close()
+        flash("Job is not archived.", "warning")
+        return redirect(url_for("job_detail", job_id=job_id))
+    uid = session.get("user_id")
+    ts = now_ts()
+    old_status = job["status"]
+    cur.execute("""
+        UPDATE jobs SET status = ?, lifecycle_status = 'active',
+               archived_at = NULL, archived_by_user_id = NULL, updated_at = ?
+        WHERE id = ?
+    """, (restore_to, ts, job_id))
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (job_id, "Lifecycle", f"Job restored from archive to '{restore_to}'.", ts, ts))
+    _log_lifecycle(cur, job_id, "restore", old_status, restore_to, uid)
+    conn.commit()
+    conn.close()
+    audit("job", job_id, "restore", f"Job {job['display_ref']} restored to {restore_to}.", {"from_status": old_status, "to_status": restore_to})
+    flash(f"Job {job['display_ref']} has been restored to {restore_to}.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/admin/archive/bulk")
+@login_required
+@admin_required
+def archive_bulk():
+    job_ids_raw = request.form.getlist("job_ids")
+    if not job_ids_raw:
+        data = request.get_json(silent=True)
+        if data and "job_ids" in data:
+            job_ids_raw = data["job_ids"]
+    job_ids = []
+    for jid in job_ids_raw:
+        try:
+            job_ids.append(int(jid))
+        except (ValueError, TypeError):
+            pass
+    if not job_ids:
+        if request.is_json:
+            return jsonify({"ok": False, "error": "No valid job IDs provided."}), 400
+        flash("No jobs selected.", "warning")
+        return redirect(url_for("admin_archive"))
+    uid = session.get("user_id")
+    ts = now_ts()
+    batch_id = f"bulk_{ts}_{uid}"
+    conn = db()
+    cur = conn.cursor()
+    archived_count = 0
+    for jid in job_ids:
+        job = cur.execute("SELECT id, status, display_ref FROM jobs WHERE id = ?", (jid,)).fetchone()
+        if not job or job["status"] in ARCHIVED_STATUSES or job["status"] not in ("Completed", "Invoiced"):
+            continue
+        old_status = job["status"]
+        cur.execute("""
+            UPDATE jobs SET status = 'Archived - Invoiced', lifecycle_status = 'archived',
+                   archived_at = ?, archived_by_user_id = ?, updated_at = ?
+            WHERE id = ?
+        """, (ts, uid, ts, jid))
+        cur.execute("""
+            UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+            WHERE job_id=? AND status IN ('Pending','In Progress')
+        """, (ts, ts, jid))
+        cur.execute("""
+            INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (jid, "Lifecycle", f"Job bulk-archived from '{old_status}'.", ts, ts))
+        _log_lifecycle(cur, jid, "bulk_archive", old_status, "Archived - Invoiced", uid, batch_id=batch_id)
+        archived_count += 1
+    conn.commit()
+    conn.close()
+    audit("system", None, "bulk_archive", f"Bulk archived {archived_count} jobs.", {"batch_id": batch_id, "count": archived_count})
+    if request.is_json:
+        return jsonify({"ok": True, "archived": archived_count, "batch_id": batch_id})
+    flash(f"{archived_count} job(s) archived successfully.", "success")
+    return redirect(url_for("admin_archive"))
+
+
+@app.get("/admin/archive")
+@login_required
+@admin_required
+def admin_archive():
+    conn = db()
+    cur = conn.cursor()
+    q = request.args.get("q", "").strip()
+    filter_client = request.args.get("client_id", "").strip()
+    filter_status = request.args.get("status", "").strip()
+    date_from = request.args.get("date_from", "").strip()
+    date_to = request.args.get("date_to", "").strip()
+    mode = request.args.get("mode", "search").strip()
+
+    clients_list = cur.execute(
+        "SELECT id, COALESCE(nickname, name) AS name FROM clients ORDER BY name"
+    ).fetchall()
+
+    if mode == "eligible":
+        where = "WHERE j.status IN ('Invoiced', 'Completed')"
+        params = []
+        days = request.args.get("days", "90").strip()
+        try:
+            days_int = int(days)
+        except ValueError:
+            days_int = 90
+        where += f" AND date(j.updated_at) <= date('now', '-{days_int} days')"
+        if filter_client:
+            where += " AND j.client_id = ?"
+            params.append(filter_client)
+
+        cur.execute(f"""
+            SELECT j.id, j.display_ref, j.status, j.client_id,
+                   COALESCE(c.nickname, c.name) AS client_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+                   j.job_address, j.updated_at,
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
+                   (SELECT COUNT(*) FROM job_field_notes n WHERE n.job_id = j.id) AS note_count,
+                   (SELECT COUNT(*) FROM job_documents d WHERE d.job_id = j.id) AS doc_count
+            FROM jobs j
+            LEFT JOIN clients c ON c.id = j.client_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            {where}
+            ORDER BY j.updated_at ASC
+            LIMIT 500
+        """, params)
+        results = cur.fetchall()
+        conn.close()
+        return render_template("archive.html", results=results, mode="eligible",
+                               q=q, filter_client=filter_client, filter_status=filter_status,
+                               date_from=date_from, date_to=date_to, days=days_int,
+                               clients_list=clients_list)
+
+    where = "WHERE j.status IN ('Archived - Invoiced', 'Cold Stored')"
+    params = []
+
+    if filter_status and filter_status in ARCHIVED_STATUSES:
+        where = f"WHERE j.status = ?"
+        params.append(filter_status)
+    if q:
+        where += """
+         AND (
+           j.internal_job_number LIKE ? OR j.client_reference LIKE ? OR
+           j.display_ref LIKE ? OR j.job_address LIKE ? OR
+           cu.first_name LIKE ? OR cu.last_name LIKE ? OR cu.company LIKE ? OR
+           c.name LIKE ? OR
+           EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id = j.id AND (ji.reg LIKE ? OR ji.vin LIKE ?))
+         )"""
+        like = f"%{q}%"
+        params.extend([like] * 10)
+    if filter_client:
+        where += " AND j.client_id = ?"
+        params.append(filter_client)
+    if date_from:
+        where += " AND date(j.archived_at) >= ?"
+        params.append(date_from)
+    if date_to:
+        where += " AND date(j.archived_at) <= ?"
+        params.append(date_to)
+
+    cur.execute(f"""
+        SELECT j.id, j.display_ref, j.status, j.client_id, j.archived_at,
+               COALESCE(c.nickname, c.name) AS client_name,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               j.job_address, j.updated_at, j.lifecycle_status,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_reg,
+               (SELECT ji.vin FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) AS asset_vin,
+               (SELECT COUNT(*) FROM job_field_notes n WHERE n.job_id = j.id) AS note_count,
+               (SELECT COUNT(*) FROM job_documents d WHERE d.job_id = j.id) AS doc_count,
+               u.full_name AS archived_by_name
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users u ON u.id = j.archived_by_user_id
+        {where}
+        ORDER BY j.archived_at DESC
+        LIMIT 500
+    """, params)
+    results = cur.fetchall()
+
+    archive_stats = cur.execute("""
+        SELECT
+            SUM(CASE WHEN status = 'Archived - Invoiced' THEN 1 ELSE 0 END) AS archived_count,
+            SUM(CASE WHEN status = 'Cold Stored' THEN 1 ELSE 0 END) AS cold_stored_count
+        FROM jobs WHERE status IN ('Archived - Invoiced', 'Cold Stored')
+    """).fetchone()
+
+    conn.close()
+    return render_template("archive.html", results=results, mode="search",
+                           q=q, filter_client=filter_client, filter_status=filter_status,
+                           date_from=date_from, date_to=date_to, days=90,
+                           clients_list=clients_list,
+                           archive_stats=archive_stats)
+
+
+@app.get("/admin/archive/lifecycle-log/<int:job_id>")
+@login_required
+@admin_required
+def archive_lifecycle_log(job_id: int):
+    conn = db()
+    rows = conn.execute("""
+        SELECT l.*, u.full_name AS performed_by_name
+        FROM job_lifecycle_log l
+        LEFT JOIN users u ON u.id = l.performed_by_user_id
+        WHERE l.job_id = ?
+        ORDER BY l.performed_at DESC
+    """, (job_id,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
 
 
 @app.post("/jobs/<int:job_id>/update")
@@ -9088,6 +9419,37 @@ def admin_settings_ai():
     return redirect(url_for("admin_settings") + "#ai-settings")
 
 
+@app.post("/admin/settings/archive")
+@login_required
+@admin_required
+def admin_settings_archive():
+    conn = db()
+    conn.execute("""
+        UPDATE system_settings SET
+            archive_after_days = ?,
+            cold_store_after_years = ?,
+            archive_mode = ?,
+            cold_storage_mode = ?,
+            allow_restore_to_active = ?,
+            allow_permanent_delete = ?,
+            updated_at = ?
+        WHERE id = 1
+    """, (
+        int(request.form.get("archive_after_days", 90)),
+        int(request.form.get("cold_store_after_years", 3)),
+        request.form.get("archive_mode", "manual"),
+        request.form.get("cold_storage_mode", "manual"),
+        int(request.form.get("allow_restore_to_active", 1)),
+        int(request.form.get("allow_permanent_delete", 0)),
+        now_ts()
+    ))
+    conn.commit()
+    conn.close()
+    audit("system", 1, "update", "Archive policy settings updated")
+    flash("Archive policy settings saved.", "success")
+    return redirect(url_for("admin_settings") + "#data-management")
+
+
 # -------- Cues --------
 def _queue_row_sql():
     return """
@@ -9129,20 +9491,25 @@ def job_queue():
     tomorrow_type = "Schedule Due Tomorrow"
     note_type     = "Agent Note Review"
 
-    cur.execute(_queue_row_sql() + """
+    _arch_excl = f"AND j.status NOT IN {ARCHIVED_STATUSES!r}"
+
+    cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')
+        {_arch_excl}
         ORDER BY ci.priority DESC, ci.created_at DESC
     """, overdue_types)
     overdue = cur.fetchall()
 
-    cur.execute(_queue_row_sql() + """
+    cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
+        {_arch_excl}
         ORDER BY ci.created_at DESC
     """, (tomorrow_type,))
     due_tomorrow = cur.fetchall()
 
-    cur.execute(_queue_row_sql() + """
+    cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type = ? AND ci.status = 'Pending'
+        {_arch_excl}
         ORDER BY ci.updated_at DESC, ci.created_at DESC
     """, (note_type,))
     agent_notes = cur.fetchall()
@@ -9637,6 +10004,7 @@ def assign_board():
         JOIN jobs j ON j.id = ci.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE ci.due_date = ? AND ci.status IN ('Pending','In Progress')
+          AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY ci.priority DESC, ci.id DESC
     """, (date,))
     cues = cur.fetchall()
@@ -9732,11 +10100,12 @@ def my_today():
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE ci.due_date = ? AND ci.assigned_user_id = ?
           AND ci.status IN ('Pending','In Progress')
+          AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY ci.priority DESC, ci.id
     """, (today, user_id))
     cues = cur.fetchall()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
                bt.name AS booking_type_name,
                j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
@@ -9749,6 +10118,7 @@ def my_today():
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE date(s.scheduled_for) = ? AND s.assigned_to_user_id = ?
           AND s.status NOT IN ('Cancelled', 'Completed')
+          AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY s.scheduled_for
     """, (today, user_id))
     schedules = cur.fetchall()
@@ -10445,10 +10815,11 @@ def m_today():
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE ci.due_date = ? AND ci.assigned_user_id = ?
           AND ci.status IN ('Pending','In Progress')
+          AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY ci.priority DESC, ci.id
     """, (today, uid)).fetchall()
 
-    schedules = conn.execute("""
+    schedules = conn.execute(f"""
         SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
                bt.name AS booking_type_name,
                j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
@@ -10460,6 +10831,7 @@ def m_today():
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE date(s.scheduled_for,'localtime') = ? AND s.assigned_to_user_id = ?
           AND s.status NOT IN ('Cancelled','Completed')
+          AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY s.scheduled_for
     """, (today, uid)).fetchall()
 
@@ -10529,13 +10901,13 @@ def _mobile_jobs_query(uid, role, params_in):
     dir_sql = "ASC" if direction == "asc" else "DESC"
 
     # ── Ownership scope ──
-    where_clauses = []
+    where_clauses = [f"j.status NOT IN {ARCHIVED_STATUSES!r}"]
     params = []
 
     has_search = bool(q)
 
     if is_admin and (scope != "mine" or has_search):
-        where_clauses.append("1=1")
+        pass
     else:
         where_clauses.append(
             "(j.assigned_user_id = ? OR EXISTS ("
@@ -12305,7 +12677,7 @@ def admin_lpr_watchlist():
     """).fetchall()
     jobs  = conn.execute("""
         SELECT id, COALESCE(display_ref, internal_job_number) AS ref
-        FROM jobs WHERE status NOT IN ('Completed','Invoiced','Cancelled')
+        FROM jobs WHERE status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')
         ORDER BY ref
     """).fetchall()
     conn.close()

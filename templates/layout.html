@@ -357,6 +357,7 @@
           </button>
           <a href="/assign" class="{% if request.path.startswith('/assign') %}active{% endif %}">Assignment Board</a>
           <a href="/reports/monthly" class="{% if request.path.startswith('/reports') %}active{% endif %}">Reports</a>
+          <a href="/admin/archive" class="{% if request.path.startswith('/admin/archive') %}active{% endif %}">Archive</a>
           <a href="/admin/settings" class="{% if request.path.startswith('/admin/settings') or request.path.startswith('/import') %}active{% endif %}">Settings & Resources</a>
         {% endif %}
 
