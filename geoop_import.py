@@ -622,16 +622,24 @@ def scan_attachment_dirs(dirs, conn=None):
                 mime = mimetypes.guess_type(fname)[0] or "application/octet-stream"
 
                 try:
-                    conn.execute("""
-                        INSERT OR IGNORE INTO geoop_staging_files (
-                            source_type, geoop_job_id, geoop_note_id, files_location, file_name,
-                            original_path, file_hash, file_size, mime_type, found_on_disk, disk_path, created_at
-                        ) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)
-                    """, (
-                        "disk_scan", geoop_job_id, geoop_note_id, files_loc, fname,
-                        full_path, fhash, fsize, mime, full_path, ts
-                    ))
-                    found += 1
+                    cur = conn.execute("""
+                        UPDATE geoop_staging_files
+                        SET found_on_disk=1, disk_path=?, file_hash=?, file_size=?, mime_type=?
+                        WHERE files_location=? AND file_name=? AND source_type IN ('note_csv','job_csv')
+                    """, (full_path, fhash, fsize, mime, files_loc, fname))
+                    if cur.rowcount > 0:
+                        found += 1
+                    else:
+                        conn.execute("""
+                            INSERT OR IGNORE INTO geoop_staging_files (
+                                source_type, geoop_job_id, geoop_note_id, files_location, file_name,
+                                original_path, file_hash, file_size, mime_type, found_on_disk, disk_path, created_at
+                            ) VALUES (?,?,?,?,?,?,?,?,?,1,?,?)
+                        """, (
+                            "disk_scan", geoop_job_id, geoop_note_id, files_loc, fname,
+                            full_path, fhash, fsize, mime, full_path, ts
+                        ))
+                        found += 1
                 except sqlite3.IntegrityError:
                     skipped += 1
 
@@ -715,8 +723,11 @@ def generate_diagnostics(conn=None):
     r = conn.execute("SELECT COUNT(*) c FROM geoop_staging_files").fetchone()
     diag["total_file_records"] = r["c"]
 
+    r = conn.execute("SELECT COUNT(*) c FROM geoop_staging_files WHERE source_type IN ('job_csv','note_csv')").fetchone()
+    diag["manifest_records"] = r["c"]
+
     r = conn.execute("SELECT COUNT(*) c FROM geoop_staging_files WHERE found_on_disk=1").fetchone()
-    diag["files_found_on_disk"] = r["c"]
+    diag["physical_files_scanned"] = r["c"]
 
     r = conn.execute("SELECT COUNT(*) c FROM geoop_staging_files WHERE found_on_disk=0").fetchone()
     diag["files_not_on_disk"] = r["c"]
@@ -730,10 +741,26 @@ def generate_diagnostics(conn=None):
     diag["unique_hashes_with_dupes"] = len(r)
 
     r = conn.execute("""
-        SELECT COUNT(*) c FROM geoop_staging_files f
-        WHERE f.source_type = 'note_csv'
-          AND EXISTS (SELECT 1 FROM geoop_staging_files d WHERE d.source_type='disk_scan'
-                      AND d.files_location = f.files_location AND d.file_name = f.file_name)
+        SELECT COUNT(*) c FROM geoop_staging_files
+        WHERE source_type IN ('note_csv','job_csv') AND found_on_disk=1
+    """).fetchone()
+    diag["manifest_matched_to_physical"] = r["c"]
+
+    r = conn.execute("""
+        SELECT COUNT(*) c FROM geoop_staging_files
+        WHERE source_type IN ('note_csv','job_csv') AND found_on_disk=0
+    """).fetchone()
+    diag["manifest_missing_physical"] = r["c"]
+
+    r = conn.execute("""
+        SELECT COUNT(*) c FROM geoop_staging_files
+        WHERE source_type='disk_scan'
+    """).fetchone()
+    diag["physical_unmatched_to_manifest"] = r["c"]
+
+    r = conn.execute("""
+        SELECT COUNT(*) c FROM geoop_staging_files
+        WHERE source_type = 'note_csv' AND found_on_disk=1
     """).fetchone()
     diag["note_files_matched_on_disk"] = r["c"]
 

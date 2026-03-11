@@ -8419,6 +8419,8 @@ def geoop_import_page():
         "staged_jobs": conn.execute("SELECT COUNT(*) c FROM geoop_staging_jobs").fetchone()["c"],
         "staged_notes": conn.execute("SELECT COUNT(*) c FROM geoop_staging_notes").fetchone()["c"],
         "staged_files": conn.execute("SELECT COUNT(*) c FROM geoop_staging_files").fetchone()["c"],
+        "manifest_records": conn.execute("SELECT COUNT(*) c FROM geoop_staging_files WHERE source_type IN ('job_csv','note_csv')").fetchone()["c"],
+        "physical_files": conn.execute("SELECT COUNT(*) c FROM geoop_staging_files WHERE found_on_disk=1").fetchone()["c"],
         "imported_jobs": conn.execute("SELECT COUNT(*) c FROM geoop_staging_jobs WHERE import_status='imported'").fetchone()["c"],
         "imported_notes": conn.execute("SELECT COUNT(*) c FROM geoop_staging_notes WHERE import_status='imported'").fetchone()["c"],
     }

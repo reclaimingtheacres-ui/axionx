@@ -26,25 +26,35 @@
   <div class="row g-3 mb-4">
     <div class="col-sm-6 col-lg-3">
       <div class="card text-center p-3">
-        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ stats.staged_jobs | default(0) }}</div>
+        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ "{:,}".format(stats.staged_jobs | default(0)) }}</div>
         <div class="text-muted small">Staged Jobs</div>
       </div>
     </div>
     <div class="col-sm-6 col-lg-3">
       <div class="card text-center p-3">
-        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ stats.staged_notes | default(0) }}</div>
+        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ "{:,}".format(stats.staged_notes | default(0)) }}</div>
         <div class="text-muted small">Staged Notes</div>
       </div>
     </div>
     <div class="col-sm-6 col-lg-3">
       <div class="card text-center p-3">
-        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ stats.staged_files | default(0) }}</div>
-        <div class="text-muted small">File Records</div>
+        <div style="font-size:2rem;font-weight:700;color:#7c3aed;">{{ "{:,}".format(stats.manifest_records | default(0)) }}</div>
+        <div class="text-muted small">Manifest References</div>
+        <div class="text-muted" style="font-size:.65rem">from CSV export</div>
       </div>
     </div>
     <div class="col-sm-6 col-lg-3">
       <div class="card text-center p-3">
-        <div style="font-size:2rem;font-weight:700;color:#16a34a;">{{ stats.imported_jobs | default(0) }}</div>
+        <div style="font-size:2rem;font-weight:700;{% if stats.physical_files | default(0) > 0 %}color:#16a34a{% else %}color:#6b7280{% endif %};">{{ "{:,}".format(stats.physical_files | default(0)) }}</div>
+        <div class="text-muted small">Physical Files Scanned</div>
+        <div class="text-muted" style="font-size:.65rem">from disk</div>
+      </div>
+    </div>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#16a34a;">{{ "{:,}".format(stats.imported_jobs | default(0)) }}</div>
         <div class="text-muted small">Jobs Imported</div>
       </div>
     </div>
@@ -303,8 +313,6 @@ function loadDiagnostics() {
       ['Staged Notes', d.total_staged_notes, '#2563eb'],
       ['Notes Matched to Jobs', d.notes_matched_to_jobs, '#16a34a'],
       ['Notes Unmatched', d.notes_unmatched_to_jobs, d.notes_unmatched_to_jobs > 0 ? '#dc2626' : '#6b7280'],
-      ['File Records', d.total_file_records, '#2563eb'],
-      ['Notes with Files', d.notes_with_file_references, '#7c3aed'],
     ];
     cards.forEach(function(c) {
       html += '<div class="col-6 col-lg-3"><div class="border rounded p-2 text-center">';
@@ -312,6 +320,33 @@ function loadDiagnostics() {
       html += '<div class="text-muted" style="font-size:.75rem">' + _esc(c[0]) + '</div></div></div>';
     });
     html += '</div>';
+
+    html += '<h6 class="mt-4 mb-2" style="font-size:.9rem;font-weight:700">Attachment Reconciliation</h6>';
+    var hasPhysical = (d.physical_files_scanned||0) > 0;
+    html += '<div class="table-responsive"><table class="table table-sm table-bordered small mb-3">';
+    html += '<thead class="table-light"><tr><th>Metric</th><th>Count</th><th>Status</th></tr></thead><tbody>';
+    html += '<tr><td>Manifest records (from CSV)</td><td>' + (d.manifest_records||0).toLocaleString() + '</td>';
+    html += '<td><span class="badge" style="background:#7c3aed">CSV references</span></td></tr>';
+    html += '<tr><td>Physical files scanned (from disk)</td><td>' + (d.physical_files_scanned||0).toLocaleString() + '</td>';
+    html += '<td>' + (hasPhysical ? '<span class="badge bg-success">Scanned</span>' : '<span class="badge bg-secondary">Not yet scanned</span>') + '</td></tr>';
+    if (hasPhysical) {
+      var matched = d.manifest_matched_to_physical||0;
+      var missing = d.manifest_missing_physical||0;
+      var unmatched = d.physical_unmatched_to_manifest||0;
+      var dupes = d.duplicate_files_by_hash||0;
+      html += '<tr><td>Matched (manifest &harr; physical)</td><td>' + matched.toLocaleString() + '</td>';
+      html += '<td><span class="badge bg-success">Ready to import</span></td></tr>';
+      html += '<tr><td>Missing physical files</td><td>' + missing.toLocaleString() + '</td>';
+      html += '<td>' + (missing > 0 ? '<span class="badge bg-warning text-dark">Missing from disk</span>' : '<span class="badge bg-success">None missing</span>') + '</td></tr>';
+      html += '<tr><td>Unmatched physical files</td><td>' + unmatched.toLocaleString() + '</td>';
+      html += '<td>' + (unmatched > 0 ? '<span class="badge bg-info">No CSV reference</span>' : '<span class="badge bg-secondary">None</span>') + '</td></tr>';
+      html += '<tr><td>Duplicates by hash</td><td>' + dupes.toLocaleString() + '</td>';
+      html += '<td>' + (dupes > 0 ? '<span class="badge bg-warning text-dark">' + (d.unique_hashes_with_dupes||0) + ' unique hashes</span>' : '<span class="badge bg-secondary">None</span>') + '</td></tr>';
+    } else {
+      html += '<tr><td colspan="3" class="text-center text-muted py-2">Upload and extract attachment files, then run <strong>Scan Attachments</strong> to see reconciliation data</td></tr>';
+    }
+    html += '</tbody></table></div>';
+    html += '<div class="small text-muted mb-3"><em>Notes with file references in CSV: ' + (d.notes_with_file_references||0).toLocaleString() + '</em></div>';
 
     if (d.job_status_breakdown) {
       html += '<h6 class="mt-3 mb-2" style="font-size:.85rem;font-weight:700">Job Status Breakdown</h6>';

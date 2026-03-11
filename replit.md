@@ -92,7 +92,10 @@ Axion Prototype is a Flask-based field operations management application designe
 - Import: Insert-only or update mode; creates jobs, customers, security items, phone numbers, schedules, and optionally notes
 - Import history table tracks all stage/import runs with stats
 - Reset button clears all staging data
-- Routes: `GET /admin/geoop-import`, `POST /admin/geoop-import/stage`, `GET /admin/geoop-import/diagnostics`, `POST /admin/geoop-import/execute`, `POST /admin/geoop-import/reset`
+- **Attachment workflow**: CSV staging creates manifest references (`source_type='note_csv'`/`'job_csv'`), not physical files. Physical files are scanned separately via "Scan Attachments" against an extracted attachment folder (`source_type='disk_scan'`, `found_on_disk=1`).
+- **Attachment reconciliation** (in diagnostics panel): Shows manifest records total, physical files scanned total, matched manifest↔physical, missing physical files, unmatched physical files (no CSV reference), and duplicates by hash. Reconciliation section only shows detailed breakdown after a disk scan has been performed.
+- **Top-level stat cards**: "Manifest References" (CSV export refs, purple) + "Physical Files Scanned" (disk, green/grey). Old "File Records" label replaced to avoid implying files are uploaded.
+- Routes: `GET /admin/geoop-import`, `POST /admin/geoop-import/stage`, `GET /admin/geoop-import/diagnostics`, `POST /admin/geoop-import/execute`, `POST /admin/geoop-import/reset`, `POST /admin/geoop-import/scan-attachments`
 - Template: `templates/geoop_import.html`
 
 **8b. Duplicate Finder (Settings):** Two-mode duplicate detection tool on the Settings page:
