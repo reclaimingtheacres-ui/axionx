@@ -24,7 +24,7 @@ struct LoginView: View {
     private let axionBlue = Color(red: 0.149, green: 0.388, blue: 0.922)
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
 
             Image("AppBackground")
                 .resizable()
@@ -32,10 +32,13 @@ struct LoginView: View {
                 .ignoresSafeArea()
 
             if panelVisible {
-                loginPanel
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 52)
-                    .transition(.opacity.combined(with: .offset(y: 16)))
+                VStack {
+                    Spacer()
+                    loginPanel
+                        .padding(.horizontal, 20)
+                    Spacer()
+                }
+                .transition(.opacity.combined(with: .offset(y: 16)))
             }
 
             if !AppConfig.isProduction {

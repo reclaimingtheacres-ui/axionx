@@ -125,7 +125,7 @@ Axion Prototype is a Flask-based field operations management application designe
 - **iOS Native**: `BiometricAuthService` stores auth token (not session cookie) in Keychain via `KeychainService.saveToken/loadToken`. On biometric auth success, calls `/m/api/auth/token-login` to get fresh session cookies injected into WKWebView. `LoginView` shows opt-in alert after first successful login ("Enable Face ID/Touch ID?"). UserDefaults: `biometric_opted_in`, `biometric_declined`. `ContentView` auth flow: check Keychain token → biometric prompt → token-login → WebView.
 - **Settings Bridge**: `BiometricSettingsHandler` (WKScriptMessageHandler) registered as `biometricSettings` messageHandler. Actions: `getStatus`, `enable`, `disable`, `resetDecline`, `resetSession`. Web settings page communicates via `window._biometricCallback` pattern.
 - **Mobile Settings**: Biometric Login card in `/m/settings` (native wrapper only). Shows biometric type, enable/disable toggle, Reset Saved Login button. Hidden when not in iOS wrapper.
-- **Info.plist**: `NSFaceIDUsageDescription` present.
+- **Info.plist**: `NSFaceIDUsageDescription` present, `NSMicrophoneUsageDescription` present (required for voice notes in Add Note).
 
 **15. Internal Messaging System:** Staff messaging (admin↔agent, agent↔agent) with job-linked and direct conversations.
 - Tables: `conversations` (type: direct|job, optional job_id), `conversation_participants`, `messages`, `message_reads`
