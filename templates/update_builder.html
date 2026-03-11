@@ -199,6 +199,26 @@
                   placeholder="Any additional observations or notes to include in the narrative…">{{ draft.agent_notes or '' }}</textarea>
         <div class="form-text" style="color:var(--muted);font-size:.75rem">These notes will be incorporated into the generated narrative.</div>
 
+        <hr style="border-color:var(--border)">
+        <h6 class="mb-2 fw-semibold small" style="color:var(--text)">
+          Site Photos <span class="text-muted fw-normal">(optional)</span>
+          <span id="photo_count_badge" class="badge bg-primary ms-2" style="display:none;font-size:.7rem"></span>
+        </h6>
+        <div id="photo_grid" class="d-flex flex-wrap gap-2 mb-2"></div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="btn_take_photo" onclick="document.getElementById('camera_input').click()">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" class="me-1"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Take Photo
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="btn_upload_photo" onclick="document.getElementById('gallery_input').click()">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" class="me-1"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Upload Photo
+          </button>
+        </div>
+        <input type="file" id="camera_input" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="gallery_input" accept="image/*" multiple style="display:none">
+        <div class="form-text" style="color:var(--muted);font-size:.75rem">Up to 10 photos. Photos are saved with the update to the job record.</div>
+
         <div class="mt-4">
           <button id="btn_generate" class="btn btn-primary w-100"
             {% if not job.job_address %}disabled title="Add an address to the job before generating"{% endif %}>
@@ -256,6 +276,119 @@
 <script>
 (function() {
   const $ = id => document.getElementById(id);
+
+  const JOB_ID = {{ job.id | tojson }};
+  const DRAFT_ID = parseInt($('draft_id').value) || null;
+  let _photos = {{ (draft_photos or []) | tojson }};
+
+  function renderPhotos() {
+    const grid = $('photo_grid');
+    grid.innerHTML = '';
+    _photos.forEach(p => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border,#dee2e6);background:#f0f0f0;';
+      wrap.id = 'photo-' + p.id;
+
+      const img = document.createElement('img');
+      img.src = p.url;
+      img.alt = 'Site photo';
+      img.loading = 'lazy';
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      wrap.appendChild(img);
+
+      if (p._uploading) {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:absolute;inset:0;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;';
+        overlay.innerHTML = '<div class="spinner-border spinner-border-sm text-secondary"></div>';
+        wrap.appendChild(overlay);
+      } else {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;border:none;font-size:13px;line-height:20px;text-align:center;cursor:pointer;padding:0;';
+        btn.innerHTML = '&times;';
+        btn.addEventListener('click', () => removePhoto(p.id));
+        wrap.appendChild(btn);
+      }
+      grid.appendChild(wrap);
+    });
+
+    const badge = $('photo_count_badge');
+    if (_photos.length > 0) {
+      badge.textContent = _photos.length + ' photo' + (_photos.length !== 1 ? 's' : '');
+      badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function uploadPhoto(file) {
+    const tempId = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const thumbUrl = URL.createObjectURL(file);
+    _photos.push({id: tempId, url: thumbUrl, _uploading: true});
+    renderPhotos();
+
+    const fd = new FormData();
+    fd.append('photo', file);
+    fd.append('draft_id', DRAFT_ID);
+    fd.append('tag', 'site');
+
+    fetch('/jobs/' + JOB_ID + '/update-builder/upload-photo', {method: 'POST', body: fd})
+      .then(r => r.json())
+      .then(data => {
+        URL.revokeObjectURL(thumbUrl);
+        if (!data.ok) {
+          _photos = _photos.filter(p => p.id !== tempId);
+          renderPhotos();
+          alert(data.error || 'Upload failed');
+          return;
+        }
+        for (let i = 0; i < _photos.length; i++) {
+          if (_photos[i].id === tempId) {
+            _photos[i] = {id: data.photo_id, url: data.url};
+            break;
+          }
+        }
+        renderPhotos();
+      })
+      .catch(() => {
+        URL.revokeObjectURL(thumbUrl);
+        _photos = _photos.filter(p => p.id !== tempId);
+        renderPhotos();
+        alert('Photo upload failed. Check your connection.');
+      });
+  }
+
+  function removePhoto(photoId) {
+    if (!confirm('Remove this photo?')) return;
+    const el = document.getElementById('photo-' + photoId);
+    if (el) el.style.opacity = '0.4';
+
+    fetch('/jobs/' + JOB_ID + '/update-builder/photo/' + photoId, {method: 'DELETE'})
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) _photos = _photos.filter(p => p.id !== photoId);
+        renderPhotos();
+      })
+      .catch(() => renderPhotos());
+  }
+
+  function handleFiles(files) {
+    const max = 10;
+    const current = _photos.filter(p => !p._uploading).length;
+    let added = 0;
+    for (let i = 0; i < files.length && current + added < max; i++) {
+      if (!files[i].type.startsWith('image/')) continue;
+      if (files[i].size > 25 * 1024 * 1024) { alert(files[i].name + ' exceeds 25 MB limit.'); continue; }
+      uploadPhoto(files[i]);
+      added++;
+    }
+    if (current + files.length > max) alert('Maximum ' + max + ' photos per update.');
+  }
+
+  $('camera_input').addEventListener('change', function() { if (this.files.length) { handleFiles(this.files); this.value = ''; } });
+  $('gallery_input').addEventListener('change', function() { if (this.files.length) { handleFiles(this.files); this.value = ''; } });
+
+  renderPhotos();
 
   $('att_first').addEventListener('change', () => {
     $('prop_desc_section').style.display = 'block';
