@@ -123,20 +123,32 @@
         Zip archives are extracted automatically. Only files matching already-imported notes are linked — no notes are overwritten.
       </p>
       <form method="post" action="{{ url_for('geoop_import_scan_azure') }}"
-            onsubmit="if(!confirm('This will stream and attach files from Azure Blob Storage. This may take a while for large containers. Continue?')){event.preventDefault();return;}">
+            onsubmit="if(!confirm('This will stream and attach files from Azure Blob Storage. The scan runs in the background — you can continue using the app. Continue?')){event.preventDefault();return;}">
         <div class="row g-2">
           <div class="col-md-8">
             <input type="text" class="form-control form-control-sm" name="azure_sas_url"
                    placeholder="https://<account>.blob.core.windows.net/<container>?<sas-token>">
           </div>
           <div class="col-md-4">
-            <button type="submit" class="btn btn-outline-primary btn-sm w-100" id="azureScanBtn"
-                    onclick="this.disabled=true;this.innerHTML='<span class=\'spinner-border spinner-border-sm me-1\'></span>Scanning Azure…';this.form.submit();">
+            <button type="submit" class="btn btn-outline-primary btn-sm w-100" id="azureScanBtn">
               Scan Azure Blob
             </button>
           </div>
         </div>
       </form>
+      <div id="azureProgressPanel" style="display:none;" class="mt-3">
+        <div class="alert alert-info py-2 small mb-2">
+          <span class="spinner-border spinner-border-sm me-1"></span>
+          <strong>Azure Blob scan in progress</strong> (run #<span id="azureRunId"></span>)
+        </div>
+        <div class="row g-2 text-center small" id="azureProgressStats">
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-blobs">0</div><div class="text-muted">Blobs Scanned</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-files">0</div><div class="text-muted">Files Processed</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="ap-linked">0</div><div class="text-muted">Linked</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-dupes">0</div><div class="text-muted">Duplicates</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-errors">0</div><div class="text-muted">Errors</div></div></div>
+        </div>
+      </div>
 
       <hr class="my-3">
       <div class="small text-muted">
@@ -444,5 +456,47 @@ function loadDiagnostics() {
     alert('Failed to load diagnostics: ' + e.message);
   });
 }
+
+(function() {
+  var runningRuns = [];
+  {% for run in runs %}
+  {% if run.status == 'running' and run.run_type == 'azure_blob_scan' %}
+  runningRuns.push({{ run.id }});
+  {% endif %}
+  {% endfor %}
+  if (runningRuns.length === 0) return;
+  var runId = runningRuns[0];
+  var panel = document.getElementById('azureProgressPanel');
+  var runIdEl = document.getElementById('azureRunId');
+  panel.style.display = 'block';
+  runIdEl.textContent = runId;
+  document.getElementById('azureScanBtn').disabled = true;
+
+  function poll() {
+    fetch('/admin/geoop-import/scan-azure/progress/' + runId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        document.getElementById('ap-blobs').textContent = (d.blobs_scanned||0).toLocaleString();
+        document.getElementById('ap-files').textContent = (d.files_processed||0).toLocaleString();
+        document.getElementById('ap-linked').textContent = (d.attachments_linked||0).toLocaleString();
+        document.getElementById('ap-dupes').textContent = (d.skipped_duplicate||0).toLocaleString();
+        document.getElementById('ap-errors').textContent = (d.errors||0).toLocaleString();
+        if (d.status === 'running') {
+          setTimeout(poll, 3000);
+        } else {
+          panel.querySelector('.alert').className = d.status === 'completed'
+            ? 'alert alert-success py-2 small mb-2'
+            : 'alert alert-danger py-2 small mb-2';
+          panel.querySelector('.alert strong').textContent =
+            d.status === 'completed' ? 'Azure Blob scan complete' : 'Azure Blob scan failed';
+          var spinner = panel.querySelector('.spinner-border');
+          if (spinner) spinner.remove();
+          document.getElementById('azureScanBtn').disabled = false;
+        }
+      })
+      .catch(function() { setTimeout(poll, 5000); });
+  }
+  poll();
+})();
 </script>
 {% endblock %}

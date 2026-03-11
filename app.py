@@ -156,8 +156,11 @@ def allowed_file(filename):
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=60000")
     return conn
 
 
@@ -963,10 +966,20 @@ def inject_globals():
     }
 
 
+import threading as _threading
+_db_initialized = False
+_db_init_lock = _threading.Lock()
+
 @app.before_request
 def _ensure_db():
-    init_db()
-    _migrate_update_builder()
+    global _db_initialized
+    if _db_initialized:
+        return
+    with _db_init_lock:
+        if not _db_initialized:
+            init_db()
+            _migrate_update_builder()
+            _db_initialized = True
 
 
 # -------- Helpers --------
@@ -9069,6 +9082,52 @@ def geoop_import_scan_attachments():
     return redirect(url_for("geoop_import_page"))
 
 
+def _run_azure_scan_background(sas_url, run_id):
+    import logging
+    try:
+        def _upload_to_storage_bg(data, blob_name, content_type):
+            _save_bytes_to_storage(data, blob_name, content_type)
+
+        result = _geoop.scan_azure_blob_attachments(
+            sas_url, upload_fn=_upload_to_storage_bg, run_id=run_id
+        )
+
+        conn = db()
+        try:
+            final_status = "completed" if result.get("status") == "completed" else "failed"
+            conn.execute("""
+                UPDATE geoop_import_runs SET status=?,
+                notes_imported=?, errors=?, completed_at=?,
+                diagnostics_json=?
+                WHERE id=?
+            """, (
+                final_status,
+                result.get("attachments_linked", 0), result.get("errors", 0),
+                _geoop._now(), json.dumps(result), run_id
+            ))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logging.error("Azure Blob scan background job failed: %s", e, exc_info=True)
+        try:
+            fconn = db()
+            try:
+                fconn.execute(
+                    "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=?",
+                    (_geoop._now(), run_id)
+                )
+                fconn.commit()
+            finally:
+                fconn.close()
+        except Exception:
+            pass
+        progress = _geoop.get_azure_scan_progress(run_id)
+        if progress:
+            progress["status"] = "failed"
+            progress["error_message"] = str(e)[:500]
+
+
 @app.post("/admin/geoop-import/scan-azure")
 @admin_required
 def geoop_import_scan_azure():
@@ -9100,52 +9159,48 @@ def geoop_import_scan_azure():
         """, (ts, uid))
         run_id = cur.lastrowid
         conn.commit()
-
-        def _upload_to_storage(data, blob_name, content_type):
-            _save_bytes_to_storage(data, blob_name, content_type)
-
-        result = _geoop.scan_azure_blob_attachments(
-            sas_url, conn=conn, upload_fn=_upload_to_storage
-        )
-
-        conn.execute("""
-            UPDATE geoop_import_runs SET status='completed',
-            notes_imported=?, errors=?, completed_at=?,
-            diagnostics_json=?
-            WHERE id=?
-        """, (
-            result["attachments_linked"], result["errors"],
-            _geoop._now(), json.dumps(result), run_id
-        ))
-        conn.commit()
-
-        flash(
-            f"Azure Blob scan complete: {result['blobs_scanned']} blobs scanned, "
-            f"{result['files_processed']} files processed, "
-            f"{result['attachments_linked']} attachments linked to notes, "
-            f"{result['skipped_duplicate']} duplicates skipped, "
-            f"{result['skipped_no_match']} unmatched jobs, "
-            f"{result['skipped_no_note']} unmatched notes, "
-            f"{result['zip_files_processed']} zip archives extracted, "
-            f"{result['errors']} errors.",
-            "success"
-        )
     except Exception as e:
-        try:
-            if run_id:
-                conn.execute(
-                    "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=? AND status='running'",
-                    (_geoop._now(), run_id)
-                )
-                conn.commit()
-        except Exception:
-            pass
         import logging
-        logging.error("Azure Blob scan failed: %s", e, exc_info=True)
-        flash("Azure Blob scan failed. Check server logs for details.", "danger")
+        logging.error("Failed to create Azure scan run record: %s", e, exc_info=True)
+        flash("Failed to start Azure Blob scan. Check server logs.", "danger")
+        return redirect(url_for("geoop_import_page"))
     finally:
         conn.close()
+
+    import threading
+    t = threading.Thread(
+        target=_run_azure_scan_background,
+        args=(sas_url, run_id),
+        daemon=True,
+    )
+    t.start()
+
+    flash(f"Azure Blob scan started (run #{run_id}). Progress updates will appear below.", "info")
     return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/scan-azure/progress/<int:run_id>")
+@admin_required
+def geoop_import_scan_azure_progress(run_id):
+    progress = _geoop.get_azure_scan_progress(run_id)
+    if progress:
+        return jsonify(progress)
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT status, diagnostics_json FROM geoop_import_runs WHERE id=?", (run_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row:
+        result = {"status": row["status"]}
+        if row["diagnostics_json"]:
+            try:
+                result.update(json.loads(row["diagnostics_json"]))
+            except Exception:
+                pass
+        return jsonify(result)
+    return jsonify({"status": "not_found"}), 404
 
 
 @app.post("/admin/geoop-import/reset")
