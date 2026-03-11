@@ -1,0 +1,18 @@
+{% extends "mobile/base.html" %}
+{% block title %}Error — AxionX{% endblock %}
+{% block content %}
+<div style="padding:24px;text-align:center;min-height:60vh;display:flex;flex-direction:column;justify-content:center;align-items:center;">
+  <div style="font-size:3rem;margin-bottom:12px;">⚠</div>
+  <h4 style="font-weight:700;margin-bottom:8px;">Something went wrong</h4>
+  <p style="color:#6b7280;font-size:.9rem;max-width:400px;margin:0 auto 16px;">
+    The page <code>{{ path }}</code> couldn't be loaded. This has been logged and will be investigated.
+  </p>
+  <p style="color:#dc2626;font-size:.8rem;max-width:400px;margin:0 auto 20px;word-break:break-word;">
+    {{ error_message }}
+  </p>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+    <a href="/m/schedule/today" style="padding:10px 20px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:.9rem;">Go Home</a>
+    <a href="javascript:location.reload()" style="padding:10px 20px;background:#e5e7eb;color:#374151;border-radius:8px;text-decoration:none;font-size:.9rem;">Retry</a>
+  </div>
+</div>
+{% endblock %}

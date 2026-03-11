@@ -61,11 +61,33 @@ def add_security_headers(resp):
     return resp
 
 
+@app.errorhandler(404)
+def handle_404(e):
+    if _is_mobile_request():
+        return render_template("m/error.html", error_message="Page not found", path=request.path), 404
+    return render_template("error_500.html", error_message="Page not found", path=request.path), 404
+
+
+@app.errorhandler(405)
+def handle_405(e):
+    if request.method == "POST" and "/api/" not in request.path:
+        return redirect(request.path, code=303)
+    if "/api/" in request.path:
+        return jsonify({"error": "Method not allowed"}), 405
+    if _is_mobile_request():
+        return render_template("m/error.html", error_message="Method not allowed", path=request.path), 405
+    return render_template("error_500.html", error_message="Method not allowed", path=request.path), 405
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     tb = traceback.format_exc()
+    import sys
+    print(f"[UNHANDLED EXCEPTION] {request.method} {request.path}\n{tb}", file=sys.stderr, flush=True)
     print(f"[UNHANDLED EXCEPTION] {request.method} {request.path}\n{tb}", flush=True)
-    return "Internal Server Error", 500
+    if _is_mobile_request():
+        return render_template("m/error.html", error_message="An unexpected error occurred. Please try again or contact support.", path=request.path), 500
+    return render_template("error_500.html", error_message="An unexpected error occurred. Please try again or contact support.", path=request.path), 500
 
 
 # ── Azure Blob Storage ─────────────────────────────────────────────────────────
@@ -2174,7 +2196,7 @@ def login_post():
     session["role"] = user["role"]
     audit("auth", user["id"], "login_success", f"Login: {user['full_name']}", {"ip": ip})
     next_url = request.args.get("next", "").strip()
-    return redirect(next_url if next_url and next_url.startswith("/") else url_for("jobs_list"))
+    return redirect(next_url if next_url and next_url.startswith("/") else url_for("jobs_list"), code=303)
 
 
 @app.get("/logout")
@@ -9977,8 +9999,8 @@ def m_login_post():
     session["user_name"] = user["full_name"]
     session["role"]      = user["role"]
     if next_path and next_path.startswith("/m/"):
-        return redirect(next_path)
-    return redirect(url_for("m_today"))
+        return redirect(next_path, code=303)
+    return redirect(url_for("m_today"), code=303)
 
 
 @app.get("/m/logout")

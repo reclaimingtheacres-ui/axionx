@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+{% block title %}Error — AxionX{% endblock %}
+{% block content %}
+<div class="container py-5" style="max-width:600px;text-align:center;">
+  <h2 style="font-weight:700;margin-bottom:12px;">Something went wrong</h2>
+  <p class="text-muted">
+    The page <code>{{ path }}</code> couldn't be loaded. This has been logged and will be investigated.
+  </p>
+  <p class="text-danger small" style="word-break:break-word;">{{ error_message }}</p>
+  <div class="d-flex gap-3 justify-content-center mt-4">
+    <a href="/" class="btn btn-primary">Go Home</a>
+    <a href="javascript:location.reload()" class="btn btn-outline-secondary">Retry</a>
+  </div>
+</div>
+{% endblock %}
