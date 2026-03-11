@@ -1334,18 +1334,27 @@ def scan_azure_blob_attachments(container_sas_url, conn=None, upload_fn=None):
         except Exception:
             stats["errors"] += 1
 
-    blob_list = container_client.list_blobs(name_starts_with="attachments/")
+    blob_list = container_client.list_blobs(name_starts_with=None)
     for blob in blob_list:
         stats["blobs_scanned"] += 1
         blob_name = blob.name
 
         parts = blob_name.replace("\\", "/").split("/")
-        if len(parts) < 4 or parts[0] != "attachments":
+        if len(parts) < 4:
             stats["skipped_no_match"] += 1
             continue
 
-        geoop_job_id = parts[1]
-        geoop_note_id = parts[2]
+        att_idx = None
+        for i, p in enumerate(parts):
+            if p == "attachments":
+                att_idx = i
+                break
+        if att_idx is None or len(parts) < att_idx + 4:
+            stats["skipped_no_match"] += 1
+            continue
+
+        geoop_job_id = parts[att_idx + 1]
+        geoop_note_id = parts[att_idx + 2]
 
         if not geoop_job_id or not geoop_note_id:
             stats["skipped_no_match"] += 1
@@ -1362,20 +1371,25 @@ def scan_azure_blob_attachments(container_sas_url, conn=None, upload_fn=None):
             stats["skipped_no_match"] += 1
             continue
 
+        blob_basename = os.path.basename(blob.name)
+        is_zip = blob_basename.lower().endswith(".zip")
+
         try:
             blob_client = container_client.get_blob_client(blob_name)
-            stream = blob_client.download_blob()
-            blob_data = stream.readall()
+            download_stream = blob_client.download_blob()
         except Exception:
             stats["errors"] += 1
             continue
 
         stats["files_processed"] += 1
 
-        blob_basename = os.path.basename(blob.name)
-        if blob_basename.lower().endswith(".zip"):
+        if is_zip:
             try:
-                with zipfile.ZipFile(io.BytesIO(blob_data)) as zf:
+                buf = io.BytesIO()
+                for chunk in download_stream.chunks():
+                    buf.write(chunk)
+                buf.seek(0)
+                with zipfile.ZipFile(buf) as zf:
                     stats["zip_files_processed"] += 1
                     for entry in zf.namelist():
                         if entry.endswith("/"):
@@ -1392,8 +1406,11 @@ def scan_azure_blob_attachments(container_sas_url, conn=None, upload_fn=None):
                         except Exception:
                             stats["errors"] += 1
             except zipfile.BadZipFile:
+                buf.seek(0)
+                blob_data = buf.read()
                 _process_file(blob_data, filename, geoop_job_id, geoop_note_id, blob_name)
         else:
+            blob_data = download_stream.readall()
             _process_file(blob_data, filename, geoop_job_id, geoop_note_id, blob_name)
 
         if stats["files_processed"] % 100 == 0:
