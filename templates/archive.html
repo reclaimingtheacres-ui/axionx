@@ -1,9 +1,12 @@
 {% extends "layout.html" %}
-{% block title %}Axion | Archive{% endblock %}
-{% block page_title %}Archive & Data Management{% endblock %}
+{% block title %}Axionx | Settings & Resources – Archive{% endblock %}
+{% block page_title %}Settings & Resources{% endblock %}
 
 {% block content %}
 <style>
+.sr-nav .nav-link{color:var(--muted);font-size:.9rem;font-weight:500;padding:.45rem 1.1rem;border-radius:8px}
+.sr-nav .nav-link.active{background:var(--accent);color:#fff}
+.sr-nav .nav-link:not(.active):hover{background:var(--hover);color:var(--text)}
 .arch-stats{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap}
 .arch-stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 20px;min-width:140px}
 .arch-stat .val{font-size:1.6rem;font-weight:800;color:var(--heading)}
@@ -24,6 +27,20 @@
 .arch-filter-bar input,.arch-filter-bar select{font-size:.85rem}
 .arch-confirm{background:#fef3c7;border:1.5px solid #f59e0b50;border-radius:10px;padding:16px 20px;margin-bottom:16px}
 </style>
+
+<div class="mb-4" style="overflow-x:auto">
+  <ul class="nav sr-nav gap-1 flex-nowrap" style="min-width:max-content">
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#job-numbers">Job Number Settings</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#import-data">Import & Data</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#booking-types">Booking Types</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#tow-operators">Tow Operators</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#auction-yards">Auction Yards</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#ai-settings">AI Settings</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#change-password">Change Password</a></li>
+    <li class="nav-item"><a class="nav-link" href="/admin/settings#data-management">Data Management</a></li>
+    <li class="nav-item"><a class="nav-link active" href="/admin/archive">Archive</a></li>
+  </ul>
+</div>
 
 {% if archive_stats %}
 <div class="arch-stats">

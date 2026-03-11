@@ -351,17 +351,13 @@
           <div class="hint">Admin</div>
           <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
           <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
-          <button type="button" class="ax-contacts-btn{% if request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/resources') %} active{% endif %}" id="ax-contacts-btn">
+          <button type="button" class="ax-contacts-btn{% if request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') %} active{% endif %}" id="ax-contacts-btn">
             Contacts
             <svg class="ax-contacts-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <a href="/assign" class="{% if request.path.startswith('/assign') %}active{% endif %}">Assignment Board</a>
           <a href="/reports/monthly" class="{% if request.path.startswith('/reports') %}active{% endif %}">Reports</a>
-
-          <div class="hint">Settings & Resources</div>
-          <a href="/admin/archive" class="{% if request.path.startswith('/admin/archive') %}active{% endif %}">Archive</a>
-          <a href="/admin/settings" class="{% if request.path.startswith('/admin/settings') or request.path.startswith('/import') %}active{% endif %}">Settings</a>
-          <a href="/resources" class="{% if request.path == '/resources' %}active{% endif %}">Resources</a>
+          <a href="/admin/settings" class="{% if request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %}active{% endif %}">Settings & Resources</a>
         {% endif %}
 
         {% if session.get('role') in ('agent', 'both') %}
@@ -494,8 +490,8 @@
     <a href="/clients"{% if request.path.startswith('/clients') %} class="active"{% endif %}>Clients</a>
     <a href="/customers"{% if request.path.startswith('/customers') %} class="active"{% endif %}>Customers</a>
     <a href="/users"{% if request.path.startswith('/users') %} class="active"{% endif %}>Staff</a>
-    <a href="/resources?section=tow"{% if request.path.startswith('/resources') %} class="active"{% endif %}>Tow Operators</a>
-    <a href="/resources?section=yards"{% if request.path.startswith('/resources') %} class="active"{% endif %}>Auction Yards</a>
+    <a href="/admin/settings#tow-operators">Tow Operators</a>
+    <a href="/admin/settings#auction-yards">Auction Yards</a>
   </div>
   <script>
   (function() {
