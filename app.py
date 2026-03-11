@@ -8221,6 +8221,7 @@ def geoop_import_stage():
     notes_file = request.files.get("notes_csv")
 
     conn = db()
+    run_id = None
     try:
         _geoop.ensure_staging_tables(conn)
         ts = _geoop._now()
@@ -8236,6 +8237,7 @@ def geoop_import_stage():
 
         total_jobs = 0
         total_notes = 0
+        notes_result = None
 
         if jobs_file and jobs_file.filename:
             jobs_path = os.path.join(_geoop.GEOOP_IMPORT_DIR, f"jobs_{run_id}.csv")
@@ -8246,8 +8248,8 @@ def geoop_import_stage():
         if notes_file and notes_file.filename:
             notes_path = os.path.join(_geoop.GEOOP_IMPORT_DIR, f"notes_{run_id}.csv")
             notes_file.save(notes_path)
-            r = _geoop.stage_notes_csv(notes_path, conn)
-            total_notes = r["inserted"]
+            notes_result = _geoop.stage_notes_csv(notes_path, conn)
+            total_notes = notes_result["inserted"]
 
         _geoop.build_file_manifest_from_csv(conn)
 
@@ -8259,14 +8261,32 @@ def geoop_import_stage():
         """, (total_jobs, total_notes, json.dumps(diag), _geoop._now(), run_id))
         conn.commit()
 
-        flash(f"Staging complete: {total_jobs} jobs and {total_notes} notes staged.", "success")
+        notes_breakdown = notes_result.get("breakdown", {}) if notes_result else {}
+
+        msg = f"Staging complete: {total_jobs} jobs and {total_notes} notes staged."
+        if notes_breakdown:
+            parts = []
+            for k, v in notes_breakdown.items():
+                if v > 0:
+                    parts.append(f"{k}: {v}")
+            if parts:
+                msg += f" Skips: {', '.join(parts)}."
+            try:
+                rej_count = conn.execute("SELECT COUNT(*) c FROM geoop_notes_rejects").fetchone()["c"]
+                if rej_count:
+                    msg += f" {rej_count} rejected rows logged for review."
+            except Exception:
+                pass
+
+        flash(msg, "success")
     except Exception as e:
         try:
-            conn.execute(
-                "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=? AND status='running'",
-                (_geoop._now(), run_id)
-            )
-            conn.commit()
+            if run_id:
+                conn.execute(
+                    "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=? AND status='running'",
+                    (_geoop._now(), run_id)
+                )
+                conn.commit()
         except Exception:
             pass
         flash(f"Staging failed: {e}", "danger")
@@ -8370,6 +8390,41 @@ def geoop_import_execute():
     finally:
         conn.close()
     return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/rejects")
+@admin_required
+def geoop_import_rejects():
+    conn = db()
+    try:
+        _geoop._ensure_rejects_table(conn)
+        summary = conn.execute("""
+            SELECT reject_reason, COUNT(*) c FROM geoop_notes_rejects GROUP BY reject_reason ORDER BY c DESC
+        """).fetchall()
+
+        samples = {}
+        for row in summary:
+            reason = row["reject_reason"]
+            rows = conn.execute("""
+                SELECT csv_row_number, geoop_job_id, geoop_note_id, reject_reason,
+                       raw_note_description, raw_fields_json
+                FROM geoop_notes_rejects WHERE reject_reason = ? LIMIT 20
+            """, (reason,)).fetchall()
+            samples[reason] = [dict(r) for r in rows]
+
+        total = conn.execute("SELECT COUNT(*) c FROM geoop_notes_rejects").fetchone()["c"]
+        staged = conn.execute("SELECT COUNT(*) c FROM geoop_staging_notes").fetchone()["c"]
+    except Exception:
+        return jsonify({"error": "Rejects table not found. Run staging first.", "total_rejects": 0, "total_staged": 0, "summary": [], "samples": {}})
+    finally:
+        conn.close()
+
+    return jsonify({
+        "total_rejects": total,
+        "total_staged": staged,
+        "summary": [dict(r) for r in summary],
+        "samples": samples,
+    })
 
 
 @app.post("/admin/geoop-import/scan-attachments")

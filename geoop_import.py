@@ -426,6 +426,22 @@ def _insert_job_batch(conn, batch):
     return inserted, skipped
 
 
+def _ensure_rejects_table(conn):
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS geoop_notes_rejects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        csv_row_number INTEGER,
+        geoop_job_id TEXT,
+        geoop_note_id TEXT,
+        reject_reason TEXT NOT NULL,
+        raw_note_description TEXT,
+        raw_fields_json TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+    conn.commit()
+
+
 def stage_notes_csv(csv_path, conn=None):
     close = False
     if conn is None:
@@ -433,65 +449,134 @@ def stage_notes_csv(csv_path, conn=None):
         close = True
 
     ensure_staging_tables(conn)
+    _ensure_rejects_table(conn)
+    conn.execute("DELETE FROM geoop_notes_rejects")
+    conn.commit()
     ts = _now()
+
     inserted = 0
-    skipped = 0
-    errors = 0
+    skip_missing_job_id = 0
+    skip_missing_note_id = 0
+    skip_duplicate_note_id = 0
+    skip_csv_error = 0
+    total_read = 0
 
-    with open(csv_path, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
-        batch = []
-        for row in reader:
-            geoop_job_id = (row.get("job_id") or "").strip()
-            geoop_note_id = (row.get("note_id") or "").strip()
-            if not geoop_job_id or not geoop_note_id:
-                errors += 1
-                continue
+    seen_note_ids = set()
 
-            batch.append((
-                geoop_job_id,
-                geoop_note_id,
-                row.get("account_id", ""),
-                row.get("job_reference", ""),
-                row.get("note_description", ""),
-                row.get("files_location", ""),
-                row.get("file_name", ""),
-                row.get("file_date", ""),
-                ts,
-            ))
+    existing = conn.execute("SELECT geoop_note_id FROM geoop_staging_notes").fetchall()
+    for r in existing:
+        seen_note_ids.add(r[0] if isinstance(r, tuple) else r["geoop_note_id"])
 
-            if len(batch) >= 2000:
-                ins, skip = _insert_note_batch(conn, batch)
-                inserted += ins
-                skipped += skip
-                batch = []
+    reject_batch = []
 
-        if batch:
-            ins, skip = _insert_note_batch(conn, batch)
-            inserted += ins
-            skipped += skip
+    def _flush_rejects():
+        nonlocal reject_batch
+        if reject_batch:
+            conn.executemany("""
+                INSERT INTO geoop_notes_rejects
+                    (csv_row_number, geoop_job_id, geoop_note_id, reject_reason, raw_note_description, raw_fields_json, created_at)
+                VALUES (?,?,?,?,?,?,?)
+            """, reject_batch)
+            conn.commit()
+            reject_batch = []
 
-    if close:
-        conn.close()
-    return {"inserted": inserted, "skipped": skipped, "errors": errors}
-
-
-def _insert_note_batch(conn, batch):
-    inserted = 0
-    skipped = 0
-    for row in batch:
+    def _reject(row_num, job_id, note_id, reason, desc, row_dict):
+        raw_json = ""
         try:
-            conn.execute("""
+            import json as _j
+            raw_json = _j.dumps({k: (v[:200] if isinstance(v, str) else v) for k, v in (row_dict or {}).items()})
+        except Exception:
+            pass
+        reject_batch.append((row_num, job_id or "", note_id or "", reason, (desc or "")[:500], raw_json, ts))
+        if len(reject_batch) >= 500:
+            _flush_rejects()
+
+    insert_batch = []
+
+    def _flush_inserts():
+        nonlocal insert_batch, inserted, skip_duplicate_note_id
+        for row in insert_batch:
+            cur = conn.execute("""
                 INSERT OR IGNORE INTO geoop_staging_notes (
                     geoop_job_id, geoop_note_id, geoop_account_id, job_reference,
                     note_description, files_location, file_name, file_date, created_at
                 ) VALUES (?,?,?,?,?,?,?,?,?)
             """, row)
-            inserted += 1
-        except sqlite3.IntegrityError:
-            skipped += 1
-    conn.commit()
-    return inserted, skipped
+            if cur.rowcount == 1:
+                inserted += 1
+            else:
+                skip_duplicate_note_id += 1
+                _reject(0, row[0], row[1], "duplicate_note_id_db", row[4], None)
+        conn.commit()
+        insert_batch = []
+
+    try:
+        with open(csv_path, 'r', encoding='utf-8-sig', errors='replace') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                total_read += 1
+                row_num = total_read + 1
+
+                geoop_job_id = (row.get("job_id") or "").strip()
+                geoop_note_id = (row.get("note_id") or "").strip()
+                note_desc = row.get("note_description", "")
+
+                if not geoop_job_id:
+                    skip_missing_job_id += 1
+                    _reject(row_num, geoop_job_id, geoop_note_id, "missing_job_id", note_desc, row)
+                    continue
+                if not geoop_note_id:
+                    skip_missing_note_id += 1
+                    _reject(row_num, geoop_job_id, geoop_note_id, "missing_note_id", note_desc, row)
+                    continue
+
+                if geoop_note_id in seen_note_ids:
+                    skip_duplicate_note_id += 1
+                    _reject(row_num, geoop_job_id, geoop_note_id, "duplicate_note_id", note_desc, row)
+                    continue
+                seen_note_ids.add(geoop_note_id)
+
+                insert_batch.append((
+                    geoop_job_id,
+                    geoop_note_id,
+                    row.get("account_id", ""),
+                    row.get("job_reference", ""),
+                    note_desc,
+                    row.get("files_location", ""),
+                    row.get("file_name", ""),
+                    row.get("file_date", ""),
+                    ts,
+                ))
+
+                if len(insert_batch) >= 2000:
+                    _flush_inserts()
+
+        if insert_batch:
+            _flush_inserts()
+        _flush_rejects()
+    except Exception as e:
+        skip_csv_error += 1
+        try:
+            _flush_rejects()
+        except Exception:
+            pass
+        raise
+    finally:
+        if close:
+            conn.close()
+
+    return {
+        "total_read": total_read,
+        "inserted": inserted,
+        "skipped": skip_missing_job_id + skip_missing_note_id + skip_duplicate_note_id,
+        "errors": skip_csv_error,
+        "breakdown": {
+            "missing_job_id": skip_missing_job_id,
+            "missing_note_id": skip_missing_note_id,
+            "duplicate_note_id": skip_duplicate_note_id,
+            "csv_parse_error": skip_csv_error,
+        }
+    }
 
 
 def scan_attachment_dirs(dirs, conn=None):
@@ -1115,6 +1200,10 @@ def reset_staging(conn=None):
     conn.execute("DELETE FROM geoop_staging_jobs")
     conn.execute("DELETE FROM geoop_staging_notes")
     conn.execute("DELETE FROM geoop_staging_files")
+    try:
+        conn.execute("DELETE FROM geoop_notes_rejects")
+    except Exception:
+        pass
     conn.commit()
 
     if close:
