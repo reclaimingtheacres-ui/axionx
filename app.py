@@ -41,7 +41,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="None",
 )
 
-DB_PATH = os.getenv("DB_PATH", "axion.db")
+DB_PATH = os.path.abspath(os.getenv("DB_PATH", "axion.db"))
 
 UPLOAD_FOLDER = "uploads"
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv", "heic", "heif"}
@@ -162,6 +162,11 @@ def db():
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA busy_timeout=60000")
     return conn
+
+
+def now_ts():
+    melb = pytz.timezone("Australia/Melbourne")
+    return datetime.now(melb).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def add_column_if_missing(cur_or_conn, table, col, coltype):
@@ -943,6 +948,10 @@ def _migrate_update_builder():
     conn.close()
 
 
+init_db()
+_migrate_update_builder()
+
+
 @app.context_processor
 def inject_globals():
     pending_drafts = 0
@@ -966,26 +975,7 @@ def inject_globals():
     }
 
 
-import threading as _threading
-_db_initialized = False
-_db_init_lock = _threading.Lock()
-
-@app.before_request
-def _ensure_db():
-    global _db_initialized
-    if _db_initialized:
-        return
-    with _db_init_lock:
-        if not _db_initialized:
-            init_db()
-            _migrate_update_builder()
-            _db_initialized = True
-
-
 # -------- Helpers --------
-def now_ts():
-    melb = pytz.timezone("Australia/Melbourne")
-    return datetime.now(melb).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _write_schedule_history(cur, schedule_id, job_id, action,
@@ -9122,10 +9112,10 @@ def _run_azure_scan_background(sas_url, run_id):
                 fconn.close()
         except Exception:
             pass
-        progress = _geoop.get_azure_scan_progress(run_id)
-        if progress:
-            progress["status"] = "failed"
-            progress["error_message"] = str(e)[:500]
+        _geoop._persist_scan_progress(run_id, {
+            "status": "failed",
+            "error_message": str(e)[:500],
+        })
 
 
 @app.post("/admin/geoop-import/scan-azure")
@@ -9185,21 +9175,6 @@ def geoop_import_scan_azure_progress(run_id):
     progress = _geoop.get_azure_scan_progress(run_id)
     if progress:
         return jsonify(progress)
-    conn = db()
-    try:
-        row = conn.execute(
-            "SELECT status, diagnostics_json FROM geoop_import_runs WHERE id=?", (run_id,)
-        ).fetchone()
-    finally:
-        conn.close()
-    if row:
-        result = {"status": row["status"]}
-        if row["diagnostics_json"]:
-            try:
-                result.update(json.loads(row["diagnostics_json"]))
-            except Exception:
-                pass
-        return jsonify(result)
     return jsonify({"status": "not_found"}), 404
 
 

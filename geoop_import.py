@@ -16,8 +16,11 @@ GEOOP_IMPORT_DIR = os.path.join(UPLOAD_FOLDER, "geoop_import")
 os.makedirs(GEOOP_IMPORT_DIR, exist_ok=True)
 
 
-def _db(db_path="axion.db"):
-    conn = sqlite3.connect(db_path, timeout=30)
+_DB_PATH = os.path.abspath(os.getenv("DB_PATH", "axion.db"))
+
+
+def _db(db_path=None):
+    conn = sqlite3.connect(db_path or _DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -1251,14 +1254,45 @@ def _retry_commit(conn, retries=_RETRY_MAX):
             raise
 
 
-_azure_scan_progress = {}
-
-
 def get_azure_scan_progress(run_id):
-    return _azure_scan_progress.get(run_id)
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT status, diagnostics_json FROM geoop_import_runs WHERE id=?", (run_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    result = {"status": row["status"]}
+    if row["diagnostics_json"]:
+        try:
+            result.update(json.loads(row["diagnostics_json"]))
+        except Exception:
+            pass
+    return result
 
 
-def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None):
+def _persist_scan_progress(run_id, stats):
+    if not run_id:
+        return
+    conn = _db()
+    try:
+        _retry_execute(conn, """
+            UPDATE geoop_import_runs SET
+            diagnostics_json=?, notes_imported=?, errors=?
+            WHERE id=?
+        """, (json.dumps(stats), stats.get("attachments_linked", 0),
+              stats.get("errors", 0), run_id))
+        _retry_commit(conn)
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
+def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
+                                 blob_prefix="attachments/"):
     import time
     from azure.storage.blob import ContainerClient
 
@@ -1310,8 +1344,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None):
         "status": "running",
     }
 
-    if run_id:
-        _azure_scan_progress[run_id] = stats
+    _persist_scan_progress(run_id, stats)
 
     write_batch = []
 
@@ -1403,7 +1436,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None):
         write_batch.clear()
 
     try:
-        blob_list = container_client.list_blobs(name_starts_with=None)
+        blob_list = container_client.list_blobs(name_starts_with=blob_prefix)
         for blob in blob_list:
             stats["blobs_scanned"] += 1
             blob_name = blob.name
@@ -1485,6 +1518,9 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None):
             if len(write_batch) >= 25:
                 _flush_batch()
 
+            if stats["blobs_scanned"] % 50 == 0:
+                _persist_scan_progress(run_id, stats)
+
         _flush_batch()
         stats["status"] = "completed"
 
@@ -1493,8 +1529,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None):
         stats["status"] = "failed"
         stats["error_message"] = str(e)[:500]
 
-    if run_id:
-        _azure_scan_progress[run_id] = stats
+    _persist_scan_progress(run_id, stats)
 
     return stats
 

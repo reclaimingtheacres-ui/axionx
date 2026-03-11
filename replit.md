@@ -203,6 +203,14 @@ Axion Prototype is a Flask-based field operations management application designe
 - `job_detail.html`: Linked customer rows show primary phone with Call + SMS buttons. Client phone shows Call button.
 - Mobile: Already had Call/SMS on job detail; now consistent across all platforms.
 
+## Infrastructure & Deployment
+
+- **Database**: SQLite (`axion.db`). Both `app.py` and `geoop_import.py` resolve to the same absolute path via `os.path.abspath(os.getenv("DB_PATH", "axion.db"))`. All connections use WAL mode, `synchronous=NORMAL`, and `busy_timeout=60000`.
+- **Schema init**: `init_db()` and `_migrate_update_builder()` run at module load time (not in request handlers). `now_ts()` is defined before `init_db()` to avoid NameError on fresh databases.
+- **Gunicorn**: Single worker (`--workers 1`) in both Replit (port 5000) and Azure deployment (`startup.sh`, port 8000). Required while SQLite is the database engine.
+- **Azure Blob scan progress**: Persisted to `geoop_import_runs.diagnostics_json` column via `_persist_scan_progress()`. No in-memory state — safe across app restarts and worker recycles. Progress updated every 50 blobs during scan.
+- **Azure Blob listing**: Uses `list_blobs(name_starts_with=blob_prefix)` with default prefix `"attachments/"`. Restricts scan to relevant blobs only.
+
 ## External Dependencies
 
 - **Database**: SQLite
