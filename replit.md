@@ -206,7 +206,7 @@ Axion Prototype is a Flask-based field operations management application designe
 ## Infrastructure & Deployment
 
 - **Database**: SQLite. Both `app.py` and `geoop_import.py` resolve to the same absolute path via `os.path.abspath(os.getenv("DB_PATH", "axion.db"))`. On Azure, `startup.sh` exports `DB_PATH=/home/site/data/axion.db` (persistent mounted storage) before launching gunicorn, since Oryx extracts the app to a temporary `/tmp/` path. On Replit, defaults to `./axion.db`. All connections use WAL mode, `synchronous=NORMAL`, and `busy_timeout=60000`.
-- **Schema init**: `init_db()` and `_migrate_update_builder()` run at module load time (not in request handlers). `now_ts()` is defined before `init_db()` to avoid NameError on fresh databases.
+- **Schema init**: `init_db()` and `_migrate_update_builder()` run lazily on first `db()` call via `_lazy_init()` with thread-safe double-check locking. Not at module import time (avoids crash if DB is unavailable during worker boot) and not in `@app.before_request` (avoids per-request overhead). `now_ts()` is defined before `init_db()` to avoid NameError on fresh databases.
 - **Gunicorn**: Single worker (`--workers 1`) in both Replit (port 5000) and Azure deployment (`startup.sh`, port 8000). Required while SQLite is the database engine.
 - **Azure Blob scan progress**: Persisted to `geoop_import_runs.diagnostics_json` column via `_persist_scan_progress()`. No in-memory state — safe across app restarts and worker recycles. Progress updated every 50 blobs during scan.
 - **Azure Blob listing**: Uses `list_blobs(name_starts_with=blob_prefix)` with default prefix `"attachments/"`. Restricts scan to relevant blobs only.

@@ -155,7 +155,23 @@ def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+_db_initialized = False
+_db_init_lock = threading.Lock()
+
+
+def _lazy_init():
+    global _db_initialized
+    if _db_initialized:
+        return
+    with _db_init_lock:
+        if not _db_initialized:
+            init_db()
+            _migrate_update_builder()
+            _db_initialized = True
+
+
 def db():
+    _lazy_init()
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -946,10 +962,6 @@ def _migrate_update_builder():
 
     conn.commit()
     conn.close()
-
-
-init_db()
-_migrate_update_builder()
 
 
 @app.context_processor
