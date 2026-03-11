@@ -194,10 +194,10 @@
         </div>
 
         <hr style="border-color:var(--border)">
-        <h6 class="mb-2 fw-semibold small" style="color:var(--text)">Additional Notes <span class="text-muted fw-normal">(optional)</span></h6>
-        <textarea id="agent_notes" class="form-control form-control-sm" rows="3"
-                  placeholder="Any additional observations or notes to include in the narrative…">{{ draft.agent_notes or '' }}</textarea>
-        <div class="form-text" style="color:var(--muted);font-size:.75rem">These notes will be incorporated into the generated narrative.</div>
+        <h6 class="mb-2 fw-semibold small" style="color:var(--text)">Attendance Notes</h6>
+        <textarea id="agent_notes" class="form-control form-control-sm" rows="5"
+                  placeholder="Describe what happened during the attendance — occupant contact, customer interaction, confirmations, observations. The AI will rewrite your notes into a professional report.">{{ draft.agent_notes or '' }}</textarea>
+        <div class="form-text" style="color:var(--muted);font-size:.75rem">Your typed notes drive the narrative. The AI will polish them into SWPI style while preserving every fact you enter. Leave blank to generate from form selections only.</div>
 
         <hr style="border-color:var(--border)">
         <h6 class="mb-2 fw-semibold small" style="color:var(--text)">

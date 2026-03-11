@@ -7732,7 +7732,7 @@ def _build_swpi_prompt(inputs, job_ctx):
     sms_sentence = f"Our agent also forwarded an SMS to {phone_used}." if sms_sent and phone_used else (
         "Our agent also forwarded an SMS to the customer." if sms_sent else "")
 
-    poc_sentence = f"This constitutes {poc} point{'s' if poc != 1 else ''} of contact."
+    poc_sentence = f"This attendance constitutes {poc} point{'s' if poc != 1 else ''} of contact."
     eta_sentence = f"ETA next attendance: {eta_date}."
 
     fixed_parts = []
@@ -7745,17 +7745,50 @@ def _build_swpi_prompt(inputs, job_ctx):
         fixed_parts.append(sms_sentence)
     if neighbour:
         fixed_parts.append(neighbour)
-    if agent_notes:
-        fixed_parts.append(f"The agent noted: {agent_notes}")
     photos_count = inputs.get("photos_count", 0)
     if photos_count:
         fixed_parts.append(f"{photos_count} photo(s) were taken on-site and attached to this update for reference.")
 
     fixed_block = "\n".join(f"- {s}" for s in fixed_parts)
 
-    neighbour_rule = "12. Do NOT mention any neighbour interaction, interview, or conversation. No neighbour content was provided." if not neighbour else "12. Include the neighbour content exactly as provided in the fixed sentences. Do not expand or invent additional neighbour details."
+    has_notes = bool(agent_notes)
 
-    prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
+    if has_notes:
+        prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
+Your task is to write a single paragraph attendance update in SWPI's house style.
+
+The agent has provided typed attendance notes describing what occurred during this visit. Your job is to rewrite those notes into a clean, professional narrative in third person, preserving every fact the agent recorded. Do not omit, invent, or alter any detail from the agent's notes.
+
+MANDATORY RULES:
+1. The narrative MUST begin with EXACTLY this sentence (copy it word for word, do not alter it):
+   {opening}
+2. Continue in third person throughout. Use "our agent" (lowercase after first use) for subsequent mentions.
+3. British/Australian spelling. No acronyms.
+4. Single block of continuous prose — no line breaks, no bullet points, no headings, no labels.
+5. The FIXED SENTENCES below must appear in the output VERBATIM — do not reword, summarise, or paraphrase them. Weave them into the narrative in order.
+6. The AGENT'S ATTENDANCE NOTES below are the primary source of narrative content. Rewrite them into polished professional prose while preserving every fact, person, interaction, confirmation, and observation recorded by the agent. Do not add any events, persons, or outcomes not present in the notes.
+7. End the narrative with EXACTLY these two closing sentences (copy word for word, on the same line as the rest):
+   {poc_sentence} {eta_sentence}
+8. Do NOT invent, assume, or fabricate any events, interactions, persons, or observations not present in either the fixed sentences or the agent's notes.
+9. The points of contact total is {poc}. Do not recalculate or change this number.
+10. Do NOT add any labels, headings, or category prefixes (e.g. "Security:", "Note:", "Actions:") anywhere in the output.
+11. Do NOT add a subject line, title, or reference number before the narrative.
+12. Do NOT mention neighbours, occupant interactions, customer conversations, third-party responses, or any other event unless it is explicitly described in the agent's notes or fixed sentences below.
+
+FIXED SENTENCES (include each one verbatim, woven into the narrative):
+{fixed_block}
+
+AGENT'S ATTENDANCE NOTES (rewrite into professional prose, preserving all facts):
+{agent_notes}
+
+MANDATORY CLOSING (copy exactly):
+{poc_sentence} {eta_sentence}
+
+Write the complete narrative now. Start with the mandatory opening, incorporate the fixed sentences verbatim, rewrite the agent's notes into professional third-person prose preserving every fact, and end with the mandatory closing."""
+    else:
+        neighbour_rule = "12. Do NOT mention any neighbour interaction, interview, or conversation. No neighbour content was provided." if not neighbour else "12. Include the neighbour content exactly as provided in the fixed sentences. Do not expand or invent additional neighbour details."
+
+        prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
 Your task is to write a single paragraph attendance update in SWPI's house style.
 
 MANDATORY RULES:
@@ -7765,16 +7798,15 @@ MANDATORY RULES:
 3. British/Australian spelling. No acronyms.
 4. Single block of continuous prose — no line breaks, no bullet points, no headings, no labels.
 5. Copy each fixed sentence below VERBATIM into the output. Do not reword, summarise, elaborate, or paraphrase any fixed sentence. Do NOT prefix them with labels such as "Security:" or "Note:".
-6. If an agent-note fixed sentence is provided below, include it exactly as written. Do not expand, interpret, or add to it.
-7. End the narrative with EXACTLY these two closing sentences (copy word for word, on the same line as the rest):
+6. End the narrative with EXACTLY these two closing sentences (copy word for word, on the same line as the rest):
    {poc_sentence} {eta_sentence}
-8. Do NOT invent, assume, or fabricate any events, interactions, or observations not listed below. Only use information explicitly provided.
-9. The points of contact total is {poc}. Do not recalculate or change this number.
-10. Do NOT add any labels, headings, or category prefixes (e.g. "Security:", "Note:", "Actions:") anywhere in the output.
-11. Do NOT add a subject line, title, or reference number before the narrative.
+7. Do NOT invent, assume, or fabricate any events, interactions, or observations not listed below. Only use information explicitly provided.
+8. The points of contact total is {poc}. Do not recalculate or change this number.
+9. Do NOT add any labels, headings, or category prefixes (e.g. "Security:", "Note:", "Actions:") anywhere in the output.
+10. Do NOT add a subject line, title, or reference number before the narrative.
 {neighbour_rule}
 13. STRICT DETERMINISM: The output must contain ONLY the mandatory opening sentence, the fixed sentences listed below, and the mandatory closing sentences — concatenated in order with only whitespace and necessary punctuation between them. Do NOT add any additional observations, actions, descriptions, events, or narrative filler. Do NOT describe the property, surroundings, weather, vehicle presence, occupancy signs, or any other detail unless it appears verbatim in the fixed sentences.
-14. FIELD-LEVEL PROHIBITION: If a calling card is not mentioned in the fixed sentences, do NOT mention a calling card. If a phone call is not mentioned, do NOT mention a phone call. If SMS is not mentioned, do NOT mention SMS. If neighbour interaction is not mentioned, do NOT mention neighbours. If agent notes are not mentioned, do NOT add any agent observations. Only narrate what is explicitly provided below — nothing more.
+14. FIELD-LEVEL PROHIBITION: If a calling card is not mentioned in the fixed sentences, do NOT mention a calling card. If a phone call is not mentioned, do NOT mention a phone call. If SMS is not mentioned, do NOT mention SMS. If neighbour interaction is not mentioned, do NOT mention neighbours. Only narrate what is explicitly provided below — nothing more.
 
 FIXED SENTENCES (include each one verbatim, in this order, after the opening):
 {fixed_block}
