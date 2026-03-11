@@ -24,29 +24,36 @@ struct LoginView: View {
     private let axionBlue = Color(red: 0.149, green: 0.388, blue: 0.922)
 
     var body: some View {
-        ZStack {
+        GeometryReader { geo in
+            ZStack {
 
-            Image("AppBackground")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .ignoresSafeArea()
+                Color(red: 0.06, green: 0.08, blue: 0.14)
+                    .ignoresSafeArea()
 
-            if panelVisible {
-                VStack {
-                    Spacer()
-                    loginPanel
-                        .padding(.horizontal, 20)
-                    Spacer()
+                Image("AppBackground")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .ignoresSafeArea()
+
+                if panelVisible {
+                    VStack {
+                        Spacer()
+                        loginPanel
+                            .padding(.horizontal, 20)
+                        Spacer()
+                    }
+                    .transition(.opacity.combined(with: .offset(y: 16)))
                 }
-                .transition(.opacity.combined(with: .offset(y: 16)))
-            }
 
-            if !AppConfig.isProduction {
-                VStack {
-                    environmentBanner
-                    Spacer()
+                if !AppConfig.isProduction {
+                    VStack {
+                        environmentBanner
+                        Spacer()
+                    }
+                    .ignoresSafeArea(edges: .top)
                 }
-                .ignoresSafeArea(edges: .top)
             }
         }
         .ignoresSafeArea()

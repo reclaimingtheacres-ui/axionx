@@ -309,8 +309,10 @@ struct WebViewContainer: View {
         store.navigationDelegate.onLoadSuccess = {
             withAnimation { isOffline = false }
             currentURL = store.webView.url
-            if let url = store.webView.url, url.path.hasPrefix("/m/login") {
-                BiometricAuthService.clearSession()
+            if let url = store.webView.url,
+               url.path.hasPrefix("/m/login") || url.path == "/login" {
+                NotificationCenter.default.post(name: .axionSessionExpired, object: nil)
+                return
             }
         }
         store.webView.addObserver(

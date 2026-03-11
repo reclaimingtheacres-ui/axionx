@@ -16,6 +16,8 @@ struct ContentView: View {
             switch authState {
 
             case .checking:
+                Color(red: 0.06, green: 0.08, blue: 0.14)
+                    .ignoresSafeArea()
                 Image("AppBackground")
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -35,8 +37,16 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
-        .preferredColorScheme(.light)
+        .ignoresSafeArea()
         .task { await resolveAuthState() }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .axionSessionExpired)
+        ) { _ in
+            BiometricAuthService.clearSession()
+            withAnimation(.easeInOut(duration: 0.35)) {
+                authState = .unauthenticated
+            }
+        }
     }
 
     @MainActor
@@ -68,6 +78,10 @@ struct ContentView: View {
             authState = hasWebSession ? .authenticated : .unauthenticated
         }
     }
+}
+
+extension Notification.Name {
+    static let axionSessionExpired = Notification.Name("axionSessionExpired")
 }
 
 #Preview {

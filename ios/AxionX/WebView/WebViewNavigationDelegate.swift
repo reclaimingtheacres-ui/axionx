@@ -43,7 +43,15 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
 
-        // AxionX domains or relative navigation → stay in WebView
+        if AllowedDomains.isTrusted(url),
+           url.path.hasPrefix("/m/login") || url.path == "/login" {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .axionSessionExpired, object: nil)
+            }
+            decisionHandler(.cancel)
+            return
+        }
+
         decisionHandler(.allow)
     }
 

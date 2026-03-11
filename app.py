@@ -10090,7 +10090,7 @@ def my_today():
 
     conn = db()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(f"""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
                (cu.first_name || ' ' || cu.last_name) customer_name,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
@@ -10805,7 +10805,7 @@ def m_today():
 
     conn = db()
 
-    cues = conn.execute("""
+    cues = conn.execute(f"""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.display_ref,
                j.job_address, j.id AS jid,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
