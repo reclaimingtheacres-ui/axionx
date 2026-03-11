@@ -159,6 +159,15 @@ _db_initialized = False
 _db_init_lock = threading.Lock()
 
 
+def _raw_db():
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=60000")
+    return conn
+
+
 def _lazy_init():
     global _db_initialized
     if _db_initialized:
@@ -172,12 +181,7 @@ def _lazy_init():
 
 def db():
     _lazy_init()
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=60000")
-    return conn
+    return _raw_db()
 
 
 def now_ts():
@@ -195,7 +199,7 @@ def add_column_if_missing(cur_or_conn, table, col, coltype):
 
 
 def init_db():
-    conn = db()
+    conn = _raw_db()
     cur = conn.cursor()
 
     cur.execute("""
@@ -753,7 +757,7 @@ def init_db():
 
 
 def _migrate_update_builder():
-    conn = db()
+    conn = _raw_db()
     cur = conn.cursor()
     add_column_if_missing(cur, "jobs", "is_regional", "INTEGER")
     add_column_if_missing(cur, "jobs", "confirmed_skip", "INTEGER")
