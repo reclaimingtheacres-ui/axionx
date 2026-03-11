@@ -193,6 +193,12 @@
           </div>
         </div>
 
+        <hr style="border-color:var(--border)">
+        <h6 class="mb-2 fw-semibold small" style="color:var(--text)">Additional Notes <span class="text-muted fw-normal">(optional)</span></h6>
+        <textarea id="agent_notes" class="form-control form-control-sm" rows="3"
+                  placeholder="Any additional observations or notes to include in the narrative…">{{ draft.agent_notes or '' }}</textarea>
+        <div class="form-text" style="color:var(--muted);font-size:.75rem">These notes will be incorporated into the generated narrative.</div>
+
         <div class="mt-4">
           <button id="btn_generate" class="btn btn-primary w-100"
             {% if not job.job_address %}disabled title="Add an address to the job before generating"{% endif %}>
@@ -319,6 +325,7 @@
       sms_sent: $('sms_sent').checked,
       phone_number_used: ($('phone_number_used').value || '').trim(),
       neighbour_outcome: getNeighbourOutcome(),
+      agent_notes: ($('agent_notes').value || '').trim(),
     };
   }
 

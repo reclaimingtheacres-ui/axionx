@@ -84,9 +84,10 @@ Update Builder
     <div class="poc-row" id="call_outcome_row" style="display:none;">
       <div class="poc-row-label"><div style="font-size:.95rem;">Call Outcome</div></div>
       <select id="call_outcome" class="m-select" style="width:auto;max-width:170px;">
-        {% for opt in ['No Answer','Voicemail','Answered','Disconnected','Wrong Number'] %}
-        <option {% if draft and draft.call_outcome == opt %}selected{% endif %}>{{ opt }}</option>
-        {% endfor %}
+        <option value="no answer" {% if draft and draft.call_outcome == 'no answer' %}selected{% endif %}>No Answer</option>
+        <option value="diverted to voicemail" {% if draft and draft.call_outcome == 'diverted to voicemail' %}selected{% endif %}>Voicemail</option>
+        <option value="answered" {% if draft and draft.call_outcome == 'answered' %}selected{% endif %}>Answered</option>
+        <option value="disconnected" {% if draft and draft.call_outcome == 'disconnected' %}selected{% endif %}>Disconnected</option>
       </select>
     </div>
     <div class="poc-row">
@@ -156,7 +157,7 @@ Update Builder
   <div class="m-card-header">Additional Notes</div>
   <div class="m-card-body">
     <div class="notes-row">
-      <textarea id="extra_notes" class="m-textarea" rows="4" placeholder="Any additional notes for this update…">{{ draft.neighbour_outcome or '' }}</textarea>
+      <textarea id="extra_notes" class="m-textarea" rows="4" placeholder="Any additional notes for this update…">{{ draft.agent_notes or '' }}</textarea>
       <button type="button" class="mic-btn" id="micBtn" title="Voice to text">
         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
       </button>
@@ -209,14 +210,15 @@ Update Builder
       calling_card:         $$('calling_card').checked,
       call_made:            $$('call_made').checked,
       call_outcome:         $$('call_outcome') ? $$('call_outcome').value : '',
-      voicemail_left:       $$('call_outcome') && $$('call_outcome').value === 'Voicemail' && $$('call_made').checked,
+      voicemail_left:       $$('call_outcome') && $$('call_outcome').value === 'diverted to voicemail' && $$('call_made').checked,
       sms_sent:             $$('sms_sent').checked,
       phone_number_used:    $$('phone_number_used') ? $$('phone_number_used').value : '',
       security_sighted:     $$('security_sighted').checked,
       security_make_model:  $$('security_make_model').value,
       security_reg:         $$('security_reg').value.toUpperCase(),
       security_location:    $$('security_location').value,
-      neighbour_outcome:    $$('extra_notes').value,
+      neighbour_outcome:    '',
+      agent_notes:          $$('extra_notes').value,
       generated_narrative:  $$('final_narrative') ? $$('final_narrative').value : '',
     };
   }

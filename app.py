@@ -934,6 +934,7 @@ def _migrate_update_builder():
     )
     """)
     add_column_if_missing(cur, "job_updates", "photos_count", "INTEGER NOT NULL DEFAULT 0")
+    add_column_if_missing(cur, "job_updates", "agent_notes", "TEXT DEFAULT ''")
 
     conn.commit()
     conn.close()
@@ -7678,6 +7679,7 @@ def _build_swpi_prompt(inputs, job_ctx):
     phone_used  = (inputs.get("phone_number_used") or "").replace(" ", "")
     poc         = inputs.get("points_of_contact", 0)
     eta_date    = inputs.get("eta_next_date", "")
+    agent_notes = (inputs.get("agent_notes") or "").strip()
     address     = job_ctx.get("job_address", "")
     is_regional = job_ctx.get("is_regional", False)
 
@@ -7733,6 +7735,28 @@ def _build_swpi_prompt(inputs, job_ctx):
     poc_sentence = f"This constitutes {poc} point{'s' if poc != 1 else ''} of contact."
     eta_sentence = f"ETA next attendance: {eta_date}."
 
+    fixed_parts = []
+    fixed_parts.append(sec_sentence)
+    if cc_sentence:
+        fixed_parts.append(cc_sentence)
+    if call_sentence:
+        fixed_parts.append(call_sentence)
+    if sms_sentence:
+        fixed_parts.append(sms_sentence)
+    if neighbour:
+        fixed_parts.append(neighbour)
+    if agent_notes:
+        fixed_parts.append(f"The agent noted: {agent_notes}")
+    photos_count = inputs.get("photos_count", 0)
+    if photos_count:
+        fixed_parts.append(f"{photos_count} photo(s) were taken on-site and attached to this update for reference.")
+
+    fixed_block = "\n".join(f"- {s}" for s in fixed_parts)
+
+    neighbour_rule = ""
+    if not neighbour:
+        neighbour_rule = "\n12. Do NOT mention any neighbour interaction, interview, or conversation. No neighbour content was provided."
+
     prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
 Your task is to write a single paragraph attendance update in SWPI's house style.
 
@@ -7741,22 +7765,21 @@ MANDATORY RULES:
    {opening}
 2. Continue in third person throughout. Use "our agent" (lowercase after first use) for subsequent mentions.
 3. British/Australian spelling. No acronyms.
-4. Single block of continuous prose — no line breaks, no bullet points, no headings.
-5. Include the security sentence EXACTLY as provided below.
-6. Include the calling card sentence EXACTLY as provided below (if applicable).
-7. Include the phone call sentence EXACTLY as provided below (if applicable).
-8. Include the SMS sentence EXACTLY as provided below (if applicable).
-9. Include neighbour interaction if applicable (see below).
-10. End the narrative with EXACTLY these two sentences on one continuous line:
-    {poc_sentence} {eta_sentence}
+4. Single block of continuous prose — no line breaks, no bullet points, no headings, no labels.
+5. Include EACH of the fixed sentences below EXACTLY as written, woven naturally into the prose. Do NOT prefix them with labels such as "Security:" or "Note:".
+6. If agent notes are provided below, incorporate them naturally into the narrative.
+7. End the narrative with EXACTLY these two closing sentences (copy word for word, on the same line as the rest):
+   {poc_sentence} {eta_sentence}
+8. Do NOT invent, assume, or fabricate any events, interactions, or observations not listed below. Only use information explicitly provided.
+9. The points of contact total is {poc}. Do not recalculate or change this number.
+10. Do NOT add any labels, headings, or category prefixes (e.g. "Security:", "Note:", "Actions:") anywhere in the output.
+11. Do NOT add a subject line, title, or reference number before the narrative.{neighbour_rule}
 
-FIXED SENTENCES TO INSERT (in order, after the opening):
-Security: {sec_sentence}
-{f'Calling card: {cc_sentence}' if cc_sentence else ''}
-{f'Phone call: {call_sentence}' if call_sentence else ''}
-{f'SMS: {sms_sentence}' if sms_sentence else ''}
-{f'Neighbours: {neighbour}' if neighbour else ''}
-{f'Note: {inputs.get("photos_count", 0)} photo(s) were taken on-site and attached to this update for reference.' if inputs.get("photos_count", 0) else ''}
+FIXED SENTENCES TO WEAVE INTO THE NARRATIVE (in order, after the opening):
+{fixed_block}
+
+MANDATORY CLOSING (copy exactly):
+{poc_sentence} {eta_sentence}
 
 Write the complete narrative now, starting with the mandatory opening sentence."""
 
@@ -7906,6 +7929,7 @@ def update_builder_generate(job_id: int):
     inputs_for_prompt["voicemail_left"] = voicemail
     inputs_for_prompt["phone_number_used"] = phone_used
     inputs_for_prompt["photos_count"] = update_photos_count
+    inputs_for_prompt["agent_notes"] = (data.get("agent_notes") or "").strip()
 
     prompt = _build_swpi_prompt(inputs_for_prompt, job_ctx)
 
@@ -7937,7 +7961,7 @@ def update_builder_generate(job_id: int):
                 voicemail_left=?, sms_sent=?, customer_mobile=?,
                 points_of_contact=?, eta_next_date=?,
                 generated_narrative=?, ai_model_used=?, ai_tokens_used=?,
-                structured_inputs_json=?, updated_at=?
+                structured_inputs_json=?, agent_notes=?, updated_at=?
             WHERE id=? AND created_by_user_id=?
         """, (
             data.get("attend_date"), data.get("attend_time"),
@@ -7952,7 +7976,7 @@ def update_builder_generate(job_id: int):
             phone_used,
             poc, eta_str,
             narrative, model_used, tokens_used,
-            structured_json, ts,
+            structured_json, (data.get("agent_notes") or "").strip(), ts,
             draft_id, uid
         ))
         conn.commit()
@@ -8095,7 +8119,7 @@ def update_builder_autosave(job_id: int):
                 security_reg=?, security_location=?, calling_card=?,
                 neighbour_outcome=?, call_made=?, call_outcome=?,
                 voicemail_left=?, sms_sent=?, customer_mobile=?,
-                structured_inputs_json=?, updated_at=?
+                structured_inputs_json=?, agent_notes=?, updated_at=?
             WHERE id=? AND created_by_user_id=? AND status='draft'
         """, (
             data.get("attend_date"), data.get("attend_time"),
@@ -8110,7 +8134,7 @@ def update_builder_autosave(job_id: int):
             1 if data.get("voicemail_left") else 0,
             1 if data.get("sms_sent") else 0,
             data.get("phone_number_used", ""),
-            structured_json, ts,
+            structured_json, (data.get("agent_notes") or "").strip(), ts,
             draft_id, uid
         ))
         conn.commit()
