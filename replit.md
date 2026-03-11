@@ -122,6 +122,15 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **13. Quick Field Notes (Mobile):** Rich note-taking from job detail screen. Backend: `note_type` + `audio_filename` columns on `job_field_notes`; `POST /m/job/<id>/quick-note` (multipart text/audio/photo); `GET /m/note-audio/<note_id>`, `GET /m/note-photo/<file_id>` serving routes. Notes tab: type icon pills, photo thumbnails with lightbox, inline audio players, agent/timestamp. Add Note bottom sheet: text, MediaRecorder voice (pulsing indicator, 3-min limit), camera/gallery photo; live-injects new note card without page reload.
 
+**13a. Notes Editing & Multi-Document Upload (Desktop):**
+- **Click-to-edit**: Entire note row is clickable — opens the Edit Note modal. Hover shows subtle highlight and pointer cursor. Action buttons (checkbox, delete, download, email) inside the row are excluded from the click via event delegation.
+- **Edit Note modal** (`#editNoteModal`): Full edit screen with note text editor, metadata display (created by, date/time, last updated by/at), admin-only staff/datetime override, current attachments list (with type icon, filename, upload date, download link, remove button), and drag-and-drop file upload zone.
+- **Multi-file upload to existing notes**: "Add Files" input and drag-and-drop zone accept multiple PDF/DOC/DOCX/image files in one action. Files append to existing attachments without replacing them. Upload status indicator shown during upload.
+- **Attachment management**: View, download, and remove individual attachments. Remove confirms before deleting. File count badge shown.
+- **Audit trail**: `updated_at` and `updated_by_user_id` columns on `job_field_notes` track last edit. Attachment additions/removals logged via audit system.
+- **API routes**: `GET /jobs/<id>/notes/<nid>/detail` (note metadata + files), `POST /jobs/<id>/notes/<nid>/attachments` (multi-file upload), `POST /jobs/<id>/notes/<nid>/attachments/<fid>/delete` (remove single file). Edit route (`POST /jobs/<id>/notes/<nid>/edit`) also supports file uploads alongside text edits.
+- **File storage**: `upload_to_blob()` now falls back to local `uploads/` folder when Azure Blob Storage is not configured.
+
 **12. Repo Lock (v2):** Per-security-item repossession record accessible on desktop and mobile. Features draft saving and submission workflows, generating formatted notes and linking to PDF generation for VIR, Transport Instructions, and other forms. Includes signature capture and PDF generation via `pdf_gen.py`.
 
 **17. Unified Authentication Routing:**

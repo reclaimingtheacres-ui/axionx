@@ -103,15 +103,20 @@ except Exception as _e:
 
 
 def upload_to_blob(file_storage, blob_name: str) -> int:
-    """Upload a Werkzeug FileStorage to Azure Blob. Returns file size in bytes."""
+    """Upload a Werkzeug FileStorage to Azure Blob or local uploads folder. Returns file size in bytes."""
     data = file_storage.read()
     ct   = file_storage.mimetype or mimetypes.guess_type(blob_name)[0] or "application/octet-stream"
-    _uploads_container.upload_blob(
-        name=blob_name,
-        data=data,
-        overwrite=True,
-        content_settings=ContentSettings(content_type=ct),
-    )
+    if _uploads_container:
+        _uploads_container.upload_blob(
+            name=blob_name,
+            data=data,
+            overwrite=True,
+            content_settings=ContentSettings(content_type=ct),
+        )
+    else:
+        dest = os.path.join(UPLOAD_FOLDER, blob_name)
+        with open(dest, "wb") as fh:
+            fh.write(data)
     return len(data)
 
 
@@ -764,6 +769,8 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "user_mobile_settings", "show_status_on_visits",  "INTEGER NOT NULL DEFAULT 1")
     add_column_if_missing(cur, "job_field_notes",       "note_type",             "TEXT NOT NULL DEFAULT 'text'")
     add_column_if_missing(cur, "job_field_notes",       "audio_filename",        "TEXT")
+    add_column_if_missing(cur, "job_field_notes",       "updated_at",            "TEXT")
+    add_column_if_missing(cur, "job_field_notes",       "updated_by_user_id",    "INTEGER")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS mobile_auth_tokens (
@@ -6810,10 +6817,11 @@ def add_job_note(job_id: int):
 
     note_id = cur.lastrowid
 
+    import time as _time
     for file in files:
         if file and file.filename and allowed_file(file.filename):
             filename    = secure_filename(file.filename)
-            unique_name = f"{job_id}_{note_id}_{filename}"
+            unique_name = f"{job_id}_{note_id}_{int(_time.time())}_{filename}"
             upload_to_blob(file, unique_name)
             cur.execute("""
                 INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
@@ -6907,7 +6915,8 @@ def edit_job_note(job_id: int, note_id: int):
         conn.close()
         return jsonify({"ok": False, "error": "Note text cannot be empty"}), 400
 
-    fields: dict = {"note_text": new_text}
+    ts = now_ts()
+    fields: dict = {"note_text": new_text, "updated_at": ts, "updated_by_user_id": caller_id}
 
     if caller_role in ("admin", "both"):
         note_date = request.form.get("note_date", "").strip()
@@ -6925,18 +6934,170 @@ def edit_job_note(job_id: int, note_id: int):
     set_clause = ", ".join(f"{k}=?" for k in fields)
     cur.execute(f"UPDATE job_field_notes SET {set_clause} WHERE id=?",
                 list(fields.values()) + [note_id])
+
+    import time as _time
+    files = request.files.getlist("attachments")
+    new_files = []
+    for file in files:
+        if file and file.filename and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            unique_name = f"{job_id}_{note_id}_{int(_time.time())}_{filename}"
+            upload_to_blob(file, unique_name)
+            cur.execute("""
+                INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                VALUES (?, ?, ?, ?)
+            """, (note_id, unique_name, unique_name, ts))
+            new_files.append({"id": cur.lastrowid, "filename": unique_name, "original": filename, "uploaded_at": ts})
+
     conn.commit()
 
-    cur.execute("SELECT created_at FROM job_field_notes WHERE id=?", (note_id,))
+    cur.execute("SELECT created_at, updated_at FROM job_field_notes WHERE id=?", (note_id,))
     updated = cur.fetchone()
+
+    cur.execute("SELECT id, filename, uploaded_at FROM job_note_files WHERE job_field_note_id=?", (note_id,))
+    all_files = [dict(r) for r in cur.fetchall()]
     conn.close()
 
-    audit("job_note", note_id, "edit", "Field note edited", {"job_id": job_id})
+    audit("job_note", note_id, "edit", "Field note edited", {"job_id": job_id, "files_added": len(new_files)})
     return jsonify({
         "ok": True,
         "note_text": new_text,
         "created_at": updated["created_at"] if updated else note["created_at"],
+        "updated_at": updated["updated_at"] if updated else ts,
+        "files": all_files,
     })
+
+
+@app.get("/jobs/<int:job_id>/notes/<int:note_id>/detail")
+@login_required
+def note_detail_api(job_id: int, note_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT n.*, u.full_name AS author_name
+        FROM job_field_notes n
+        LEFT JOIN users u ON u.id = n.created_by_user_id
+        WHERE n.id = ? AND n.job_id = ?
+    """, (note_id, job_id))
+    note = cur.fetchone()
+    if not note:
+        conn.close()
+        return jsonify({"ok": False, "error": "Note not found"}), 404
+
+    updated_by_name = None
+    if note["updated_by_user_id"]:
+        ub = cur.execute("SELECT full_name FROM users WHERE id=?", (note["updated_by_user_id"],)).fetchone()
+        if ub:
+            updated_by_name = ub["full_name"]
+
+    cur.execute("SELECT id, filename, uploaded_at FROM job_note_files WHERE job_field_note_id=? ORDER BY id", (note_id,))
+    files = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "note_id": note["id"],
+        "note_text": note["note_text"] or "",
+        "created_at": note["created_at"],
+        "created_by_user_id": note["created_by_user_id"],
+        "author_name": note["author_name"] or "Unknown",
+        "updated_at": note["updated_at"],
+        "updated_by_name": updated_by_name,
+        "files": files,
+    })
+
+
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/attachments")
+@login_required
+def add_note_attachments(job_id: int, note_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM job_field_notes WHERE id=? AND job_id=?", (note_id, job_id))
+    note = cur.fetchone()
+    if not note:
+        conn.close()
+        return jsonify({"ok": False, "error": "Note not found"}), 404
+
+    caller_id   = session.get("user_id")
+    caller_role = session.get("role", "")
+    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Permission denied"}), 403
+
+    files = request.files.getlist("attachments")
+    if not files or not any(f.filename for f in files):
+        conn.close()
+        return jsonify({"ok": False, "error": "No files provided"}), 400
+
+    import time as _time
+    ts = now_ts()
+    added = []
+    rejected = []
+    for file in files:
+        if not file or not file.filename:
+            continue
+        if not allowed_file(file.filename):
+            rejected.append(file.filename)
+            continue
+        filename = secure_filename(file.filename)
+        unique_name = f"{job_id}_{note_id}_{int(_time.time())}_{filename}"
+        upload_to_blob(file, unique_name)
+        cur.execute("""
+            INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+            VALUES (?, ?, ?, ?)
+        """, (note_id, unique_name, unique_name, ts))
+        added.append({"id": cur.lastrowid, "filename": unique_name, "original": filename, "uploaded_at": ts})
+
+    cur.execute("UPDATE job_field_notes SET updated_at=?, updated_by_user_id=? WHERE id=?",
+                (ts, caller_id, note_id))
+    conn.commit()
+
+    cur.execute("SELECT id, filename, uploaded_at FROM job_note_files WHERE job_field_note_id=? ORDER BY id", (note_id,))
+    all_files = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    audit("job_note", note_id, "attach", f"{len(added)} file(s) added to note", {"job_id": job_id})
+    return jsonify({"ok": True, "added": len(added), "rejected": rejected, "files": all_files})
+
+
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/attachments/<int:file_id>/delete")
+@login_required
+def delete_note_attachment(job_id: int, note_id: int, file_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM job_field_notes WHERE id=? AND job_id=?", (note_id, job_id))
+    note = cur.fetchone()
+    if not note:
+        conn.close()
+        return jsonify({"ok": False, "error": "Note not found"}), 404
+
+    caller_role = session.get("role", "")
+    caller_id = session.get("user_id")
+    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "Permission denied"}), 403
+
+    cur.execute("SELECT * FROM job_note_files WHERE id=? AND job_field_note_id=?", (file_id, note_id))
+    f = cur.fetchone()
+    if not f:
+        conn.close()
+        return jsonify({"ok": False, "error": "File not found"}), 404
+
+    delete_blob_safely(f["filename"])
+    try:
+        os.remove(os.path.join(UPLOAD_FOLDER, f["filename"]))
+    except OSError:
+        pass
+    cur.execute("DELETE FROM job_note_files WHERE id=?", (file_id,))
+
+    ts = now_ts()
+    cur.execute("UPDATE job_field_notes SET updated_at=?, updated_by_user_id=? WHERE id=?",
+                (ts, caller_id, note_id))
+    conn.commit()
+    conn.close()
+
+    audit("job_note", note_id, "detach", f"Attachment removed: {f['filename']}", {"job_id": job_id, "file_id": file_id})
+    return jsonify({"ok": True})
 
 
 @app.get("/uploads/<path:filename>")
