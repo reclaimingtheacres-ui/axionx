@@ -1854,8 +1854,11 @@ def generate_internal_job_number():
 
     cur.execute("SELECT * FROM system_settings WHERE id = 1")
     settings = cur.fetchone()
+    if not settings:
+        conn.close()
+        return datetime.now().strftime("%y%m") + "001"
 
-    current_prefix = settings["job_prefix"]
+    current_prefix = settings["job_prefix"] or datetime.now().strftime("%y%m")
     auto_enabled = settings["auto_prefix_enabled"]
 
     if auto_enabled:
@@ -2747,6 +2750,20 @@ def job_new_autofill_upload():
 @admin_required
 def job_new():
     conn = db()
+    try:
+        return _job_new_render(conn)
+    except Exception:
+        import traceback, sys
+        traceback.print_exc(file=sys.stderr)
+        traceback.print_exc()
+        return render_template("error_500.html",
+                               error_message="Unable to load the New Job form. Please contact support.",
+                               path=request.path), 500
+    finally:
+        conn.close()
+
+
+def _job_new_render(conn):
     cur = conn.cursor()
     cur.execute("SELECT id, name FROM clients ORDER BY name")
     clients = cur.fetchall()
@@ -2756,6 +2773,8 @@ def job_new():
     users = cur.fetchall()
     cur.execute("SELECT * FROM system_settings WHERE id = 1")
     settings = cur.fetchone()
+    if not settings:
+        settings = {"job_prefix": datetime.now().strftime("%y%m"), "job_sequence": 0}
 
     new_client_id   = request.args.get("new_client_id",   type=int)
     new_customer_id = request.args.get("new_customer_id", type=int)
@@ -2872,15 +2891,26 @@ def job_new():
         if row:
             prefill_customer_address = row["address"] or ""
 
-    cur.execute("SELECT id, name FROM job_types WHERE active = 1 ORDER BY name")
-    job_types = cur.fetchall()
-    cur.execute("SELECT DISTINCT lender_name FROM jobs WHERE lender_name IS NOT NULL ORDER BY lender_name")
-    known_lenders = [r["lender_name"] for r in cur.fetchall()]
-    cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
-    booking_types = cur.fetchall()
-    cur.execute("SELECT id, name FROM auction_yards WHERE active = 1 ORDER BY name")
-    auction_yards = cur.fetchall()
-    conn.close()
+    try:
+        cur.execute("SELECT id, name FROM job_types WHERE active = 1 ORDER BY name")
+        job_types = cur.fetchall()
+    except Exception:
+        job_types = []
+    try:
+        cur.execute("SELECT DISTINCT lender_name FROM jobs WHERE lender_name IS NOT NULL ORDER BY lender_name")
+        known_lenders = [r["lender_name"] for r in cur.fetchall()]
+    except Exception:
+        known_lenders = []
+    try:
+        cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
+        booking_types = cur.fetchall()
+    except Exception:
+        booking_types = []
+    try:
+        cur.execute("SELECT id, name FROM auction_yards WHERE active = 1 ORDER BY name")
+        auction_yards = cur.fetchall()
+    except Exception:
+        auction_yards = []
 
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
 
