@@ -102,11 +102,46 @@ LPR Scan
 
 <script>
 function showFilename(input, labelId) {
-  const el = document.getElementById(labelId);
+  var el = document.getElementById(labelId);
   if (input.files && input.files[0]) {
-    el.textContent = input.files[0].name;
+    var file = input.files[0];
+    var sizeMB = (file.size / 1024 / 1024).toFixed(1);
+    el.textContent = file.name + ' (' + sizeMB + ' MB)';
     el.style.color = 'var(--accent)';
+
+    if (file.size > 25 * 1024 * 1024) {
+      el.textContent = 'File too large (' + sizeMB + ' MB). Maximum 25 MB.';
+      el.style.color = 'var(--red)';
+      input.value = '';
+    }
+
+    if (!file.type.startsWith('image/')) {
+      el.textContent = 'Invalid file type. Please select an image.';
+      el.style.color = 'var(--red)';
+      input.value = '';
+    }
   }
 }
+
+document.querySelectorAll('form').forEach(function(form) {
+  form.addEventListener('submit', function(e) {
+    var fileInput = form.querySelector('input[type="file"]');
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+      e.preventDefault();
+      var labelId = fileInput && fileInput.id === 'image_cam' ? 'cam-label' : 'lib-label';
+      var el = document.getElementById(labelId);
+      if (el) {
+        el.textContent = 'Please select or take a photo first.';
+        el.style.color = 'var(--red)';
+      }
+      return false;
+    }
+    var btn = form.querySelector('button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Processing…';
+    }
+  });
+});
 </script>
 {% endblock %}

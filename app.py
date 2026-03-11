@@ -10826,13 +10826,30 @@ def m_lpr_capture():
     if request.method == "POST":
         file = request.files.get("image")
         if not file or not file.filename:
-            return render_template("mobile/lpr_capture.html", error="No image uploaded. Please select a photo.")
+            return render_template("mobile/lpr_capture.html", error="No image uploaded. Please select or take a photo.")
+
+        if file.content_length and file.content_length > 25 * 1024 * 1024:
+            return render_template("mobile/lpr_capture.html", error="Image too large. Maximum file size is 25 MB.")
 
         safe_name = secure_filename(file.filename) or "plate.jpg"
         tmp_path = os.path.join(_LPR_TMP, f"{uuid.uuid4().hex}_{safe_name}")
-        file.save(tmp_path)
 
-        detected_plate = extract_plate_from_image(tmp_path)
+        try:
+            file.save(tmp_path)
+        except Exception:
+            return render_template("mobile/lpr_capture.html", error="Failed to save uploaded image. Please try again.")
+
+        if os.path.getsize(tmp_path) == 0:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            return render_template("mobile/lpr_capture.html", error="The uploaded image is empty. Please take or select a photo and try again.")
+
+        try:
+            detected_plate = extract_plate_from_image(tmp_path)
+        except Exception:
+            detected_plate = ""
 
         try:
             os.remove(tmp_path)
