@@ -1372,8 +1372,8 @@ def scan_azure_blob_attachments(container_sas_url, conn=None, upload_fn=None):
 
         stats["files_processed"] += 1
 
-        lower_name = filename.lower()
-        if lower_name.endswith(".zip"):
+        blob_basename = os.path.basename(blob.name)
+        if blob_basename.lower().endswith(".zip"):
             try:
                 with zipfile.ZipFile(io.BytesIO(blob_data)) as zf:
                     stats["zip_files_processed"] += 1
