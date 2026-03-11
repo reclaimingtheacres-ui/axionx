@@ -852,6 +852,21 @@ def _migrate_update_builder():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_update_photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_update_id INTEGER NOT NULL,
+        job_id INTEGER NOT NULL,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        tag TEXT NOT NULL DEFAULT 'general',
+        uploaded_at TEXT NOT NULL,
+        FOREIGN KEY(job_update_id) REFERENCES job_updates(id),
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+    add_column_if_missing(cur, "job_updates", "photos_count", "INTEGER NOT NULL DEFAULT 0")
+
     conn.commit()
     conn.close()
 
@@ -7197,6 +7212,7 @@ Security: {sec_sentence}
 {f'Phone call: {call_sentence}' if call_sentence else ''}
 {f'SMS: {sms_sentence}' if sms_sentence else ''}
 {f'Neighbours: {neighbour}' if neighbour else ''}
+{f'Note: {inputs.get("photos_count", 0)} photo(s) were taken on-site and attached to this update for reference.' if inputs.get("photos_count", 0) else ''}
 
 Write the complete narrative now, starting with the mandatory opening sentence."""
 
@@ -7248,6 +7264,11 @@ def update_builder(job_id: int):
         draft_id = cur.lastrowid
         conn.commit()
         draft = conn.execute("SELECT * FROM job_updates WHERE id=?", (draft_id,)).fetchone()
+
+    draft_photos = conn.execute(
+        "SELECT id, tag FROM job_update_photos WHERE job_update_id=? ORDER BY id", (draft["id"],)
+    ).fetchall()
+    draft_photos_list = [{"id": p["id"], "url": f"/jobs/{job_id}/update-builder/photo/{p['id']}", "tag": p["tag"]} for p in draft_photos]
     conn.close()
 
     from datetime import datetime as _dt2
@@ -7257,6 +7278,7 @@ def update_builder(job_id: int):
     return render_template("update_builder.html",
                            job=job, customer=customer, client=client,
                            customer_mobile=customer_mobile, draft=draft,
+                           draft_photos=draft_photos_list,
                            now_date=now_date, now_time=now_time)
 
 
@@ -7326,11 +7348,20 @@ def update_builder_generate(job_id: int):
         "confirmed_skip": confirmed_skip,
         "is_regional":   bool(job["is_regional"] if "is_regional" in job.keys() else False),
     }
+    draft_id_for_photos = data.get("draft_id")
+    update_photos_count = 0
+    if draft_id_for_photos:
+        pc_row = conn.execute(
+            "SELECT COUNT(*) c FROM job_update_photos WHERE job_update_id=?", (draft_id_for_photos,)
+        ).fetchone()
+        update_photos_count = pc_row["c"] if pc_row else 0
+
     inputs_for_prompt = dict(data)
     inputs_for_prompt["points_of_contact"] = poc
     inputs_for_prompt["eta_next_date"] = eta_str
     inputs_for_prompt["voicemail_left"] = voicemail
     inputs_for_prompt["phone_number_used"] = phone_used
+    inputs_for_prompt["photos_count"] = update_photos_count
 
     prompt = _build_swpi_prompt(inputs_for_prompt, job_ctx)
 
@@ -7436,10 +7467,30 @@ def update_builder_save(job_id: int):
         """, (final_text, was_edited, ts, draft_id, uid))
         conn.commit()
 
-    conn.execute("""
-        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
-        VALUES (?, ?, ?, ?)
-    """, (job_id, uid, final_text, ts))
+    photos_count = 0
+    if draft_id:
+        photos = conn.execute(
+            "SELECT id, filename, filepath, tag FROM job_update_photos WHERE job_update_id=?", (draft_id,)
+        ).fetchall()
+        photos_count = len(photos)
+
+    note_type = "text"
+    if photos_count > 0:
+        note_type = "photo_text" if final_text else "photo"
+
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at, note_type) VALUES (?,?,?,?,?)",
+        (job_id, uid, final_text, ts, note_type)
+    )
+    note_id = cur.lastrowid
+
+    if photos_count > 0:
+        for p in photos:
+            cur.execute(
+                "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
+                (note_id, p["filename"], p["filepath"], ts)
+            )
     conn.commit()
 
     for cue_type in ("Update Required", "Complete Attendance Update"):
@@ -7455,7 +7506,7 @@ def update_builder_save(job_id: int):
     conn.close()
     audit("job_update", draft_id or 0, "save",
           f"Field update saved for job {job_id}",
-          {"edited": was_edited})
+          {"edited": was_edited, "photos": photos_count})
     return jsonify({"ok": True, "redirect": url_for("job_detail", job_id=job_id, _anchor="tab-notes")})
 
 
@@ -7526,6 +7577,152 @@ def update_builder_autosave(job_id: int):
         _ensure_draft_cue(conn, job_id, uid, draft_id, job_ref)
     conn.close()
     return jsonify({"ok": True})
+
+
+_UPDATE_PHOTO_DIR = os.path.join("uploads", "update_photos")
+os.makedirs(_UPDATE_PHOTO_DIR, exist_ok=True)
+
+_UPDATE_PHOTO_ALLOWED = {"png", "jpg", "jpeg", "webp", "heic", "heif"}
+_UPDATE_PHOTO_MAX_BYTES = 25 * 1024 * 1024
+
+
+@app.post("/jobs/<int:job_id>/update-builder/upload-photo")
+@login_required
+def update_builder_upload_photo(job_id):
+    conn = db()
+    job = conn.execute("SELECT id, assigned_user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found"}), 404
+    uid = session.get("user_id")
+    role = session.get("role", "")
+    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+        conn.close()
+        return jsonify({"ok": False, "error": "Access denied"}), 403
+
+    draft_id = request.form.get("draft_id", type=int)
+    if not draft_id:
+        conn.close()
+        return jsonify({"ok": False, "error": "No draft ID"}), 400
+
+    draft = conn.execute(
+        "SELECT id FROM job_updates WHERE id=? AND job_id=? AND created_by_user_id=? AND status='draft'",
+        (draft_id, job_id, uid)
+    ).fetchone()
+    if not draft:
+        conn.close()
+        return jsonify({"ok": False, "error": "Draft not found"}), 404
+
+    photo = request.files.get("photo")
+    if not photo or not photo.filename:
+        conn.close()
+        return jsonify({"ok": False, "error": "No photo provided"}), 400
+
+    ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else ""
+    if ext not in _UPDATE_PHOTO_ALLOWED:
+        conn.close()
+        return jsonify({"ok": False, "error": f"File type .{ext} not allowed"}), 400
+
+    photo.seek(0, 2)
+    size = photo.tell()
+    photo.seek(0)
+    if size > _UPDATE_PHOTO_MAX_BYTES:
+        conn.close()
+        return jsonify({"ok": False, "error": "Photo exceeds 25 MB limit"}), 400
+    if size == 0:
+        conn.close()
+        return jsonify({"ok": False, "error": "Empty file"}), 400
+
+    existing_count = conn.execute(
+        "SELECT COUNT(*) c FROM job_update_photos WHERE job_update_id=?", (draft_id,)
+    ).fetchone()["c"]
+    if existing_count >= 10:
+        conn.close()
+        return jsonify({"ok": False, "error": "Maximum 10 photos per update"}), 400
+
+    tag = (request.form.get("tag") or "general").strip()[:50]
+    safe_fn = secure_filename(photo.filename)
+    stored_name = f"{uuid.uuid4().hex}_{safe_fn}"
+    filepath = os.path.join(_UPDATE_PHOTO_DIR, stored_name)
+    photo.save(filepath)
+
+    ts = now_ts()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO job_update_photos (job_update_id, job_id, filename, filepath, tag, uploaded_at) VALUES (?,?,?,?,?,?)",
+        (draft_id, job_id, stored_name, filepath, tag, ts)
+    )
+    photo_id = cur.lastrowid
+    conn.execute(
+        "UPDATE job_updates SET photos_count = (SELECT COUNT(*) FROM job_update_photos WHERE job_update_id=?), updated_at=? WHERE id=?",
+        (draft_id, ts, draft_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"ok": True, "photo_id": photo_id, "url": f"/jobs/{job_id}/update-builder/photo/{photo_id}"})
+
+
+@app.delete("/jobs/<int:job_id>/update-builder/photo/<int:photo_id>")
+@login_required
+def update_builder_delete_photo(job_id, photo_id):
+    uid = session.get("user_id")
+    conn = db()
+    row = conn.execute(
+        """SELECT p.id, p.filepath, p.job_update_id FROM job_update_photos p
+           JOIN job_updates u ON u.id = p.job_update_id
+           WHERE p.id=? AND p.job_id=? AND u.created_by_user_id=? AND u.status='draft'""",
+        (photo_id, job_id, uid)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Photo not found"}), 404
+
+    try:
+        if os.path.exists(row["filepath"]):
+            os.remove(row["filepath"])
+    except OSError:
+        pass
+
+    ts = now_ts()
+    conn.execute("DELETE FROM job_update_photos WHERE id=?", (photo_id,))
+    conn.execute(
+        "UPDATE job_updates SET photos_count = (SELECT COUNT(*) FROM job_update_photos WHERE job_update_id=?), updated_at=? WHERE id=?",
+        (row["job_update_id"], ts, row["job_update_id"])
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.get("/jobs/<int:job_id>/update-builder/photo/<int:photo_id>")
+@login_required
+def update_builder_serve_photo(job_id, photo_id):
+    uid = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    row = conn.execute(
+        """SELECT p.filepath FROM job_update_photos p
+           JOIN job_updates u ON u.id = p.job_update_id
+           WHERE p.id=? AND p.job_id=?""",
+        (photo_id, job_id)
+    ).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if role not in ("admin", "both"):
+        job = conn.execute("SELECT assigned_user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+        has_schedule = conn.execute(
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed')",
+            (job_id, uid)
+        ).fetchone()
+        if not job or (job["assigned_user_id"] != uid and not has_schedule):
+            conn.close()
+            abort(403)
+    conn.close()
+    if not os.path.exists(row["filepath"]):
+        abort(404)
+    return send_file(row["filepath"])
 
 
 @app.get("/my/drafts")
@@ -10103,6 +10300,11 @@ def m_update_builder(job_id):
         parts = [p for p in [first_asset["year"], first_asset["make"], first_asset["model"]] if p]
         asset_make_model = " ".join(parts)
         asset_reg = first_asset["reg"] or ""
+
+    draft_photos = conn.execute(
+        "SELECT id, tag FROM job_update_photos WHERE job_update_id=? ORDER BY id", (draft["id"],)
+    ).fetchall()
+    draft_photos_list = [{"id": p["id"], "url": f"/jobs/{job_id}/update-builder/photo/{p['id']}", "tag": p["tag"]} for p in draft_photos]
     conn.close()
 
     mel_now = datetime.now(_melbourne)
@@ -10111,6 +10313,7 @@ def m_update_builder(job_id):
                            draft=draft,
                            asset_make_model=asset_make_model,
                            asset_reg=asset_reg,
+                           draft_photos=draft_photos_list,
                            now_date=mel_now.strftime("%Y-%m-%d"),
                            now_time=mel_now.strftime("%H:%M"))
 

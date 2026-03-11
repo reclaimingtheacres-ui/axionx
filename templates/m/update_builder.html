@@ -22,6 +22,21 @@ Update Builder
 .poc-check { width:24px; height:24px; border-radius:7px; border:2px solid var(--line); cursor:pointer; -webkit-appearance:none; appearance:none; flex-shrink:0; transition:all .15s; background:var(--bg); }
 .poc-check:checked { background:var(--accent); border-color:var(--accent); }
 .poc-check:checked::after { content:'✓'; display:block; color:#ffffff; font-size:14px; font-weight:700; text-align:center; line-height:20px; }
+
+.photo-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:10px; }
+.photo-thumb { position:relative; border-radius:10px; overflow:hidden; aspect-ratio:1; background:#f0f0f0; }
+.photo-thumb img { width:100%; height:100%; object-fit:cover; }
+.photo-thumb .photo-remove { position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,.6); color:#fff; border:none; font-size:14px; line-height:24px; text-align:center; cursor:pointer; padding:0; }
+.photo-thumb .photo-uploading { position:absolute; inset:0; background:rgba(255,255,255,.7); display:flex; align-items:center; justify-content:center; }
+.photo-actions { display:flex; gap:8px; margin-top:8px; }
+.photo-actions button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; padding:11px 8px; border-radius:10px; border:1.5px solid var(--line); background:#f7f8fa; font-size:.82rem; font-weight:600; color:#374151; cursor:pointer; }
+.photo-count-badge { display:inline-flex; align-items:center; gap:4px; font-size:.72rem; font-weight:600; color:var(--accent); margin-left:8px; }
+
+.mic-btn { width:36px; height:36px; border-radius:50%; border:1.5px solid var(--line); background:#f7f8fa; color:#6b7280; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .2s; }
+.mic-btn.recording { background:#fee2e2; border-color:#ef4444; color:#ef4444; animation:mic-pulse 1.2s infinite; }
+@keyframes mic-pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
+.notes-row { display:flex; gap:8px; align-items:flex-start; }
+.notes-row textarea { flex:1; }
 </style>
 {% endblock %}
 
@@ -113,9 +128,40 @@ Update Builder
 </div>
 
 <div class="m-card">
+  <div class="m-card-header">
+    Site Photos
+    <span class="photo-count-badge" id="photoCountBadge" style="display:none;">
+      <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+      <span id="photoCountText">0</span>
+    </span>
+  </div>
+  <div class="m-card-body">
+    <div class="photo-grid" id="photoGrid"></div>
+    <div class="photo-actions">
+      <button type="button" id="takePhotoBtn" onclick="document.getElementById('cameraInput').click()">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Take Photo
+      </button>
+      <button type="button" id="galleryBtn" onclick="document.getElementById('galleryInput').click()">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        From Gallery
+      </button>
+    </div>
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;">
+    <input type="file" id="galleryInput" accept="image/*" multiple style="display:none;">
+  </div>
+</div>
+
+<div class="m-card">
   <div class="m-card-header">Additional Notes</div>
   <div class="m-card-body">
-    <textarea id="extra_notes" class="m-textarea" rows="4" placeholder="Any additional notes for this update…">{{ draft.neighbour_outcome or '' }}</textarea>
+    <div class="notes-row">
+      <textarea id="extra_notes" class="m-textarea" rows="4" placeholder="Any additional notes for this update…">{{ draft.neighbour_outcome or '' }}</textarea>
+      <button type="button" class="mic-btn" id="micBtn" title="Voice to text">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
+    </div>
+    <div id="micStatus" style="display:none;margin-top:6px;font-size:.75rem;color:#ef4444;font-weight:600;"></div>
   </div>
 </div>
 
@@ -149,6 +195,7 @@ Update Builder
   var JOB_ID   = {{ job.id | tojson }};
   var _applied = false;
   var _timer   = null;
+  var _photos  = {{ (draft_photos or []) | tojson }};
 
   function $$(id){ return document.getElementById(id); }
 
@@ -191,6 +238,173 @@ Update Builder
     $$('call_outcome_row').style.display = $$('call_made').checked ? 'flex' : 'none';
   }
 
+  function renderPhotos() {
+    var grid = $$('photoGrid');
+    grid.innerHTML = '';
+    _photos.forEach(function(p) {
+      var div = document.createElement('div');
+      div.className = 'photo-thumb';
+      div.id = 'photo-' + p.id;
+      var img = document.createElement('img');
+      img.src = p.url;
+      img.alt = 'Site photo';
+      img.loading = 'lazy';
+      div.appendChild(img);
+      if (!p._uploading) {
+        var btn = document.createElement('button');
+        btn.className = 'photo-remove';
+        btn.innerHTML = '&times;';
+        btn.setAttribute('data-id', p.id);
+        btn.onclick = function(){ removePhoto(p.id); };
+        div.appendChild(btn);
+      } else {
+        var overlay = document.createElement('div');
+        overlay.className = 'photo-uploading';
+        overlay.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" stroke="#6b7280" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4" stroke-dashoffset="10"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur=".8s" repeatCount="indefinite"/></circle></svg>';
+        div.appendChild(overlay);
+      }
+      grid.appendChild(div);
+    });
+    var badge = $$('photoCountBadge');
+    var count = _photos.length;
+    if (count > 0) {
+      badge.style.display = 'inline-flex';
+      $$('photoCountText').textContent = count;
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function uploadPhoto(file) {
+    var tempId = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    var thumbUrl = URL.createObjectURL(file);
+    _photos.push({id: tempId, url: thumbUrl, _uploading: true});
+    renderPhotos();
+
+    var fd = new FormData();
+    fd.append('photo', file);
+    fd.append('draft_id', DRAFT_ID);
+    fd.append('tag', 'site');
+
+    fetch('/jobs/' + JOB_ID + '/update-builder/upload-photo', {method:'POST', body:fd})
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      URL.revokeObjectURL(thumbUrl);
+      if (!data.ok) {
+        _photos = _photos.filter(function(p){ return p.id !== tempId; });
+        renderPhotos();
+        alert(data.error || 'Upload failed');
+        return;
+      }
+      for (var i = 0; i < _photos.length; i++) {
+        if (_photos[i].id === tempId) {
+          _photos[i] = {id: data.photo_id, url: data.url};
+          break;
+        }
+      }
+      renderPhotos();
+    })
+    .catch(function() {
+      URL.revokeObjectURL(thumbUrl);
+      _photos = _photos.filter(function(p){ return p.id !== tempId; });
+      renderPhotos();
+      alert('Photo upload failed. Check your connection.');
+    });
+  }
+
+  function removePhoto(photoId) {
+    if (!confirm('Remove this photo?')) return;
+    var el = document.getElementById('photo-' + photoId);
+    if (el) el.style.opacity = '0.4';
+
+    fetch('/jobs/' + JOB_ID + '/update-builder/photo/' + photoId, {method:'DELETE'})
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        _photos = _photos.filter(function(p){ return p.id !== photoId; });
+      }
+      renderPhotos();
+    })
+    .catch(function(){ renderPhotos(); });
+  }
+
+  function handleFileSelect(files) {
+    var max = 10;
+    var current = _photos.length;
+    for (var i = 0; i < files.length && current + i < max; i++) {
+      var f = files[i];
+      if (!f.type.startsWith('image/')) continue;
+      if (f.size > 25 * 1024 * 1024) { alert(f.name + ' exceeds 25 MB limit.'); continue; }
+      uploadPhoto(f);
+    }
+    if (current + files.length > max) {
+      alert('Maximum ' + max + ' photos per update.');
+    }
+  }
+
+  var _recognition = null;
+  var _recognizing = false;
+
+  function initSpeech() {
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      $$('micBtn').style.display = 'none';
+      return;
+    }
+    _recognition = new SR();
+    _recognition.continuous = true;
+    _recognition.interimResults = true;
+    _recognition.lang = 'en-AU';
+
+    var finalTranscript = '';
+    _recognition.onresult = function(e) {
+      var interim = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          finalTranscript += e.results[i][0].transcript;
+        } else {
+          interim += e.results[i][0].transcript;
+        }
+      }
+      var ta = $$('extra_notes');
+      var existing = ta.getAttribute('data-pre-speech') || '';
+      ta.value = existing + (existing ? ' ' : '') + finalTranscript + (interim ? ' ' + interim : '');
+    };
+
+    _recognition.onend = function() {
+      if (_recognizing) {
+        var ta = $$('extra_notes');
+        ta.removeAttribute('data-pre-speech');
+        stopMic();
+      }
+    };
+
+    _recognition.onerror = function(e) {
+      if (e.error === 'not-allowed') {
+        alert('Microphone access denied. Please allow microphone permission.');
+      }
+      stopMic();
+    };
+  }
+
+  function startMic() {
+    if (!_recognition) return;
+    var ta = $$('extra_notes');
+    ta.setAttribute('data-pre-speech', ta.value);
+    _recognizing = true;
+    $$('micBtn').classList.add('recording');
+    $$('micStatus').style.display = 'block';
+    $$('micStatus').textContent = 'Listening… tap mic to stop';
+    _recognition.start();
+  }
+
+  function stopMic() {
+    _recognizing = false;
+    $$('micBtn').classList.remove('recording');
+    $$('micStatus').style.display = 'none';
+    try { _recognition.stop(); } catch(e){}
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     $$('call_made').addEventListener('change', updatePhoneRow);
     $$('sms_sent').addEventListener('change', updatePhoneRow);
@@ -201,6 +415,16 @@ Update Builder
     $$('regenerateBtn').addEventListener('click', generate);
 
     _timer = setInterval(function(){ doAutosave(false); }, 30000);
+
+    renderPhotos();
+
+    $$('cameraInput').addEventListener('change', function(){ handleFileSelect(this.files); this.value=''; });
+    $$('galleryInput').addEventListener('change', function(){ handleFileSelect(this.files); this.value=''; });
+
+    initSpeech();
+    $$('micBtn').addEventListener('click', function(){
+      if (_recognizing) { stopMic(); } else { startMic(); }
+    });
   });
 
   document.addEventListener('visibilitychange', function() {
