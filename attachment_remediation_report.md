@@ -146,6 +146,20 @@ Added `GET /admin/geoop-import/attachment-audit` — returns a comprehensive JSO
 
 Added `POST /admin/geoop-import/backfill-attachments` — re-imports previously skipped or errored notes that have file attachments. Runs in a background thread with progress polling. Creates `job_field_notes` entries for notes that were skipped due to empty text but have file references.
 
+### Bug 3: Multi-file note children creating redundant Axion notes (FIXED)
+
+In GeoOp, when a text note has multiple file attachments, the CSV exports them as separate rows: one parent text note (with `files_location` path segment matching its `geoop_note_id`) and multiple child file-only rows (different `geoop_note_id` values but sharing the parent's `files_location`). The old importer would create separate placeholder Axion notes for each child, resulting in duplicate notes with `[Attachment: ...]` text.
+
+**Fix**: `import_staged_notes()` now detects multi-file children by comparing the `files_location` path segment against the row's `geoop_note_id`. When they differ (child note), the row is marked `linked_to_parent` instead of creating a new Axion note. The Azure scanner correctly links all child files to the parent note via `job_note_files`.
+
+**Impact**: 123 file-only notes in 41 multi-file groups are now correctly handled. 246 single-file attachment-only notes still get their own Axion note.
+
+### Audio playback support added
+
+Notes with M4A, WAV, MP3, OGG, AAC audio files now get inline HTML5 audio playback on both desktop and mobile, instead of just "no preview available" with a download button. This covers 7,330 audio files in the staged data.
+
+Extended image format support: AVIF and JFIF files now display thumbnails and inline previews.
+
 ### New: Admin UI Section
 
 Added "Attachment Audit & Repair" card to the GeoOp Import admin page with:

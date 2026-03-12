@@ -450,10 +450,11 @@
             <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:4px;">
               {% for f in n_files %}
                 {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
-                {% set is_img   = fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp'] %}
+                {% set is_img   = fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp','avif','jfif'] %}
                 {% set is_pdf   = fext == 'pdf' %}
                 {% set is_word  = fext in ['doc','docx'] %}
                 {% set is_excel = fext in ['xls','xlsx','csv'] %}
+                {% set is_audio = fext in ['m4a','wav','mp3','ogg','aac','wma'] %}
                 <button type="button"
                         onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
                         style="background:none;border:0;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;width:68px;">
@@ -472,6 +473,10 @@
                   {% elif is_excel %}
                     <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
                       <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#dcfce7"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#bbf7d0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#16a34a" font-size="10" font-family="system-ui" font-weight="800">XLS</text></svg>
+                    </span>
+                  {% elif is_audio %}
+                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
+                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#fef3c7"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#fde68a"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#d97706" font-size="9" font-family="system-ui" font-weight="800">M4A</text></svg>
                     </span>
                   {% else %}
                     <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
@@ -793,8 +798,9 @@ function qaFallbackReveal(type, value) {
 
 <script>
 (function(){
-  var IMAGE_EXT = ['jpg','jpeg','png','gif','webp','heic','heif','bmp'];
+  var IMAGE_EXT = ['jpg','jpeg','png','gif','webp','heic','heif','bmp','avif','jfif'];
   var PDF_EXT   = ['pdf'];
+  var AUDIO_EXT = ['m4a','wav','mp3','ogg','aac','wma'];
   var _curUrl = '', _curFilename = '';
 
   window.axMobilePreview = function(url, filename) {
@@ -828,6 +834,14 @@ function qaFallbackReveal(type, value) {
       hint.style.cssText = 'padding:6px 12px;font-size:.72rem;color:#9ca3af;text-align:center;';
       hint.textContent = 'If PDF does not display, use Save / Download below.';
       body.appendChild(hint);
+    } else if (AUDIO_EXT.includes(ext)) {
+      body.style.padding = '24px 16px';
+      body.innerHTML = '<div style="text-align:center;width:100%">' +
+        '<div style="font-size:3rem;margin-bottom:10px;">&#127911;</div>' +
+        '<div style="font-size:.92rem;font-weight:600;color:#111;margin-bottom:10px;word-break:break-all;">' + filename + '</div>' +
+        '<audio controls preload="none" style="width:100%;margin-bottom:6px"><source src="' + url + '"></audio>' +
+        '<div style="font-size:.72rem;color:#6b7280;margin-top:4px">Play above or <strong>Save / Download</strong> below.</div>' +
+        '</div>';
     } else {
       body.style.padding = '32px 16px';
       var icon = ext === 'doc' || ext === 'docx' ? '📄' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv' ? '📊' : '📎');

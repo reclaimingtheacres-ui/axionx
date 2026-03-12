@@ -1724,7 +1724,23 @@ def import_staged_notes(conn=None):
                 )
                 skipped += 1
                 continue
-            if not note_text:
+
+            if has_file and not note_text:
+                files_loc = (note["files_location"] or "").strip().strip("/")
+                loc_parts = files_loc.split("/")
+                if len(loc_parts) >= 3 and loc_parts[2] != note["geoop_note_id"]:
+                    parent_id = loc_parts[2]
+                    parent = conn.execute(
+                        "SELECT axion_note_id FROM geoop_staging_notes WHERE geoop_note_id=?",
+                        (parent_id,)
+                    ).fetchone()
+                    parent_axion_id = parent["axion_note_id"] if parent else None
+                    conn.execute(
+                        "UPDATE geoop_staging_notes SET import_status='linked_to_parent', axion_job_id=?, axion_note_id=?, imported_at=? WHERE id=?",
+                        (axion_job_id, parent_axion_id, ts, note["id"])
+                    )
+                    skipped += 1
+                    continue
                 note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
 
             note_date = note["file_date"] or ts
@@ -1758,6 +1774,27 @@ def import_staged_notes(conn=None):
         conn.commit()
 
     conn.commit()
+
+    unresolved = conn.execute("""
+        SELECT id, files_location FROM geoop_staging_notes
+        WHERE import_status = 'linked_to_parent' AND axion_note_id IS NULL
+          AND files_location IS NOT NULL AND files_location != ''
+    """).fetchall()
+    for row in unresolved:
+        loc_parts = (row["files_location"] or "").strip().strip("/").split("/")
+        if len(loc_parts) >= 3:
+            parent_id = loc_parts[2]
+            parent = conn.execute(
+                "SELECT axion_note_id FROM geoop_staging_notes WHERE geoop_note_id=? AND axion_note_id IS NOT NULL",
+                (parent_id,)
+            ).fetchone()
+            if parent:
+                conn.execute(
+                    "UPDATE geoop_staging_notes SET axion_note_id=? WHERE id=?",
+                    (parent["axion_note_id"], row["id"])
+                )
+    conn.commit()
+
     if close:
         conn.close()
 
@@ -3041,7 +3078,7 @@ def backfill_attachment_links(run_id=None):
         while True:
             notes = conn.execute("""
                 SELECT id, geoop_job_id, geoop_note_id, note_description, file_name, file_date,
-                       import_status, axion_job_id, axion_note_id
+                       files_location, import_status, axion_job_id, axion_note_id
                 FROM geoop_staging_notes
                 WHERE id > ?
                   AND import_status IN ('unmatched_job', 'skipped_empty', 'error')
@@ -3076,7 +3113,23 @@ def backfill_attachment_links(run_id=None):
                 has_file = bool((note["file_name"] or "").strip())
                 if not note_text and not has_file:
                     continue
-                if not note_text:
+
+                if has_file and not note_text:
+                    files_loc = (note["files_location"] or "").strip().strip("/")
+                    loc_parts = files_loc.split("/")
+                    if len(loc_parts) >= 3 and loc_parts[2] != note["geoop_note_id"]:
+                        parent_id = loc_parts[2]
+                        parent = conn.execute(
+                            "SELECT axion_note_id FROM geoop_staging_notes WHERE geoop_note_id=?",
+                            (parent_id,)
+                        ).fetchone()
+                        parent_axion_id = parent["axion_note_id"] if parent else None
+                        conn.execute(
+                            "UPDATE geoop_staging_notes SET import_status='linked_to_parent', axion_job_id=?, axion_note_id=?, imported_at=? WHERE id=?",
+                            (axion_job_id, parent_axion_id, ts, note["id"])
+                        )
+                        stats["already_linked"] += 1
+                        continue
                     note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
 
                 note_date = note["file_date"] or ts
