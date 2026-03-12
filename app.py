@@ -160,12 +160,23 @@ _db_init_lock = threading.Lock()
 
 
 def _raw_db():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=60000")
-    return conn
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    last_err = None
+    for attempt in range(5):
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=30)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=60000")
+            return conn
+        except sqlite3.OperationalError as e:
+            last_err = e
+            if attempt < 4:
+                import time
+                time.sleep(1 + attempt)
+            else:
+                raise
 
 
 def _lazy_init():
