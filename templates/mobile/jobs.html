@@ -415,8 +415,6 @@ const cards = Array.from(document.querySelectorAll('.job-row-wrap'));
 
 // ── Distance ──
 let agentPos = null;
-let _geocodePending = false;
-let _geocodeExhausted = false;
 
 function haversineKm(lat1,lng1,lat2,lng2){
   const R=6371, dL=(lat2-lat1)*Math.PI/180, dl=(lng2-lng1)*Math.PI/180;
@@ -431,7 +429,6 @@ function fmtDist(km){
 
 function applyDistances(){
   if(!agentPos) return;
-  let missingCoords = 0;
   cards.forEach(c=>{
     const lat=parseFloat(c.dataset.lat), lng=parseFloat(c.dataset.lng);
     const el=document.getElementById('dist-'+c.dataset.id);
@@ -440,61 +437,11 @@ function applyDistances(){
       if(el){ el.textContent=fmtDist(km); el.classList.remove('hidden'); }
       c.dataset.dist = km;
     } else {
-      missingCoords++;
-      if(el && currentSort==='distance'){
-        el.textContent='no coords'; el.classList.remove('hidden');
-      }
+      c.dataset.dist = '';
+      if(el) el.classList.add('hidden');
     }
   });
   if(currentSort==='distance') applySortAndFilter();
-  // Kick off server-side batch geocoding for jobs missing coordinates
-  if(missingCoords > 0 && !_geocodePending && !_geocodeExhausted){
-    geocodePendingJobs();
-  }
-}
-
-function geocodePendingJobs(){
-  if(_geocodePending) return;
-  _geocodePending = true;
-  const warn = document.getElementById('dist-warn');
-  if(warn) warn.textContent = 'Fetching coordinates for job addresses — distances updating…';
-  if(warn) warn.style.display = 'block';
-
-  function runBatch(){
-    fetch('/m/api/jobs/geocode-pending',{method:'POST'})
-      .then(r=>r.json())
-      .then(data=>{
-        if(!data.ok) return;
-        // Update cards that now have coordinates
-        data.updated.forEach(function(u){
-          const card = document.querySelector('.job-row-wrap[data-id="'+u.id+'"]');
-          if(card){
-            card.dataset.lat = u.lat;
-            card.dataset.lng = u.lng;
-          }
-        });
-        if(data.updated.length > 0) applyDistances();
-        if(data.remaining > 0){
-          // More jobs to geocode — wait a moment then run again
-          setTimeout(runBatch, 500);
-        } else {
-          _geocodePending = false;
-          _geocodeExhausted = true;  // no more geocodable jobs on server
-          // All done — update or hide the warning
-          const anyMissing = Array.from(cards).some(c=>!parseFloat(c.dataset.lat));
-          if(warn){
-            if(anyMissing){
-              warn.textContent = 'Some jobs have no address — they appear at the bottom.';
-            } else {
-              warn.style.display = 'none';
-            }
-          }
-          if(currentSort==='distance') applySortAndFilter();
-        }
-      })
-      .catch(()=>{ _geocodePending = false; });
-  }
-  runBatch();
 }
 
 if(navigator.geolocation){
