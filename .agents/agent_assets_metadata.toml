@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "nOtPxFChMyBUu9XRysY1e"
+uri = "file://client_resolution_report.md"
+type = "text"
+title = "Client Resolution Diagnostic Report"

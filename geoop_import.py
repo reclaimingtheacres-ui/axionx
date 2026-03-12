@@ -312,7 +312,10 @@ def parse_description(desc):
 
     _BAD_CLIENT_KW = ["security", "arrears", "regulated", "unregulated",
                        "please", "repossession", "authority", "field call",
-                       "debt amount", "contract ", "writ and"]
+                       "debt amount", "contract ", "writ and", "repo only",
+                       "instructions", "see instructions", "client manager",
+                       "deliver to", "note ", "must ", "call ","payout",
+                       "turo res id", "res id"]
 
     def _valid_client(name):
         name = (name or "").strip().rstrip(" -")
