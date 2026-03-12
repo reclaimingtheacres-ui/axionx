@@ -81,6 +81,11 @@ def handle_405(e):
     return render_template("error_500.html", error_message="Method not allowed", path=request.path), 405
 
 
+@app.route("/health")
+def health():
+    return "ok", 200
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     tb = traceback.format_exc()
