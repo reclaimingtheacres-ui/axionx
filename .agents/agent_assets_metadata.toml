@@ -6,3 +6,9 @@ id = "nOtPxFChMyBUu9XRysY1e"
 uri = "file://client_resolution_report.md"
 type = "text"
 title = "Client Resolution Diagnostic Report"
+
+[[outputs]]
+id = "qoeAc_x8lk5s3Iq2ktwIj"
+uri = "file://attachment_remediation_report.md"
+type = "text"
+title = "Attachment Remediation Report"
