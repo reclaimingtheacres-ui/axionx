@@ -11359,8 +11359,8 @@ def m_login_post():
     session["user_name"] = user["full_name"]
     session["role"]      = user["role"]
     if next_path and next_path.startswith("/m/"):
-        return redirect(next_path, code=303)
-    return redirect(url_for("m_today"), code=303)
+        return redirect(next_path, code=302)
+    return redirect(url_for("m_today"), code=302)
 
 
 @app.get("/m/logout")
