@@ -169,6 +169,29 @@
           </div>
           <a href="#" id="ap-unmatched-csv" class="btn btn-outline-secondary btn-sm">Download Unmatched Report (CSV)</a>
           <a href="#" id="ap-unmatched-json" class="btn btn-outline-secondary btn-sm ms-1">View Unmatched (JSON)</a>
+
+          <div id="ap-samples" class="mt-3" style="display:none">
+            <div class="row">
+              <div class="col-lg-7">
+                <h6 class="small fw-bold text-warning">Sample Unmatched Entries (10)</h6>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered small mb-2" id="ap-unmatched-sample-table">
+                    <thead class="table-light"><tr><th>ZIP Source</th><th>Entry Path</th><th>Reason</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-5">
+                <h6 class="small fw-bold text-success">Sample Matched Attachments (5)</h6>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered small mb-2" id="ap-matched-sample-table">
+                    <thead class="table-light"><tr><th>Source Path</th><th>Job Ref</th><th>Linked To</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -276,6 +299,17 @@
           <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-items">0</div><div class="text-muted">Items Updated</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold text-danger" id="bf-errors">0</div><div class="text-muted">Errors</div></div></div>
         </div>
+      </div>
+      <div id="backfillSamples" style="display:none" class="mt-3">
+        <h6 class="small fw-bold">Backfill Summary</h6>
+        <div class="row text-center row-cols-2 row-cols-md-4 g-2 small mb-3">
+          <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="bfs-desc">0</div><div class="text-muted">Descriptions Preserved</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bfs-legacy">0</div><div class="text-muted">Legacy Notes Created</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bfs-items">0</div><div class="text-muted">Security Items</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bfs-fields">—</div><div class="text-muted">Fields Populated</div></div></div>
+        </div>
+        <h6 class="small fw-bold">Sample Backfilled Jobs (5)</h6>
+        <div id="bfs-sample-list"></div>
       </div>
     </div>
   </div>
@@ -596,6 +630,55 @@ function loadDiagnostics() {
             document.getElementById('ap-unmatched-csv').href = '/admin/geoop-import/unmatched-report/' + runId + '/csv';
             document.getElementById('ap-unmatched-json').href = '/admin/geoop-import/unmatched-report/' + runId;
           }
+          fetch('/admin/geoop-import/scan-samples/' + runId)
+            .then(function(r) { return r.json(); })
+            .then(function(s) {
+              var samplesDiv = document.getElementById('ap-samples');
+              samplesDiv.style.display = '';
+              function addSampleCell(row, text, cls) {
+                var td = document.createElement('td');
+                td.textContent = text;
+                td.style.wordBreak = 'break-all';
+                if (cls) td.className = cls;
+                row.appendChild(td);
+              }
+              var utb = document.querySelector('#ap-unmatched-sample-table tbody');
+              utb.innerHTML = '';
+              (s.unmatched_samples || []).forEach(function(u) {
+                var tr = document.createElement('tr');
+                addSampleCell(tr, u.zip_name);
+                addSampleCell(tr, u.entry_path);
+                addSampleCell(tr, u.reason, u.reason === 'no_matching_job' ? 'text-warning' : u.reason === 'no_matching_note' ? 'text-warning' : '');
+                utb.appendChild(tr);
+              });
+              if (!s.unmatched_samples || s.unmatched_samples.length === 0) {
+                var tr = document.createElement('tr');
+                var td = document.createElement('td');
+                td.colSpan = 3;
+                td.textContent = 'No unmatched entries recorded';
+                td.className = 'text-muted';
+                tr.appendChild(td);
+                utb.appendChild(tr);
+              }
+              var mtb = document.querySelector('#ap-matched-sample-table tbody');
+              mtb.innerHTML = '';
+              (s.matched_samples || []).forEach(function(m) {
+                var tr = document.createElement('tr');
+                addSampleCell(tr, m.source_path);
+                addSampleCell(tr, m.job_ref || m.geoop_job_id, 'fw-bold');
+                addSampleCell(tr, 'Note ' + m.geoop_note_id + (m.job_address ? ' — ' + m.job_address : ''));
+                mtb.appendChild(tr);
+              });
+              if (!s.matched_samples || s.matched_samples.length === 0) {
+                var tr = document.createElement('tr');
+                var td = document.createElement('td');
+                td.colSpan = 3;
+                td.textContent = 'No matched samples available';
+                td.className = 'text-muted';
+                tr.appendChild(td);
+                mtb.appendChild(tr);
+              }
+            }).catch(function(){});
         }
       })
       .catch(function() { setTimeout(poll, 5000); });
@@ -646,11 +729,279 @@ function loadDiagnostics() {
             alert.querySelector('strong').textContent = 'Backfill failed' + (d.error_message ? ': ' + d.error_message : '');
           }
           document.getElementById('backfillBtn').disabled = false;
+          if (d.status === 'completed') {
+            fetch('/admin/geoop-import/backfill-samples/' + bfRunId)
+              .then(function(r) { return r.json(); })
+              .then(function(bs) {
+                var samplesDiv = document.getElementById('backfillSamples');
+                samplesDiv.style.display = '';
+                var t = bs.totals || {};
+                document.getElementById('bfs-desc').textContent = (t.descriptions_preserved||0).toLocaleString();
+                document.getElementById('bfs-legacy').textContent = (t.legacy_notes_created||0).toLocaleString();
+                document.getElementById('bfs-items').textContent = (t.security_items||0).toLocaleString();
+                var fp = t.fields_populated || {};
+                var fpText = [];
+                if (fp.lender_name) fpText.push('Lender: ' + fp.lender_name);
+                if (fp.account_number) fpText.push('Account: ' + fp.account_number);
+                if (fp.regulation_type) fpText.push('Regulation: ' + fp.regulation_type);
+                if (fp.arrears) fpText.push('Arrears: ' + fp.arrears);
+                if (fp.costs) fpText.push('Costs: ' + fp.costs);
+                if (fp.mmp) fpText.push('MMP: ' + fp.mmp);
+                if (fp.due_date) fpText.push('Due Date: ' + fp.due_date);
+                document.getElementById('bfs-fields').textContent = fpText.length ? fpText.join(', ') : '—';
+                var list = document.getElementById('bfs-sample-list');
+                list.innerHTML = '';
+                (bs.samples || []).forEach(function(s, i) {
+                  var card = document.createElement('div');
+                  card.className = 'card mb-2';
+                  var hdr = document.createElement('div');
+                  hdr.className = 'card-header py-1 small fw-bold';
+                  hdr.textContent = (i+1) + '. Job ' + s.job_ref + ' (GeoOp #' + s.geoop_job_id + ')';
+                  card.appendChild(hdr);
+                  var body = document.createElement('div');
+                  body.className = 'card-body py-2 small';
+                  var rows = [];
+                  rows.push(['GeoOp Description', s.raw_description || '—']);
+                  rows.push(['Legacy Note', s.legacy_note || '—']);
+                  rows.push(['Source Preserved', s.preserved_source ? 'Yes' : 'No']);
+                  var fields = [];
+                  if (s.lender_name) fields.push('Lender: ' + s.lender_name);
+                  if (s.account_number) fields.push('Account: ' + s.account_number);
+                  if (s.regulation_type) fields.push('Regulation: ' + s.regulation_type);
+                  if (s.arrears) fields.push('Arrears: ' + s.arrears);
+                  if (s.costs) fields.push('Costs: ' + s.costs);
+                  if (s.mmp) fields.push('MMP: ' + s.mmp);
+                  if (s.due_date) fields.push('Due: ' + s.due_date);
+                  if (s.deliver_to) fields.push('Deliver To: ' + s.deliver_to);
+                  rows.push(['Structured Fields', fields.length ? fields.join(' · ') : '—']);
+                  if (s.vehicle) {
+                    var veh = [];
+                    if (s.vehicle.reg) veh.push('Reg: ' + s.vehicle.reg);
+                    if (s.vehicle.vin) veh.push('VIN: ' + s.vehicle.vin);
+                    if (s.vehicle.make) veh.push(s.vehicle.make);
+                    if (s.vehicle.model) veh.push(s.vehicle.model);
+                    if (s.vehicle.year) veh.push(s.vehicle.year);
+                    if (s.vehicle.colour) veh.push(s.vehicle.colour);
+                    rows.push(['Vehicle/Security', veh.join(' · ')]);
+                  }
+                  var tbl = document.createElement('table');
+                  tbl.className = 'table table-sm table-bordered mb-0';
+                  rows.forEach(function(r) {
+                    var tr = document.createElement('tr');
+                    var th = document.createElement('th');
+                    th.className = 'text-muted';
+                    th.style.width = '160px';
+                    th.textContent = r[0];
+                    tr.appendChild(th);
+                    var td = document.createElement('td');
+                    td.textContent = r[1];
+                    td.style.wordBreak = 'break-word';
+                    tr.appendChild(td);
+                    tbl.appendChild(tr);
+                  });
+                  body.appendChild(tbl);
+                  card.appendChild(body);
+                  list.appendChild(card);
+                });
+                if (!bs.samples || bs.samples.length === 0) {
+                  list.textContent = 'No sample data available (no jobs with descriptions found).';
+                }
+              }).catch(function(){});
+          }
         }
       })
       .catch(function() { setTimeout(bfPoll, 5000); });
   }
   bfPoll();
+})();
+
+(function() {
+  var lastScanId = null;
+  var lastBackfillId = null;
+  {% set ns = namespace(found_scan=false, found_bf=false) %}
+  {% for run in runs %}
+  {% if run.status == 'completed' and run.run_type == 'azure_blob_scan' and not ns.found_scan %}
+  lastScanId = {{ run.id }};
+  {% set ns.found_scan = true %}
+  {% endif %}
+  {% if run.status == 'completed' and run.run_type == 'description_backfill' and not ns.found_bf %}
+  lastBackfillId = {{ run.id }};
+  {% set ns.found_bf = true %}
+  {% endif %}
+  {% endfor %}
+
+  if (lastScanId) {
+    fetch('/admin/geoop-import/scan-azure/progress/' + lastScanId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.status !== 'completed') return;
+        var panel = document.getElementById('azureProgressPanel');
+        panel.style.display = 'block';
+        document.getElementById('azureRunId').textContent = lastScanId;
+        document.getElementById('ap-total').textContent = d.total_blobs_in_container != null ? d.total_blobs_in_container.toLocaleString() : '—';
+        document.getElementById('ap-blobs').textContent = (d.blobs_scanned||0).toLocaleString();
+        document.getElementById('ap-files').textContent = (d.files_processed||0).toLocaleString();
+        document.getElementById('ap-zipentries').textContent = (d.zip_entries_scanned||0).toLocaleString();
+        document.getElementById('ap-matched').textContent = (d.attachments_matched||0).toLocaleString();
+        document.getElementById('ap-linked').textContent = (d.attachments_linked||0).toLocaleString();
+        document.getElementById('ap-dupes').textContent = (d.skipped_duplicate||0).toLocaleString();
+        document.getElementById('ap-nomatch').textContent = (d.skipped_no_match||0).toLocaleString();
+        document.getElementById('ap-nonote').textContent = (d.skipped_no_note||0).toLocaleString();
+        document.getElementById('ap-errors').textContent = (d.errors||0).toLocaleString();
+        panel.querySelector('.alert').className = 'alert alert-success py-2 small mb-2';
+        panel.querySelector('.alert strong').textContent = 'Azure Blob scan complete (run #' + lastScanId + ')';
+        var spinner = panel.querySelector('.spinner-border');
+        if (spinner) spinner.remove();
+        if (d.zip_summaries) {
+          var summDiv = document.getElementById('ap-zip-summary');
+          summDiv.style.display = '';
+          var tbody = document.querySelector('#ap-zip-table tbody');
+          tbody.innerHTML = '';
+          function addCell(row, text, cls) {
+            var td = document.createElement('td');
+            td.textContent = text;
+            if (cls) td.className = cls;
+            row.appendChild(td);
+          }
+          for (var zname in d.zip_summaries) {
+            var z = d.zip_summaries[zname];
+            var tr = document.createElement('tr');
+            addCell(tr, zname);
+            addCell(tr, (z.total_entries||0).toLocaleString());
+            addCell(tr, (z.matched||0).toLocaleString());
+            addCell(tr, (z.linked||0).toLocaleString(), 'text-success fw-bold');
+            addCell(tr, (z.duplicates||0).toLocaleString());
+            addCell(tr, (z.no_matching_job||0).toLocaleString(), 'text-warning');
+            addCell(tr, (z.no_matching_note||0).toLocaleString(), 'text-warning');
+            addCell(tr, (z.path_parse_failed||0).toLocaleString());
+            addCell(tr, (z.errors||0).toLocaleString());
+            tbody.appendChild(tr);
+          }
+          document.getElementById('ap-unmatched-csv').href = '/admin/geoop-import/unmatched-report/' + lastScanId + '/csv';
+          document.getElementById('ap-unmatched-json').href = '/admin/geoop-import/unmatched-report/' + lastScanId;
+        }
+        fetch('/admin/geoop-import/scan-samples/' + lastScanId)
+          .then(function(r) { return r.json(); })
+          .then(function(s) {
+            var samplesDiv = document.getElementById('ap-samples');
+            samplesDiv.style.display = '';
+            function addSampleCell(row, text, cls) {
+              var td = document.createElement('td');
+              td.textContent = text;
+              td.style.wordBreak = 'break-all';
+              if (cls) td.className = cls;
+              row.appendChild(td);
+            }
+            var utb = document.querySelector('#ap-unmatched-sample-table tbody');
+            utb.innerHTML = '';
+            (s.unmatched_samples || []).forEach(function(u) {
+              var tr = document.createElement('tr');
+              addSampleCell(tr, u.zip_name);
+              addSampleCell(tr, u.entry_path);
+              addSampleCell(tr, u.reason, 'text-warning');
+              utb.appendChild(tr);
+            });
+            if (!s.unmatched_samples || s.unmatched_samples.length === 0) {
+              var tr = document.createElement('tr');
+              var td = document.createElement('td');
+              td.colSpan = 3; td.textContent = 'No unmatched entries'; td.className = 'text-muted';
+              tr.appendChild(td); utb.appendChild(tr);
+            }
+            var mtb = document.querySelector('#ap-matched-sample-table tbody');
+            mtb.innerHTML = '';
+            (s.matched_samples || []).forEach(function(m) {
+              var tr = document.createElement('tr');
+              addSampleCell(tr, m.source_path);
+              addSampleCell(tr, m.job_ref || m.geoop_job_id, 'fw-bold');
+              addSampleCell(tr, 'Note ' + m.geoop_note_id + (m.job_address ? ' — ' + m.job_address : ''));
+              mtb.appendChild(tr);
+            });
+            if (!s.matched_samples || s.matched_samples.length === 0) {
+              var tr = document.createElement('tr');
+              var td = document.createElement('td');
+              td.colSpan = 3; td.textContent = 'No matched samples'; td.className = 'text-muted';
+              tr.appendChild(td); mtb.appendChild(tr);
+            }
+          }).catch(function(){});
+      }).catch(function(){});
+  }
+
+  if (lastBackfillId) {
+    fetch('/admin/geoop-import/backfill-samples/' + lastBackfillId)
+      .then(function(r) { return r.json(); })
+      .then(function(bs) {
+        if (bs.error) return;
+        var samplesDiv = document.getElementById('backfillSamples');
+        samplesDiv.style.display = '';
+        var t = bs.totals || {};
+        document.getElementById('bfs-desc').textContent = (t.descriptions_preserved||0).toLocaleString();
+        document.getElementById('bfs-legacy').textContent = (t.legacy_notes_created||0).toLocaleString();
+        document.getElementById('bfs-items').textContent = (t.security_items||0).toLocaleString();
+        var fp = t.fields_populated || {};
+        var fpText = [];
+        if (fp.lender_name) fpText.push('Lender: ' + fp.lender_name);
+        if (fp.account_number) fpText.push('Account: ' + fp.account_number);
+        if (fp.regulation_type) fpText.push('Regulation: ' + fp.regulation_type);
+        if (fp.arrears) fpText.push('Arrears: ' + fp.arrears);
+        if (fp.costs) fpText.push('Costs: ' + fp.costs);
+        if (fp.mmp) fpText.push('MMP: ' + fp.mmp);
+        if (fp.due_date) fpText.push('Due Date: ' + fp.due_date);
+        document.getElementById('bfs-fields').textContent = fpText.length ? fpText.join(', ') : '—';
+        var list = document.getElementById('bfs-sample-list');
+        list.innerHTML = '';
+        (bs.samples || []).forEach(function(s, i) {
+          var card = document.createElement('div');
+          card.className = 'card mb-2';
+          var hdr = document.createElement('div');
+          hdr.className = 'card-header py-1 small fw-bold';
+          hdr.textContent = (i+1) + '. Job ' + s.job_ref + ' (GeoOp #' + s.geoop_job_id + ')';
+          card.appendChild(hdr);
+          var body = document.createElement('div');
+          body.className = 'card-body py-2 small';
+          var rows = [];
+          rows.push(['GeoOp Description', s.raw_description || '—']);
+          rows.push(['Legacy Note', s.legacy_note || '—']);
+          rows.push(['Source Preserved', s.preserved_source ? 'Yes' : 'No']);
+          var fields = [];
+          if (s.lender_name) fields.push('Lender: ' + s.lender_name);
+          if (s.account_number) fields.push('Account: ' + s.account_number);
+          if (s.regulation_type) fields.push('Regulation: ' + s.regulation_type);
+          if (s.arrears) fields.push('Arrears: ' + s.arrears);
+          if (s.costs) fields.push('Costs: ' + s.costs);
+          if (s.mmp) fields.push('MMP: ' + s.mmp);
+          if (s.due_date) fields.push('Due: ' + s.due_date);
+          if (s.deliver_to) fields.push('Deliver To: ' + s.deliver_to);
+          rows.push(['Structured Fields', fields.length ? fields.join(' · ') : '—']);
+          if (s.vehicle) {
+            var veh = [];
+            if (s.vehicle.reg) veh.push('Reg: ' + s.vehicle.reg);
+            if (s.vehicle.vin) veh.push('VIN: ' + s.vehicle.vin);
+            if (s.vehicle.make) veh.push(s.vehicle.make);
+            if (s.vehicle.model) veh.push(s.vehicle.model);
+            if (s.vehicle.year) veh.push(s.vehicle.year);
+            if (s.vehicle.colour) veh.push(s.vehicle.colour);
+            rows.push(['Vehicle/Security', veh.join(' · ')]);
+          }
+          var tbl = document.createElement('table');
+          tbl.className = 'table table-sm table-bordered mb-0';
+          rows.forEach(function(r) {
+            var tr = document.createElement('tr');
+            var th = document.createElement('th');
+            th.className = 'text-muted'; th.style.width = '160px';
+            th.textContent = r[0]; tr.appendChild(th);
+            var td = document.createElement('td');
+            td.textContent = r[1]; td.style.wordBreak = 'break-word';
+            tr.appendChild(td); tbl.appendChild(tr);
+          });
+          body.appendChild(tbl);
+          card.appendChild(body);
+          list.appendChild(card);
+        });
+        if (!bs.samples || bs.samples.length === 0) {
+          list.textContent = 'No sample data available.';
+        }
+      }).catch(function(){});
+  }
 })();
 </script>
 {% endblock %}

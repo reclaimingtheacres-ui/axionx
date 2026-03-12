@@ -9278,6 +9278,28 @@ def geoop_backfill_progress(run_id):
     return jsonify({"status": "not_found"}), 404
 
 
+@app.get("/admin/geoop-import/scan-samples/<int:run_id>")
+@admin_required
+def geoop_scan_samples(run_id):
+    try:
+        data = _geoop.get_scan_samples(run_id)
+    except Exception as e:
+        return jsonify({"error": str(e)[:300]}), 500
+    return jsonify(data)
+
+
+@app.get("/admin/geoop-import/backfill-samples/<int:run_id>")
+@admin_required
+def geoop_backfill_samples(run_id):
+    try:
+        data = _geoop.get_backfill_samples(run_id)
+    except Exception as e:
+        return jsonify({"error": str(e)[:300]}), 500
+    if not data:
+        return jsonify({"error": "Run not found"}), 404
+    return jsonify(data)
+
+
 @app.post("/admin/geoop-import/reset")
 @admin_required
 def geoop_import_reset():

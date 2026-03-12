@@ -1219,6 +1219,7 @@ def backfill_geoop_descriptions(run_id=None):
         "errors": 0,
         "last_staging_id": 0,
         "batch_size": _BACKFILL_BATCH_SIZE,
+        "backfill_ts": ts,
     }
 
     try:
@@ -1598,6 +1599,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
         "zip_entries_scanned": 0,
         "attachments_matched": 0,
         "status": "running",
+        "scan_ts": ts,
     }
 
     stats["phase"] = "listing_blobs"
@@ -2039,6 +2041,203 @@ def get_unmatched_report(run_id):
         })
 
     return {"total": len(entries), "by_reason": summary, "entries": entries}
+
+
+def get_scan_samples(run_id, unmatched_limit=10, matched_limit=5):
+    conn = _db()
+    try:
+        unmatched = conn.execute("""
+            SELECT zip_name, entry_path, filename, geoop_job_id, geoop_note_id, reason
+            FROM geoop_unmatched_attachments
+            WHERE run_id=?
+            ORDER BY RANDOM()
+            LIMIT ?
+        """, (run_id, unmatched_limit)).fetchall()
+
+        run_row = conn.execute(
+            "SELECT diagnostics_json FROM geoop_import_runs WHERE id=?", (run_id,)
+        ).fetchone()
+        scan_ts = None
+        if run_row and run_row["diagnostics_json"]:
+            try:
+                diag = json.loads(run_row["diagnostics_json"])
+                scan_ts = diag.get("scan_ts")
+            except Exception:
+                pass
+
+        matched = []
+        if scan_ts:
+            matched = conn.execute("""
+                SELECT sf.original_path, sf.geoop_job_id, sf.geoop_note_id,
+                       sf.file_name, sf.stored_filename,
+                       j.internal_job_number AS job_ref,
+                       j.job_address
+                FROM geoop_staging_files sf
+                LEFT JOIN geoop_staging_jobs sj ON sj.geoop_job_id = sf.geoop_job_id
+                LEFT JOIN jobs j ON j.id = sj.axion_job_id
+                WHERE sf.source_type = 'azure_blob'
+                  AND sf.import_status = 'imported'
+                  AND sf.imported_at = ?
+                ORDER BY RANDOM()
+                LIMIT ?
+            """, (scan_ts, matched_limit)).fetchall()
+    finally:
+        conn.close()
+
+    return {
+        "unmatched_samples": [
+            {
+                "zip_name": r["zip_name"] or "",
+                "entry_path": r["entry_path"],
+                "reason": r["reason"],
+            }
+            for r in unmatched
+        ],
+        "matched_samples": [
+            {
+                "source_path": r["original_path"] or "",
+                "filename": r["file_name"] or "",
+                "job_ref": r["job_ref"] or "",
+                "job_address": r["job_address"] or "",
+                "geoop_job_id": r["geoop_job_id"] or "",
+                "geoop_note_id": r["geoop_note_id"] or "",
+            }
+            for r in matched
+        ],
+    }
+
+
+def get_backfill_samples(run_id, limit=5):
+    conn = _db()
+    try:
+        run_row = conn.execute(
+            "SELECT started_at, diagnostics_json FROM geoop_import_runs WHERE id=?", (run_id,)
+        ).fetchone()
+        if not run_row:
+            return None
+
+        diag = {}
+        backfill_ts = None
+        if run_row["diagnostics_json"]:
+            try:
+                diag = json.loads(run_row["diagnostics_json"])
+                backfill_ts = diag.get("backfill_ts")
+            except Exception:
+                pass
+
+        if not backfill_ts:
+            backfill_ts = run_row["started_at"]
+
+        samples = conn.execute("""
+            SELECT sj.geoop_job_id, sj.reference_no, sj.raw_description,
+                   sj.axion_job_id,
+                   j.geoop_source_description,
+                   j.lender_name, j.account_number, j.regulation_type,
+                   j.arrears_cents, j.costs_cents, j.mmp_cents,
+                   j.job_due_date, j.deliver_to, j.internal_job_number,
+                   fn.note_text AS legacy_note,
+                   ji.reg, ji.vin, ji.make, ji.model, ji.year, ji.colour
+            FROM geoop_staging_jobs sj
+            JOIN jobs j ON j.id = sj.axion_job_id
+            LEFT JOIN job_field_notes fn ON fn.job_id = sj.axion_job_id AND fn.note_type = 'geoop_import'
+            LEFT JOIN job_items ji ON ji.job_id = sj.axion_job_id AND ji.item_type = 'vehicle'
+            WHERE sj.axion_job_id IS NOT NULL
+              AND sj.raw_description IS NOT NULL
+              AND sj.raw_description != ''
+              AND j.geoop_source_description IS NOT NULL
+              AND j.geoop_source_description != ''
+              AND j.updated_at = ?
+            ORDER BY RANDOM()
+            LIMIT ?
+        """, (backfill_ts, limit)).fetchall()
+
+        total_with_desc = conn.execute("""
+            SELECT COUNT(*) FROM jobs j
+            JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id
+            WHERE j.geoop_source_description IS NOT NULL AND j.geoop_source_description != ''
+              AND j.updated_at = ?
+        """, (backfill_ts,)).fetchone()[0]
+
+        total_legacy_notes = conn.execute("""
+            SELECT COUNT(*) FROM job_field_notes
+            WHERE note_type = 'geoop_import' AND created_at = ?
+        """, (backfill_ts,)).fetchone()[0]
+
+        total_items = conn.execute("""
+            SELECT COUNT(*) FROM job_items ji
+            JOIN geoop_staging_jobs sj ON ji.job_id = sj.axion_job_id
+            JOIN jobs j ON j.id = sj.axion_job_id
+            WHERE ji.item_type = 'vehicle' AND sj.axion_job_id IS NOT NULL
+              AND j.updated_at = ?
+        """, (backfill_ts,)).fetchone()[0]
+
+        fields_populated = conn.execute("""
+            SELECT
+                SUM(CASE WHEN j.lender_name IS NOT NULL AND j.lender_name != '' THEN 1 ELSE 0 END) AS lender,
+                SUM(CASE WHEN j.account_number IS NOT NULL AND j.account_number != '' THEN 1 ELSE 0 END) AS account,
+                SUM(CASE WHEN j.regulation_type IS NOT NULL AND j.regulation_type != '' THEN 1 ELSE 0 END) AS regulation,
+                SUM(CASE WHEN j.arrears_cents > 0 THEN 1 ELSE 0 END) AS arrears,
+                SUM(CASE WHEN j.costs_cents > 0 THEN 1 ELSE 0 END) AS costs,
+                SUM(CASE WHEN j.mmp_cents > 0 THEN 1 ELSE 0 END) AS mmp,
+                SUM(CASE WHEN j.job_due_date IS NOT NULL AND j.job_due_date != '' THEN 1 ELSE 0 END) AS due_date
+            FROM jobs j
+            JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id
+            WHERE sj.axion_job_id IS NOT NULL
+              AND sj.raw_description IS NOT NULL AND sj.raw_description != ''
+              AND j.updated_at = ?
+        """, (backfill_ts,)).fetchone()
+
+    finally:
+        conn.close()
+
+    def _cents_to_str(v):
+        if not v:
+            return ""
+        return f"${v/100:,.2f}"
+
+    return {
+        "run_summary": diag,
+        "totals": {
+            "descriptions_preserved": total_with_desc,
+            "legacy_notes_created": total_legacy_notes,
+            "security_items": total_items,
+            "fields_populated": {
+                "lender_name": fields_populated["lender"] or 0,
+                "account_number": fields_populated["account"] or 0,
+                "regulation_type": fields_populated["regulation"] or 0,
+                "arrears": fields_populated["arrears"] or 0,
+                "costs": fields_populated["costs"] or 0,
+                "mmp": fields_populated["mmp"] or 0,
+                "due_date": fields_populated["due_date"] or 0,
+            },
+        },
+        "samples": [
+            {
+                "job_ref": r["internal_job_number"] or r["reference_no"] or "",
+                "geoop_job_id": r["geoop_job_id"] or "",
+                "raw_description": (r["raw_description"] or "")[:500],
+                "legacy_note": (r["legacy_note"] or "")[:500],
+                "preserved_source": (r["geoop_source_description"] or "")[:500],
+                "lender_name": r["lender_name"] or "",
+                "account_number": r["account_number"] or "",
+                "regulation_type": r["regulation_type"] or "",
+                "arrears": _cents_to_str(r["arrears_cents"]),
+                "costs": _cents_to_str(r["costs_cents"]),
+                "mmp": _cents_to_str(r["mmp_cents"]),
+                "due_date": r["job_due_date"] or "",
+                "deliver_to": r["deliver_to"] or "",
+                "vehicle": {
+                    "reg": r["reg"] or "",
+                    "vin": r["vin"] or "",
+                    "make": r["make"] or "",
+                    "model": r["model"] or "",
+                    "year": r["year"] or "",
+                    "colour": r["colour"] or "",
+                } if r["reg"] or r["vin"] or r["make"] else None,
+            }
+            for r in samples
+        ],
+    }
 
 
 def reset_staging(conn=None):
