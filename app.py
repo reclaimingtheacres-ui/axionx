@@ -9604,6 +9604,27 @@ def geoop_repair_dates():
     return redirect(url_for("geoop_import_page"))
 
 
+@app.post("/admin/geoop-import/repair-phones")
+@admin_required
+def geoop_repair_phones():
+    started = _geoop.repair_phone_numbers()
+    if started:
+        flash("Phone number repair started. Restoring leading zeroes and international prefixes.", "info")
+    else:
+        flash("Phone repair is already running. Please wait.", "warning")
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/repair-progress")
+@admin_required
+def geoop_repair_progress():
+    return jsonify({
+        "notes": _geoop.get_repair_dates_progress(),
+        "jobs": _geoop.get_repair_job_dates_progress(),
+        "phones": _geoop.get_repair_phones_progress(),
+    })
+
+
 @app.get("/admin/geoop-import/repair-dates-progress")
 @admin_required
 def geoop_repair_dates_progress():

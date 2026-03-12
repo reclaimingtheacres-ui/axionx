@@ -386,12 +386,16 @@
       </div>
       <hr class="my-2">
       <p class="small text-muted mb-2">
-        Repair original dates on imported GeoOp jobs and notes. Uses staging data to restore the original GeoOp created/modified dates that were overwritten during the data transfer.
+        <strong>Data Repair Tools</strong> — Fix known GeoOp import data-quality issues. Dates: restores original GeoOp created/modified dates. Phones: restores leading zeroes and +61 prefixes stripped by Excel.
       </p>
       <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
         <form method="post" action="/admin/geoop-import/repair-dates?target=both" class="m-0"
               onsubmit="this.querySelector('button').disabled=true; return confirm('This will update created_at dates on all imported jobs and notes using original GeoOp dates. Continue?');">
           <button type="submit" class="btn btn-outline-primary btn-sm" id="repairDatesBtn">Repair Original Dates</button>
+        </form>
+        <form method="post" action="/admin/geoop-import/repair-phones" class="m-0"
+              onsubmit="this.querySelector('button').disabled=true; return confirm('This will restore leading zeroes and international prefixes on all phone numbers. Continue?');">
+          <button type="submit" class="btn btn-outline-primary btn-sm" id="repairPhonesBtn">Repair Phone Numbers</button>
         </form>
         <span id="repairDatesStatus" class="small text-muted"></span>
       </div>
@@ -1314,14 +1318,16 @@ function _renderAuditResult(d) {
 
 (function() {
   var statusEl = document.getElementById('repairDatesStatus');
-  var btn = document.getElementById('repairDatesBtn');
+  var datesBtn = document.getElementById('repairDatesBtn');
+  var phonesBtn = document.getElementById('repairPhonesBtn');
   function pollRepair() {
-    fetch('/admin/geoop-import/repair-dates-progress')
+    fetch('/admin/geoop-import/repair-progress')
       .then(function(r) { return r.json(); })
       .then(function(d) {
         var notes = d.notes || {};
         var jobs = d.jobs || {};
-        var running = notes.status === 'running' || jobs.status === 'running';
+        var phones = d.phones || {};
+        var running = notes.status === 'running' || jobs.status === 'running' || phones.status === 'running';
         var parts = [];
         if (notes.status === 'running') {
           parts.push('Notes: ' + (notes.updated||0).toLocaleString() + '/' + (notes.total||0).toLocaleString());
@@ -1337,20 +1343,34 @@ function _renderAuditResult(d) {
         } else if (jobs.status === 'error') {
           parts.push('Jobs: error');
         }
+        if (phones.status === 'running') {
+          parts.push('Phones: ' + (phones.updated||0).toLocaleString() + '/' + (phones.total||0).toLocaleString());
+        } else if (phones.status === 'complete') {
+          parts.push('Phones: ' + (phones.updated||0).toLocaleString() + ' fixed');
+        } else if (phones.status === 'error') {
+          parts.push('Phones: error');
+        }
         if (running) {
           statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + parts.join(' | ');
-          btn.disabled = true;
+          datesBtn.disabled = notes.status === 'running' || jobs.status === 'running';
+          phonesBtn.disabled = phones.status === 'running';
           setTimeout(pollRepair, 2000);
         } else if (parts.length) {
           statusEl.textContent = parts.join(' | ');
-          btn.disabled = false;
+          datesBtn.disabled = false;
+          phonesBtn.disabled = false;
         }
-      }).catch(function() { if (btn.disabled) setTimeout(pollRepair, 5000); });
+      }).catch(function() { if (datesBtn.disabled || phonesBtn.disabled) setTimeout(pollRepair, 5000); });
   }
   pollRepair();
-  btn.closest('form').addEventListener('submit', function() {
-    btn.disabled = true;
-    statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting…';
+  datesBtn.closest('form').addEventListener('submit', function() {
+    datesBtn.disabled = true;
+    statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting dates…';
+    setTimeout(pollRepair, 2000);
+  });
+  phonesBtn.closest('form').addEventListener('submit', function() {
+    phonesBtn.disabled = true;
+    statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting phones…';
     setTimeout(pollRepair, 2000);
   });
 })();

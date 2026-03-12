@@ -246,7 +246,7 @@
           <tr id="tow-row-{{ op.id }}" data-id="{{ op.id }}"
               data-company="{{ op.company_name|e }}" data-phone="{{ op.phone or ''|e }}" data-address="{{ op.address or ''|e }}">
             <td class="ps-3 fw-semibold">{{ op.company_name }}</td>
-            <td>{{ op.phone or '—' }}</td>
+            <td>{% if op.phone %}<span class="ax-ph" onclick="axPhone('{{ op.phone }}',event)">{{ op.phone }}</span>{% else %}&mdash;{% endif %}</td>
             <td>{{ op.address or '—' }}</td>
             <td class="text-end pe-3">
               <button class="btn btn-link btn-sm p-0 me-2" style="color:var(--accent)"

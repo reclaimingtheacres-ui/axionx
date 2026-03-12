@@ -12,6 +12,35 @@ import uuid
 import zipfile
 from datetime import datetime
 
+def _preserve_phone_text(val):
+    """Restore leading zero on Australian phone numbers stripped by Excel/CSV numeric coercion.
+
+    Rules:
+      - Already starts with '+' or '0' → return as-is (correctly formatted)
+      - Pure digits, 9 chars, starts with 2-9 → prepend '0' (e.g. 402801097 → 0402801097)
+      - Pure digits, 11 chars, starts with '61' → prepend '+' (e.g. 61402801097 → +61402801097)
+      - Contains any non-digit characters (spaces, dashes, parens) → return as-is
+      - Otherwise → return as-is
+    """
+    if not val:
+        return val
+    s = str(val).strip()
+    if not s:
+        return s
+    if s.startswith('+') or s.startswith('0'):
+        return s
+    digits = s.replace(' ', '').replace('-', '').replace('(', '').replace(')', '').replace('.', '')
+    if not digits.isdigit():
+        return s
+    if s != digits:
+        return s
+    if len(digits) == 9 and digits[0] in '23456789':
+        return '0' + digits
+    if len(digits) == 11 and digits.startswith('61'):
+        return '+' + digits
+    return s
+
+
 UPLOAD_FOLDER = "uploads"
 GEOOP_IMPORT_DIR = os.path.join(UPLOAD_FOLDER, "geoop_import")
 os.makedirs(GEOOP_IMPORT_DIR, exist_ok=True)
@@ -635,8 +664,8 @@ def stage_jobs_csv(csv_path, conn=None):
                 row.get("Firstname", ""),
                 row.get("Lastname", ""),
                 row.get("Email", ""),
-                row.get("Phone", ""),
-                row.get("Mobile", ""),
+                _preserve_phone_text(row.get("Phone", "")),
+                _preserve_phone_text(row.get("Mobile", "")),
                 row.get("Created By", ""),
                 row.get("Modified By", ""),
                 row.get("Date Created", ""),
@@ -1185,8 +1214,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 """, (fname, lname, sj["company"] or "", sj["email"] or "", full_address, ts, ts))
                 cust_id = cur.lastrowid
 
-                mobile = (sj["mobile"] or "").strip()
-                phone = (sj["phone"] or "").strip()
+                mobile = _preserve_phone_text((sj["mobile"] or "").strip())
+                phone = _preserve_phone_text((sj["phone"] or "").strip())
                 if mobile:
                     conn.execute("""
                         INSERT INTO contact_phone_numbers (entity_type, entity_id, label, phone_number, created_at)
@@ -3556,6 +3585,90 @@ def repair_job_dates():
             _repair_job_dates_progress.update({"status": "error", "error": str(e)[:500]})
         finally:
             _repair_job_dates_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True
+
+
+_repair_phones_lock = threading.Lock()
+_repair_phones_progress = {"status": "idle", "updated": 0, "total": 0}
+
+
+def get_repair_phones_progress():
+    return dict(_repair_phones_progress)
+
+
+def repair_phone_numbers():
+    if not _repair_phones_lock.acquire(blocking=False):
+        return False
+    _repair_phones_progress.clear()
+    _repair_phones_progress.update({"status": "running", "updated": 0, "total": 0})
+
+    def _run():
+        import logging
+        log = logging.getLogger("geoop_import")
+        try:
+            conn = _db()
+            try:
+                rows = conn.execute("""
+                    SELECT id, phone_number FROM contact_phone_numbers
+                    WHERE phone_number IS NOT NULL AND phone_number != ''
+                """).fetchall()
+                _repair_phones_progress["total"] = len(rows)
+                log.info("Repair phone numbers: %d rows to check", len(rows))
+
+                batch = []
+                for r in rows:
+                    original = r["phone_number"]
+                    fixed = _preserve_phone_text(original)
+                    if fixed != original:
+                        batch.append((fixed, r["id"]))
+
+                    if len(batch) >= 500:
+                        conn.executemany(
+                            "UPDATE contact_phone_numbers SET phone_number = ? WHERE id = ?",
+                            batch
+                        )
+                        conn.commit()
+                        _repair_phones_progress["updated"] += len(batch)
+                        batch = []
+
+                if batch:
+                    conn.executemany(
+                        "UPDATE contact_phone_numbers SET phone_number = ? WHERE id = ?",
+                        batch
+                    )
+                    conn.commit()
+                    _repair_phones_progress["updated"] += len(batch)
+
+                staging_rows = conn.execute("""
+                    SELECT id, phone, mobile FROM geoop_staging_jobs
+                    WHERE (phone IS NOT NULL AND phone != '') OR (mobile IS NOT NULL AND mobile != '')
+                """).fetchall()
+                staging_batch = []
+                for r in staging_rows:
+                    phone_fixed = _preserve_phone_text(r["phone"] or "")
+                    mobile_fixed = _preserve_phone_text(r["mobile"] or "")
+                    if phone_fixed != (r["phone"] or "") or mobile_fixed != (r["mobile"] or ""):
+                        staging_batch.append((phone_fixed, mobile_fixed, r["id"]))
+                if staging_batch:
+                    conn.executemany(
+                        "UPDATE geoop_staging_jobs SET phone = ?, mobile = ? WHERE id = ?",
+                        staging_batch
+                    )
+                    conn.commit()
+                    log.info("Repair phones: fixed %d staging rows", len(staging_batch))
+
+                _repair_phones_progress["status"] = "complete"
+                log.info("Repair phone numbers complete: %d updated", _repair_phones_progress["updated"])
+            finally:
+                conn.close()
+        except Exception as e:
+            log.error("Repair phone numbers failed: %s", e)
+            _repair_phones_progress.update({"status": "error", "error": str(e)[:500]})
+        finally:
+            _repair_phones_lock.release()
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
