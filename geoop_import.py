@@ -1342,6 +1342,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
         "status": "running",
     }
 
+    stats["phase"] = "listing_blobs"
     _persist_scan_progress(run_id, stats)
 
     write_batch = []
@@ -1457,6 +1458,8 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
                 return None
             return geoop_job_id, geoop_note_id, filename
 
+        import tempfile
+
         for blob in blob_list:
             stats["blobs_scanned"] += 1
             blob_name = blob.name
@@ -1464,22 +1467,44 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
             is_root_zip = blob_basename.lower().endswith(".zip") and "/" not in blob_name.strip("/")
 
             if is_root_zip:
+                stats["phase"] = "starting_blob"
+                stats["current_blob"] = blob_basename
+                _persist_scan_progress(run_id, stats)
+                tmp = None
                 try:
+                    stats["phase"] = "downloading_root_zip"
+                    _persist_scan_progress(run_id, stats)
+
                     blob_client = container_client.get_blob_client(blob_name)
                     download_stream = blob_client.download_blob()
-                    buf = io.BytesIO()
+                    tmp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+                    bytes_written = 0
                     for chunk in download_stream.chunks():
-                        buf.write(chunk)
-                    buf.seek(0)
-                    with zipfile.ZipFile(buf) as zf:
+                        tmp.write(chunk)
+                        bytes_written += len(chunk)
+                        if bytes_written % (100 * 1024 * 1024) < len(chunk):
+                            stats["download_mb"] = round(bytes_written / (1024 * 1024), 1)
+                            _persist_scan_progress(run_id, stats)
+                    tmp.close()
+                    stats["download_mb"] = round(bytes_written / (1024 * 1024), 1)
+
+                    stats["phase"] = "opening_root_zip"
+                    _persist_scan_progress(run_id, stats)
+
+                    with zipfile.ZipFile(tmp.name) as zf:
                         stats["zip_files_processed"] += 1
                         stats["files_processed"] += 1
-                        for entry in zf.namelist():
-                            if entry.endswith("/"):
-                                continue
+                        entries = [e for e in zf.namelist() if not e.endswith("/")]
+                        stats["zip_entries_total"] = len(entries)
+                        stats["zip_entries_processed"] = 0
+                        _persist_scan_progress(run_id, stats)
+
+                        stats["phase"] = "extracting_entries"
+                        for entry in entries:
                             parsed = _parse_attachment_path(entry)
                             if not parsed:
                                 stats["skipped_no_match"] += 1
+                                stats["zip_entries_processed"] += 1
                                 continue
                             entry_job_id, entry_note_id, entry_filename = parsed
                             try:
@@ -1491,10 +1516,30 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
                                 )
                             except Exception:
                                 stats["errors"] += 1
+                            stats["zip_entries_processed"] += 1
+
+                            if len(write_batch) >= 25:
+                                _flush_batch()
+                            if stats["zip_entries_processed"] % 200 == 0:
+                                _persist_scan_progress(run_id, stats)
+
+                    _flush_batch()
                 except zipfile.BadZipFile:
                     stats["errors"] += 1
-                except Exception:
+                except Exception as ze:
                     stats["errors"] += 1
+                    stats["last_error"] = str(ze)[:300]
+                finally:
+                    if tmp is not None:
+                        try:
+                            os.unlink(tmp.name)
+                        except OSError:
+                            pass
+                stats.pop("current_blob", None)
+                stats.pop("download_mb", None)
+                stats.pop("zip_entries_total", None)
+                stats.pop("zip_entries_processed", None)
+                _persist_scan_progress(run_id, stats)
                 continue
 
             parsed = _parse_attachment_path(blob_name)
@@ -1504,6 +1549,9 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
             geoop_job_id, geoop_note_id, filename = parsed
 
             is_zip = blob_basename.lower().endswith(".zip")
+
+            stats["phase"] = "processing_blob"
+            stats["current_blob"] = blob_basename
 
             try:
                 blob_client = container_client.get_blob_client(blob_name)
@@ -1543,6 +1591,8 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
             else:
                 blob_data = download_stream.readall()
                 _process_file(blob_data, filename, geoop_job_id, geoop_note_id, blob_name)
+
+            stats.pop("current_blob", None)
 
             if len(write_batch) >= 25:
                 _flush_batch()
