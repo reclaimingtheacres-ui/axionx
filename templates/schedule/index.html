@@ -577,7 +577,8 @@ function schEvtClick(eid,ev){
   schHoverOut();
   if(SCH.isDragging){SCH.isDragging=false;return}
   if(_touchPreviewActive){_touchPreviewActive=false;return}
-  schShowPopup(eid,ev);
+  var e=SCH.events.find(function(x){return x.id===eid});
+  if(e&&e.job_id) window.location.href='/jobs/'+e.job_id;
 }
 
 function schDragStart(eid,ev){
