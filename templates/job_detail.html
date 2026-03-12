@@ -212,7 +212,7 @@
     <button class="ax-tab" id="tab-forms-btn" data-bs-toggle="tab"
             data-bs-target="#tab-forms" type="button" role="tab">Forms</button>
   </li>
-  {% if session.get('role') == 'admin' %}
+  {% if session.get('role') in ('admin', 'both') %}
   <li class="nav-item" role="presentation">
     <button class="ax-tab" id="tab-settings-btn" data-bs-toggle="tab"
             data-bs-target="#tab-settings" type="button" role="tab">Settings</button>
@@ -292,10 +292,10 @@
                     {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
                   </div>
                   <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
-                    {% if session.get('role') == 'admin' %}
+                    {% if session.get('role') in ('admin', 'both') %}
                       <a href="/customers/{{ lc.customer_id }}/edit" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px">Edit</a>
                     {% endif %}
-                    {% if session.get('role') == 'admin' and job_linked_customers|length > 1 %}
+                    {% if session.get('role') in ('admin', 'both') and job_linked_customers|length > 1 %}
                       <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
                         <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.68rem;padding:2px 7px">Remove</button>
                       </form>
@@ -416,7 +416,7 @@
             </div>
             {% endif %}
           </div>
-          {% if session.get('role') == 'admin' %}
+          {% if session.get('role') in ('admin', 'both') %}
           <details id="lender-details" class="mt-2">
             <summary class="btn btn-outline-secondary btn-sm" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
             <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-3">
@@ -494,7 +494,7 @@
                     <th style="font-weight:600;font-size:.65rem;border-bottom:1px solid var(--line)">DATE</th>
                     <th style="font-weight:600;font-size:.65rem;border-bottom:1px solid var(--line)">AMOUNT</th>
                     <th style="font-weight:600;font-size:.65rem;border-bottom:1px solid var(--line)">NOTE</th>
-                    {% if session.get('role') == 'admin' %}<th style="border-bottom:1px solid var(--line)"></th>{% endif %}
+                    {% if session.get('role') in ('admin', 'both') %}<th style="border-bottom:1px solid var(--line)"></th>{% endif %}
                   </tr>
                 </thead>
                 <tbody>
@@ -505,7 +505,7 @@
                     </td>
                     <td style="color:#16a34a;font-weight:600;white-space:nowrap">{{ cents_to_money(pmt.amount_cents) }}</td>
                     <td style="color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ pmt.note or '' }}">{{ pmt.note or '—' }}</td>
-                    {% if session.get('role') == 'admin' %}
+                    {% if session.get('role') in ('admin', 'both') %}
                     <td>
                       <form method="post" action="/jobs/{{ job.id }}/payments/{{ pmt.id }}/delete"
                             onsubmit="return confirm('Remove this payment?')">
@@ -520,7 +520,7 @@
                   <tr style="border-top:2px solid var(--line)">
                     <td style="font-weight:700;font-size:.78rem;color:var(--text)">Total</td>
                     <td style="font-weight:700;color:#16a34a;font-size:.85rem">{{ cents_to_money(payments_total_cents) }}</td>
-                    <td colspan="{% if session.get('role') == 'admin' %}2{% else %}1{% endif %}"></td>
+                    <td colspan="{% if session.get('role') in ('admin', 'both') %}2{% else %}1{% endif %}"></td>
                   </tr>
                 </tfoot>
               </table>
@@ -602,7 +602,7 @@
                       {% elif _rls == 'Draft' %}Draft Saved
                       {% else %}Repo Lock{% endif %}
                     </button>
-                    {% if session.get('role') == 'admin' %}
+                    {% if session.get('role') in ('admin', 'both') %}
                     <button type="button" class="btn btn-outline-secondary btn-sm"
                             onclick="axItemEditToggle({{ item.id }})">Edit</button>
                     <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
@@ -613,7 +613,7 @@
                 </div>
 
                 {# ── Inline edit form (admin, hidden by default) ── #}
-                {% if session.get('role') == 'admin' %}
+                {% if session.get('role') in ('admin', 'both') %}
                 <div id="item-edit-{{ item.id }}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
                   <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/edit">
                     <div class="row g-2 mb-2">
@@ -711,7 +711,7 @@
           <p class="small mb-3" style="color:var(--muted)">No items added yet.</p>
         {% endif %}
 
-        {% if session.get('role') == 'admin' %}
+        {% if session.get('role') in ('admin', 'both') %}
         <details>
           <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer; list-style:none">+ Add Security</summary>
           <form method="post" action="/jobs/{{ job.id }}/items/new" class="mt-2">
@@ -981,7 +981,7 @@
 
                 <!-- Checkbox col -->
                 <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:2px">
-                  {% if session.get('role') == 'admin' or session.get('user_id') == entry.note.created_by_user_id %}
+                  {% if session.get('role') in ('admin', 'both') or session.get('user_id') == entry.note.created_by_user_id %}
                   <input type="checkbox"
                          id="note-chk-{{ entry.note.id }}"
                          onchange="axNoteCheck({{ entry.note.id }}, this.checked)"
@@ -1165,7 +1165,7 @@
   <div class="ax-card-h">Schedule</div>
   <div class="ax-card-b">
 
-        {% if session.get('role') == 'admin' %}
+        {% if session.get('role') in ('admin', 'both') %}
         <div id="inlineBookingSuccess" class="alert alert-success mb-3" style="display:none"></div>
         <div class="row g-2 mb-3" id="inlineBookingForm">
           <div class="col-md-2">
@@ -1235,7 +1235,7 @@
                           style="background:rgba(96,165,250,.18);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;">
                       {{ s.status }}
                     </span>
-                    {% if session.get('role') == 'admin' %}
+                    {% if session.get('role') in ('admin', 'both') %}
                     <form method="post" action="/jobs/{{ job.id }}/schedule/{{ s.id }}/status"
                           style="margin:0;display:inline">
                       <select name="status" class="form-select form-select-sm d-inline-block"
@@ -1388,7 +1388,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
         <div class="form-card-sub">Custom form</div>
         <div class="d-flex gap-2 mt-1">
           <button class="btn btn-primary btn-sm flex-fill" onclick="openCustomForm({{ tmpl.id }}, {{ tmpl.field_list|tojson }}, '{{ tmpl.name|e }}')">Open</button>
-          {% if session.get('role') == 'admin' %}
+          {% if session.get('role') in ('admin', 'both') %}
           <button class="btn btn-outline-danger btn-sm" onclick="deleteFormTemplate({{ tmpl.id }})">&#10005;</button>
           {% endif %}
         </div>
@@ -1397,7 +1397,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     {% endfor %}
 
     <!-- CREATE FORM (admin only) -->
-    {% if session.get('role') == 'admin' %}
+    {% if session.get('role') in ('admin', 'both') %}
     <div class="col-6 col-md-4 col-lg-3">
       <div class="form-card" style="border-style:dashed;border-color:var(--accent);background:transparent">
         <div class="form-card-title" style="color:var(--accent)">+ Create Form</div>
@@ -1994,7 +1994,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 
 
 <!-- FORM BUILDER MODAL (admin only) -->
-{% if session.get('role') == 'admin' %}
+{% if session.get('role') in ('admin', 'both') %}
 <div class="modal fade" id="formBuilder" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="border-radius:16px">
@@ -2072,7 +2072,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 
 </div><!-- /tab-forms pane -->
 
-{% if session.get('role') == 'admin' %}
+{% if session.get('role') in ('admin', 'both') %}
 <div class="tab-pane fade" id="tab-settings" role="tabpanel">
 <div class="ax-card mb-3" style="border-color:rgba(239,68,68,.35)">
   <div class="ax-card-h" style="color:#ef4444">Danger Zone</div>
@@ -2354,7 +2354,7 @@ document.addEventListener('click', function(e) {
 {% block modals %}
 {% include 'repo_lock_form.html' %}
 <!-- ── Edit Job Modal ──────────────────────────────────────────────────── -->
-{% if session.get('role') == 'admin' %}
+{% if session.get('role') in ('admin', 'both') %}
 <div class="modal fade" id="editJobModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
     <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
@@ -2721,7 +2721,7 @@ document.addEventListener('click', function(e) {
           </style>
 
           <!-- Staff -->
-          {% if session.get('role') == 'admin' %}
+          {% if session.get('role') in ('admin', 'both') %}
           <div class="an-row">
             <div class="an-label">Staff: <span class="info-dot" title="Who is this note attributed to?">i</span></div>
             <select class="form-select form-select-sm" name="staff_user_id" id="an_staff">
@@ -2871,7 +2871,7 @@ document.addEventListener('click', function(e) {
           <span id="en_updated_wrap" style="display:none">Updated: <strong id="en_updated" style="color:var(--text)"></strong> by <strong id="en_updated_by" style="color:var(--text)"></strong></span>
         </div>
 
-        {% if session.get('role') == 'admin' %}
+        {% if session.get('role') in ('admin', 'both') %}
         <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
           <div>
             <label class="form-label mb-0" style="font-size:.78rem;color:var(--muted)">Staff</label>
@@ -3387,7 +3387,7 @@ function axCopyVin(btn) {
     f('tr-dest-address', opt.dataset.address || '');
   };
 
-  {% if session.get('role') == 'admin' %}
+  {% if session.get('role') in ('admin', 'both') %}
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   var _FIELD_LABELS = {
@@ -3482,7 +3482,7 @@ function axCopyVin(btn) {
 </script>
 
 <!-- ── Add Document Modal ─────────────────────────────────────────────── -->
-{% if session.get('role') == 'admin' %}
+{% if session.get('role') in ('admin', 'both') %}
 <div class="modal fade" id="addDocModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
