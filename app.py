@@ -9409,11 +9409,27 @@ def geoop_client_gap_report():
 @app.get("/admin/geoop-import/attachment-audit")
 @admin_required
 def geoop_attachment_audit():
-    report = _geoop.get_attachment_audit()
-    fmt = request.args.get("format", "json")
-    if fmt == "json":
-        return jsonify(report)
-    return jsonify(report)
+    action = request.args.get("action")
+    if action == "start":
+        started = _geoop.start_attachment_audit_background()
+        if started:
+            return jsonify({"status": "running", "message": "Audit started in background"})
+        return jsonify({"status": "running", "message": "Audit already running"})
+
+    cached = _geoop.get_attachment_audit_cached()
+    if cached["result"]:
+        resp = dict(cached["result"])
+        resp["_audit_status"] = cached["status"]
+        resp["_generated_at"] = cached["generated_at"]
+        return jsonify(resp)
+
+    if cached["status"] == "running":
+        return jsonify({"_audit_status": "running", "_generated_at": None})
+
+    if cached["status"] == "error":
+        return jsonify({"_audit_status": "error", "_error": cached.get("error"), "_generated_at": None})
+
+    return jsonify({"_audit_status": "idle", "_generated_at": None})
 
 
 @app.post("/admin/geoop-import/backfill-attachments")

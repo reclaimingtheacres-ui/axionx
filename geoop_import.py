@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import uuid
 import zipfile
 from datetime import datetime
@@ -3046,12 +3047,58 @@ def get_client_gap_report(conn=None):
     return {"summary": summary, "rows": report}
 
 
-def get_attachment_audit(conn=None):
-    close = False
-    if conn is None:
-        conn = _db()
-        close = True
+_audit_cache = {"result": None, "generated_at": None, "status": "idle", "error": None}
+_audit_lock = threading.Lock()
+_audit_cache_lock = threading.Lock()
 
+
+def get_attachment_audit_cached():
+    with _audit_cache_lock:
+        return {
+            "result": _audit_cache["result"],
+            "generated_at": _audit_cache["generated_at"],
+            "status": _audit_cache["status"],
+            "error": _audit_cache["error"],
+        }
+
+
+def start_attachment_audit_background():
+    if not _audit_lock.acquire(blocking=False):
+        return False
+    with _audit_cache_lock:
+        _audit_cache["status"] = "running"
+        _audit_cache["error"] = None
+
+    def _run():
+        import logging
+        log = logging.getLogger("geoop_import")
+        try:
+            log.info("Attachment audit background thread started")
+            conn = _db()
+            try:
+                result = _compute_attachment_audit(conn)
+                with _audit_cache_lock:
+                    _audit_cache["result"] = result
+                    _audit_cache["generated_at"] = _now()
+                    _audit_cache["status"] = "complete"
+                    _audit_cache["error"] = None
+                log.info("Attachment audit completed successfully")
+            finally:
+                conn.close()
+        except Exception as e:
+            log.error("Attachment audit failed: %s", e)
+            with _audit_cache_lock:
+                _audit_cache["status"] = "error"
+                _audit_cache["error"] = str(e)[:500]
+        finally:
+            _audit_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True
+
+
+def _compute_attachment_audit(conn):
     result = {}
 
     total_notes = conn.execute("SELECT COUNT(*) FROM geoop_staging_notes").fetchone()[0]
@@ -3094,28 +3141,17 @@ def get_attachment_audit(conn=None):
         SELECT COUNT(*) FROM geoop_staging_notes sn
         WHERE sn.file_name IS NOT NULL AND sn.file_name != ''
           AND sn.axion_note_id IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM job_note_files jnf
-              WHERE jnf.job_field_note_id = sn.axion_note_id
-                AND jnf.filename IN (
-                    sn.file_name,
-                    COALESCE(
-                        (SELECT sf.stored_filename FROM geoop_staging_files sf
-                         WHERE sf.geoop_note_id = sn.geoop_note_id
-                           AND sf.import_status = 'imported'
-                           AND sf.stored_filename IS NOT NULL AND sf.stored_filename != ''
-                         LIMIT 1),
-                        sn.file_name
-                    )
-                )
+          AND sn.axion_note_id NOT IN (
+              SELECT DISTINCT job_field_note_id FROM job_note_files
           )
     """).fetchone()[0]
+    nf_total = conn.execute("SELECT COUNT(*) FROM job_note_files").fetchone()[0]
     result["staged_files_mapped_missing_jnf"] = mapped_no_jnf
 
+    import collections as _collections
     file_rows = conn.execute(
         "SELECT file_name FROM geoop_staging_notes WHERE file_name IS NOT NULL AND file_name != ''"
     ).fetchall()
-    import collections as _collections
     ext_counts = _collections.Counter()
     for fr in file_rows:
         fn = fr[0]
@@ -3138,7 +3174,6 @@ def get_attachment_audit(conn=None):
     doc_linked = conn.execute("SELECT COUNT(*) FROM job_documents WHERE job_id IS NOT NULL").fetchone()[0]
     result["job_documents_linked"] = doc_linked
 
-    nf_total = conn.execute("SELECT COUNT(*) FROM job_note_files").fetchone()[0]
     result["job_note_files_total"] = nf_total
     nf_linked = conn.execute("""
         SELECT COUNT(*) FROM job_note_files jnf
@@ -3163,8 +3198,8 @@ def get_attachment_audit(conn=None):
         SELECT geoop_job_id, geoop_note_id, file_name, files_location, import_status, error_message
         FROM geoop_staging_notes
         WHERE file_name IS NOT NULL AND file_name != ''
-          AND import_status NOT IN ('imported', 'pending')
-        LIMIT 200
+          AND import_status NOT IN ('imported', 'pending', 'linked_to_parent')
+        LIMIT 50
     """).fetchall()
     for n in unmatched_notes:
         failed_reasons.append({
@@ -3191,8 +3226,6 @@ def get_attachment_audit(conn=None):
         "stage_4_file_import": "complete" if geoop_note_files > 0 else "not_run",
     }
 
-    if close:
-        conn.close()
     return result
 
 

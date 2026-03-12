@@ -1181,53 +1181,86 @@ function loadDiagnostics() {
 })();
 </script>
 <script>
+var _auditPollTimer = null;
+
 function runAttachmentAudit() {
   var btn = document.getElementById('attachAuditBtn');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running…';
   var panel = document.getElementById('attachAuditResult');
   panel.style.display = '';
-  panel.innerHTML = '<div class="text-muted small">Loading…</div>';
-  fetch('/admin/geoop-import/attachment-audit')
+  panel.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Audit running in background…</div>';
+
+  fetch('/admin/geoop-import/attachment-audit?action=start')
     .then(function(r) { return r.json(); })
-    .then(function(d) {
-      var h = '<table class="table table-sm table-bordered small mb-2">';
-      h += '<tr><td class="fw-bold">Total Staging Notes</td><td>' + (d.total_staging_notes||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Notes With File References</td><td>' + (d.notes_with_file_references||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Files Linked to Axion Notes</td><td class="text-success">' + (d.files_linked_to_notes||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Files Unlinked (no axion_note_id)</td><td class="text-danger">' + (d.files_unlinked||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Mapped but Missing job_note_files</td><td class="' + ((d.staged_files_mapped_missing_jnf||0) > 0 ? 'text-warning fw-bold' : 'text-success') + '">' + (d.staged_files_mapped_missing_jnf||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Files With No Text (attachment-only)</td><td>' + (d.files_with_no_text||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Multi-file Children Resolved</td><td>' + (d.multi_file_children_resolved||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Staging Files Manifest</td><td>' + (d.staging_files_manifest||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Job Note Files</td><td>' + (d.job_note_files_total||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Job Documents</td><td>' + (d.job_documents_total||0).toLocaleString() + '</td></tr>';
-      h += '</table>';
-      var ps = d.pipeline_status || {};
-      h += '<div class="mb-2"><strong>Pipeline Status:</strong></div>';
-      h += '<div class="d-flex gap-2 flex-wrap small">';
-      ['stage_1_notes_csv','stage_2_note_import','stage_3_azure_scan','stage_4_file_import'].forEach(function(k) {
-        var v = ps[k] || 'unknown';
-        var cls = v === 'complete' ? 'bg-success' : 'bg-secondary';
-        h += '<span class="badge ' + cls + '">' + k.replace(/_/g,' ') + ': ' + v + '</span>';
-      });
-      h += '</div>';
-      if (d.notes_by_status) {
-        h += '<div class="mt-2"><strong>Notes By Status:</strong></div><ul class="small mb-0">';
-        Object.keys(d.notes_by_status).forEach(function(k) {
-          h += '<li>' + k + ': ' + d.notes_by_status[k].toLocaleString() + '</li>';
-        });
-        h += '</ul>';
-      }
-      panel.innerHTML = h;
-      btn.disabled = false;
-      btn.innerHTML = 'Run Attachment Audit';
-    })
+    .then(function() { _pollAuditResult(); })
     .catch(function(e) {
-      panel.innerHTML = '<div class="text-danger small">Audit failed: ' + e + '</div>';
+      panel.innerHTML = '<div class="text-danger small">Failed to start audit: ' + e + '</div>';
       btn.disabled = false;
       btn.innerHTML = 'Run Attachment Audit';
     });
+}
+
+function _pollAuditResult() {
+  if (_auditPollTimer) clearTimeout(_auditPollTimer);
+  _auditPollTimer = setTimeout(function() {
+    fetch('/admin/geoop-import/attachment-audit')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d._audit_status === 'running') {
+          _pollAuditResult();
+          return;
+        }
+        if (d._audit_status === 'error') {
+          var panel = document.getElementById('attachAuditResult');
+          var btn = document.getElementById('attachAuditBtn');
+          panel.innerHTML = '<div class="text-danger small">Audit failed: ' + (d._error || 'unknown error') + '</div>';
+          btn.disabled = false;
+          btn.innerHTML = 'Run Attachment Audit';
+          return;
+        }
+        _renderAuditResult(d);
+      })
+      .catch(function() { _pollAuditResult(); });
+  }, 2000);
+}
+
+function _renderAuditResult(d) {
+  var btn = document.getElementById('attachAuditBtn');
+  var panel = document.getElementById('attachAuditResult');
+  var ts = d._generated_at ? ' <span class="text-muted">(generated ' + d._generated_at + ')</span>' : '';
+  var h = '<table class="table table-sm table-bordered small mb-2">';
+  h += '<tr><td class="fw-bold">Total Staging Notes</td><td>' + (d.total_staging_notes||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Notes With File References</td><td>' + (d.notes_with_file_references||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Files Linked to Axion Notes</td><td class="text-success">' + (d.files_linked_to_notes||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Files Unlinked (no axion_note_id)</td><td class="text-danger">' + (d.files_unlinked||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Mapped but Missing job_note_files</td><td class="' + ((d.staged_files_mapped_missing_jnf||0) > 0 ? 'text-warning fw-bold' : 'text-success') + '">' + (d.staged_files_mapped_missing_jnf||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Files With No Text (attachment-only)</td><td>' + (d.files_with_no_text||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Multi-file Children Resolved</td><td>' + (d.multi_file_children_resolved||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Staging Files Manifest</td><td>' + (d.staging_files_manifest||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Job Note Files</td><td>' + (d.job_note_files_total||0).toLocaleString() + '</td></tr>';
+  h += '<tr><td class="fw-bold">Job Documents</td><td>' + (d.job_documents_total||0).toLocaleString() + '</td></tr>';
+  h += '</table>';
+  var ps = d.pipeline_status || {};
+  h += '<div class="mb-2"><strong>Pipeline Status:</strong></div>';
+  h += '<div class="d-flex gap-2 flex-wrap small">';
+  ['stage_1_notes_csv','stage_2_note_import','stage_3_azure_scan','stage_4_file_import'].forEach(function(k) {
+    var v = ps[k] || 'unknown';
+    var cls = v === 'complete' ? 'bg-success' : 'bg-secondary';
+    h += '<span class="badge ' + cls + '">' + k.replace(/_/g,' ') + ': ' + v + '</span>';
+  });
+  h += '</div>';
+  if (d.notes_by_status) {
+    h += '<div class="mt-2"><strong>Notes By Status:</strong></div><ul class="small mb-0">';
+    Object.keys(d.notes_by_status).forEach(function(k) {
+      h += '<li>' + k + ': ' + d.notes_by_status[k].toLocaleString() + '</li>';
+    });
+    h += '</ul>';
+  }
+  h += '<div class="mt-2 text-muted small">Snapshot' + ts + '</div>';
+  panel.innerHTML = h;
+  btn.disabled = false;
+  btn.innerHTML = 'Run Attachment Audit';
 }
 
 (function() {
