@@ -1290,7 +1290,7 @@ def _persist_scan_progress(run_id, stats):
 
 
 def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
-                                 blob_prefix="attachments/"):
+                                 blob_prefix=None):
     import time
     from azure.storage.blob import ContainerClient
 
@@ -1435,43 +1435,74 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
 
     try:
         blob_list = container_client.list_blobs(name_starts_with=blob_prefix)
-        for blob in blob_list:
-            stats["blobs_scanned"] += 1
-            blob_name = blob.name
-
-            parts = blob_name.replace("\\", "/").split("/")
+        def _parse_attachment_path(path_str):
+            parts = path_str.replace("\\", "/").split("/")
             if len(parts) < 4:
-                stats["skipped_no_match"] += 1
-                continue
-
+                return None
             att_idx = None
             for i, p in enumerate(parts):
                 if p == "attachments":
                     att_idx = i
                     break
             if att_idx is None or len(parts) < att_idx + 4:
-                stats["skipped_no_match"] += 1
-                continue
-
+                return None
             geoop_job_id = parts[att_idx + 1]
             geoop_note_id = parts[att_idx + 2]
-
             if not geoop_job_id or not geoop_note_id:
-                stats["skipped_no_match"] += 1
-                continue
-
+                return None
             raw_filename = parts[-1]
             underscore_idx = raw_filename.find("_")
-            if underscore_idx > 0:
-                filename = raw_filename[underscore_idx + 1:]
-            else:
-                filename = raw_filename
-
+            filename = raw_filename[underscore_idx + 1:] if underscore_idx > 0 else raw_filename
             if not filename:
-                stats["skipped_no_match"] += 1
+                return None
+            return geoop_job_id, geoop_note_id, filename
+
+        for blob in blob_list:
+            stats["blobs_scanned"] += 1
+            blob_name = blob.name
+            blob_basename = os.path.basename(blob_name)
+            is_root_zip = blob_basename.lower().endswith(".zip") and "/" not in blob_name.strip("/")
+
+            if is_root_zip:
+                try:
+                    blob_client = container_client.get_blob_client(blob_name)
+                    download_stream = blob_client.download_blob()
+                    buf = io.BytesIO()
+                    for chunk in download_stream.chunks():
+                        buf.write(chunk)
+                    buf.seek(0)
+                    with zipfile.ZipFile(buf) as zf:
+                        stats["zip_files_processed"] += 1
+                        stats["files_processed"] += 1
+                        for entry in zf.namelist():
+                            if entry.endswith("/"):
+                                continue
+                            parsed = _parse_attachment_path(entry)
+                            if not parsed:
+                                stats["skipped_no_match"] += 1
+                                continue
+                            entry_job_id, entry_note_id, entry_filename = parsed
+                            try:
+                                entry_data = zf.read(entry)
+                                _process_file(
+                                    entry_data, entry_filename,
+                                    entry_job_id, entry_note_id,
+                                    blob_name + "/" + entry
+                                )
+                            except Exception:
+                                stats["errors"] += 1
+                except zipfile.BadZipFile:
+                    stats["errors"] += 1
+                except Exception:
+                    stats["errors"] += 1
                 continue
 
-            blob_basename = os.path.basename(blob.name)
+            parsed = _parse_attachment_path(blob_name)
+            if not parsed:
+                stats["skipped_no_match"] += 1
+                continue
+            geoop_job_id, geoop_note_id, filename = parsed
+
             is_zip = blob_basename.lower().endswith(".zip")
 
             try:
