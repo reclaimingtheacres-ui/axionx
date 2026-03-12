@@ -1069,6 +1069,101 @@ def import_staged_jobs(mode="insert_only", conn=None):
 _BACKFILL_BATCH_SIZE = 250
 
 
+_ORPHAN_STALE_SECONDS = 7200
+
+
+def recover_orphaned_backfill_runs():
+    cutoff = _now()
+    if isinstance(cutoff, str) and len(cutoff) >= 19:
+        from datetime import datetime, timedelta
+        try:
+            dt = datetime.fromisoformat(cutoff)
+            cutoff = (dt - timedelta(seconds=_ORPHAN_STALE_SECONDS)).isoformat(sep=" ", timespec="seconds")
+        except Exception:
+            cutoff = None
+    else:
+        cutoff = None
+
+    conn = _db()
+    try:
+        if cutoff:
+            orphans = conn.execute("""
+                SELECT id, diagnostics_json FROM geoop_import_runs
+                WHERE run_type='description_backfill' AND status='running'
+                  AND completed_at IS NULL
+                  AND started_at < ?
+            """, (cutoff,)).fetchall()
+        else:
+            orphans = conn.execute("""
+                SELECT id, diagnostics_json FROM geoop_import_runs
+                WHERE run_type='description_backfill' AND status='running'
+                  AND completed_at IS NULL
+            """).fetchall()
+        recovered = []
+        for row in orphans:
+            diag = {}
+            if row["diagnostics_json"]:
+                try:
+                    diag = json.loads(row["diagnostics_json"])
+                except Exception:
+                    pass
+            diag["status"] = "interrupted"
+            diag["interrupted_reason"] = "orphaned_running_detected"
+            conn.execute("""
+                UPDATE geoop_import_runs
+                SET status='interrupted', diagnostics_json=?, completed_at=?
+                WHERE id=?
+            """, (json.dumps(diag), _now(), row["id"]))
+            recovered.append({
+                "run_id": row["id"],
+                "last_staging_id": diag.get("last_staging_id", 0),
+                "batch_number": diag.get("batch_number", 0),
+                "jobs_processed": diag.get("jobs_processed", 0),
+            })
+        if recovered:
+            _retry_commit(conn)
+        return recovered
+    finally:
+        conn.close()
+
+
+def get_last_backfill_checkpoint():
+    conn = _db()
+    try:
+        rows = conn.execute("""
+            SELECT id, diagnostics_json FROM geoop_import_runs
+            WHERE run_type='description_backfill'
+              AND status IN ('interrupted', 'failed')
+            ORDER BY id DESC LIMIT 5
+        """).fetchall()
+        for row in rows:
+            if not row["diagnostics_json"]:
+                continue
+            try:
+                diag = json.loads(row["diagnostics_json"])
+            except Exception:
+                continue
+            last_id = diag.get("last_staging_id", 0)
+            if last_id <= 0:
+                continue
+            return {
+                "run_id": row["id"],
+                "last_staging_id": last_id,
+                "batch_number": diag.get("batch_number", 0),
+                "jobs_processed": diag.get("jobs_processed", 0),
+                "descriptions_preserved": diag.get("descriptions_preserved", 0),
+                "legacy_notes_created": diag.get("legacy_notes_created", 0),
+                "legacy_notes_already_exist": diag.get("legacy_notes_already_exist", 0),
+                "job_items_updated": diag.get("job_items_updated", 0),
+                "job_items_created": diag.get("job_items_created", 0),
+                "fields_parsed": diag.get("fields_parsed", 0),
+                "errors": diag.get("errors", 0),
+            }
+        return None
+    finally:
+        conn.close()
+
+
 def _persist_backfill_progress(run_id, stats):
     if not run_id:
         return
@@ -1215,7 +1310,7 @@ def _backfill_one_job(conn, row, ts):
     return result
 
 
-def backfill_geoop_descriptions(run_id=None):
+def backfill_geoop_descriptions(run_id=None, resume_checkpoint=None):
     ts = _now()
     stats = {
         "status": "running",
@@ -1232,7 +1327,18 @@ def backfill_geoop_descriptions(run_id=None):
         "batch_number": 0,
         "batch_size": _BACKFILL_BATCH_SIZE,
         "backfill_ts": ts,
+        "resumed_from_run": None,
+        "resumed_from_staging_id": 0,
     }
+
+    if resume_checkpoint:
+        for k in ("jobs_processed", "descriptions_preserved", "legacy_notes_created",
+                   "legacy_notes_already_exist", "job_items_updated", "job_items_created",
+                   "fields_parsed", "errors", "batch_number"):
+            stats[k] = resume_checkpoint.get(k, 0)
+        stats["last_staging_id"] = resume_checkpoint.get("last_staging_id", 0)
+        stats["resumed_from_run"] = resume_checkpoint.get("run_id")
+        stats["resumed_from_staging_id"] = resume_checkpoint.get("last_staging_id", 0)
 
     try:
         conn = _db()
@@ -1248,7 +1354,7 @@ def backfill_geoop_descriptions(run_id=None):
 
         _persist_backfill_progress(run_id, stats)
 
-        last_id = 0
+        last_id = stats["last_staging_id"]
 
         while True:
             conn = _db()

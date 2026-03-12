@@ -9232,8 +9232,14 @@ def geoop_unmatched_csv(run_id):
 def geoop_import_backfill():
     conn = db()
     run_id = None
+    resume_checkpoint = None
     try:
         _geoop.ensure_staging_tables(conn)
+
+        recovered = _geoop.recover_orphaned_backfill_runs()
+        if recovered:
+            for r in recovered:
+                flash(f"Recovered orphaned backfill run #{r['run_id']} (was at batch {r['batch_number']}, staging ID {r['last_staging_id']}).", "info")
 
         existing = conn.execute(
             "SELECT id FROM geoop_import_runs WHERE run_type='description_backfill' AND status='running'"
@@ -9241,6 +9247,8 @@ def geoop_import_backfill():
         if existing:
             flash(f"A backfill is already running (run #{existing['id']}). Please wait for it to finish.", "warning")
             return redirect(url_for("geoop_import_page"))
+
+        resume_checkpoint = _geoop.get_last_backfill_checkpoint()
 
         ts = _geoop._now()
         uid = session.get("user_id")
@@ -9261,11 +9269,15 @@ def geoop_import_backfill():
     t = threading.Thread(
         target=_geoop.backfill_geoop_descriptions,
         args=(run_id,),
+        kwargs={"resume_checkpoint": resume_checkpoint},
         daemon=True,
     )
     t.start()
 
-    flash(f"Description backfill started (run #{run_id}). Progress updates will appear below.", "info")
+    if resume_checkpoint:
+        flash(f"Backfill resumed from run #{resume_checkpoint['run_id']} checkpoint (staging ID {resume_checkpoint['last_staging_id']}, {resume_checkpoint['jobs_processed']} already processed). Run #{run_id}.", "info")
+    else:
+        flash(f"Description backfill started (run #{run_id}). Progress updates will appear below.", "info")
     return redirect(url_for("geoop_import_page"))
 
 
