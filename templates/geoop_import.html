@@ -145,6 +145,8 @@
           <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-total">—</div><div class="text-muted">Total Blobs in Container</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-blobs">0</div><div class="text-muted">Blobs Scanned</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-files">0</div><div class="text-muted">Files Processed</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-zipentries">0</div><div class="text-muted">ZIP Entries Scanned</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="ap-matched">0</div><div class="text-muted">Attachments Matched</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="ap-linked">0</div><div class="text-muted">Linked</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-dupes">0</div><div class="text-muted">Duplicates</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-errors">0</div><div class="text-muted">Errors</div></div></div>
@@ -484,6 +486,8 @@ function loadDiagnostics() {
         document.getElementById('ap-total').textContent = d.total_blobs_in_container != null ? d.total_blobs_in_container.toLocaleString() : '—';
         document.getElementById('ap-blobs').textContent = (d.blobs_scanned||0).toLocaleString();
         document.getElementById('ap-files').textContent = (d.files_processed||0).toLocaleString();
+        document.getElementById('ap-zipentries').textContent = (d.zip_entries_scanned||0).toLocaleString();
+        document.getElementById('ap-matched').textContent = (d.attachments_matched||0).toLocaleString();
         document.getElementById('ap-linked').textContent = (d.attachments_linked||0).toLocaleString();
         document.getElementById('ap-dupes').textContent = (d.skipped_duplicate||0).toLocaleString();
         document.getElementById('ap-errors').textContent = (d.errors||0).toLocaleString();
@@ -492,9 +496,10 @@ function loadDiagnostics() {
           phaseRow.style.display = '';
           document.getElementById('ap-phase').textContent = d.phase;
           var detail = '';
-          if (d.download_mb != null) detail += d.download_mb + ' MB downloaded';
-          if (d.zip_entries_total) detail += (detail ? ' · ' : '') + (d.zip_entries_processed||0).toLocaleString() + ' / ' + d.zip_entries_total.toLocaleString() + ' ZIP entries';
+          if (d.blob_size_mb != null) detail += d.blob_size_mb + ' MB archive';
+          if (d.zip_entries_total) detail += (detail ? ' · ' : '') + (d.zip_entries_processed||0).toLocaleString() + ' / ' + d.zip_entries_total.toLocaleString() + ' entries in current ZIP';
           if (d.current_blob) detail += (detail ? ' · ' : '') + d.current_blob;
+          if (d.last_error) detail += (detail ? ' · ' : '') + 'Last error: ' + d.last_error;
           document.getElementById('ap-detail').textContent = detail;
         } else {
           phaseRow.style.display = 'none';
