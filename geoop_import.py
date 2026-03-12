@@ -1435,7 +1435,17 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
         write_batch.clear()
 
     try:
-        blob_list = container_client.list_blobs(name_starts_with=blob_prefix)
+        stats["phase"] = "counting_blobs"
+        _persist_scan_progress(run_id, stats)
+        total_blobs = 0
+        blob_names_cache = []
+        for b in container_client.list_blobs(name_starts_with=blob_prefix):
+            total_blobs += 1
+            blob_names_cache.append(b.name)
+        stats["total_blobs_in_container"] = total_blobs
+        stats["phase"] = "listing_blobs"
+        _persist_scan_progress(run_id, stats)
+
         def _parse_attachment_path(path_str):
             parts = path_str.replace("\\", "/").split("/")
             if len(parts) < 4:
@@ -1460,9 +1470,8 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
 
         import tempfile
 
-        for blob in blob_list:
+        for blob_name in blob_names_cache:
             stats["blobs_scanned"] += 1
-            blob_name = blob.name
             blob_basename = os.path.basename(blob_name)
             is_root_zip = blob_basename.lower().endswith(".zip") and "/" not in blob_name.strip("/")
 
