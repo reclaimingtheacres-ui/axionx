@@ -9642,6 +9642,41 @@ def geoop_repair_progress():
     })
 
 
+@app.get("/admin/geoop-import/reg-diagnostic")
+@admin_required
+def geoop_reg_diagnostic():
+    conn = _geoop._db()
+    try:
+        staging_total = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status = 'imported'"
+        ).fetchone()[0]
+        staging_with_desc = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status = 'imported' AND raw_description IS NOT NULL AND raw_description != ''"
+        ).fetchone()[0]
+        staging_with_reg = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status = 'imported' AND parsed_reg IS NOT NULL AND parsed_reg != ''"
+        ).fetchone()[0]
+        bad_regs = conn.execute(
+            "SELECT id, geoop_job_id, parsed_reg, substr(raw_description, 1, 200) AS desc_preview FROM geoop_staging_jobs WHERE parsed_reg LIKE '%ULATED%' LIMIT 20"
+        ).fetchall()
+        item_bad = conn.execute(
+            "SELECT ji.id, ji.job_id, ji.reg FROM job_items WHERE ji.reg LIKE '%ULATED%' LIMIT 20"
+        ).fetchall()
+        sample_unreg = conn.execute(
+            "SELECT id, geoop_job_id, parsed_reg, substr(raw_description, 1, 300) AS desc_preview FROM geoop_staging_jobs WHERE raw_description LIKE '%nregulated%' AND import_status = 'imported' LIMIT 5"
+        ).fetchall()
+        return jsonify({
+            "staging_imported_total": staging_total,
+            "staging_with_description": staging_with_desc,
+            "staging_with_parsed_reg": staging_with_reg,
+            "bad_regs_ulated": [dict(r) for r in bad_regs],
+            "item_bad_regs": [dict(r) for r in item_bad],
+            "sample_unregulated_jobs": [dict(r) for r in sample_unreg],
+        })
+    finally:
+        conn.close()
+
+
 @app.post("/admin/geoop-import/recover-files")
 @admin_required
 def geoop_recover_files():
