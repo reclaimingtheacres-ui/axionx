@@ -120,10 +120,43 @@ The note import (Stage 2) cannot run in this dev environment because:
 The attachment issue is entirely an **import execution gap**, not a code or display problem.
 The pipeline code is written and the staging data is loaded — it just hasn't been run against Azure yet.
 
+## Bugs Found & Fixed
+
+### Bug 1: Empty-text notes with file attachments skipped (FIXED)
+
+`import_staged_notes()` marked notes as `skipped_empty` when `note_description` was blank, even if the note had a `file_name`. This would have orphaned **369 attachment-only notes** (notes that are purely file attachments with no text).
+
+**Fix**: Changed the skip condition to check both `note_text` and `has_file`. Notes with a file but no text now get a placeholder note text: `[Attachment: {filename}]`.
+
+**Location**: `geoop_import.py` lines ~1719-1731
+
+### Bug 2: Azure blob path parser incompatible with CSV path format (FIXED)
+
+The `_parse_attachment_path()` function in `scan_azure_blob_attachments()` only matched paths with an `attachments` keyword prefix (e.g., `attachments/{job_id}/{note_id}/{file_id}_{filename}`). However, the CSV `files_location` column uses a completely different format: `{account_id}/{job_id}/{note_id}/` — three numeric segments with no `attachments` prefix.
+
+**Fix**: Added a fallback branch to `_parse_attachment_path()` that recognises the `{account_id}/{job_id}/{note_id}/{filename}` pattern (three leading numeric segments) and extracts `geoop_job_id` from `parts[1]` and `geoop_note_id` from `parts[2]`.
+
+**Location**: `geoop_import.py` lines ~2139-2167
+
+### New: Attachment Audit Endpoint
+
+Added `GET /admin/geoop-import/attachment-audit` — returns a comprehensive JSON audit of the entire attachment pipeline: staging counts, linked/unlinked files, file types, pipeline status, and failed file notes sample.
+
+### New: Attachment Backfill Tool
+
+Added `POST /admin/geoop-import/backfill-attachments` — re-imports previously skipped or errored notes that have file attachments. Runs in a background thread with progress polling. Creates `job_field_notes` entries for notes that were skipped due to empty text but have file references.
+
+### New: Admin UI Section
+
+Added "Attachment Audit & Repair" card to the GeoOp Import admin page with:
+- "Run Attachment Audit" button — shows real-time audit summary inline
+- "Run Attachment Backfill" button — triggers backfill with progress polling
+
 ## Recommended Next Steps
 
-1. **Run note import** (`import_staged_notes()`) in Azure production — this creates `job_field_notes` records and populates `axion_note_id` on the staging table
-2. **Run Azure blob scan** (`scan_azure_blob_attachments()`) with the container SAS URL — this fetches 58,909 files and populates `geoop_staging_files`
+1. **Run note import** (`import_staged_notes()`) in Azure production — this creates `job_field_notes` records and populates `axion_note_id` on the staging table. The fixed importer will now correctly handle attachment-only notes.
+2. **Run Azure blob scan** (`scan_azure_blob_attachments()`) with the container SAS URL — the fixed path parser will now correctly handle the CSV path format (`{account_id}/{job_id}/{note_id}/`).
 3. **Run file import** (`import_staged_files()`) — this links files to jobs and notes in production tables
 4. **Review unmatched attachments** — check `geoop_unmatched_attachments` table for any files that couldn't be linked
-5. **Add multi-attachment support to existing notes** — route already exists at `POST /jobs/<job_id>/notes/<note_id>/attachments`; verify UI exposes it
+5. **Run attachment backfill** if any notes were skipped in a prior import — re-processes `skipped_empty`, `error`, and `unmatched_job` notes
+6. **Add multi-attachment support to existing notes** — route already exists at `POST /jobs/<job_id>/notes/<note_id>/attachments`; verify UI exposes it

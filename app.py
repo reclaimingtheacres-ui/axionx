@@ -9404,6 +9404,62 @@ def geoop_client_gap_report():
     return jsonify(report)
 
 
+@app.get("/admin/geoop-import/attachment-audit")
+@admin_required
+def geoop_attachment_audit():
+    report = _geoop.get_attachment_audit()
+    fmt = request.args.get("format", "json")
+    if fmt == "json":
+        return jsonify(report)
+    return jsonify(report)
+
+
+@app.post("/admin/geoop-import/backfill-attachments")
+@admin_required
+def geoop_import_backfill_attachments():
+    conn = db()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM geoop_import_runs WHERE run_type='attachment_backfill' AND status='running'"
+        ).fetchone()
+        if existing:
+            flash(f"An attachment backfill is already running (run #{existing['id']}). Please wait.", "warning")
+            return redirect(url_for("geoop_import_page"))
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO geoop_import_runs (run_type, status, started_at, run_by_user_id)
+            VALUES ('attachment_backfill', 'running', ?, ?)
+        """, (now_ts(), session.get("user_id", 1)))
+        run_id = cur.lastrowid
+        conn.commit()
+    except Exception as e:
+        flash(f"Failed to start attachment backfill: {e}", "danger")
+        return redirect(url_for("geoop_import_page"))
+    finally:
+        conn.close()
+
+    import threading
+    t = threading.Thread(
+        target=_geoop.backfill_attachment_links,
+        kwargs={"run_id": run_id},
+        daemon=True
+    )
+    t.start()
+
+    flash(f"Attachment backfill started (run #{run_id}). Progress updates will appear below.", "info")
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/attachment-backfill-progress/<int:run_id>")
+@admin_required
+def geoop_attachment_backfill_progress(run_id):
+    progress = _geoop.get_backfill_progress(run_id)
+    if not progress:
+        return jsonify({"status": "not_found", "error": "Run not found"}), 404
+    return jsonify(progress)
+
+
 @app.post("/admin/geoop-import/reset")
 @admin_required
 def geoop_import_reset():

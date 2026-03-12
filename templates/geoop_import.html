@@ -368,6 +368,35 @@
   </div>
 
   <div class="card mb-4">
+    <div class="card-header"><strong>Attachment Audit &amp; Repair</strong></div>
+    <div class="card-body">
+      <p class="small text-muted mb-2">
+        Audits staged note attachments, re-imports notes that were previously skipped (empty text with file references), and links them to Axion jobs.
+      </p>
+      <div class="d-flex gap-2 align-items-center mb-2">
+        <button class="btn btn-info btn-sm" id="attachAuditBtn" onclick="runAttachmentAudit()">Run Attachment Audit</button>
+        <form method="post" action="{{ url_for('geoop_import_backfill_attachments') }}" class="m-0"
+              onsubmit="this.querySelector('button').disabled=true; return confirm('This will re-import previously skipped notes that have file attachments. Continue?');">
+          <button type="submit" class="btn btn-warning btn-sm">Run Attachment Backfill</button>
+        </form>
+      </div>
+      <div id="attachAuditResult" style="display:none" class="mt-3"></div>
+      <div id="attachBackfillProgress" style="display:none" class="mt-3">
+        <div class="alert alert-warning py-2 small mb-2">
+          <span class="spinner-border spinner-border-sm me-1"></span>
+          <strong>Attachment backfill running…</strong>
+        </div>
+        <div class="row text-center row-cols-2 row-cols-md-4 g-2 small">
+          <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="ab-relinked">0</div><div class="text-muted">Notes Re-linked</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="ab-already">0</div><div class="text-muted">Already Linked</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-muted" id="ab-nojob">0</div><div class="text-muted">No Matching Job</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-danger" id="ab-errors">0</div><div class="text-muted">Errors</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <strong>Import History</strong>
       <form method="post" action="{{ url_for('geoop_import_reset') }}" class="m-0"
@@ -1145,6 +1174,92 @@ function loadDiagnostics() {
       }).catch(function() { setTimeout(cbPoll, 5000); });
   }
   cbPoll();
+})();
+</script>
+<script>
+function runAttachmentAudit() {
+  var btn = document.getElementById('attachAuditBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running…';
+  var panel = document.getElementById('attachAuditResult');
+  panel.style.display = '';
+  panel.innerHTML = '<div class="text-muted small">Loading…</div>';
+  fetch('/admin/geoop-import/attachment-audit')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var h = '<table class="table table-sm table-bordered small mb-2">';
+      h += '<tr><td class="fw-bold">Total Staging Notes</td><td>' + (d.total_staging_notes||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Notes With File References</td><td>' + (d.notes_with_file_references||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Files Linked to Axion Notes</td><td class="text-success">' + (d.files_linked_to_notes||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Files Unlinked</td><td class="text-danger">' + (d.files_unlinked||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Files With No Text (attachment-only)</td><td>' + (d.files_with_no_text||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Staging Files Manifest</td><td>' + (d.staging_files_manifest||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Job Note Files</td><td>' + (d.job_note_files_total||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Job Documents</td><td>' + (d.job_documents_total||0).toLocaleString() + '</td></tr>';
+      h += '</table>';
+      var ps = d.pipeline_status || {};
+      h += '<div class="mb-2"><strong>Pipeline Status:</strong></div>';
+      h += '<div class="d-flex gap-2 flex-wrap small">';
+      ['stage_1_notes_csv','stage_2_note_import','stage_3_azure_scan','stage_4_file_import'].forEach(function(k) {
+        var v = ps[k] || 'unknown';
+        var cls = v === 'complete' ? 'bg-success' : 'bg-secondary';
+        h += '<span class="badge ' + cls + '">' + k.replace(/_/g,' ') + ': ' + v + '</span>';
+      });
+      h += '</div>';
+      if (d.notes_by_status) {
+        h += '<div class="mt-2"><strong>Notes By Status:</strong></div><ul class="small mb-0">';
+        Object.keys(d.notes_by_status).forEach(function(k) {
+          h += '<li>' + k + ': ' + d.notes_by_status[k].toLocaleString() + '</li>';
+        });
+        h += '</ul>';
+      }
+      panel.innerHTML = h;
+      btn.disabled = false;
+      btn.innerHTML = 'Run Attachment Audit';
+    })
+    .catch(function(e) {
+      panel.innerHTML = '<div class="text-danger small">Audit failed: ' + e + '</div>';
+      btn.disabled = false;
+      btn.innerHTML = 'Run Attachment Audit';
+    });
+}
+
+(function() {
+  var abRuns = [];
+  {% for run in runs %}
+  {% if run.run_type == 'attachment_backfill' and run.status == 'running' %}
+  abRuns.push({{ run.id }});
+  {% endif %}
+  {% endfor %}
+  if (abRuns.length === 0) return;
+  var abRunId = abRuns[0];
+  var panel = document.getElementById('attachBackfillProgress');
+  panel.style.display = '';
+  function abPoll() {
+    fetch('/admin/geoop-import/attachment-backfill-progress/' + abRunId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        document.getElementById('ab-relinked').textContent = (d.notes_relinked||0).toLocaleString();
+        document.getElementById('ab-already').textContent = (d.already_linked||0).toLocaleString();
+        document.getElementById('ab-nojob').textContent = (d.no_matching_job||0).toLocaleString();
+        document.getElementById('ab-errors').textContent = (d.errors||0).toLocaleString();
+        if (d.status === 'running') {
+          setTimeout(abPoll, 2000);
+        } else {
+          var alert = panel.querySelector('.alert');
+          alert.querySelector('.spinner-border').remove();
+          if (d.status === 'completed') {
+            alert.className = 'alert alert-success py-2 small mb-2';
+            alert.querySelector('strong').textContent = 'Attachment backfill complete — '
+              + (d.notes_relinked||0).toLocaleString() + ' notes re-linked';
+          } else {
+            alert.className = 'alert alert-danger py-2 small mb-2';
+            alert.querySelector('strong').textContent = 'Attachment backfill failed' + (d.error_message ? ': ' + d.error_message : '');
+          }
+        }
+      }).catch(function() { setTimeout(abPoll, 5000); });
+  }
+  abPoll();
 })();
 </script>
 {% endblock %}

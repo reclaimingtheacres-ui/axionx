@@ -1716,13 +1716,16 @@ def import_staged_notes(conn=None):
                 continue
 
             note_text = (note["note_description"] or "").strip()
-            if not note_text:
+            has_file = bool((note["file_name"] or "").strip())
+            if not note_text and not has_file:
                 conn.execute(
                     "UPDATE geoop_staging_notes SET import_status='skipped_empty', imported_at=? WHERE id=?",
                     (ts, note["id"])
                 )
                 skipped += 1
                 continue
+            if not note_text:
+                note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
 
             note_date = note["file_date"] or ts
             try:
@@ -2132,6 +2135,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
 
         def _parse_attachment_path(path_str):
             parts = path_str.replace("\\", "/").split("/")
+            parts = [p for p in parts if p]
             if len(parts) < 4:
                 return None
             att_idx = None
@@ -2139,18 +2143,25 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
                 if p == "attachments":
                     att_idx = i
                     break
-            if att_idx is None or len(parts) < att_idx + 4:
-                return None
-            geoop_job_id = parts[att_idx + 1]
-            geoop_note_id = parts[att_idx + 2]
-            if not geoop_job_id or not geoop_note_id:
-                return None
-            raw_filename = parts[-1]
-            underscore_idx = raw_filename.find("_")
-            filename = raw_filename[underscore_idx + 1:] if underscore_idx > 0 else raw_filename
-            if not filename:
-                return None
-            return geoop_job_id, geoop_note_id, filename
+            if att_idx is not None and len(parts) >= att_idx + 4:
+                geoop_job_id = parts[att_idx + 1]
+                geoop_note_id = parts[att_idx + 2]
+                if not geoop_job_id or not geoop_note_id:
+                    return None
+                raw_filename = parts[-1]
+                underscore_idx = raw_filename.find("_")
+                filename = raw_filename[underscore_idx + 1:] if underscore_idx > 0 else raw_filename
+                if not filename:
+                    return None
+                return geoop_job_id, geoop_note_id, filename
+            if len(parts) >= 4 and parts[0].isdigit() and parts[1].isdigit() and parts[2].isdigit():
+                geoop_job_id = parts[1]
+                geoop_note_id = parts[2]
+                filename = parts[-1]
+                if not filename:
+                    return None
+                return geoop_job_id, geoop_note_id, filename
+            return None
 
         class _AzureBlobFile:
             _BUF_SIZE = 4 * 1024 * 1024
@@ -2880,3 +2891,241 @@ def get_client_gap_report(conn=None):
         conn.close()
 
     return {"summary": summary, "rows": report}
+
+
+def get_attachment_audit(conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    result = {}
+
+    total_notes = conn.execute("SELECT COUNT(*) FROM geoop_staging_notes").fetchone()[0]
+    result["total_staging_notes"] = total_notes
+
+    by_status = conn.execute(
+        "SELECT import_status, COUNT(*) c FROM geoop_staging_notes GROUP BY import_status ORDER BY c DESC"
+    ).fetchall()
+    result["notes_by_status"] = {r[0]: r[1] for r in by_status}
+
+    with_files = conn.execute(
+        "SELECT COUNT(*) FROM geoop_staging_notes WHERE file_name IS NOT NULL AND file_name != ''"
+    ).fetchone()[0]
+    result["notes_with_file_references"] = with_files
+
+    files_linked = conn.execute(
+        "SELECT COUNT(*) FROM geoop_staging_notes WHERE file_name IS NOT NULL AND file_name != '' AND axion_note_id IS NOT NULL"
+    ).fetchone()[0]
+    result["files_linked_to_notes"] = files_linked
+    result["files_unlinked"] = with_files - files_linked
+
+    files_no_text = conn.execute("""
+        SELECT COUNT(*) FROM geoop_staging_notes
+        WHERE (file_name IS NOT NULL AND file_name != '')
+          AND (note_description IS NULL OR note_description = '' OR TRIM(note_description) = '')
+    """).fetchone()[0]
+    result["files_with_no_text"] = files_no_text
+
+    file_rows = conn.execute(
+        "SELECT file_name FROM geoop_staging_notes WHERE file_name IS NOT NULL AND file_name != ''"
+    ).fetchall()
+    import collections as _collections
+    ext_counts = _collections.Counter()
+    for fr in file_rows:
+        fn = fr[0]
+        dot = fn.rfind(".")
+        ext = fn[dot + 1:].lower() if dot >= 0 else "(none)"
+        ext_counts[ext] += 1
+    result["file_types"] = dict(ext_counts.most_common(20))
+
+    staging_files = conn.execute("SELECT COUNT(*) FROM geoop_staging_files").fetchone()[0]
+    result["staging_files_manifest"] = staging_files
+
+    if staging_files > 0:
+        sf_status = conn.execute(
+            "SELECT import_status, COUNT(*) c FROM geoop_staging_files GROUP BY import_status ORDER BY c DESC"
+        ).fetchall()
+        result["staging_files_by_status"] = {r[0]: r[1] for r in sf_status}
+
+    doc_total = conn.execute("SELECT COUNT(*) FROM job_documents").fetchone()[0]
+    result["job_documents_total"] = doc_total
+    doc_linked = conn.execute("SELECT COUNT(*) FROM job_documents WHERE job_id IS NOT NULL").fetchone()[0]
+    result["job_documents_linked"] = doc_linked
+
+    nf_total = conn.execute("SELECT COUNT(*) FROM job_note_files").fetchone()[0]
+    result["job_note_files_total"] = nf_total
+    nf_linked = conn.execute("""
+        SELECT COUNT(*) FROM job_note_files jnf
+        JOIN job_field_notes jfn ON jfn.id = jnf.job_field_note_id
+    """).fetchone()[0]
+    result["job_note_files_linked"] = nf_linked
+    result["job_note_files_orphaned"] = nf_total - nf_linked
+
+    try:
+        unmatched_total = conn.execute("SELECT COUNT(*) FROM geoop_unmatched_attachments").fetchone()[0]
+        result["unmatched_attachments_total"] = unmatched_total
+        if unmatched_total > 0:
+            by_reason = conn.execute(
+                "SELECT reason, COUNT(*) c FROM geoop_unmatched_attachments GROUP BY reason ORDER BY c DESC"
+            ).fetchall()
+            result["unmatched_by_reason"] = {r[0]: r[1] for r in by_reason}
+    except Exception:
+        result["unmatched_attachments_total"] = 0
+
+    failed_reasons = []
+    unmatched_notes = conn.execute("""
+        SELECT geoop_job_id, geoop_note_id, file_name, files_location, import_status, error_message
+        FROM geoop_staging_notes
+        WHERE file_name IS NOT NULL AND file_name != ''
+          AND import_status NOT IN ('imported', 'pending')
+        LIMIT 200
+    """).fetchall()
+    for n in unmatched_notes:
+        failed_reasons.append({
+            "geoop_job_id": n["geoop_job_id"],
+            "geoop_note_id": n["geoop_note_id"],
+            "file_name": n["file_name"],
+            "import_status": n["import_status"],
+            "error": n["error_message"] or "",
+        })
+    result["failed_file_notes_sample"] = failed_reasons
+
+    geoop_note_files = 0
+    try:
+        geoop_note_files = conn.execute("""
+            SELECT COUNT(*) FROM geoop_staging_files WHERE source_type='azure_blob' AND import_status='imported'
+        """).fetchone()[0]
+    except Exception:
+        pass
+
+    result["pipeline_status"] = {
+        "stage_1_notes_csv": "complete" if total_notes > 0 else "not_run",
+        "stage_2_note_import": "complete" if result["notes_by_status"].get("imported", 0) > 0 else "not_run",
+        "stage_3_azure_scan": "complete" if staging_files > 0 else "not_run",
+        "stage_4_file_import": "complete" if geoop_note_files > 0 else "not_run",
+    }
+
+    if close:
+        conn.close()
+    return result
+
+
+def backfill_attachment_links(run_id=None):
+    import time
+    conn = _db()
+    ensure_staging_tables(conn)
+    ts = _now()
+
+    stats = {
+        "status": "running",
+        "notes_relinked": 0,
+        "files_relinked": 0,
+        "already_linked": 0,
+        "no_matching_job": 0,
+        "errors": 0,
+    }
+
+    if run_id:
+        _persist_scan_progress(run_id, stats)
+
+    try:
+        job_map = {}
+        for r in conn.execute(
+            "SELECT geoop_job_id, axion_job_id FROM geoop_staging_jobs WHERE axion_job_id IS NOT NULL"
+        ).fetchall():
+            job_map[r["geoop_job_id"]] = r["axion_job_id"]
+
+        batch_size = 2000
+        last_id = 0
+        while True:
+            notes = conn.execute("""
+                SELECT id, geoop_job_id, geoop_note_id, note_description, file_name, file_date,
+                       import_status, axion_job_id, axion_note_id
+                FROM geoop_staging_notes
+                WHERE id > ?
+                  AND import_status IN ('unmatched_job', 'skipped_empty', 'error')
+                  AND file_name IS NOT NULL AND file_name != ''
+                ORDER BY id LIMIT ?
+            """, (last_id, batch_size)).fetchall()
+
+            if not notes:
+                break
+
+            for note in notes:
+                last_id = note["id"]
+                axion_job_id = job_map.get(note["geoop_job_id"])
+                if not axion_job_id:
+                    stats["no_matching_job"] += 1
+                    if note["import_status"] != "unmatched_job":
+                        conn.execute(
+                            "UPDATE geoop_staging_notes SET import_status='unmatched_job', imported_at=? WHERE id=?",
+                            (ts, note["id"])
+                        )
+                    continue
+
+                if note["axion_note_id"]:
+                    exists = conn.execute(
+                        "SELECT 1 FROM job_field_notes WHERE id=?", (note["axion_note_id"],)
+                    ).fetchone()
+                    if exists:
+                        stats["already_linked"] += 1
+                        continue
+
+                note_text = (note["note_description"] or "").strip()
+                has_file = bool((note["file_name"] or "").strip())
+                if not note_text and not has_file:
+                    continue
+                if not note_text:
+                    note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
+
+                note_date = note["file_date"] or ts
+                try:
+                    from datetime import datetime as _dt
+                    dt = _dt.fromisoformat(note_date.replace("Z", "+00:00"))
+                    note_date = dt.strftime("%Y-%m-%dT%H:%M:%S")
+                except (ValueError, AttributeError):
+                    note_date = ts
+
+                try:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at, note_type)
+                        VALUES (?, 1, ?, ?, 'text')
+                    """, (axion_job_id, note_text, note_date))
+                    new_note_id = cur.lastrowid
+
+                    conn.execute(
+                        "UPDATE geoop_staging_notes SET import_status='imported', axion_job_id=?, axion_note_id=?, imported_at=? WHERE id=?",
+                        (axion_job_id, new_note_id, ts, note["id"])
+                    )
+                    stats["notes_relinked"] += 1
+                except Exception as e:
+                    conn.execute(
+                        "UPDATE geoop_staging_notes SET import_status='error', error_message=?, imported_at=? WHERE id=?",
+                        (str(e)[:500], ts, note["id"])
+                    )
+                    stats["errors"] += 1
+
+            conn.commit()
+            if run_id:
+                _persist_scan_progress(run_id, stats)
+
+        stats["status"] = "completed"
+    except Exception as e:
+        stats["status"] = "failed"
+        stats["error_message"] = str(e)[:500]
+
+    if run_id:
+        try:
+            conn.execute(
+                "UPDATE geoop_import_runs SET status=?, completed_at=? WHERE id=?",
+                (stats["status"], _now(), run_id)
+            )
+            conn.commit()
+        except Exception:
+            pass
+        _persist_scan_progress(run_id, stats)
+
+    conn.close()
+    return stats
