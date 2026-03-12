@@ -800,6 +800,30 @@
       </div>
     </div>
 
+    {% if job.description %}
+    <div style="padding:.75rem .9rem;border-radius:10px;background:var(--card);">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">DESCRIPTION &amp; INSTRUCTIONS</div>
+        {% if session.get('role') in ('admin', 'both') %}
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('desc-edit-block').style.display=document.getElementById('desc-edit-block').style.display==='none'?'block':'none';document.getElementById('desc-view-block').style.display=document.getElementById('desc-view-block').style.display==='none'?'block':'none';">Edit</button>
+        {% endif %}
+      </div>
+      <div id="desc-view-block">
+        <pre style="white-space:pre-wrap;word-break:break-word;font-size:.82rem;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.6rem .8rem;margin:0;max-height:300px;overflow-y:auto">{{ job.description }}</pre>
+      </div>
+      {% if session.get('role') in ('admin', 'both') %}
+      <div id="desc-edit-block" style="display:none">
+        <form method="post" action="/jobs/{{ job.id }}/description">
+          <textarea class="form-control mb-2" name="description" rows="5" style="resize:vertical;font-size:.85rem">{{ job.description or '' }}</textarea>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('desc-edit-block').style.display='none';document.getElementById('desc-view-block').style.display='block';">Cancel</button>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
 
   {# ── LPR Sightings Widget ── #}
   {% if job_lpr_sightings %}

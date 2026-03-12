@@ -4911,6 +4911,20 @@ def job_lender_update(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+@app.post("/jobs/<int:job_id>/description")
+@login_required
+@admin_required
+def job_description_update(job_id: int):
+    desc = request.form.get("description", "").strip()
+    conn = db()
+    conn.execute("UPDATE jobs SET description=?, updated_at=? WHERE id=?",
+                 (desc or None, now_ts(), job_id))
+    conn.commit()
+    conn.close()
+    flash("Description updated.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
 @app.post("/jobs/<int:job_id>/payments")
 @login_required
 def job_payment_add(job_id: int):
