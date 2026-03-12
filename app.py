@@ -9582,6 +9582,37 @@ def geoop_link_staged_attachments():
     return redirect(url_for("geoop_import_page"))
 
 
+@app.post("/admin/geoop-import/repair-dates")
+@admin_required
+def geoop_repair_dates():
+    target = request.args.get("target", "both")
+    started_notes = False
+    started_jobs = False
+    if target in ("notes", "both"):
+        started_notes = _geoop.repair_note_dates()
+    if target in ("jobs", "both"):
+        started_jobs = _geoop.repair_job_dates()
+    if started_notes or started_jobs:
+        parts = []
+        if started_notes:
+            parts.append("note dates")
+        if started_jobs:
+            parts.append("job dates")
+        flash(f"Repair started for {' and '.join(parts)}. This runs in the background.", "info")
+    else:
+        flash("Repair is already running. Please wait for it to finish.", "warning")
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/repair-dates-progress")
+@admin_required
+def geoop_repair_dates_progress():
+    return jsonify({
+        "notes": _geoop.get_repair_dates_progress(),
+        "jobs": _geoop.get_repair_job_dates_progress(),
+    })
+
+
 @app.get("/admin/geoop-import/attachment-backfill-progress/<int:run_id>")
 @admin_required
 def geoop_attachment_backfill_progress(run_id):

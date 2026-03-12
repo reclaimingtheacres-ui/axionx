@@ -1822,9 +1822,14 @@ def import_staged_notes(conn=None):
     errors = 0
 
     job_map = {}
-    rows = conn.execute("SELECT geoop_job_id, axion_job_id FROM geoop_staging_jobs WHERE axion_job_id IS NOT NULL").fetchall()
+    job_date_map = {}
+    rows = conn.execute("""
+        SELECT geoop_job_id, axion_job_id, date_modified, date_created
+        FROM geoop_staging_jobs WHERE axion_job_id IS NOT NULL
+    """).fetchall()
     for r in rows:
         job_map[r["geoop_job_id"]] = r["axion_job_id"]
+        job_date_map[r["geoop_job_id"]] = r["date_modified"] or r["date_created"] or ""
 
     batch_size = 5000
     while True:
@@ -1874,7 +1879,10 @@ def import_staged_notes(conn=None):
                     continue
                 note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
 
-            note_date = note["file_date"] or ts
+            raw_date = note["file_date"] or ""
+            if not raw_date:
+                raw_date = job_date_map.get(note["geoop_job_id"], "")
+            note_date = raw_date or ts
             try:
                 from datetime import datetime as _dt
                 dt = _dt.fromisoformat(note_date.replace("Z", "+00:00"))
@@ -3249,10 +3257,13 @@ def backfill_attachment_links(run_id=None):
 
     try:
         job_map = {}
-        for r in conn.execute(
-            "SELECT geoop_job_id, axion_job_id FROM geoop_staging_jobs WHERE axion_job_id IS NOT NULL"
-        ).fetchall():
+        job_date_map = {}
+        for r in conn.execute("""
+            SELECT geoop_job_id, axion_job_id, date_modified, date_created
+            FROM geoop_staging_jobs WHERE axion_job_id IS NOT NULL
+        """).fetchall():
             job_map[r["geoop_job_id"]] = r["axion_job_id"]
+            job_date_map[r["geoop_job_id"]] = r["date_modified"] or r["date_created"] or ""
 
         batch_size = 2000
         last_id = 0
@@ -3313,7 +3324,10 @@ def backfill_attachment_links(run_id=None):
                         continue
                     note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
 
-                note_date = note["file_date"] or ts
+                raw_date = note["file_date"] or ""
+                if not raw_date:
+                    raw_date = job_date_map.get(note["geoop_job_id"], "")
+                note_date = raw_date or ts
                 try:
                     from datetime import datetime as _dt
                     dt = _dt.fromisoformat(note_date.replace("Z", "+00:00"))
@@ -3368,3 +3382,181 @@ def backfill_attachment_links(run_id=None):
 
     conn.close()
     return stats
+
+
+_repair_dates_lock = threading.Lock()
+_repair_dates_progress = {"status": "idle", "updated": 0, "skipped": 0, "total": 0}
+
+
+def get_repair_dates_progress():
+    return dict(_repair_dates_progress)
+
+
+def repair_note_dates():
+    if not _repair_dates_lock.acquire(blocking=False):
+        return False
+    _repair_dates_progress.clear()
+    _repair_dates_progress.update({"status": "running", "updated": 0, "skipped": 0, "total": 0})
+
+    def _run():
+        import logging
+        log = logging.getLogger("geoop_import")
+        try:
+            conn = _db()
+            try:
+                updated = 0
+                skipped = 0
+
+                job_date_map = {}
+                for r in conn.execute("""
+                    SELECT geoop_job_id, date_modified, date_created
+                    FROM geoop_staging_jobs
+                """).fetchall():
+                    job_date_map[r["geoop_job_id"]] = r["date_modified"] or r["date_created"] or ""
+
+                rows = conn.execute("""
+                    SELECT sn.axion_note_id, sn.file_date, sn.geoop_job_id
+                    FROM geoop_staging_notes sn
+                    WHERE sn.axion_note_id IS NOT NULL
+                      AND sn.import_status = 'imported'
+                """).fetchall()
+
+                _repair_dates_progress["total"] = len(rows)
+                log.info("Repair note dates: %d notes to process", len(rows))
+
+                seen_note_ids = set()
+                batch = []
+                for r in rows:
+                    nid = r["axion_note_id"]
+                    if nid in seen_note_ids:
+                        continue
+                    seen_note_ids.add(nid)
+
+                    raw_date = r["file_date"] or ""
+                    if not raw_date:
+                        raw_date = job_date_map.get(r["geoop_job_id"], "")
+                    if not raw_date:
+                        skipped += 1
+                        continue
+
+                    try:
+                        dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                        clean_date = dt.strftime("%Y-%m-%dT%H:%M:%S")
+                    except (ValueError, AttributeError):
+                        skipped += 1
+                        continue
+
+                    batch.append((clean_date, nid))
+
+                    if len(batch) >= 500:
+                        conn.executemany(
+                            "UPDATE job_field_notes SET created_at = ? WHERE id = ?",
+                            batch
+                        )
+                        conn.commit()
+                        updated += len(batch)
+                        _repair_dates_progress["updated"] = updated
+                        batch = []
+
+                if batch:
+                    conn.executemany(
+                        "UPDATE job_field_notes SET created_at = ? WHERE id = ?",
+                        batch
+                    )
+                    conn.commit()
+                    updated += len(batch)
+
+                _repair_dates_progress.update({
+                    "status": "complete", "updated": updated, "skipped": skipped
+                })
+                log.info("Repair note dates complete: %d updated, %d skipped", updated, skipped)
+            finally:
+                conn.close()
+        except Exception as e:
+            log.error("Repair note dates failed: %s", e)
+            _repair_dates_progress.update({"status": "error", "error": str(e)[:500]})
+        finally:
+            _repair_dates_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True
+
+
+_repair_job_dates_lock = threading.Lock()
+_repair_job_dates_progress = {"status": "idle", "updated": 0, "total": 0}
+
+
+def get_repair_job_dates_progress():
+    return dict(_repair_job_dates_progress)
+
+
+def repair_job_dates():
+    if not _repair_job_dates_lock.acquire(blocking=False):
+        return False
+    _repair_job_dates_progress.clear()
+    _repair_job_dates_progress.update({"status": "running", "updated": 0, "total": 0})
+
+    def _run():
+        import logging
+        log = logging.getLogger("geoop_import")
+        try:
+            conn = _db()
+            try:
+                rows = conn.execute("""
+                    SELECT sj.axion_job_id, sj.date_created, sj.date_modified
+                    FROM geoop_staging_jobs sj
+                    WHERE sj.axion_job_id IS NOT NULL
+                      AND (sj.date_created IS NOT NULL AND sj.date_created != '')
+                """).fetchall()
+
+                _repair_job_dates_progress["total"] = len(rows)
+                log.info("Repair job dates: %d jobs to process", len(rows))
+
+                batch = []
+                for r in rows:
+                    raw_created = r["date_created"] or ""
+                    raw_modified = r["date_modified"] or raw_created
+                    try:
+                        dt_created = datetime.fromisoformat(raw_created.replace("Z", "+00:00"))
+                        clean_created = dt_created.strftime("%Y-%m-%dT%H:%M:%S")
+                    except (ValueError, AttributeError):
+                        continue
+                    try:
+                        dt_modified = datetime.fromisoformat(raw_modified.replace("Z", "+00:00"))
+                        clean_modified = dt_modified.strftime("%Y-%m-%dT%H:%M:%S")
+                    except (ValueError, AttributeError):
+                        clean_modified = clean_created
+
+                    batch.append((clean_created, clean_modified, r["axion_job_id"]))
+
+                    if len(batch) >= 500:
+                        conn.executemany(
+                            "UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = ?",
+                            batch
+                        )
+                        conn.commit()
+                        _repair_job_dates_progress["updated"] += len(batch)
+                        batch = []
+
+                if batch:
+                    conn.executemany(
+                        "UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = ?",
+                        batch
+                    )
+                    conn.commit()
+                    _repair_job_dates_progress["updated"] += len(batch)
+
+                _repair_job_dates_progress["status"] = "complete"
+                log.info("Repair job dates complete: %d updated", _repair_job_dates_progress["updated"])
+            finally:
+                conn.close()
+        except Exception as e:
+            log.error("Repair job dates failed: %s", e)
+            _repair_job_dates_progress.update({"status": "error", "error": str(e)[:500]})
+        finally:
+            _repair_job_dates_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True
