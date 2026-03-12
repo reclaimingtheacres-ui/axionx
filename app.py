@@ -9620,6 +9620,17 @@ def geoop_repair_phones():
     return redirect(url_for("geoop_import_page"))
 
 
+@app.post("/admin/geoop-import/repair-registrations")
+@admin_required
+def geoop_repair_registrations():
+    started = _geoop.repair_registrations()
+    if started:
+        flash("Registration repair started. Re-parsing REG fields from original descriptions.", "info")
+    else:
+        flash("Registration repair is already running. Please wait.", "warning")
+    return redirect(url_for("geoop_import_page"))
+
+
 @app.get("/admin/geoop-import/repair-progress")
 @admin_required
 def geoop_repair_progress():
@@ -9627,6 +9638,7 @@ def geoop_repair_progress():
         "notes": _geoop.get_repair_dates_progress(),
         "jobs": _geoop.get_repair_job_dates_progress(),
         "phones": _geoop.get_repair_phones_progress(),
+        "registrations": _geoop.get_repair_reg_progress(),
     })
 
 

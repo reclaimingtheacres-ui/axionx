@@ -397,7 +397,12 @@
               onsubmit="this.querySelector('button').disabled=true; return confirm('This will restore leading zeroes and international prefixes on all phone numbers. Continue?');">
           <button type="submit" class="btn btn-outline-primary btn-sm" id="repairPhonesBtn">Repair Phone Numbers</button>
         </form>
+        <form method="post" action="/admin/geoop-import/repair-registrations" class="d-inline ms-2"
+              onsubmit="this.querySelector('button[type=submit]').disabled=true;">
+          <button type="submit" class="btn btn-outline-info btn-sm" id="repairRegsBtn">Repair Registrations</button>
+        </form>
         <span id="repairDatesStatus" class="small text-muted"></span>
+        <span id="repairRegsStatus" class="small text-muted ms-2"></span>
       </div>
       <hr class="my-2">
       <p class="small text-muted mb-2">
@@ -1331,8 +1336,10 @@ function _renderAuditResult(d) {
 
 (function() {
   var statusEl = document.getElementById('repairDatesStatus');
+  var regsStatusEl = document.getElementById('repairRegsStatus');
   var datesBtn = document.getElementById('repairDatesBtn');
   var phonesBtn = document.getElementById('repairPhonesBtn');
+  var regsBtn = document.getElementById('repairRegsBtn');
   function pollRepair() {
     fetch('/admin/geoop-import/repair-progress')
       .then(function(r) { return r.json(); })
@@ -1340,7 +1347,8 @@ function _renderAuditResult(d) {
         var notes = d.notes || {};
         var jobs = d.jobs || {};
         var phones = d.phones || {};
-        var running = notes.status === 'running' || jobs.status === 'running' || phones.status === 'running';
+        var regs = d.registrations || {};
+        var running = notes.status === 'running' || jobs.status === 'running' || phones.status === 'running' || regs.status === 'running';
         var parts = [];
         if (notes.status === 'running') {
           parts.push('Notes: ' + (notes.updated||0).toLocaleString() + '/' + (notes.total||0).toLocaleString());
@@ -1363,6 +1371,16 @@ function _renderAuditResult(d) {
         } else if (phones.status === 'error') {
           parts.push('Phones: error');
         }
+        if (regs.status === 'running') {
+          regsStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Regs: checking ' + (regs.total||0).toLocaleString() + ' jobs…';
+          regsBtn.disabled = true;
+        } else if (regs.status === 'complete') {
+          regsStatusEl.textContent = 'Regs: ' + (regs.staging_fixed||0).toLocaleString() + ' staging, ' + (regs.items_fixed||0).toLocaleString() + ' items fixed';
+          regsBtn.disabled = false;
+        } else if (regs.status === 'error') {
+          regsStatusEl.textContent = 'Regs: error';
+          regsBtn.disabled = false;
+        }
         if (running) {
           statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + parts.join(' | ');
           datesBtn.disabled = notes.status === 'running' || jobs.status === 'running';
@@ -1373,7 +1391,7 @@ function _renderAuditResult(d) {
           datesBtn.disabled = false;
           phonesBtn.disabled = false;
         }
-      }).catch(function() { if (datesBtn.disabled || phonesBtn.disabled) setTimeout(pollRepair, 5000); });
+      }).catch(function() { if (datesBtn.disabled || phonesBtn.disabled || regsBtn.disabled) setTimeout(pollRepair, 5000); });
   }
   pollRepair();
   datesBtn.closest('form').addEventListener('submit', function() {
@@ -1384,6 +1402,11 @@ function _renderAuditResult(d) {
   phonesBtn.closest('form').addEventListener('submit', function() {
     phonesBtn.disabled = true;
     statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting phones…';
+    setTimeout(pollRepair, 2000);
+  });
+  regsBtn.closest('form').addEventListener('submit', function() {
+    regsBtn.disabled = true;
+    regsStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting…';
     setTimeout(pollRepair, 2000);
   });
 })();

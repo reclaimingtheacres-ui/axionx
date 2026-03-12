@@ -257,7 +257,7 @@ def parse_description(desc):
     if vin_match:
         result["parsed_vin"] = vin_match.group(1).upper()
 
-    reg_match = re.search(r'REG[:\s]*([A-Z0-9]{2,10}(?:\s*\([^)]*\))?)', clean, re.IGNORECASE)
+    reg_match = re.search(r'(?<![A-Za-z])REG[:\s]+([A-Z0-9]{2,10}(?:\s*\([^)]*\))?)', clean, re.IGNORECASE)
     if reg_match:
         raw_reg = reg_match.group(1).strip()
         reg_clean = re.sub(r'\s*\([^)]*\)$', '', raw_reg).strip().upper()
@@ -3767,6 +3767,91 @@ _repair_phones_progress = {"status": "idle", "updated": 0, "total": 0}
 
 def get_repair_phones_progress():
     return dict(_repair_phones_progress)
+
+
+_repair_reg_lock = threading.Lock()
+_repair_reg_progress = {"status": "idle"}
+
+def get_repair_reg_progress():
+    return dict(_repair_reg_progress)
+
+def repair_registrations():
+    if not _repair_reg_lock.acquire(blocking=False):
+        return False
+    _repair_reg_progress.clear()
+    _repair_reg_progress.update({"status": "running", "staging_fixed": 0, "items_fixed": 0, "total": 0})
+
+    def _run():
+        import logging
+        log = logging.getLogger("geoop_import")
+        try:
+            conn = _db()
+            try:
+                rows = conn.execute("""
+                    SELECT sj.id, sj.geoop_job_id, sj.raw_description, sj.parsed_reg,
+                           sj.axion_job_id
+                    FROM geoop_staging_jobs sj
+                    WHERE sj.raw_description IS NOT NULL AND sj.raw_description != ''
+                      AND sj.import_status = 'imported'
+                """).fetchall()
+                _repair_reg_progress["total"] = len(rows)
+                log.info("Repair registrations: %d staging rows to check", len(rows))
+
+                staging_batch = []
+                item_batch = []
+                for r in rows:
+                    desc = r["raw_description"]
+                    old_reg = r["parsed_reg"] or ""
+
+                    parsed = parse_description(desc)
+                    new_reg = parsed.get("parsed_reg", "")
+
+                    if new_reg != old_reg:
+                        staging_batch.append((new_reg, r["id"]))
+                        if r["axion_job_id"]:
+                            item_batch.append((new_reg, r["axion_job_id"], old_reg))
+
+                    if len(staging_batch) >= 500:
+                        conn.executemany(
+                            "UPDATE geoop_staging_jobs SET parsed_reg = ? WHERE id = ?",
+                            staging_batch
+                        )
+                        conn.commit()
+                        _repair_reg_progress["staging_fixed"] += len(staging_batch)
+                        staging_batch = []
+
+                if staging_batch:
+                    conn.executemany(
+                        "UPDATE geoop_staging_jobs SET parsed_reg = ? WHERE id = ?",
+                        staging_batch
+                    )
+                    conn.commit()
+                    _repair_reg_progress["staging_fixed"] += len(staging_batch)
+
+                items_actually_updated = 0
+                for new_reg, axion_job_id, old_reg in item_batch:
+                    cur = conn.execute("""
+                        UPDATE job_items SET reg = ?
+                        WHERE job_id = ? AND item_type = 'vehicle' AND reg = ?
+                    """, (new_reg, axion_job_id, old_reg))
+                    items_actually_updated += cur.rowcount
+                conn.commit()
+                _repair_reg_progress["items_fixed"] = items_actually_updated
+
+                _repair_reg_progress["status"] = "complete"
+                log.info("Repair registrations complete: %d staging, %d items fixed",
+                         _repair_reg_progress["staging_fixed"], items_actually_updated)
+            finally:
+                conn.close()
+        except Exception as e:
+            log.error("Repair registrations failed: %s", e)
+            _repair_reg_progress.update({"status": "error", "error": str(e)[:500]})
+        finally:
+            _repair_reg_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True
 
 
 def repair_phone_numbers():
