@@ -1112,9 +1112,16 @@ def get_backfill_progress(run_id):
 def _backfill_one_job(conn, row, ts):
     axion_job_id = row["axion_job_id"]
     raw_desc = row["raw_description"]
-    result = {"notes_created": 0, "already_ok": 0, "items_updated": 0}
+    result = {"notes_created": 0, "already_ok": 0, "items_updated": 0,
+              "items_created": 0, "desc_preserved": 0, "fields_parsed": 0}
 
     parsed = parse_description(raw_desc)
+    has_parsed_fields = any(parsed.get(k) for k in (
+        "parsed_client_name", "parsed_account_number", "parsed_regulation_type",
+        "parsed_amount_cents", "parsed_costs_cents", "parsed_nmpd_amount_cents",
+        "parsed_nmpd_date", "parsed_deliver_to"))
+    if has_parsed_fields:
+        result["fields_parsed"] = 1
 
     conn.execute("""
         UPDATE jobs SET
@@ -1142,6 +1149,7 @@ def _backfill_one_job(conn, row, ts):
         ts,
         axion_job_id
     ))
+    result["desc_preserved"] = 1
 
     legacy_exists = conn.execute(
         "SELECT id FROM job_field_notes WHERE job_id=? AND note_type='geoop_import'",
@@ -1202,7 +1210,7 @@ def _backfill_one_job(conn, row, ts):
                 parsed.get("parsed_deliver_to", "") or row["parsed_deliver_to"] or "",
                 ts
             ))
-            result["items_updated"] = 1
+            result["items_created"] = 1
 
     return result
 
@@ -1213,11 +1221,15 @@ def backfill_geoop_descriptions(run_id=None):
         "status": "running",
         "total_eligible": 0,
         "jobs_processed": 0,
+        "descriptions_preserved": 0,
         "legacy_notes_created": 0,
         "legacy_notes_already_exist": 0,
         "job_items_updated": 0,
+        "job_items_created": 0,
+        "fields_parsed": 0,
         "errors": 0,
         "last_staging_id": 0,
+        "batch_number": 0,
         "batch_size": _BACKFILL_BATCH_SIZE,
         "backfill_ts": ts,
     }
@@ -1261,14 +1273,19 @@ def backfill_geoop_descriptions(run_id=None):
                     conn.close()
                     break
 
+                stats["batch_number"] += 1
+
                 for row in rows:
                     last_id = row["id"]
                     try:
                         result = _backfill_one_job(conn, row, ts)
                         stats["jobs_processed"] += 1
+                        stats["descriptions_preserved"] += result["desc_preserved"]
                         stats["legacy_notes_created"] += result["notes_created"]
                         stats["legacy_notes_already_exist"] += result["already_ok"]
                         stats["job_items_updated"] += result["items_updated"]
+                        stats["job_items_created"] += result["items_created"]
+                        stats["fields_parsed"] += result["fields_parsed"]
                     except Exception:
                         stats["errors"] += 1
 

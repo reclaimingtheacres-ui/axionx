@@ -292,21 +292,35 @@
         <div class="progress mb-2" style="height:20px">
           <div class="progress-bar bg-info" id="bf-bar" role="progressbar" style="width:0%">0%</div>
         </div>
-        <div class="row text-center row-cols-2 row-cols-md-5 g-2 small">
+        <div class="row text-center row-cols-2 row-cols-md-4 g-2 small">
           <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-total">0</div><div class="text-muted">Eligible Jobs</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="bf-processed">0</div><div class="text-muted">Processed</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-desc">0</div><div class="text-muted">Descriptions Preserved</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-fields">0</div><div class="text-muted">Fields Parsed</div></div></div>
+        </div>
+        <div class="row text-center row-cols-2 row-cols-md-5 g-2 small mt-1">
           <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-notes">0</div><div class="text-muted">Notes Created</div></div></div>
-          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-items">0</div><div class="text-muted">Items Updated</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-muted" id="bf-skipped">0</div><div class="text-muted">Skipped (Existed)</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-items-created">0</div><div class="text-muted">Items Created</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-items-updated">0</div><div class="text-muted">Items Updated</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold text-danger" id="bf-errors">0</div><div class="text-muted">Errors</div></div></div>
+        </div>
+        <div class="mt-2 small text-muted" id="bf-checkpoint-row" style="display:none">
+          Batch <span class="fw-bold" id="bf-batch">0</span> · Last staging ID: <span class="fw-bold" id="bf-lastid">0</span> · Batch size: <span id="bf-batchsize">250</span>
         </div>
       </div>
       <div id="backfillSamples" style="display:none" class="mt-3">
         <h6 class="small fw-bold">Backfill Summary</h6>
-        <div class="row text-center row-cols-2 row-cols-md-4 g-2 small mb-3">
+        <div class="row text-center row-cols-2 row-cols-md-4 g-2 small mb-2">
           <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="bfs-desc">0</div><div class="text-muted">Descriptions Preserved</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="bfs-legacy">0</div><div class="text-muted">Legacy Notes Created</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="bfs-items">0</div><div class="text-muted">Security Items</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="bfs-fields">—</div><div class="text-muted">Fields Populated</div></div></div>
+        </div>
+        <div class="alert alert-light py-2 small mb-3">
+          <strong>Safety guarantees:</strong> Resumable from last checkpoint (batch <span id="bfs-batch-final">—</span>, staging ID <span id="bfs-lastid-final">—</span>).
+          Does not overwrite existing non-blank live data (CASE WHEN blank-only semantics).
+          Idempotent — safe to run multiple times.
         </div>
         <h6 class="small fw-bold">Sample Backfilled Jobs (5)</h6>
         <div id="bfs-sample-list"></div>
@@ -706,9 +720,19 @@ function loadDiagnostics() {
         var processed = d.jobs_processed || 0;
         document.getElementById('bf-total').textContent = total.toLocaleString();
         document.getElementById('bf-processed').textContent = processed.toLocaleString();
+        document.getElementById('bf-desc').textContent = (d.descriptions_preserved||0).toLocaleString();
+        document.getElementById('bf-fields').textContent = (d.fields_parsed||0).toLocaleString();
         document.getElementById('bf-notes').textContent = (d.legacy_notes_created||0).toLocaleString();
-        document.getElementById('bf-items').textContent = (d.job_items_updated||0).toLocaleString();
+        document.getElementById('bf-skipped').textContent = (d.legacy_notes_already_exist||0).toLocaleString();
+        document.getElementById('bf-items-created').textContent = (d.job_items_created||0).toLocaleString();
+        document.getElementById('bf-items-updated').textContent = (d.job_items_updated||0).toLocaleString();
         document.getElementById('bf-errors').textContent = (d.errors||0).toLocaleString();
+        if (d.batch_number > 0) {
+          document.getElementById('bf-checkpoint-row').style.display = '';
+          document.getElementById('bf-batch').textContent = d.batch_number;
+          document.getElementById('bf-lastid').textContent = d.last_staging_id || 0;
+          document.getElementById('bf-batchsize').textContent = d.batch_size || 250;
+        }
         var pct = total > 0 ? Math.round(processed / total * 100) : 0;
         var bar = document.getElementById('bf-bar');
         bar.style.width = pct + '%';
@@ -721,7 +745,12 @@ function loadDiagnostics() {
           if (spinner) spinner.remove();
           if (d.status === 'completed') {
             alert.className = 'alert alert-success py-2 small mb-2';
-            alert.querySelector('strong').textContent = 'Backfill complete';
+            alert.querySelector('strong').textContent = 'Backfill complete — '
+              + processed.toLocaleString() + ' jobs processed, '
+              + (d.descriptions_preserved||0).toLocaleString() + ' descriptions preserved, '
+              + (d.legacy_notes_created||0).toLocaleString() + ' notes created, '
+              + ((d.job_items_created||0)+(d.job_items_updated||0)).toLocaleString() + ' security items, '
+              + (d.errors||0) + ' errors';
             bar.classList.remove('bg-info');
             bar.classList.add('bg-success');
           } else {
@@ -730,6 +759,8 @@ function loadDiagnostics() {
           }
           document.getElementById('backfillBtn').disabled = false;
           if (d.status === 'completed') {
+            document.getElementById('bfs-batch-final').textContent = d.batch_number || '—';
+            document.getElementById('bfs-lastid-final').textContent = d.last_staging_id || '—';
             fetch('/admin/geoop-import/backfill-samples/' + bfRunId)
               .then(function(r) { return r.json(); })
               .then(function(bs) {
@@ -927,6 +958,14 @@ function loadDiagnostics() {
   }
 
   if (lastBackfillId) {
+    fetch('/admin/geoop-import/backfill-progress/' + lastBackfillId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.batch_number) {
+          document.getElementById('bfs-batch-final').textContent = d.batch_number;
+          document.getElementById('bfs-lastid-final').textContent = d.last_staging_id || '—';
+        }
+      }).catch(function(){});
     fetch('/admin/geoop-import/backfill-samples/' + lastBackfillId)
       .then(function(r) { return r.json(); })
       .then(function(bs) {
