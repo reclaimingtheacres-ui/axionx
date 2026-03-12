@@ -9625,6 +9625,39 @@ def geoop_repair_progress():
     })
 
 
+@app.post("/admin/geoop-import/recover-files")
+@admin_required
+def geoop_recover_files():
+    zip_dir = request.form.get("zip_dir", "").strip()
+    if not zip_dir:
+        zip_dir = os.path.join("uploads", "geoop_import")
+    if not os.path.isdir(zip_dir):
+        flash(f"Directory not found: {zip_dir}", "danger")
+        return redirect(url_for("geoop_import_page"))
+
+    zip_paths = sorted([
+        os.path.join(zip_dir, f)
+        for f in os.listdir(zip_dir)
+        if f.lower().endswith(".zip") and os.path.isfile(os.path.join(zip_dir, f))
+    ])
+    if not zip_paths:
+        flash(f"No ZIP files found in: {zip_dir}", "warning")
+        return redirect(url_for("geoop_import_page"))
+
+    started = _geoop.recover_files_from_zips(zip_paths)
+    if started:
+        flash(f"File recovery started from {len(zip_paths)} ZIP file(s) in {zip_dir}.", "info")
+    else:
+        flash("File recovery is already running. Please wait.", "warning")
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/recover-files-progress")
+@admin_required
+def geoop_recover_files_progress():
+    return jsonify(_geoop.get_file_recovery_progress())
+
+
 @app.get("/admin/geoop-import/repair-dates-progress")
 @admin_required
 def geoop_repair_dates_progress():

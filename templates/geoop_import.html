@@ -399,6 +399,19 @@
         </form>
         <span id="repairDatesStatus" class="small text-muted"></span>
       </div>
+      <hr class="my-2">
+      <p class="small text-muted mb-2">
+        <strong>File Recovery</strong> — Restore physical attachment files from GeoOp ZIP archives. Matches ZIP entries to existing database mappings and extracts missing files into the uploads directory. Idempotent — skips files already present.
+      </p>
+      <form method="post" action="/admin/geoop-import/recover-files" class="m-0 mb-2"
+            onsubmit="this.querySelector('button[type=submit]').disabled=true; return confirm('This will extract attachment files from GeoOp ZIPs into the uploads directory. Continue?');">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <input type="text" name="zip_dir" class="form-control form-control-sm" style="max-width:350px"
+                 placeholder="ZIP directory (default: uploads/geoop_import)" value="">
+          <button type="submit" class="btn btn-outline-warning btn-sm" id="recoverFilesBtn">Recover Files from ZIPs</button>
+          <span id="recoverFilesStatus" class="small text-muted"></span>
+        </div>
+      </form>
       <div id="attachAuditResult" style="display:none" class="mt-3"></div>
       <div id="attachBackfillProgress" style="display:none" class="mt-3">
         <div class="alert alert-warning py-2 small mb-2">
@@ -1372,6 +1385,44 @@ function _renderAuditResult(d) {
     phonesBtn.disabled = true;
     statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting phones…';
     setTimeout(pollRepair, 2000);
+  });
+})();
+
+(function() {
+  var statusEl = document.getElementById('recoverFilesStatus');
+  var btn = document.getElementById('recoverFilesBtn');
+  function pollRecovery() {
+    fetch('/admin/geoop-import/recover-files-progress')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.status === 'running') {
+          var parts = [];
+          if (d.current_zip) parts.push(d.current_zip);
+          parts.push('Scanned: ' + (d.entries_scanned||0).toLocaleString());
+          parts.push('Restored: ' + (d.files_restored||0).toLocaleString());
+          if (d.already_present) parts.push('Already present: ' + d.already_present.toLocaleString());
+          parts.push('ZIPs: ' + (d.zips_processed||0) + '/' + (d.zips_total||0));
+          statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + parts.join(' | ');
+          btn.disabled = true;
+          setTimeout(pollRecovery, 2000);
+        } else if (d.status === 'complete') {
+          var msg = 'Done — ' + (d.files_restored||0).toLocaleString() + ' files restored';
+          if (d.already_present) msg += ', ' + d.already_present.toLocaleString() + ' already present';
+          if (d.no_db_mapping) msg += ', ' + d.no_db_mapping.toLocaleString() + ' no mapping';
+          if (d.errors) msg += ', ' + d.errors.toLocaleString() + ' errors';
+          statusEl.textContent = msg;
+          btn.disabled = false;
+        } else if (d.status === 'error') {
+          statusEl.textContent = 'Error: ' + (d.error || 'unknown');
+          btn.disabled = false;
+        }
+      }).catch(function() { if (btn.disabled) setTimeout(pollRecovery, 5000); });
+  }
+  pollRecovery();
+  btn.closest('form').addEventListener('submit', function() {
+    btn.disabled = true;
+    statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting…';
+    setTimeout(pollRecovery, 2000);
   });
 })();
 </script>

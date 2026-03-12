@@ -2698,6 +2698,176 @@ def get_scan_samples(run_id, unmatched_limit=10, matched_limit=5):
     }
 
 
+_file_recovery_lock = threading.Lock()
+_file_recovery_progress = {"status": "idle"}
+
+
+def get_file_recovery_progress():
+    return dict(_file_recovery_progress)
+
+
+def _parse_zip_entry_path(path_str):
+    parts = path_str.replace("\\", "/").split("/")
+    parts = [p for p in parts if p]
+    if len(parts) < 4:
+        return None
+    att_idx = None
+    for i, p in enumerate(parts):
+        if p == "attachments":
+            att_idx = i
+            break
+    if att_idx is not None and len(parts) >= att_idx + 4:
+        geoop_job_id = parts[att_idx + 1]
+        geoop_note_id = parts[att_idx + 2]
+        if not geoop_job_id or not geoop_note_id:
+            return None
+        raw_filename = parts[-1]
+        underscore_idx = raw_filename.find("_")
+        filename = raw_filename[underscore_idx + 1:] if underscore_idx > 0 else raw_filename
+        if not filename:
+            return None
+        return geoop_job_id, geoop_note_id, filename
+    if len(parts) >= 4 and parts[0].isdigit() and parts[1].isdigit() and parts[2].isdigit():
+        geoop_job_id = parts[1]
+        geoop_note_id = parts[2]
+        filename = parts[-1]
+        if not filename:
+            return None
+        return geoop_job_id, geoop_note_id, filename
+    return None
+
+
+def recover_files_from_zips(zip_paths, upload_dir=None):
+    if not _file_recovery_lock.acquire(blocking=False):
+        return False
+    _file_recovery_progress.clear()
+    _file_recovery_progress.update({
+        "status": "running",
+        "zips_total": len(zip_paths),
+        "zips_processed": 0,
+        "entries_scanned": 0,
+        "files_restored": 0,
+        "already_present": 0,
+        "no_db_mapping": 0,
+        "parse_failed": 0,
+        "errors": 0,
+        "current_zip": "",
+    })
+    target_dir = upload_dir or UPLOAD_FOLDER
+
+    def _run():
+        import logging
+        log = logging.getLogger("geoop_import")
+        try:
+            conn = _db()
+            try:
+                sf_map = {}
+                sf_note_counts = {}
+                for r in conn.execute("""
+                    SELECT geoop_note_id, file_name, stored_filename
+                    FROM geoop_staging_files
+                    WHERE stored_filename IS NOT NULL AND stored_filename != ''
+                      AND import_status = 'imported'
+                    ORDER BY id DESC
+                """).fetchall():
+                    key = (r["geoop_note_id"], r["file_name"])
+                    if key not in sf_map:
+                        sf_map[key] = r["stored_filename"]
+                    nid = r["geoop_note_id"]
+                    sf_note_counts[nid] = sf_note_counts.get(nid, 0) + 1
+                    if sf_note_counts[nid] == 1:
+                        sf_map[(nid, None)] = r["stored_filename"]
+                    else:
+                        sf_map.pop((nid, None), None)
+
+            finally:
+                conn.close()
+
+            log.info("File recovery: %d staging file mappings, %d ZIPs to process",
+                     len(sf_map), len(zip_paths))
+
+            os.makedirs(target_dir, exist_ok=True)
+
+            for zip_path in zip_paths:
+                zip_basename = os.path.basename(zip_path)
+                _file_recovery_progress["current_zip"] = zip_basename
+                log.info("File recovery: processing %s", zip_basename)
+
+                try:
+                    with zipfile.ZipFile(zip_path, 'r') as zf:
+                        entries = [e for e in zf.namelist() if not e.endswith("/")]
+                        for entry in entries:
+                            _file_recovery_progress["entries_scanned"] += 1
+
+                            parsed = _parse_zip_entry_path(entry)
+                            if not parsed:
+                                _file_recovery_progress["parse_failed"] += 1
+                                continue
+
+                            geoop_job_id, geoop_note_id, entry_filename = parsed
+
+                            stored_name = sf_map.get((geoop_note_id, entry_filename))
+                            if not stored_name:
+                                stored_name = sf_map.get((geoop_note_id, None))
+                            if not stored_name:
+                                _file_recovery_progress["no_db_mapping"] += 1
+                                continue
+
+                            safe_name = os.path.basename(stored_name)
+                            if not safe_name or safe_name != stored_name:
+                                _file_recovery_progress["errors"] += 1
+                                continue
+                            dest_path = os.path.join(target_dir, safe_name)
+                            abs_dest = os.path.abspath(dest_path)
+                            abs_target = os.path.abspath(target_dir)
+                            if not abs_dest.startswith(abs_target + os.sep):
+                                _file_recovery_progress["errors"] += 1
+                                continue
+                            if os.path.exists(dest_path):
+                                _file_recovery_progress["already_present"] += 1
+                                continue
+
+                            try:
+                                data = zf.read(entry)
+                                with open(dest_path, "wb") as fh:
+                                    fh.write(data)
+                                _file_recovery_progress["files_restored"] += 1
+                            except Exception as ex:
+                                _file_recovery_progress["errors"] += 1
+                                log.warning("File recovery: error extracting %s: %s", entry, str(ex)[:200])
+
+                            if _file_recovery_progress["entries_scanned"] % 500 == 0:
+                                log.info("File recovery: scanned %d entries, restored %d",
+                                         _file_recovery_progress["entries_scanned"],
+                                         _file_recovery_progress["files_restored"])
+
+                except zipfile.BadZipFile as bze:
+                    _file_recovery_progress["errors"] += 1
+                    log.error("File recovery: bad ZIP %s: %s", zip_basename, str(bze)[:200])
+                except Exception as ze:
+                    _file_recovery_progress["errors"] += 1
+                    log.error("File recovery: error processing %s: %s", zip_basename, str(ze)[:300])
+
+                _file_recovery_progress["zips_processed"] += 1
+
+            _file_recovery_progress["status"] = "complete"
+            _file_recovery_progress["current_zip"] = ""
+            log.info("File recovery complete: %d files restored, %d already present, %d no mapping, %d errors",
+                     _file_recovery_progress["files_restored"],
+                     _file_recovery_progress["already_present"],
+                     _file_recovery_progress["no_db_mapping"],
+                     _file_recovery_progress["errors"])
+        except Exception as e:
+            log.error("File recovery failed: %s", e)
+            _file_recovery_progress.update({"status": "error", "error": str(e)[:500]})
+        finally:
+            _file_recovery_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True
+
+
 def get_backfill_samples(run_id, limit=5):
     conn = _db()
     try:
