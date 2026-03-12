@@ -4575,6 +4575,65 @@ def archive_bulk():
     return redirect(url_for("admin_archive"))
 
 
+@app.post("/admin/archive/bulk-all")
+@login_required
+@admin_required
+def archive_bulk_all():
+    if not request.is_json:
+        return jsonify({"ok": False, "error": "Invalid request"}), 400
+    data = request.get_json(silent=True) or {}
+    days = 90
+    try:
+        days = int(data.get("days", 90))
+    except (ValueError, TypeError):
+        pass
+    filter_client = data.get("client_id", "").strip()
+
+    where = "WHERE j.status IN ('Invoiced', 'Completed')"
+    params = []
+    if days > 0:
+        where += f"""
+            AND (
+                date(COALESCE(j.updated_at, j.created_at)) <= date('now', '-{days} days')
+                OR j.geoop_source_description IS NOT NULL
+            )"""
+    if filter_client:
+        where += " AND j.client_id = ?"
+        params.append(filter_client)
+
+    uid = session.get("user_id")
+    ts = now_ts()
+    batch_id = f"bulkall_{ts}_{uid}"
+    conn = db()
+    cur = conn.cursor()
+    job_rows = cur.execute(f"SELECT id, status FROM jobs j {where}", params).fetchall()
+    archived_count = 0
+    for job in job_rows:
+        jid = job["id"]
+        old_status = job["status"]
+        cur.execute("""
+            UPDATE jobs SET status = 'Archived - Invoiced', lifecycle_status = 'archived',
+                   archived_at = ?, archived_by_user_id = ?, updated_at = ?
+            WHERE id = ?
+        """, (ts, uid, ts, jid))
+        cur.execute("""
+            UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+            WHERE job_id=? AND status IN ('Pending','In Progress')
+        """, (ts, ts, jid))
+        cur.execute("""
+            INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (jid, "Lifecycle", f"Job bulk-archived from '{old_status}'.", ts, ts))
+        _log_lifecycle(cur, jid, "bulk_archive", old_status, "Archived - Invoiced", uid, batch_id=batch_id)
+        archived_count += 1
+        if archived_count % 500 == 0:
+            conn.commit()
+    conn.commit()
+    conn.close()
+    audit("system", None, "bulk_archive_all", f"Bulk archived ALL {archived_count} eligible jobs.", {"batch_id": batch_id, "count": archived_count})
+    return jsonify({"ok": True, "archived": archived_count, "batch_id": batch_id})
+
+
 @app.get("/admin/archive")
 @login_required
 @admin_required
@@ -4600,10 +4659,34 @@ def admin_archive():
             days_int = int(days)
         except ValueError:
             days_int = 90
-        where += f" AND date(j.updated_at) <= date('now', '-{days_int} days')"
+        if days_int > 0:
+            where += f"""
+                AND (
+                    date(COALESCE(j.updated_at, j.created_at)) <= date('now', '-{days_int} days')
+                    OR j.geoop_source_description IS NOT NULL
+                )"""
         if filter_client:
             where += " AND j.client_id = ?"
             params.append(filter_client)
+
+        page = request.args.get("page", "1").strip()
+        try:
+            page_int = max(1, int(page))
+        except ValueError:
+            page_int = 1
+        per_page = 500
+
+        total_eligible = cur.execute(f"""
+            SELECT COUNT(*) FROM jobs j
+            LEFT JOIN clients c ON c.id = j.client_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            {where}
+        """, params).fetchone()[0]
+
+        total_pages = max(1, (total_eligible + per_page - 1) // per_page)
+        if page_int > total_pages:
+            page_int = total_pages
+        offset = (page_int - 1) * per_page
 
         cur.execute(f"""
             SELECT j.id, j.display_ref, j.status, j.client_id,
@@ -4618,14 +4701,16 @@ def admin_archive():
             LEFT JOIN customers cu ON cu.id = j.customer_id
             {where}
             ORDER BY j.updated_at ASC
-            LIMIT 500
-        """, params)
+            LIMIT ? OFFSET ?
+        """, params + [per_page, offset])
         results = cur.fetchall()
         conn.close()
         return render_template("archive.html", results=results, mode="eligible",
                                q=q, filter_client=filter_client, filter_status=filter_status,
                                date_from=date_from, date_to=date_to, days=days_int,
-                               clients_list=clients_list)
+                               clients_list=clients_list,
+                               total_eligible=total_eligible, page=page_int,
+                               total_pages=total_pages, per_page=per_page)
 
     where = "WHERE j.status IN ('Archived - Invoiced', 'Cold Stored')"
     params = []
