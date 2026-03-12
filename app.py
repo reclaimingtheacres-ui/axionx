@@ -463,6 +463,8 @@ def init_db():
         FOREIGN KEY(job_field_note_id) REFERENCES job_field_notes(id)
     )
     """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_jnf_note_file ON job_note_files(job_field_note_id, filename)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jnf_note_id ON job_note_files(job_field_note_id)")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS booking_types (
@@ -9448,6 +9450,34 @@ def geoop_import_backfill_attachments():
     t.start()
 
     flash(f"Attachment backfill started (run #{run_id}). Progress updates will appear below.", "info")
+    return redirect(url_for("geoop_import_page"))
+
+
+_link_staged_lock = threading.Lock()
+
+@app.post("/admin/geoop-import/link-staged-attachments")
+@admin_required
+def geoop_link_staged_attachments():
+    if not _link_staged_lock.acquire(blocking=False):
+        flash("Link Staged Attachments is already running. Please wait.", "warning")
+        return redirect(url_for("geoop_import_page"))
+
+    def _run():
+        try:
+            conn = _geoop._db()
+            try:
+                linked = _geoop._link_staged_attachments(conn)
+                print(f"[link-staged-attachments] Linked {linked} staged attachment(s)")
+            except Exception as e:
+                print(f"[link-staged-attachments] Error: {e}")
+            finally:
+                conn.close()
+        finally:
+            _link_staged_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    flash("Link Staged Attachments started in background. Run the audit again in a moment to check progress.", "info")
     return redirect(url_for("geoop_import_page"))
 
 

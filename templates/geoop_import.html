@@ -373,11 +373,15 @@
       <p class="small text-muted mb-2">
         Audits staged note attachments, re-imports notes that were previously skipped (empty text with file references), and links them to Axion jobs.
       </p>
-      <div class="d-flex gap-2 align-items-center mb-2">
+      <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
         <button class="btn btn-info btn-sm" id="attachAuditBtn" onclick="runAttachmentAudit()">Run Attachment Audit</button>
         <form method="post" action="{{ url_for('geoop_import_backfill_attachments') }}" class="m-0"
               onsubmit="this.querySelector('button').disabled=true; return confirm('This will re-import previously skipped notes that have file attachments. Continue?');">
           <button type="submit" class="btn btn-warning btn-sm">Run Attachment Backfill</button>
+        </form>
+        <form method="post" action="{{ url_for('geoop_link_staged_attachments') }}" class="m-0"
+              onsubmit="this.querySelector('button').disabled=true; return confirm('Insert missing job_note_files rows for all staged files with resolved axion_note_id. Continue?');">
+          <button type="submit" class="btn btn-success btn-sm">Link Staged Attachments</button>
         </form>
       </div>
       <div id="attachAuditResult" style="display:none" class="mt-3"></div>
@@ -1191,8 +1195,10 @@ function runAttachmentAudit() {
       h += '<tr><td class="fw-bold">Total Staging Notes</td><td>' + (d.total_staging_notes||0).toLocaleString() + '</td></tr>';
       h += '<tr><td class="fw-bold">Notes With File References</td><td>' + (d.notes_with_file_references||0).toLocaleString() + '</td></tr>';
       h += '<tr><td class="fw-bold">Files Linked to Axion Notes</td><td class="text-success">' + (d.files_linked_to_notes||0).toLocaleString() + '</td></tr>';
-      h += '<tr><td class="fw-bold">Files Unlinked</td><td class="text-danger">' + (d.files_unlinked||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Files Unlinked (no axion_note_id)</td><td class="text-danger">' + (d.files_unlinked||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Mapped but Missing job_note_files</td><td class="' + ((d.staged_files_mapped_missing_jnf||0) > 0 ? 'text-warning fw-bold' : 'text-success') + '">' + (d.staged_files_mapped_missing_jnf||0).toLocaleString() + '</td></tr>';
       h += '<tr><td class="fw-bold">Files With No Text (attachment-only)</td><td>' + (d.files_with_no_text||0).toLocaleString() + '</td></tr>';
+      h += '<tr><td class="fw-bold">Multi-file Children Resolved</td><td>' + (d.multi_file_children_resolved||0).toLocaleString() + '</td></tr>';
       h += '<tr><td class="fw-bold">Staging Files Manifest</td><td>' + (d.staging_files_manifest||0).toLocaleString() + '</td></tr>';
       h += '<tr><td class="fw-bold">Job Note Files</td><td>' + (d.job_note_files_total||0).toLocaleString() + '</td></tr>';
       h += '<tr><td class="fw-bold">Job Documents</td><td>' + (d.job_documents_total||0).toLocaleString() + '</td></tr>';

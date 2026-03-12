@@ -143,6 +143,7 @@ def ensure_staging_tables(conn=None):
         UNIQUE(files_location, file_name)
     )
     """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_gsf_note_status ON geoop_staging_files(geoop_note_id, import_status)")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS geoop_import_runs (
@@ -1678,6 +1679,112 @@ def backfill_geoop_descriptions(run_id=None, resume_checkpoint=None):
     return stats
 
 
+def _resolve_stored_name(conn, geoop_note_id, original_filename):
+    sf = conn.execute("""
+        SELECT stored_filename FROM geoop_staging_files
+        WHERE geoop_note_id = ? AND import_status = 'imported'
+          AND stored_filename IS NOT NULL AND stored_filename != ''
+          AND file_name = ?
+        ORDER BY id DESC LIMIT 1
+    """, (geoop_note_id, original_filename)).fetchone()
+    if sf:
+        return sf["stored_filename"]
+
+    sf2 = conn.execute("""
+        SELECT stored_filename FROM geoop_staging_files
+        WHERE geoop_note_id = ? AND import_status = 'imported'
+          AND stored_filename IS NOT NULL AND stored_filename != ''
+        ORDER BY id DESC LIMIT 1
+    """, (geoop_note_id,)).fetchone()
+    if sf2:
+        return sf2["stored_filename"]
+
+    return original_filename
+
+
+def _ensure_job_note_file(conn, axion_note_id, staging_note, ts):
+    file_name = (staging_note["file_name"] or "").strip()
+    if not file_name or not axion_note_id:
+        return
+
+    stored = _resolve_stored_name(conn, staging_note["geoop_note_id"], file_name)
+
+    try:
+        conn.execute("""
+            INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+            VALUES (?, ?, ?, ?)
+        """, (axion_note_id, stored, stored, ts))
+    except Exception:
+        pass
+
+
+def _link_staged_attachments(conn):
+    ts = _now()
+
+    sf_map = {}
+    try:
+        sf_rows = conn.execute("""
+            SELECT geoop_note_id, file_name, stored_filename
+            FROM geoop_staging_files
+            WHERE import_status = 'imported'
+              AND stored_filename IS NOT NULL AND stored_filename != ''
+            ORDER BY id DESC
+        """).fetchall()
+        for sr in sf_rows:
+            key = (sr["geoop_note_id"], sr["file_name"])
+            if key not in sf_map:
+                sf_map[key] = sr["stored_filename"]
+            fallback_key = (sr["geoop_note_id"], None)
+            if fallback_key not in sf_map:
+                sf_map[fallback_key] = sr["stored_filename"]
+    except Exception:
+        pass
+
+    batch_size = 5000
+    last_id = 0
+    linked = 0
+
+    while True:
+        unlinked = conn.execute("""
+            SELECT sn.id, sn.geoop_note_id, sn.file_name, sn.axion_note_id
+            FROM geoop_staging_notes sn
+            WHERE sn.id > ?
+              AND sn.file_name IS NOT NULL AND sn.file_name != ''
+              AND sn.axion_note_id IS NOT NULL
+            ORDER BY sn.id
+            LIMIT ?
+        """, (last_id, batch_size)).fetchall()
+
+        if not unlinked:
+            break
+
+        for row in unlinked:
+            last_id = row["id"]
+
+            stored = sf_map.get(
+                (row["geoop_note_id"], row["file_name"]),
+                sf_map.get(
+                    (row["geoop_note_id"], None),
+                    row["file_name"]
+                )
+            )
+
+            try:
+                cur = conn.execute("""
+                    INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                    VALUES (?, ?, ?, ?)
+                """, (row["axion_note_id"], stored, stored, ts))
+                if cur.rowcount > 0:
+                    linked += 1
+            except Exception:
+                pass
+
+        conn.commit()
+
+    conn.commit()
+    return linked
+
+
 def _reconcile_linked_to_parent(conn):
     unresolved = conn.execute("""
         SELECT id, files_location FROM geoop_staging_notes
@@ -1787,6 +1894,9 @@ def import_staged_notes(conn=None):
                     (axion_job_id, note_id, ts, note["id"])
                 )
                 imported += 1
+
+                if has_file:
+                    _ensure_job_note_file(conn, note_id, note, ts)
             except Exception as e:
                 conn.execute(
                     "UPDATE geoop_staging_notes SET import_status='error', error_message=?, imported_at=? WHERE id=?",
@@ -1799,6 +1909,7 @@ def import_staged_notes(conn=None):
     conn.commit()
 
     _reconcile_linked_to_parent(conn)
+    _link_staged_attachments(conn)
 
     if close:
         conn.close()
@@ -2979,6 +3090,28 @@ def get_attachment_audit(conn=None):
     ).fetchone()[0]
     result["multi_file_children_awaiting_parent_import"] = linked_to_parent_pending
 
+    mapped_no_jnf = conn.execute("""
+        SELECT COUNT(*) FROM geoop_staging_notes sn
+        WHERE sn.file_name IS NOT NULL AND sn.file_name != ''
+          AND sn.axion_note_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM job_note_files jnf
+              WHERE jnf.job_field_note_id = sn.axion_note_id
+                AND jnf.filename IN (
+                    sn.file_name,
+                    COALESCE(
+                        (SELECT sf.stored_filename FROM geoop_staging_files sf
+                         WHERE sf.geoop_note_id = sn.geoop_note_id
+                           AND sf.import_status = 'imported'
+                           AND sf.stored_filename IS NOT NULL AND sf.stored_filename != ''
+                         LIMIT 1),
+                        sn.file_name
+                    )
+                )
+          )
+    """).fetchone()[0]
+    result["staged_files_mapped_missing_jnf"] = mapped_no_jnf
+
     file_rows = conn.execute(
         "SELECT file_name FROM geoop_staging_notes WHERE file_name IS NOT NULL AND file_name != ''"
     ).fetchall()
@@ -3168,6 +3301,9 @@ def backfill_attachment_links(run_id=None):
                         (axion_job_id, new_note_id, ts, note["id"])
                     )
                     stats["notes_relinked"] += 1
+
+                    if (note["file_name"] or "").strip():
+                        _ensure_job_note_file(conn, new_note_id, note, ts)
                 except Exception as e:
                     conn.execute(
                         "UPDATE geoop_staging_notes SET import_status='error', error_message=?, imported_at=? WHERE id=?",
@@ -3180,6 +3316,7 @@ def backfill_attachment_links(run_id=None):
                 _persist_scan_progress(run_id, stats)
 
         _reconcile_linked_to_parent(conn)
+        _link_staged_attachments(conn)
         stats["status"] = "completed"
     except Exception as e:
         stats["status"] = "failed"
