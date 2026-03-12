@@ -9195,6 +9195,38 @@ def geoop_import_scan_azure_progress(run_id):
     return jsonify({"status": "not_found"}), 404
 
 
+@app.get("/admin/geoop-import/unmatched-report/<int:run_id>")
+@admin_required
+def geoop_unmatched_report(run_id):
+    try:
+        report = _geoop.get_unmatched_report(run_id)
+    except Exception as e:
+        return jsonify({"error": str(e)[:300], "total": 0, "by_reason": {}, "entries": []}), 500
+    return jsonify(report)
+
+
+@app.get("/admin/geoop-import/unmatched-report/<int:run_id>/csv")
+@admin_required
+def geoop_unmatched_csv(run_id):
+    import csv as csv_mod
+    try:
+        report = _geoop.get_unmatched_report(run_id)
+    except Exception as e:
+        return jsonify({"error": str(e)[:300]}), 500
+    output = io.StringIO()
+    writer = csv_mod.writer(output)
+    writer.writerow(["zip_name", "entry_path", "filename", "geoop_job_id", "geoop_note_id", "reason"])
+    for e in report["entries"]:
+        writer.writerow([e["zip_name"], e["entry_path"], e["filename"],
+                         e["geoop_job_id"], e["geoop_note_id"], e["reason"]])
+    output.seek(0)
+    return app.response_class(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=unmatched_attachments_run_{run_id}.csv"}
+    )
+
+
 @app.post("/admin/geoop-import/backfill-descriptions")
 @admin_required
 def geoop_import_backfill():

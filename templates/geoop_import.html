@@ -149,11 +149,26 @@
           <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="ap-matched">0</div><div class="text-muted">Attachments Matched</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="ap-linked">0</div><div class="text-muted">Linked</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-dupes">0</div><div class="text-muted">Duplicates</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-warning" id="ap-nomatch">0</div><div class="text-muted">No Job</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-warning" id="ap-nonote">0</div><div class="text-muted">No Note</div></div></div>
           <div class="col"><div class="card p-2"><div class="fw-bold" id="ap-errors">0</div><div class="text-muted">Errors</div></div></div>
         </div>
         <div class="mt-2 small text-muted" id="ap-phase-row" style="display:none">
           Phase: <span class="fw-bold" id="ap-phase"></span>
           <span id="ap-detail" class="ms-2"></span>
+        </div>
+        <div id="ap-zip-summary" style="display:none" class="mt-3">
+          <h6 class="small fw-bold">Per-ZIP Summary</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered small mb-2" id="ap-zip-table">
+              <thead class="table-light">
+                <tr><th>Archive</th><th>Total Entries</th><th>Matched</th><th>Linked</th><th>Duplicates</th><th>No Job</th><th>No Note</th><th>Parse Failed</th><th>Errors</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <a href="#" id="ap-unmatched-csv" class="btn btn-outline-secondary btn-sm">Download Unmatched Report (CSV)</a>
+          <a href="#" id="ap-unmatched-json" class="btn btn-outline-secondary btn-sm ms-1">View Unmatched (JSON)</a>
         </div>
       </div>
 
@@ -508,9 +523,11 @@ function loadDiagnostics() {
         document.getElementById('ap-matched').textContent = (d.attachments_matched||0).toLocaleString();
         document.getElementById('ap-linked').textContent = (d.attachments_linked||0).toLocaleString();
         document.getElementById('ap-dupes').textContent = (d.skipped_duplicate||0).toLocaleString();
+        document.getElementById('ap-nomatch').textContent = (d.skipped_no_match||0).toLocaleString();
+        document.getElementById('ap-nonote').textContent = (d.skipped_no_note||0).toLocaleString();
         document.getElementById('ap-errors').textContent = (d.errors||0).toLocaleString();
         var phaseRow = document.getElementById('ap-phase-row');
-        if (d.phase) {
+        if (d.phase && d.status === 'running') {
           phaseRow.style.display = '';
           document.getElementById('ap-phase').textContent = d.phase;
           var detail = '';
@@ -534,6 +551,34 @@ function loadDiagnostics() {
           var spinner = panel.querySelector('.spinner-border');
           if (spinner) spinner.remove();
           document.getElementById('azureScanBtn').disabled = false;
+          if (d.zip_summaries) {
+            var summDiv = document.getElementById('ap-zip-summary');
+            summDiv.style.display = '';
+            var tbody = document.querySelector('#ap-zip-table tbody');
+            tbody.innerHTML = '';
+            function addCell(row, text, cls) {
+              var td = document.createElement('td');
+              td.textContent = text;
+              if (cls) td.className = cls;
+              row.appendChild(td);
+            }
+            for (var zname in d.zip_summaries) {
+              var z = d.zip_summaries[zname];
+              var tr = document.createElement('tr');
+              addCell(tr, zname);
+              addCell(tr, (z.total_entries||0).toLocaleString());
+              addCell(tr, (z.matched||0).toLocaleString());
+              addCell(tr, (z.linked||0).toLocaleString(), 'text-success fw-bold');
+              addCell(tr, (z.duplicates||0).toLocaleString());
+              addCell(tr, (z.no_matching_job||0).toLocaleString(), 'text-warning');
+              addCell(tr, (z.no_matching_note||0).toLocaleString(), 'text-warning');
+              addCell(tr, (z.path_parse_failed||0).toLocaleString());
+              addCell(tr, (z.errors||0).toLocaleString());
+              tbody.appendChild(tr);
+            }
+            document.getElementById('ap-unmatched-csv').href = '/admin/geoop-import/unmatched-report/' + runId + '/csv';
+            document.getElementById('ap-unmatched-json').href = '/admin/geoop-import/unmatched-report/' + runId;
+          }
         }
       })
       .catch(function() { setTimeout(poll, 5000); });

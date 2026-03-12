@@ -169,6 +169,20 @@ def ensure_staging_tables(conn=None):
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS geoop_unmatched_attachments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id INTEGER NOT NULL,
+        zip_name TEXT,
+        entry_path TEXT NOT NULL,
+        filename TEXT,
+        geoop_job_id TEXT,
+        geoop_note_id TEXT,
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """)
+
     conn.commit()
     if close:
         conn.close()
@@ -1512,6 +1526,37 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
     _persist_scan_progress(run_id, stats)
 
     write_batch = []
+    unmatched_batch = []
+    current_zip = [None]
+
+    def _flush_unmatched():
+        if not unmatched_batch:
+            return
+        uconn = _db()
+        try:
+            for u in unmatched_batch:
+                _retry_execute(uconn, """
+                    INSERT INTO geoop_unmatched_attachments
+                    (run_id, zip_name, entry_path, filename, geoop_job_id, geoop_note_id, reason, created_at)
+                    VALUES (?,?,?,?,?,?,?,?)
+                """, (run_id, u["zip_name"], u["entry_path"], u["filename"],
+                      u["geoop_job_id"], u["geoop_note_id"], u["reason"], ts))
+            _retry_commit(uconn)
+        finally:
+            uconn.close()
+        unmatched_batch.clear()
+
+    def _log_unmatched(entry_path, filename, geoop_job_id, geoop_note_id, reason):
+        unmatched_batch.append({
+            "zip_name": current_zip[0],
+            "entry_path": entry_path,
+            "filename": filename or "",
+            "geoop_job_id": geoop_job_id or "",
+            "geoop_note_id": geoop_note_id or "",
+            "reason": reason,
+        })
+        if len(unmatched_batch) >= 100:
+            _flush_unmatched()
 
     def _process_file(data_bytes, filename, geoop_job_id, geoop_note_id, blob_path):
         file_hash = hashlib.md5(data_bytes).hexdigest()
@@ -1528,12 +1573,14 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
 
         if not axion_job_id:
             stats["skipped_no_match"] += 1
+            _log_unmatched(blob_path, filename, geoop_job_id, geoop_note_id, "no_matching_job")
             return
 
         axion_note_id = note_info["axion_note_id"] if note_info else None
 
         if not axion_note_id:
             stats["skipped_no_note"] += 1
+            _log_unmatched(blob_path, filename, geoop_job_id, geoop_note_id, "no_matching_note")
             return
 
         stats["attachments_matched"] += 1
@@ -1708,6 +1755,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
             if is_root_zip:
                 stats["phase"] = "starting_blob"
                 stats["current_blob"] = blob_basename
+                current_zip[0] = blob_basename
                 _persist_scan_progress(run_id, stats)
                 try:
                     blob_client = container_client.get_blob_client(blob_name)
@@ -1725,17 +1773,39 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
                         entries = [e for e in zf.namelist() if not e.endswith("/")]
                         stats["zip_entries_total"] = len(entries)
                         stats["zip_entries_processed"] = 0
+                        if "zip_summaries" not in stats:
+                            stats["zip_summaries"] = {}
+                        stats["zip_summaries"][blob_basename] = {"total_entries": len(entries)}
                         _persist_scan_progress(run_id, stats)
 
                         stats["phase"] = "extracting_entries"
+                        zip_matched = 0
+                        zip_linked = 0
+                        zip_dupes = 0
+                        zip_no_match = 0
+                        zip_no_note = 0
+                        zip_parse_fail = 0
+                        zip_errors = 0
+
                         for entry in entries:
                             stats["zip_entries_scanned"] += 1
                             parsed = _parse_attachment_path(entry)
                             if not parsed:
                                 stats["skipped_no_match"] += 1
+                                zip_parse_fail += 1
                                 stats["zip_entries_processed"] += 1
+                                _log_unmatched(
+                                    blob_name + "/" + entry, os.path.basename(entry),
+                                    None, None, "path_parse_failed"
+                                )
                                 continue
                             entry_job_id, entry_note_id, entry_filename = parsed
+
+                            pre_linked = stats["attachments_linked"]
+                            pre_no_match = stats["skipped_no_match"]
+                            pre_no_note = stats["skipped_no_note"]
+                            pre_dupes = stats["skipped_duplicate"]
+
                             try:
                                 entry_data = zf.read(entry)
                                 _process_file(
@@ -1745,7 +1815,19 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
                                 )
                             except Exception as entry_err:
                                 stats["errors"] += 1
+                                zip_errors += 1
                                 stats["last_error"] = f"entry {entry}: {str(entry_err)[:200]}"
+
+                            if stats["attachments_linked"] > pre_linked:
+                                zip_linked += 1
+                                zip_matched += 1
+                            elif stats["skipped_duplicate"] > pre_dupes:
+                                zip_dupes += 1
+                            elif stats["skipped_no_match"] > pre_no_match:
+                                zip_no_match += 1
+                            elif stats["skipped_no_note"] > pre_no_note:
+                                zip_no_note += 1
+
                             stats["zip_entries_processed"] += 1
 
                             if len(write_batch) >= 25:
@@ -1754,12 +1836,23 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
                                 _persist_scan_progress(run_id, stats)
 
                     _flush_batch()
+                    _flush_unmatched()
+                    stats["zip_summaries"][blob_basename].update({
+                        "matched": zip_matched,
+                        "linked": zip_linked,
+                        "duplicates": zip_dupes,
+                        "no_matching_job": zip_no_match,
+                        "no_matching_note": zip_no_note,
+                        "path_parse_failed": zip_parse_fail,
+                        "errors": zip_errors,
+                    })
                 except zipfile.BadZipFile as bze:
                     stats["errors"] += 1
                     stats["last_error"] = f"BadZipFile: {blob_basename}: {str(bze)[:200]}"
                 except Exception as ze:
                     stats["errors"] += 1
                     stats["last_error"] = f"{blob_basename}: {str(ze)[:300]}"
+                current_zip[0] = None
                 stats.pop("current_blob", None)
                 stats.pop("blob_size_mb", None)
                 stats.pop("zip_entries_total", None)
@@ -1770,6 +1863,7 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
             parsed = _parse_attachment_path(blob_name)
             if not parsed:
                 stats["skipped_no_match"] += 1
+                _log_unmatched(blob_name, blob_basename, None, None, "path_parse_failed")
                 continue
             geoop_job_id, geoop_note_id, filename = parsed
 
@@ -1826,16 +1920,47 @@ def scan_azure_blob_attachments(container_sas_url, upload_fn=None, run_id=None,
                 _persist_scan_progress(run_id, stats)
 
         _flush_batch()
+        _flush_unmatched()
         stats["status"] = "completed"
 
     except Exception as e:
         _flush_batch()
+        _flush_unmatched()
         stats["status"] = "failed"
         stats["error_message"] = str(e)[:500]
 
     _persist_scan_progress(run_id, stats)
 
     return stats
+
+
+def get_unmatched_report(run_id):
+    conn = _db()
+    try:
+        rows = conn.execute("""
+            SELECT zip_name, entry_path, filename, geoop_job_id, geoop_note_id, reason
+            FROM geoop_unmatched_attachments
+            WHERE run_id=?
+            ORDER BY reason, entry_path
+        """, (run_id,)).fetchall()
+    finally:
+        conn.close()
+
+    summary = {}
+    entries = []
+    for r in rows:
+        reason = r["reason"]
+        summary[reason] = summary.get(reason, 0) + 1
+        entries.append({
+            "zip_name": r["zip_name"] or "",
+            "entry_path": r["entry_path"],
+            "filename": r["filename"] or "",
+            "geoop_job_id": r["geoop_job_id"] or "",
+            "geoop_note_id": r["geoop_note_id"] or "",
+            "reason": reason,
+        })
+
+    return {"total": len(entries), "by_reason": summary, "entries": entries}
 
 
 def reset_staging(conn=None):
