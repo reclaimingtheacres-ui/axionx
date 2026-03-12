@@ -551,6 +551,7 @@ def init_db():
         add_column_if_missing(cur, "job_items", col, coltype)
 
     add_column_if_missing(cur, "jobs", "costs2_cents", "INTEGER")
+    add_column_if_missing(cur, "jobs", "geoop_source_description", "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_payments (
@@ -9192,6 +9193,23 @@ def geoop_import_scan_azure_progress(run_id):
     if progress:
         return jsonify(progress)
     return jsonify({"status": "not_found"}), 404
+
+
+@app.post("/admin/geoop-import/backfill-descriptions")
+@admin_required
+def geoop_import_backfill():
+    conn = db()
+    result = _geoop.backfill_geoop_descriptions(conn)
+    conn.close()
+    flash(
+        f"Backfill complete — {result['jobs_processed']} jobs processed, "
+        f"{result['legacy_notes_created']} legacy notes created, "
+        f"{result['legacy_notes_already_exist']} already had notes, "
+        f"{result['job_items_updated']} vehicle items updated, "
+        f"{result['errors']} errors.",
+        "success" if result["errors"] == 0 else "warning"
+    )
+    return redirect(url_for("geoop_import_page"))
 
 
 @app.post("/admin/geoop-import/reset")

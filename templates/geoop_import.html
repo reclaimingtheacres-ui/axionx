@@ -230,6 +230,24 @@
     </div>
   </div>
 
+  <div class="card mb-4 border-info">
+    <div class="card-header bg-info bg-opacity-10">
+      <strong>Backfill GeoOp Descriptions</strong>
+    </div>
+    <div class="card-body">
+      <p class="small text-muted mb-2">
+        Restores the original GeoOp Description text to all previously imported jobs.
+        Creates a legacy import note on each job, preserves the raw source text in a permanent field,
+        and re-parses structured data (Reg, VIN, arrears, costs, next payment, regulation status, security details).
+        Safe to run multiple times — existing notes and user-edited fields are not overwritten.
+      </p>
+      <form method="post" action="{{ url_for('geoop_import_backfill') }}" class="m-0"
+            onsubmit="return confirm('This will backfill GeoOp descriptions and re-parse fields for all imported jobs. Continue?');">
+        <button type="submit" class="btn btn-info btn-sm">Run Description Backfill</button>
+      </form>
+    </div>
+  </div>
+
   <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <strong>Import History</strong>
