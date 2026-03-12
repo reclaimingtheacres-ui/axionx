@@ -5,111 +5,105 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0d1827">
-<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#0a1128">
+<meta name="color-scheme" content="dark">
 <title>AxionX — Sign In</title>
 <style>
-:root { --accent: #2563eb; --line: #e5e7eb; --red: #dc2626; --muted: #6b7280; }
+:root { --accent: #2563eb; --red: #dc2626; }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html {
-  height: 100%;
-}
+html { height: 100%; }
 
 body {
-  min-height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-tap-highlight-color: transparent;
-  color-scheme: light;
-  /* Full-screen launch background */
-  background-image: url('/static/images/axionx-launch-bg.jpg');
+  color-scheme: dark;
+  background-color: #0f1424;
+  background-image: url('/static/images/axionx-app-bg.jpg');
   background-size: cover;
-  background-position: center center;
+  background-position: center top;
   background-repeat: no-repeat;
-  /* Layout */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: calc(env(safe-area-inset-top,20px) + 16px)
-           env(safe-area-inset-right,0px)
+           env(safe-area-inset-right,16px)
            calc(env(safe-area-inset-bottom,0px) + 24px)
-           env(safe-area-inset-left,0px);
+           env(safe-area-inset-left,16px);
   position: relative;
 }
 
-/* Dark blue overlay — improves contrast without hiding the artwork */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  background: rgba(8, 16, 36, 0.52);
+  background: rgba(10, 17, 40, 0.45);
   pointer-events: none;
   z-index: 0;
 }
 
-/* Everything above the overlay */
-.brand, .card { position: relative; z-index: 1; }
+.panel { position: relative; z-index: 1; }
 
-/* ── Wordmark above card ── */
-.brand {
-  text-align: center;
-  margin-bottom: 20px;
-}
-.brand-logo {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  color: rgba(255,255,255,0.75);
-  text-transform: uppercase;
-}
-.brand-sub {
-  font-size: .65rem;
-  color: rgba(255,255,255,.4);
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  margin-top: 3px;
-}
-
-/* ── Login card ── */
 .card {
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
   padding: 28px 24px 24px;
   width: 100%;
   max-width: 360px;
-  box-shadow: 0 8px 40px rgba(0,0,0,.35), 0 2px 8px rgba(0,0,0,.2);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .card { background: rgba(15, 22, 42, 0.88); }
+}
+
+.card-header {
+  margin-bottom: 20px;
+}
+.card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+.card-sub {
+  font-size: .75rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 3px;
 }
 
 label {
   display: block;
   font-size: .72rem;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: .08em;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: .06em;
   text-transform: uppercase;
   margin-bottom: 6px;
 }
 
 input {
   width: 100%;
-  background: #f7f8fa;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  color: #111111;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 11px;
+  color: #ffffff;
   font-size: 1rem;
   padding: 13px 14px;
   outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  transition: border-color .15s, box-shadow .15s, background .15s;
   -webkit-appearance: none;
   min-height: 48px;
 }
+input::placeholder { color: rgba(255, 255, 255, 0.35); }
 input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
-  background: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .2);
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .fg { margin-bottom: 16px; }
@@ -119,57 +113,80 @@ input:focus {
   background: var(--accent);
   color: #ffffff;
   border: none;
-  border-radius: 12px;
+  border-radius: 13px;
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 600;
   padding: 14px;
   cursor: pointer;
   margin-top: 6px;
   -webkit-appearance: none;
-  min-height: 50px;
+  min-height: 52px;
   transition: opacity .15s, transform .1s;
-  box-shadow: 0 4px 14px rgba(37,99,235,.35);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
 }
 .submit-btn:active { opacity: .85; transform: scale(.98); }
 
 .err {
-  background: #fef2f2;
-  color: var(--red);
-  border: 1px solid #fecaca;
+  background: rgba(220, 38, 38, 0.15);
+  color: rgba(255, 128, 128, 1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
   border-radius: 10px;
   padding: 11px 14px;
   font-size: .88rem;
   margin-bottom: 16px;
   line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+.err::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor'%3E%3Cpath fill-rule='evenodd' d='M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z' clip-rule='evenodd'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='currentColor'%3E%3Cpath fill-rule='evenodd' d='M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z' clip-rule='evenodd'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.panel { animation: fadeSlideIn .45s ease-out .15s both; }
 </style>
 </head>
 <body>
 
-<div class="brand">
-  <div class="brand-logo">AxionX</div>
-  <div class="brand-sub">Field Operations</div>
-</div>
+<div class="panel">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Sign In</div>
+      <div class="card-sub">Enter your credentials</div>
+    </div>
 
-<div class="card">
-  {% if error %}<div class="err">{{ error }}</div>{% endif %}
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for cat, msg in messages %}<div class="err">{{ msg }}</div>{% endfor %}
-  {% endwith %}
-  <form method="post" action="{{ url_for('m_login_post') }}{% if next %}?next={{ next | urlencode }}{% endif %}">
-    <div class="fg">
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email"
-             autocomplete="username" inputmode="email"
-             required value="{{ prefill_email or '' }}">
-    </div>
-    <div class="fg">
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password"
-             autocomplete="current-password" required>
-    </div>
-    <button type="submit" class="submit-btn">Sign In</button>
-  </form>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}<div class="err">{{ msg }}</div>{% endfor %}
+    {% endwith %}
+
+    <form method="post" action="{{ url_for('m_login_post') }}{% if next %}?next={{ next | urlencode }}{% endif %}">
+      <div class="fg">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email"
+               autocomplete="username" inputmode="email"
+               placeholder="you@company.com"
+               required value="{{ prefill_email or '' }}">
+      </div>
+      <div class="fg">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password"
+               autocomplete="current-password"
+               placeholder="Password" required>
+      </div>
+      <button type="submit" class="submit-btn">Sign In</button>
+    </form>
+  </div>
 </div>
 
 </body>
