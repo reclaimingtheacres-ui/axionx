@@ -1678,6 +1678,29 @@ def backfill_geoop_descriptions(run_id=None, resume_checkpoint=None):
     return stats
 
 
+def _reconcile_linked_to_parent(conn):
+    unresolved = conn.execute("""
+        SELECT id, files_location FROM geoop_staging_notes
+        WHERE import_status = 'linked_to_parent' AND axion_note_id IS NULL
+          AND files_location IS NOT NULL AND files_location != ''
+    """).fetchall()
+    for row in unresolved:
+        loc_parts = (row["files_location"] or "").strip().strip("/").split("/")
+        if len(loc_parts) < 3:
+            continue
+        parent_id = loc_parts[2]
+        parent = conn.execute(
+            "SELECT axion_note_id, axion_job_id FROM geoop_staging_notes WHERE geoop_note_id=? AND axion_note_id IS NOT NULL",
+            (parent_id,)
+        ).fetchone()
+        if parent:
+            conn.execute(
+                "UPDATE geoop_staging_notes SET axion_note_id=?, axion_job_id=? WHERE id=?",
+                (parent["axion_note_id"], parent["axion_job_id"], row["id"])
+            )
+    conn.commit()
+
+
 def import_staged_notes(conn=None):
     close = False
     if conn is None:
@@ -1775,25 +1798,7 @@ def import_staged_notes(conn=None):
 
     conn.commit()
 
-    unresolved = conn.execute("""
-        SELECT id, files_location FROM geoop_staging_notes
-        WHERE import_status = 'linked_to_parent' AND axion_note_id IS NULL
-          AND files_location IS NOT NULL AND files_location != ''
-    """).fetchall()
-    for row in unresolved:
-        loc_parts = (row["files_location"] or "").strip().strip("/").split("/")
-        if len(loc_parts) >= 3:
-            parent_id = loc_parts[2]
-            parent = conn.execute(
-                "SELECT axion_note_id FROM geoop_staging_notes WHERE geoop_note_id=? AND axion_note_id IS NOT NULL",
-                (parent_id,)
-            ).fetchone()
-            if parent:
-                conn.execute(
-                    "UPDATE geoop_staging_notes SET axion_note_id=? WHERE id=?",
-                    (parent["axion_note_id"], row["id"])
-                )
-    conn.commit()
+    _reconcile_linked_to_parent(conn)
 
     if close:
         conn.close()
@@ -2964,6 +2969,16 @@ def get_attachment_audit(conn=None):
     """).fetchone()[0]
     result["files_with_no_text"] = files_no_text
 
+    linked_to_parent = conn.execute(
+        "SELECT COUNT(*) FROM geoop_staging_notes WHERE import_status = 'linked_to_parent'"
+    ).fetchone()[0]
+    result["multi_file_children_resolved"] = linked_to_parent
+
+    linked_to_parent_pending = conn.execute(
+        "SELECT COUNT(*) FROM geoop_staging_notes WHERE import_status = 'linked_to_parent' AND axion_note_id IS NULL"
+    ).fetchone()[0]
+    result["multi_file_children_awaiting_parent_import"] = linked_to_parent_pending
+
     file_rows = conn.execute(
         "SELECT file_name FROM geoop_staging_notes WHERE file_name IS NOT NULL AND file_name != ''"
     ).fetchall()
@@ -3164,6 +3179,7 @@ def backfill_attachment_links(run_id=None):
             if run_id:
                 _persist_scan_progress(run_id, stats)
 
+        _reconcile_linked_to_parent(conn)
         stats["status"] = "completed"
     except Exception as e:
         stats["status"] = "failed"
