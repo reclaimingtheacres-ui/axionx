@@ -9231,17 +9231,51 @@ def geoop_unmatched_csv(run_id):
 @admin_required
 def geoop_import_backfill():
     conn = db()
-    result = _geoop.backfill_geoop_descriptions(conn)
-    conn.close()
-    flash(
-        f"Backfill complete — {result['jobs_processed']} jobs processed, "
-        f"{result['legacy_notes_created']} legacy notes created, "
-        f"{result['legacy_notes_already_exist']} already had notes, "
-        f"{result['job_items_updated']} vehicle items updated, "
-        f"{result['errors']} errors.",
-        "success" if result["errors"] == 0 else "warning"
+    run_id = None
+    try:
+        _geoop.ensure_staging_tables(conn)
+
+        existing = conn.execute(
+            "SELECT id FROM geoop_import_runs WHERE run_type='description_backfill' AND status='running'"
+        ).fetchone()
+        if existing:
+            flash(f"A backfill is already running (run #{existing['id']}). Please wait for it to finish.", "warning")
+            return redirect(url_for("geoop_import_page"))
+
+        ts = _geoop._now()
+        uid = session.get("user_id")
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO geoop_import_runs (run_type, status, started_at, run_by_user_id)
+            VALUES ('description_backfill', 'running', ?, ?)
+        """, (ts, uid))
+        run_id = cur.lastrowid
+        conn.commit()
+    except Exception as e:
+        flash("Failed to start backfill. Check server logs.", "danger")
+        return redirect(url_for("geoop_import_page"))
+    finally:
+        conn.close()
+
+    import threading
+    t = threading.Thread(
+        target=_geoop.backfill_geoop_descriptions,
+        args=(run_id,),
+        daemon=True,
     )
+    t.start()
+
+    flash(f"Description backfill started (run #{run_id}). Progress updates will appear below.", "info")
     return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/backfill-progress/<int:run_id>")
+@admin_required
+def geoop_backfill_progress(run_id):
+    progress = _geoop.get_backfill_progress(run_id)
+    if progress:
+        return jsonify(progress)
+    return jsonify({"status": "not_found"}), 404
 
 
 @app.post("/admin/geoop-import/reset")

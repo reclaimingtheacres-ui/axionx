@@ -949,7 +949,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
             conn.execute("""
                 UPDATE jobs SET
                     status=?, job_address=?, description=?,
-                    geoop_source_description=COALESCE(geoop_source_description, ?),
+                    geoop_source_description=CASE WHEN (geoop_source_description IS NULL OR geoop_source_description='') THEN ? ELSE geoop_source_description END,
                     lender_name=?, account_number=?, regulation_type=?,
                     arrears_cents=?, costs_cents=?,
                     mmp_cents=?, job_due_date=?,
@@ -1066,148 +1066,226 @@ def import_staged_jobs(mode="insert_only", conn=None):
     }
 
 
-def backfill_geoop_descriptions(conn=None):
-    close = False
-    if conn is None:
-        conn = _db()
-        close = True
+_BACKFILL_BATCH_SIZE = 250
 
-    ts = _now()
-    restored = 0
-    reparsed = 0
-    notes_created = 0
-    items_updated = 0
-    errors = 0
-    already_ok = 0
 
-    rows = conn.execute("""
-        SELECT sj.id, sj.geoop_job_id, sj.axion_job_id, sj.raw_description,
-               sj.parsed_reg, sj.parsed_vin, sj.parsed_security_make,
-               sj.parsed_security_model, sj.parsed_security_year,
-               sj.parsed_security_colour, sj.parsed_security_description,
-               sj.parsed_deliver_to
-        FROM geoop_staging_jobs sj
-        WHERE sj.axion_job_id IS NOT NULL
-          AND sj.import_status IN ('imported', 'updated', 'skipped_exists')
-          AND sj.raw_description IS NOT NULL
-          AND sj.raw_description != ''
-    """).fetchall()
-
-    for row in rows:
-        axion_job_id = row["axion_job_id"]
-        raw_desc = row["raw_description"]
-
-        try:
-            parsed = parse_description(raw_desc)
-
-            conn.execute("""
-                UPDATE jobs SET
-                    geoop_source_description = COALESCE(geoop_source_description, ?),
-                    lender_name = CASE WHEN (lender_name IS NULL OR lender_name = '') THEN ? ELSE lender_name END,
-                    account_number = CASE WHEN (account_number IS NULL OR account_number = '') THEN ? ELSE account_number END,
-                    regulation_type = CASE WHEN (regulation_type IS NULL OR regulation_type = '') THEN ? ELSE regulation_type END,
-                    arrears_cents = CASE WHEN (arrears_cents IS NULL OR arrears_cents = 0) THEN ? ELSE arrears_cents END,
-                    costs_cents = CASE WHEN (costs_cents IS NULL OR costs_cents = 0) THEN ? ELSE costs_cents END,
-                    mmp_cents = CASE WHEN (mmp_cents IS NULL OR mmp_cents = 0) THEN ? ELSE mmp_cents END,
-                    job_due_date = CASE WHEN (job_due_date IS NULL OR job_due_date = '') THEN ? ELSE job_due_date END,
-                    deliver_to = CASE WHEN (deliver_to IS NULL OR deliver_to = '') THEN ? ELSE deliver_to END,
-                    updated_at = ?
-                WHERE id = ?
-            """, (
-                raw_desc,
-                parsed.get("parsed_client_name", "") or "",
-                parsed.get("parsed_account_number", "") or "",
-                parsed.get("parsed_regulation_type", "") or "",
-                parsed.get("parsed_amount_cents", 0) or 0,
-                parsed.get("parsed_costs_cents", 0) or 0,
-                parsed.get("parsed_nmpd_amount_cents", 0) or 0,
-                parsed.get("parsed_nmpd_date", "") or "",
-                parsed.get("parsed_deliver_to", "") or "",
-                ts,
-                axion_job_id
-            ))
-            restored += 1
-
-            legacy_exists = conn.execute(
-                "SELECT id FROM job_field_notes WHERE job_id=? AND note_type='geoop_import'",
-                (axion_job_id,)
-            ).fetchone()
-            if not legacy_exists:
-                conn.execute("""
-                    INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, note_type, created_at)
-                    VALUES (?, 1, ?, 'geoop_import', ?)
-                """, (axion_job_id, "[GeoOp Import] " + raw_desc, ts))
-                notes_created += 1
-            else:
-                already_ok += 1
-
-            p_reg = parsed.get("parsed_reg", "") or row["parsed_reg"] or ""
-            p_vin = parsed.get("parsed_vin", "") or row["parsed_vin"] or ""
-            p_make = parsed.get("parsed_security_make", "") or row["parsed_security_make"] or ""
-
-            if p_reg or p_vin or p_make:
-                existing_item = conn.execute(
-                    "SELECT id FROM job_items WHERE job_id=? AND item_type='vehicle'",
-                    (axion_job_id,)
-                ).fetchone()
-                if existing_item:
-                    conn.execute("""
-                        UPDATE job_items SET
-                            reg = CASE WHEN (reg IS NULL OR reg = '') THEN ? ELSE reg END,
-                            vin = CASE WHEN (vin IS NULL OR vin = '') THEN ? ELSE vin END,
-                            make = CASE WHEN (make IS NULL OR make = '') THEN ? ELSE make END,
-                            model = CASE WHEN (model IS NULL OR model = '') THEN ? ELSE model END,
-                            year = CASE WHEN (year IS NULL OR year = '') THEN ? ELSE year END,
-                            colour = CASE WHEN (colour IS NULL OR colour = '') THEN ? ELSE colour END,
-                            description = CASE WHEN (description IS NULL OR description = '') THEN ? ELSE description END
-                        WHERE id = ?
-                    """, (
-                        p_reg, p_vin, p_make,
-                        parsed.get("parsed_security_model", "") or row["parsed_security_model"] or "",
-                        parsed.get("parsed_security_year", "") or row["parsed_security_year"] or "",
-                        parsed.get("parsed_security_colour", "") or row["parsed_security_colour"] or "",
-                        parsed.get("parsed_security_description", "") or row["parsed_security_description"] or "",
-                        existing_item["id"]
-                    ))
-                    items_updated += 1
-                else:
-                    conn.execute("""
-                        INSERT INTO job_items (
-                            job_id, item_type, description, reg, vin,
-                            make, model, year, colour, deliver_to,
-                            created_at
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                    """, (
-                        axion_job_id, "vehicle",
-                        parsed.get("parsed_security_description", "") or row["parsed_security_description"] or "",
-                        p_reg, p_vin, p_make,
-                        parsed.get("parsed_security_model", "") or row["parsed_security_model"] or "",
-                        parsed.get("parsed_security_year", "") or row["parsed_security_year"] or "",
-                        parsed.get("parsed_security_colour", "") or row["parsed_security_colour"] or "",
-                        parsed.get("parsed_deliver_to", "") or row["parsed_deliver_to"] or "",
-                        ts
-                    ))
-                    items_updated += 1
-
-            reparsed += 1
-        except Exception as e:
-            errors += 1
-
-        if restored % 500 == 0:
-            conn.commit()
-
-    conn.commit()
-    if close:
+def _persist_backfill_progress(run_id, stats):
+    if not run_id:
+        return
+    conn = _db()
+    try:
+        status = stats.get("status", "running")
+        completed_at = _now() if status in ("completed", "failed") else None
+        _retry_execute(conn, """
+            UPDATE geoop_import_runs SET
+            status=?, diagnostics_json=?, notes_imported=?, errors=?,
+            completed_at=COALESCE(completed_at, ?)
+            WHERE id=?
+        """, (status, json.dumps(stats), stats.get("jobs_processed", 0),
+              stats.get("errors", 0), completed_at, run_id))
+        _retry_commit(conn)
+    except Exception:
+        pass
+    finally:
         conn.close()
 
-    return {
-        "jobs_processed": restored,
-        "fields_reparsed": reparsed,
-        "legacy_notes_created": notes_created,
-        "legacy_notes_already_exist": already_ok,
-        "job_items_updated": items_updated,
-        "errors": errors,
+
+def get_backfill_progress(run_id):
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT status, diagnostics_json FROM geoop_import_runs WHERE id=?", (run_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    result = {"status": row["status"]}
+    if row["diagnostics_json"]:
+        try:
+            result.update(json.loads(row["diagnostics_json"]))
+        except Exception:
+            pass
+    return result
+
+
+def _backfill_one_job(conn, row, ts):
+    axion_job_id = row["axion_job_id"]
+    raw_desc = row["raw_description"]
+    result = {"notes_created": 0, "already_ok": 0, "items_updated": 0}
+
+    parsed = parse_description(raw_desc)
+
+    conn.execute("""
+        UPDATE jobs SET
+            geoop_source_description = CASE WHEN (geoop_source_description IS NULL OR geoop_source_description = '') THEN ? ELSE geoop_source_description END,
+            lender_name = CASE WHEN (lender_name IS NULL OR lender_name = '') THEN ? ELSE lender_name END,
+            account_number = CASE WHEN (account_number IS NULL OR account_number = '') THEN ? ELSE account_number END,
+            regulation_type = CASE WHEN (regulation_type IS NULL OR regulation_type = '') THEN ? ELSE regulation_type END,
+            arrears_cents = CASE WHEN (arrears_cents IS NULL OR arrears_cents = 0) THEN ? ELSE arrears_cents END,
+            costs_cents = CASE WHEN (costs_cents IS NULL OR costs_cents = 0) THEN ? ELSE costs_cents END,
+            mmp_cents = CASE WHEN (mmp_cents IS NULL OR mmp_cents = 0) THEN ? ELSE mmp_cents END,
+            job_due_date = CASE WHEN (job_due_date IS NULL OR job_due_date = '') THEN ? ELSE job_due_date END,
+            deliver_to = CASE WHEN (deliver_to IS NULL OR deliver_to = '') THEN ? ELSE deliver_to END,
+            updated_at = ?
+        WHERE id = ?
+    """, (
+        raw_desc,
+        parsed.get("parsed_client_name", "") or "",
+        parsed.get("parsed_account_number", "") or "",
+        parsed.get("parsed_regulation_type", "") or "",
+        parsed.get("parsed_amount_cents", 0) or 0,
+        parsed.get("parsed_costs_cents", 0) or 0,
+        parsed.get("parsed_nmpd_amount_cents", 0) or 0,
+        parsed.get("parsed_nmpd_date", "") or "",
+        parsed.get("parsed_deliver_to", "") or "",
+        ts,
+        axion_job_id
+    ))
+
+    legacy_exists = conn.execute(
+        "SELECT id FROM job_field_notes WHERE job_id=? AND note_type='geoop_import'",
+        (axion_job_id,)
+    ).fetchone()
+    if not legacy_exists:
+        conn.execute("""
+            INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, note_type, created_at)
+            VALUES (?, 1, ?, 'geoop_import', ?)
+        """, (axion_job_id, "[GeoOp Import] " + raw_desc, ts))
+        result["notes_created"] = 1
+    else:
+        result["already_ok"] = 1
+
+    p_reg = parsed.get("parsed_reg", "") or row["parsed_reg"] or ""
+    p_vin = parsed.get("parsed_vin", "") or row["parsed_vin"] or ""
+    p_make = parsed.get("parsed_security_make", "") or row["parsed_security_make"] or ""
+
+    if p_reg or p_vin or p_make:
+        existing_item = conn.execute(
+            "SELECT id FROM job_items WHERE job_id=? AND item_type='vehicle'",
+            (axion_job_id,)
+        ).fetchone()
+        if existing_item:
+            conn.execute("""
+                UPDATE job_items SET
+                    reg = CASE WHEN (reg IS NULL OR reg = '') THEN ? ELSE reg END,
+                    vin = CASE WHEN (vin IS NULL OR vin = '') THEN ? ELSE vin END,
+                    make = CASE WHEN (make IS NULL OR make = '') THEN ? ELSE make END,
+                    model = CASE WHEN (model IS NULL OR model = '') THEN ? ELSE model END,
+                    year = CASE WHEN (year IS NULL OR year = '') THEN ? ELSE year END,
+                    colour = CASE WHEN (colour IS NULL OR colour = '') THEN ? ELSE colour END,
+                    description = CASE WHEN (description IS NULL OR description = '') THEN ? ELSE description END
+                WHERE id = ?
+            """, (
+                p_reg, p_vin, p_make,
+                parsed.get("parsed_security_model", "") or row["parsed_security_model"] or "",
+                parsed.get("parsed_security_year", "") or row["parsed_security_year"] or "",
+                parsed.get("parsed_security_colour", "") or row["parsed_security_colour"] or "",
+                parsed.get("parsed_security_description", "") or row["parsed_security_description"] or "",
+                existing_item["id"]
+            ))
+            result["items_updated"] = 1
+        else:
+            conn.execute("""
+                INSERT INTO job_items (
+                    job_id, item_type, description, reg, vin,
+                    make, model, year, colour, deliver_to,
+                    created_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                axion_job_id, "vehicle",
+                parsed.get("parsed_security_description", "") or row["parsed_security_description"] or "",
+                p_reg, p_vin, p_make,
+                parsed.get("parsed_security_model", "") or row["parsed_security_model"] or "",
+                parsed.get("parsed_security_year", "") or row["parsed_security_year"] or "",
+                parsed.get("parsed_security_colour", "") or row["parsed_security_colour"] or "",
+                parsed.get("parsed_deliver_to", "") or row["parsed_deliver_to"] or "",
+                ts
+            ))
+            result["items_updated"] = 1
+
+    return result
+
+
+def backfill_geoop_descriptions(run_id=None):
+    ts = _now()
+    stats = {
+        "status": "running",
+        "total_eligible": 0,
+        "jobs_processed": 0,
+        "legacy_notes_created": 0,
+        "legacy_notes_already_exist": 0,
+        "job_items_updated": 0,
+        "errors": 0,
+        "last_staging_id": 0,
+        "batch_size": _BACKFILL_BATCH_SIZE,
     }
+
+    try:
+        conn = _db()
+        total = conn.execute("""
+            SELECT COUNT(*) FROM geoop_staging_jobs sj
+            WHERE sj.axion_job_id IS NOT NULL
+              AND sj.import_status IN ('imported', 'updated', 'skipped_exists')
+              AND sj.raw_description IS NOT NULL
+              AND sj.raw_description != ''
+        """).fetchone()[0]
+        stats["total_eligible"] = total
+        conn.close()
+
+        _persist_backfill_progress(run_id, stats)
+
+        last_id = 0
+
+        while True:
+            conn = _db()
+            try:
+                rows = conn.execute("""
+                    SELECT sj.id, sj.geoop_job_id, sj.axion_job_id, sj.raw_description,
+                           sj.parsed_reg, sj.parsed_vin, sj.parsed_security_make,
+                           sj.parsed_security_model, sj.parsed_security_year,
+                           sj.parsed_security_colour, sj.parsed_security_description,
+                           sj.parsed_deliver_to
+                    FROM geoop_staging_jobs sj
+                    WHERE sj.id > ?
+                      AND sj.axion_job_id IS NOT NULL
+                      AND sj.import_status IN ('imported', 'updated', 'skipped_exists')
+                      AND sj.raw_description IS NOT NULL
+                      AND sj.raw_description != ''
+                    ORDER BY sj.id
+                    LIMIT ?
+                """, (last_id, _BACKFILL_BATCH_SIZE)).fetchall()
+
+                if not rows:
+                    conn.close()
+                    break
+
+                for row in rows:
+                    last_id = row["id"]
+                    try:
+                        result = _backfill_one_job(conn, row, ts)
+                        stats["jobs_processed"] += 1
+                        stats["legacy_notes_created"] += result["notes_created"]
+                        stats["legacy_notes_already_exist"] += result["already_ok"]
+                        stats["job_items_updated"] += result["items_updated"]
+                    except Exception:
+                        stats["errors"] += 1
+
+                _retry_commit(conn)
+                stats["last_staging_id"] = last_id
+            finally:
+                conn.close()
+
+            _persist_backfill_progress(run_id, stats)
+
+        stats["status"] = "completed"
+
+    except Exception as e:
+        stats["status"] = "failed"
+        stats["error_message"] = str(e)[:500]
+
+    _persist_backfill_progress(run_id, stats)
+    return stats
 
 
 def import_staged_notes(conn=None):

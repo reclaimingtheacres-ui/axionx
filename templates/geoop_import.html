@@ -255,11 +255,28 @@
         Creates a legacy import note on each job, preserves the raw source text in a permanent field,
         and re-parses structured data (Reg, VIN, arrears, costs, next payment, regulation status, security details).
         Safe to run multiple times — existing notes and user-edited fields are not overwritten.
+        Processes in batches of 250 with progress checkpointing. Can be restarted safely if interrupted.
       </p>
       <form method="post" action="{{ url_for('geoop_import_backfill') }}" class="m-0"
-            onsubmit="return confirm('This will backfill GeoOp descriptions and re-parse fields for all imported jobs. Continue?');">
-        <button type="submit" class="btn btn-info btn-sm">Run Description Backfill</button>
+            onsubmit="this.querySelector('button').disabled=true; return confirm('This will backfill GeoOp descriptions and re-parse fields for all imported jobs. Continue?');">
+        <button type="submit" class="btn btn-info btn-sm" id="backfillBtn">Run Description Backfill</button>
       </form>
+      <div id="backfillProgress" style="display:none" class="mt-3">
+        <div class="alert alert-info py-2 small mb-2">
+          <span class="spinner-border spinner-border-sm me-1"></span>
+          <strong>Description backfill running…</strong>
+        </div>
+        <div class="progress mb-2" style="height:20px">
+          <div class="progress-bar bg-info" id="bf-bar" role="progressbar" style="width:0%">0%</div>
+        </div>
+        <div class="row text-center row-cols-2 row-cols-md-5 g-2 small">
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-total">0</div><div class="text-muted">Eligible Jobs</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="bf-processed">0</div><div class="text-muted">Processed</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-notes">0</div><div class="text-muted">Notes Created</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="bf-items">0</div><div class="text-muted">Items Updated</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-danger" id="bf-errors">0</div><div class="text-muted">Errors</div></div></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -584,6 +601,56 @@ function loadDiagnostics() {
       .catch(function() { setTimeout(poll, 5000); });
   }
   poll();
+})();
+
+(function() {
+  var backfillRuns = [];
+  {% for run in runs %}
+  {% if run.status == 'running' and run.run_type == 'description_backfill' %}
+  backfillRuns.push({{ run.id }});
+  {% endif %}
+  {% endfor %}
+  if (backfillRuns.length === 0) return;
+  var bfRunId = backfillRuns[0];
+  var panel = document.getElementById('backfillProgress');
+  panel.style.display = '';
+  document.getElementById('backfillBtn').disabled = true;
+  function bfPoll() {
+    fetch('/admin/geoop-import/backfill-progress/' + bfRunId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var total = d.total_eligible || 0;
+        var processed = d.jobs_processed || 0;
+        document.getElementById('bf-total').textContent = total.toLocaleString();
+        document.getElementById('bf-processed').textContent = processed.toLocaleString();
+        document.getElementById('bf-notes').textContent = (d.legacy_notes_created||0).toLocaleString();
+        document.getElementById('bf-items').textContent = (d.job_items_updated||0).toLocaleString();
+        document.getElementById('bf-errors').textContent = (d.errors||0).toLocaleString();
+        var pct = total > 0 ? Math.round(processed / total * 100) : 0;
+        var bar = document.getElementById('bf-bar');
+        bar.style.width = pct + '%';
+        bar.textContent = pct + '%';
+        if (d.status === 'running') {
+          setTimeout(bfPoll, 2000);
+        } else {
+          var alert = panel.querySelector('.alert');
+          var spinner = panel.querySelector('.spinner-border');
+          if (spinner) spinner.remove();
+          if (d.status === 'completed') {
+            alert.className = 'alert alert-success py-2 small mb-2';
+            alert.querySelector('strong').textContent = 'Backfill complete';
+            bar.classList.remove('bg-info');
+            bar.classList.add('bg-success');
+          } else {
+            alert.className = 'alert alert-danger py-2 small mb-2';
+            alert.querySelector('strong').textContent = 'Backfill failed' + (d.error_message ? ': ' + d.error_message : '');
+          }
+          document.getElementById('backfillBtn').disabled = false;
+        }
+      })
+      .catch(function() { setTimeout(bfPoll, 5000); });
+  }
+  bfPoll();
 })();
 </script>
 {% endblock %}
