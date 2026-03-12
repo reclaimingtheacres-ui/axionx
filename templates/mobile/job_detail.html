@@ -253,14 +253,6 @@
 </div>
 {% endif %}
 
-{% if job.geoop_source_description %}
-<div class="m-card" style="margin-bottom:10px;">
-  <div class="m-card-header">Original GeoOp Description</div>
-  <div class="m-card-body">
-    <pre style="white-space:pre-wrap;word-break:break-word;font-size:.82rem;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:0;max-height:250px;overflow-y:auto;">{{ job.geoop_source_description }}</pre>
-  </div>
-</div>
-{% endif %}
 
 {# ── 3. Vehicle Details card(s) ── #}
 {% if assets %}
