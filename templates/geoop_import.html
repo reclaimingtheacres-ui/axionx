@@ -287,7 +287,7 @@
       <div id="backfillProgress" style="display:none" class="mt-3">
         <div class="alert alert-info py-2 small mb-2">
           <span class="spinner-border spinner-border-sm me-1"></span>
-          <strong>Description backfill running…</strong>
+          <strong id="bf-running-label">Description backfill running…</strong>
         </div>
         <div class="progress mb-2" style="height:20px">
           <div class="progress-bar bg-info" id="bf-bar" role="progressbar" style="width:0%">0%</div>
@@ -728,16 +728,18 @@ function loadDiagnostics() {
         document.getElementById('bf-items-created').textContent = (d.job_items_created||0).toLocaleString();
         document.getElementById('bf-items-updated').textContent = (d.job_items_updated||0).toLocaleString();
         document.getElementById('bf-errors').textContent = (d.errors||0).toLocaleString();
-        if (d.batch_number > 0) {
+        if (d.batch_number > 0 || d.resumed_from_run) {
           document.getElementById('bf-checkpoint-row').style.display = '';
-          document.getElementById('bf-batch').textContent = d.batch_number;
+          document.getElementById('bf-batch').textContent = d.batch_number || 0;
           document.getElementById('bf-lastid').textContent = d.last_staging_id || 0;
           document.getElementById('bf-batchsize').textContent = d.batch_size || 250;
-          if (d.resumed_from_run) {
-            document.getElementById('bf-resume-info').style.display = '';
-            document.getElementById('bf-resume-run').textContent = d.resumed_from_run;
-            document.getElementById('bf-resume-sid').textContent = d.resumed_from_staging_id || 0;
-          }
+        }
+        if (d.resumed_from_run) {
+          document.getElementById('bf-resume-info').style.display = '';
+          document.getElementById('bf-resume-run').textContent = d.resumed_from_run;
+          document.getElementById('bf-resume-sid').textContent = d.resumed_from_staging_id || 0;
+          document.getElementById('bf-running-label').textContent =
+            'Description backfill running (resumed from run #' + d.resumed_from_run + ')…';
         }
         var pct = total > 0 ? Math.round(processed / total * 100) : 0;
         var bar = document.getElementById('bf-bar');
@@ -751,11 +753,16 @@ function loadDiagnostics() {
           if (spinner) spinner.remove();
           if (d.status === 'completed') {
             alert.className = 'alert alert-success py-2 small mb-2';
-            alert.querySelector('strong').textContent = 'Backfill complete — '
+            var runLabel = d.resumed_from_run
+              ? 'Backfill complete (resumed from run #' + d.resumed_from_run + ', staging ID ' + (d.resumed_from_staging_id||0) + ') — '
+              : 'Backfill complete (fresh run) — ';
+            alert.querySelector('strong').textContent = runLabel
               + processed.toLocaleString() + ' jobs processed, '
               + (d.descriptions_preserved||0).toLocaleString() + ' descriptions preserved, '
               + (d.legacy_notes_created||0).toLocaleString() + ' notes created, '
+              + (d.legacy_notes_already_exist||0).toLocaleString() + ' skipped, '
               + ((d.job_items_created||0)+(d.job_items_updated||0)).toLocaleString() + ' security items, '
+              + (d.fields_parsed||0).toLocaleString() + ' fields parsed, '
               + (d.errors||0) + ' errors';
             bar.classList.remove('bg-info');
             bar.classList.add('bg-success');
