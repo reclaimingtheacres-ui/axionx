@@ -9323,6 +9323,73 @@ def geoop_backfill_samples(run_id):
     return jsonify(data)
 
 
+@app.post("/admin/geoop-import/backfill-clients")
+@admin_required
+def geoop_import_backfill_clients():
+    conn = db()
+    try:
+        existing = conn.execute(
+            "SELECT id FROM geoop_import_runs WHERE run_type='client_backfill' AND status='running'"
+        ).fetchone()
+        if existing:
+            flash(f"A client backfill is already running (run #{existing['id']}). Please wait.", "warning")
+            return redirect(url_for("geoop_import_page"))
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO geoop_import_runs (run_type, status, started_at, run_by_user_id)
+            VALUES ('client_backfill', 'running', ?, ?)
+        """, (now_ts(), session.get("user_id", 1)))
+        run_id = cur.lastrowid
+        conn.commit()
+    except Exception as e:
+        flash(f"Failed to start client backfill: {e}", "danger")
+        return redirect(url_for("geoop_import_page"))
+    finally:
+        conn.close()
+
+    import threading
+    t = threading.Thread(
+        target=_geoop.backfill_client_links,
+        kwargs={"run_id": run_id},
+        daemon=True
+    )
+    t.start()
+
+    flash(f"Client backfill started (run #{run_id}). Progress updates will appear below.", "info")
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/client-backfill-progress/<int:run_id>")
+@admin_required
+def geoop_client_backfill_progress(run_id):
+    progress = _geoop.get_backfill_progress(run_id)
+    if not progress:
+        return jsonify({"status": "not_found", "error": "Run not found"}), 404
+    return jsonify(progress)
+
+
+@app.get("/admin/geoop-import/client-gap-report")
+@admin_required
+def geoop_client_gap_report():
+    fmt = request.args.get("format", "json")
+    report = _geoop.get_client_gap_report()
+
+    if fmt == "csv":
+        import io, csv as csv_mod
+        output = io.StringIO()
+        if report["rows"]:
+            writer = csv_mod.DictWriter(output, fieldnames=report["rows"][0].keys())
+            writer.writeheader()
+            writer.writerows(report["rows"])
+        resp = app.make_response(output.getvalue())
+        resp.headers["Content-Type"] = "text/csv"
+        resp.headers["Content-Disposition"] = "attachment; filename=client_gap_report.csv"
+        return resp
+
+    return jsonify(report)
+
+
 @app.post("/admin/geoop-import/reset")
 @admin_required
 def geoop_import_reset():

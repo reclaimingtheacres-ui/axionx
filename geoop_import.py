@@ -208,7 +208,9 @@ def parse_description(desc):
     prefixes = []
     prefix_patterns = [
         r'\*+[^*]+\*+',
-        r'REPOSSESSION AUTHORITY[^.]+\.',
+        r'(?:REPOSSESSION AUTHORITY|NO REPOSSESSION|DO NOT NEGOTIATE)[^.]*?(?:COMMENCES|SIGHTED)\s*',
+        r'(?:REPOSSESSION AUTHORITY|NO REPOSSESSION|DO NOT NEGOTIATE)[^.]+\.\s*',
+        r'PLEASE HAVE CUSTOMER CALL[^.]*?(?:ON SITE\.?\s*)',
     ]
     clean = original
     for pp in prefix_patterns:
@@ -308,30 +310,284 @@ def parse_description(desc):
         elif len(words) == 1:
             result["parsed_security_make"] = words[0]
 
-    client_patterns = [
-        r'^(.+?)\s*-\s*(\w[\w\-/]+)',
-        r'^(.+?)\s+account\s+(\w[\w\-/]+)',
-    ]
-    for cp in client_patterns:
-        cm = re.match(cp, clean, re.IGNORECASE)
-        if cm:
-            client_name = cm.group(1).strip().rstrip(" -")
-            account_num = cm.group(2).strip()
-            if len(client_name) > 2 and len(client_name) < 100:
-                if not any(kw in client_name.lower() for kw in ["security", "arrears", "regulated"]):
-                    result["parsed_client_name"] = client_name
-                    result["parsed_account_number"] = account_num
-                    break
+    _BAD_CLIENT_KW = ["security", "arrears", "regulated", "unregulated",
+                       "please", "repossession", "authority", "field call",
+                       "debt amount", "contract ", "writ and"]
+
+    def _valid_client(name):
+        name = (name or "").strip().rstrip(" -")
+        name = re.sub(r'\s*Repossessions?\b', '', name, flags=re.IGNORECASE).strip()
+        if len(name) < 2 or len(name) > 100:
+            return None
+        if any(kw in name.lower() for kw in _BAD_CLIENT_KW):
+            return None
+        return name
 
     dual_account = re.search(
-        r'(\w+)\s+account\s+([\w\-/]+)\s*/\s*(\w.+?)\s+account\s+([\w\-/]+)',
+        r'(\w+)\s+account\s+:?\s*([\w\-/]+)\s*/\s*(\w.+?)\s+account\s+:?\s*([\w\-/]+)',
         clean, re.IGNORECASE
     )
     if dual_account:
-        result["parsed_client_name"] = dual_account.group(3).strip()
-        result["parsed_account_number"] = dual_account.group(4).strip()
+        secondary = _valid_client(dual_account.group(3))
+        primary = _valid_client(dual_account.group(1))
+        if secondary:
+            result["parsed_client_name"] = secondary
+            result["parsed_account_number"] = dual_account.group(4).strip()
+        elif primary:
+            result["parsed_client_name"] = primary
+            result["parsed_account_number"] = dual_account.group(2).strip()
+
+    if "parsed_client_name" not in result:
+        dual_slash = re.match(
+            r'^(.+?)\s+((?=.*\d)[\w\-/]{3,})\s*/\s*(.+?)\s+((?=.*\d)[\w\-/]{3,})\s+(?:REGULATED|UNREGULATED|See\s)',
+            clean, re.IGNORECASE
+        )
+        if dual_slash:
+            primary = _valid_client(dual_slash.group(1))
+            secondary = _valid_client(dual_slash.group(3))
+            if primary:
+                result["parsed_client_name"] = primary
+                result["parsed_account_number"] = dual_slash.group(2).strip()
+            elif secondary:
+                result["parsed_client_name"] = secondary
+                result["parsed_account_number"] = dual_slash.group(4).strip()
+
+    if "parsed_client_name" not in result:
+        slash_see = re.match(
+            r'^(.+?)\s+(\d[\w\-/]{2,})\s+[Ss]ee\s',
+            clean
+        )
+        if slash_see:
+            client_name = _valid_client(slash_see.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+                result["parsed_account_number"] = slash_see.group(2).strip()
+
+    if "parsed_client_name" not in result:
+        fc_upgrade = re.match(
+            r'^[Ff]ield\s+[Cc]all(?:\s+[Uu]pgrade)?\s*-\s*([A-Z][\w\s]+?)(?:\s+(?:REGULATED|UNREGULATED)\b|\s+\d)',
+            clean, re.IGNORECASE
+        )
+        if fc_upgrade:
+            client_name = _valid_client(fc_upgrade.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+        else:
+            field_call = re.match(
+                r'^(.+?)\s+[Ff]ield\s+[Cc]all\b',
+                clean
+            )
+            if field_call:
+                client_name = _valid_client(field_call.group(1))
+                if client_name:
+                    result["parsed_client_name"] = client_name
+
+    if "parsed_client_name" not in result:
+        dash_text_reg = re.match(
+            r'^(.+?)\s*-\s*.+?\s+(?:Regulated|Unregulated)\b',
+            clean, re.IGNORECASE
+        )
+        if dash_text_reg:
+            client_name = _valid_client(dash_text_reg.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+
+    if "parsed_client_name" not in result:
+        client_patterns = [
+            r'^(.+?)\s*-\s*([A-Za-z0-9][\w\-/]{2,})',
+            r'^(.+?)\s+account\s+(\w[\w\-/]+)',
+        ]
+        for cp in client_patterns:
+            cm = re.match(cp, clean, re.IGNORECASE)
+            if cm:
+                acct = cm.group(2).strip()
+                client_name = _valid_client(cm.group(1))
+                if client_name:
+                    result["parsed_client_name"] = client_name
+                    result["parsed_account_number"] = acct
+                    break
+
+    if "parsed_client_name" not in result:
+        name_id_reg = re.match(
+            r'^(.+?)\s+(\d[\w\-/]{2,})\s+(?:REGULATED|UNREGULATED|See\s)',
+            clean, re.IGNORECASE
+        )
+        if name_id_reg:
+            client_name = _valid_client(name_id_reg.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+                result["parsed_account_number"] = name_id_reg.group(2).strip()
+
+    if "parsed_client_name" not in result:
+        name_then_type = re.match(
+            r'^(.+?)\s+(?:Regulated|Unregulated)\b',
+            clean, re.IGNORECASE
+        )
+        if name_then_type:
+            raw = name_then_type.group(1).strip()
+            parts = raw.rsplit(None, 1)
+            if len(parts) == 2 and re.match(r'^(?=.*\d)[\w\-/]{3,}$', parts[1]):
+                client_name = _valid_client(parts[0])
+                if client_name:
+                    result["parsed_client_name"] = client_name
+                    result["parsed_account_number"] = parts[1]
+            if "parsed_client_name" not in result:
+                client_name = _valid_client(raw)
+                if client_name:
+                    result["parsed_client_name"] = client_name
+
+    if "parsed_client_name" not in result:
+        obo_parts = re.split(r'\bon behalf of\b', clean, flags=re.IGNORECASE)
+        if len(obo_parts) >= 2:
+            last = obo_parts[-1].strip()
+            obo_dash = re.match(r'^(.+?)\s*-\s*([A-Za-z0-9][\w\-/]{2,})', last, re.IGNORECASE)
+            if obo_dash:
+                client_name = _valid_client(obo_dash.group(1))
+                if client_name:
+                    result["parsed_client_name"] = client_name
+                    result["parsed_account_number"] = obo_dash.group(2).strip()
+            else:
+                obo_name = re.match(r'^(.+?)(?:\s+\d|\s*-\s*\$|\s+Regulated|\s+Unregulated|$)', last, re.IGNORECASE)
+                if obo_name:
+                    client_name = _valid_client(obo_name.group(1))
+                    if client_name:
+                        result["parsed_client_name"] = client_name
+
+    if "parsed_client_name" not in result:
+        dash_dollar = re.match(
+            r'^(.+?)\s*-\s*\$',
+            clean
+        )
+        if dash_dollar:
+            client_name = _valid_client(dash_dollar.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+
+    if "parsed_client_name" not in result:
+        colon_prefix = re.match(
+            r'^([A-Za-z][\w\s]+?):\s',
+            clean
+        )
+        if colon_prefix:
+            candidate = colon_prefix.group(1).strip()
+            if len(candidate.split()) <= 4:
+                client_name = _valid_client(candidate)
+                if client_name:
+                    result["parsed_client_name"] = client_name
+
+    if "parsed_client_name" not in result:
+        hash_pattern = re.match(
+            r'^(.+?)\s+#\d',
+            clean
+        )
+        if hash_pattern:
+            client_name = _valid_client(hash_pattern.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+
+    if "parsed_client_name" not in result:
+        mid_dash_id = re.search(
+            r'(?<!\w)([A-Z][A-Za-z]+(?:\s+[A-Za-z]+){0,5}?)\s*-\s*((?=.*\d)[A-Za-z0-9][\w\-/]{2,})\s+(?:Regulated|Unregulated)\b',
+            clean
+        )
+        if mid_dash_id:
+            client_name = _valid_client(mid_dash_id.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+                result["parsed_account_number"] = mid_dash_id.group(2).strip()
+
+    if "parsed_client_name" not in result:
+        mid_name_id = re.search(
+            r'(?<!\w)([A-Z][A-Za-z]+(?:\s+[A-Za-z]+){0,5}?)\s+((?=.*\d)[\w\-/]{3,})\s+(?:Regulated|Unregulated)\b',
+            clean
+        )
+        if mid_name_id:
+            client_name = _valid_client(mid_name_id.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
+                result["parsed_account_number"] = mid_name_id.group(2).strip()
+
+    if "parsed_client_name" not in result:
+        mid_name_type = re.search(
+            r'(?<!\w)([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,4})\s+(?:Regulated|Unregulated)\b',
+            clean
+        )
+        if mid_name_type:
+            client_name = _valid_client(mid_name_type.group(1))
+            if client_name:
+                result["parsed_client_name"] = client_name
 
     return result
+
+
+def _normalise_client_name(name):
+    if not name:
+        return ""
+    n = name.lower().strip()
+    for suffix in [" pty ltd", " pty. ltd.", " pty. ltd",
+                   " limited", " ltd", " ltd.", " inc", " inc.",
+                   " finance", " leasing"]:
+        if n.endswith(suffix):
+            n = n[:-len(suffix)].strip()
+    n = re.sub(r'[^a-z0-9\s]', '', n)
+    n = re.sub(r'\s+', ' ', n).strip()
+    return n
+
+
+_client_cache = {}
+_client_cache_ts = 0
+
+
+def _get_client_list(conn):
+    global _client_cache, _client_cache_ts
+    import time
+    now = time.time()
+    if now - _client_cache_ts < 60 and _client_cache:
+        return _client_cache
+    all_clients = conn.execute("SELECT id, name FROM clients").fetchall()
+    cache = {}
+    for c in all_clients:
+        cid = c["id"]
+        raw = c["name"] or ""
+        norm = _normalise_client_name(raw)
+        cache[cid] = {"name": raw, "lower": raw.lower().strip(), "norm": norm}
+    _client_cache = cache
+    _client_cache_ts = now
+    return cache
+
+
+def _match_client(conn, name):
+    if not name or not name.strip():
+        return None
+
+    lookup = name.strip()
+    lookup_lower = lookup.lower()
+
+    clients = _get_client_list(conn)
+
+    for cid, c in clients.items():
+        if c["lower"] == lookup_lower:
+            return cid
+
+    norm = _normalise_client_name(name)
+    if not norm:
+        return None
+
+    for cid, c in clients.items():
+        if c["norm"] == norm:
+            return cid
+
+    norm_words = norm.split()
+    if len(norm_words) >= 2:
+        for cid, c in clients.items():
+            c_words = c["norm"].split()
+            if not c_words:
+                continue
+            overlap = set(norm_words) & set(c_words)
+            if len(overlap) >= 2 and norm_words[0] in c_words:
+                return cid
+
+    return None
 
 
 def stage_jobs_csv(csv_path, conn=None):
@@ -942,6 +1198,13 @@ def import_staged_jobs(mode="insert_only", conn=None):
                         VALUES ('customer', ?, 'Primary', ?, ?)
                     """, (cust_id, sj["email"], ts))
 
+        client_id = None
+        parsed_client = sj["parsed_client_name"] or ""
+        if parsed_client:
+            client_id = _match_client(conn, parsed_client)
+        if not client_id and sj["company"]:
+            client_id = _match_client(conn, sj["company"])
+
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
 
@@ -953,7 +1216,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     lender_name=?, account_number=?, regulation_type=?,
                     arrears_cents=?, costs_cents=?,
                     mmp_cents=?, job_due_date=?,
-                    deliver_to=?, updated_at=?
+                    deliver_to=?, client_id=COALESCE(?, client_id), updated_at=?
                 WHERE id=?
             """, (
                 status, full_address, sj["raw_description"],
@@ -962,7 +1225,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 sj["parsed_regulation_type"] or "",
                 sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
                 sj["parsed_nmpd_amount_cents"] or 0, sj["parsed_nmpd_date"] or "",
-                sj["parsed_deliver_to"] or "", ts,
+                sj["parsed_deliver_to"] or "", client_id, ts,
                 existing["id"]
             ))
             legacy_exists = conn.execute(
@@ -975,8 +1238,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     VALUES (?, 1, ?, 'geoop_import', ?)
                 """, (existing["id"], "[GeoOp Import] " + sj["raw_description"], ts))
             conn.execute(
-                "UPDATE geoop_staging_jobs SET import_status='updated', axion_job_id=?, imported_at=? WHERE id=?",
-                (existing["id"], ts, sj["id"])
+                "UPDATE geoop_staging_jobs SET import_status='updated', axion_job_id=?, axion_client_id=?, imported_at=? WHERE id=?",
+                (existing["id"], client_id, ts, sj["id"])
             )
             updated += 1
             continue
@@ -987,16 +1250,16 @@ def import_staged_jobs(mode="insert_only", conn=None):
             cur.execute("""
                 INSERT INTO jobs (
                     internal_job_number, display_ref, client_reference,
-                    customer_id, job_type, visit_type, status, priority,
+                    customer_id, client_id, job_type, visit_type, status, priority,
                     job_address, description, geoop_source_description,
                     lender_name, account_number, regulation_type,
                     arrears_cents, costs_cents, mmp_cents, job_due_date,
                     deliver_to, client_job_number,
                     created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 ref_no, ref_no, sj["parsed_account_number"] or "",
-                cust_id, job_type, "New Visit", status, "Normal",
+                cust_id, client_id, job_type, "New Visit", status, "Normal",
                 full_address, sj["raw_description"], sj["raw_description"],
                 sj["parsed_client_name"] or "", sj["parsed_account_number"] or "",
                 sj["parsed_regulation_type"] or "",
@@ -1038,8 +1301,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 ))
 
             conn.execute(
-                "UPDATE geoop_staging_jobs SET import_status='imported', axion_job_id=?, axion_customer_id=?, imported_at=? WHERE id=?",
-                (axion_job_id, cust_id, ts, sj["id"])
+                "UPDATE geoop_staging_jobs SET import_status='imported', axion_job_id=?, axion_customer_id=?, axion_client_id=?, imported_at=? WHERE id=?",
+                (axion_job_id, cust_id, client_id, ts, sj["id"])
             )
             imported += 1
         except Exception as e:
@@ -2418,3 +2681,199 @@ def dry_run_report(jobs_csv=None, notes_csv=None, attachment_dirs=None):
 
     conn.close()
     return report
+
+
+_CLIENT_BACKFILL_BATCH = 250
+
+
+def backfill_client_links(run_id=None):
+    ts = _now()
+    stats = {
+        "status": "running",
+        "total_eligible": 0,
+        "jobs_processed": 0,
+        "matched": 0,
+        "already_set": 0,
+        "no_source": 0,
+        "no_match": 0,
+        "errors": 0,
+        "batch_number": 0,
+        "last_job_id": 0,
+    }
+
+    try:
+        conn = _db()
+        total = conn.execute("""
+            SELECT COUNT(*) FROM jobs
+            WHERE client_job_number IS NOT NULL AND client_job_number != ''
+              AND (client_id IS NULL OR client_id = 0)
+        """).fetchone()[0]
+        stats["total_eligible"] = total
+
+        already_set = conn.execute("""
+            SELECT COUNT(*) FROM jobs
+            WHERE client_job_number IS NOT NULL AND client_job_number != ''
+              AND client_id IS NOT NULL AND client_id > 0
+        """).fetchone()[0]
+        stats["already_set"] = already_set
+        conn.close()
+
+        if run_id:
+            _persist_client_backfill_progress(run_id, stats)
+
+        last_id = 0
+        while True:
+            conn = _db()
+            batch = conn.execute("""
+                SELECT j.id, j.lender_name, j.description,
+                       j.geoop_source_description, j.client_id
+                FROM jobs j
+                WHERE j.client_job_number IS NOT NULL AND j.client_job_number != ''
+                  AND (j.client_id IS NULL OR j.client_id = 0)
+                  AND j.id > ?
+                ORDER BY j.id
+                LIMIT ?
+            """, (last_id, _CLIENT_BACKFILL_BATCH)).fetchall()
+
+            if not batch:
+                conn.close()
+                break
+
+            stats["batch_number"] += 1
+
+            for row in batch:
+                stats["jobs_processed"] += 1
+                last_id = row["id"]
+                stats["last_job_id"] = last_id
+
+                try:
+                    client_id = None
+                    source_name = None
+
+                    if row["lender_name"]:
+                        source_name = row["lender_name"]
+                        client_id = _match_client(conn, source_name)
+
+                    if not client_id:
+                        raw_desc = row["geoop_source_description"] or row["description"] or ""
+                        if raw_desc:
+                            parsed = parse_description(raw_desc)
+                            pn = parsed.get("parsed_client_name")
+                            if pn:
+                                source_name = pn
+                                client_id = _match_client(conn, pn)
+
+                    if client_id:
+                        conn.execute(
+                            "UPDATE jobs SET client_id=?, updated_at=? WHERE id=?",
+                            (client_id, ts, row["id"])
+                        )
+                        if source_name and not row["lender_name"]:
+                            conn.execute(
+                                "UPDATE jobs SET lender_name=? WHERE id=? AND (lender_name IS NULL OR lender_name='')",
+                                (source_name, row["id"])
+                            )
+                        stats["matched"] += 1
+                    elif not source_name:
+                        stats["no_source"] += 1
+                    else:
+                        stats["no_match"] += 1
+
+                except Exception as e:
+                    stats["errors"] += 1
+
+            conn.commit()
+            conn.close()
+
+            if run_id:
+                _persist_client_backfill_progress(run_id, stats)
+
+        stats["status"] = "completed"
+    except Exception as e:
+        stats["status"] = "failed"
+        stats["error_message"] = str(e)[:500]
+
+    if run_id:
+        _persist_client_backfill_progress(run_id, stats)
+
+    return stats
+
+
+def _persist_client_backfill_progress(run_id, stats):
+    try:
+        import json as _json
+        conn = _db()
+        conn.execute("""
+            UPDATE geoop_import_runs
+            SET diagnostics_json = ?, completed_at = CASE WHEN ? IN ('completed','failed') THEN ? ELSE completed_at END,
+                status = ?
+            WHERE id = ?
+        """, (
+            _json.dumps(stats),
+            stats["status"], _now(),
+            stats["status"] if stats["status"] in ("completed", "failed") else "running",
+            run_id
+        ))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def get_client_gap_report(conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    rows = conn.execute("""
+        SELECT j.id, j.internal_job_number, j.client_job_number,
+               j.lender_name, j.description, j.geoop_source_description,
+               j.client_id, j.status,
+               sj.geoop_job_id, sj.company, sj.parsed_client_name,
+               sj.raw_description AS staging_description
+        FROM jobs j
+        LEFT JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id
+        WHERE j.client_job_number IS NOT NULL AND j.client_job_number != ''
+          AND (j.client_id IS NULL OR j.client_id = 0)
+        ORDER BY j.id
+    """).fetchall()
+
+    report = []
+    for r in rows:
+        raw_desc = r["geoop_source_description"] or r["description"] or ""
+        parsed = parse_description(raw_desc) if raw_desc else {}
+        parsed_name = parsed.get("parsed_client_name", "")
+
+        if not raw_desc:
+            reason = "no_source_data"
+        elif not parsed_name and not r["lender_name"]:
+            reason = "parse_failed"
+        elif parsed_name or r["lender_name"]:
+            reason = "no_client_match"
+        else:
+            reason = "unknown"
+
+        report.append({
+            "job_id": r["id"],
+            "internal_job_number": r["internal_job_number"] or "",
+            "geoop_job_id": r["geoop_job_id"] or r["client_job_number"] or "",
+            "status": r["status"] or "",
+            "lender_name": r["lender_name"] or "",
+            "parsed_client_name": parsed_name,
+            "company": r["company"] or "",
+            "description_snippet": (raw_desc[:200] if raw_desc else ""),
+            "reason": reason,
+        })
+
+    summary = {
+        "total_gaps": len(report),
+        "no_source_data": sum(1 for r in report if r["reason"] == "no_source_data"),
+        "parse_failed": sum(1 for r in report if r["reason"] == "parse_failed"),
+        "no_client_match": sum(1 for r in report if r["reason"] == "no_client_match"),
+    }
+
+    if close:
+        conn.close()
+
+    return {"summary": summary, "rows": report}

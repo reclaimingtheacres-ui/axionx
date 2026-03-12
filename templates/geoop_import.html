@@ -330,6 +330,44 @@
   </div>
 
   <div class="card mb-4">
+    <div class="card-header"><strong>Client Backfill</strong></div>
+    <div class="card-body">
+      <p class="small text-muted mb-2">
+        Matches imported jobs to clients in the Axion clients table by parsing the lender name from each job's description.
+        Uses normalised matching (strips Pty Ltd, Finance suffixes etc). Safe to run multiple times.
+      </p>
+      <div class="d-flex gap-2 align-items-center mb-2">
+        <form method="post" action="{{ url_for('geoop_import_backfill_clients') }}" class="m-0"
+              onsubmit="this.querySelector('button').disabled=true; return confirm('This will match GeoOp jobs to clients. Continue?');">
+          <button type="submit" class="btn btn-warning btn-sm" id="clientBackfillBtn">Run Client Backfill</button>
+        </form>
+        <a href="{{ url_for('geoop_client_gap_report', format='csv') }}" class="btn btn-outline-secondary btn-sm">Download Client Gap Report (CSV)</a>
+        <a href="{{ url_for('geoop_client_gap_report') }}" class="btn btn-outline-secondary btn-sm" target="_blank">View Gap Report (JSON)</a>
+      </div>
+      <div id="clientBackfillProgress" style="display:none" class="mt-3">
+        <div class="alert alert-warning py-2 small mb-2">
+          <span class="spinner-border spinner-border-sm me-1"></span>
+          <strong>Client backfill running…</strong>
+        </div>
+        <div class="progress mb-2" style="height:20px">
+          <div class="progress-bar bg-warning text-dark" id="cb-bar" role="progressbar" style="width:0%">0%</div>
+        </div>
+        <div class="row text-center row-cols-2 row-cols-md-4 g-2 small">
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="cb-total">0</div><div class="text-muted">Eligible Jobs</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-success" id="cb-matched">0</div><div class="text-muted">Matched</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-muted" id="cb-nosource">0</div><div class="text-muted">No Source Data</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-warning" id="cb-nomatch">0</div><div class="text-muted">No Match</div></div></div>
+        </div>
+        <div class="row text-center row-cols-2 row-cols-md-3 g-2 small mt-1">
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="cb-processed">0</div><div class="text-muted">Processed</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold" id="cb-already">0</div><div class="text-muted">Already Set</div></div></div>
+          <div class="col"><div class="card p-2"><div class="fw-bold text-danger" id="cb-errors">0</div><div class="text-muted">Errors</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <strong>Import History</strong>
       <form method="post" action="{{ url_for('geoop_import_reset') }}" class="m-0"
@@ -1054,6 +1092,59 @@ function loadDiagnostics() {
         }
       }).catch(function(){});
   }
+})();
+
+(function() {
+  var cbRuns = [];
+  {% for run in runs %}
+  {% if run.status == 'running' and run.run_type == 'client_backfill' %}
+  cbRuns.push({{ run.id }});
+  {% endif %}
+  {% endfor %}
+  if (cbRuns.length === 0) return;
+  var cbRunId = cbRuns[0];
+  var panel = document.getElementById('clientBackfillProgress');
+  panel.style.display = '';
+  document.getElementById('clientBackfillBtn').disabled = true;
+  function cbPoll() {
+    fetch('/admin/geoop-import/client-backfill-progress/' + cbRunId)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var total = d.total_eligible || 0;
+        var processed = d.jobs_processed || 0;
+        document.getElementById('cb-total').textContent = total.toLocaleString();
+        document.getElementById('cb-matched').textContent = (d.matched||0).toLocaleString();
+        document.getElementById('cb-nosource').textContent = (d.no_source||0).toLocaleString();
+        document.getElementById('cb-nomatch').textContent = (d.no_match||0).toLocaleString();
+        document.getElementById('cb-processed').textContent = processed.toLocaleString();
+        document.getElementById('cb-already').textContent = (d.already_set||0).toLocaleString();
+        document.getElementById('cb-errors').textContent = (d.errors||0).toLocaleString();
+        var pct = total > 0 ? Math.round(processed * 100 / total) : 0;
+        var bar = document.getElementById('cb-bar');
+        bar.style.width = pct + '%';
+        bar.textContent = pct + '%';
+        if (d.status === 'running') {
+          setTimeout(cbPoll, 2000);
+        } else {
+          var alert = panel.querySelector('.alert');
+          alert.querySelector('.spinner-border').remove();
+          if (d.status === 'completed') {
+            alert.className = 'alert alert-success py-2 small mb-2';
+            alert.querySelector('strong').textContent = 'Client backfill complete — '
+              + (d.matched||0).toLocaleString() + ' matched, '
+              + (d.no_match||0).toLocaleString() + ' unmatched, '
+              + (d.no_source||0).toLocaleString() + ' no source';
+            bar.classList.remove('bg-warning');
+            bar.classList.add('bg-success');
+          } else {
+            alert.className = 'alert alert-danger py-2 small mb-2';
+            alert.querySelector('strong').textContent = 'Client backfill failed' + (d.error_message ? ': ' + d.error_message : '');
+          }
+          document.getElementById('clientBackfillBtn').disabled = false;
+        }
+      }).catch(function() { setTimeout(cbPoll, 5000); });
+  }
+  cbPoll();
 })();
 </script>
 {% endblock %}
