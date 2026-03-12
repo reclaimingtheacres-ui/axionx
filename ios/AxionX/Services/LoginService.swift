@@ -51,7 +51,7 @@ enum LoginService {
         }
 
         guard let http = response as? HTTPURLResponse else { throw LoginError.unknown }
-        guard http.statusCode == 302 else { throw LoginError.invalidCredentials }
+        guard (300...399).contains(http.statusCode) else { throw LoginError.invalidCredentials }
 
         let headers = http.allHeaderFields as? [String: String] ?? [:]
         let cookies = HTTPCookie.cookies(withResponseHeaderFields: headers, for: url)
