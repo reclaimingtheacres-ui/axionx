@@ -3974,6 +3974,7 @@ def add_schedule(job_id: int):
                             new_scheduled_for=dt_str, new_status=bt_status,
                             changed_by_user_id=caller_id)
     _auto_complete_schedule_cues(cur, job_id, ts)
+    _sync_visit_type_from_booking(cur, job_id, bt_status, ts)
     conn.commit()
     conn.close()
 
@@ -4047,6 +4048,7 @@ def add_schedule_ajax(job_id: int):
                    VALUES (?, 'Schedule', ?, ?, ?)""",
                 (job_id, f"Booking '{bt_name}' added for {dt_str[:10]}.", now, now))
     _auto_complete_schedule_cues(cur, job_id, now)
+    _sync_visit_type_from_booking(cur, job_id, bt_name, now)
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "count": len(created)})
@@ -4464,12 +4466,13 @@ def schedule_api_update(sched_id):
     if new_bt and new_bt.isdigit():
         old_bt = sched["booking_type_id"]
         if int(new_bt) != old_bt:
-            cur.execute("SELECT id FROM booking_types WHERE id = ? AND active = 1", (int(new_bt),))
-            if not cur.fetchone():
+            bt_check = cur.execute("SELECT id, name FROM booking_types WHERE id = ? AND active = 1", (int(new_bt),)).fetchone()
+            if not bt_check:
                 conn.close()
                 return jsonify({"ok": False, "error": "Invalid booking type."}), 400
             cur.execute("UPDATE schedules SET booking_type_id = ? WHERE id = ?", (int(new_bt), sched_id))
             changes.append("Booking type changed")
+            _sync_visit_type_from_booking(cur, sched["job_id"], bt_check["name"], now_ts())
 
     if new_notes != (sched["notes"] or ""):
         cur.execute("UPDATE schedules SET notes = ? WHERE id = ?", (new_notes, sched_id))
@@ -10941,6 +10944,29 @@ def queue_active_cue_ids():
     """).fetchall()
     conn.close()
     return jsonify({"ok": True, "ids": [r["id"] for r in rows]})
+
+
+_VISIT_TYPES_FROM_BOOKING = {
+    "new visit", "re-attend", "urgent new visit",
+    "first update", "urgent update", "phone follow-up", "locate only",
+    "update required", "urgent update required",
+}
+
+def _sync_visit_type_from_booking(cur, job_id, booking_type_name, ts=None):
+    if ts is None:
+        ts = now_ts()
+    bt_lower = (booking_type_name or "").strip().lower()
+    if bt_lower not in _VISIT_TYPES_FROM_BOOKING:
+        return
+    cur.execute("SELECT visit_type FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    if not row:
+        return
+    old_visit = row["visit_type"]
+    if old_visit.strip().lower() == bt_lower:
+        return
+    cur.execute("UPDATE jobs SET visit_type = ?, updated_at = ? WHERE id = ?",
+                (booking_type_name, ts, job_id))
 
 
 def _auto_complete_schedule_cues(cur, job_id, ts=None):
