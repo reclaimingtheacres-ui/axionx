@@ -431,6 +431,7 @@
             <option value="Awaiting info from client">Awaiting</option>
             <option value="Completed">Completed</option>
             <option value="Invoiced">Invoiced</option>
+            <option value="Cancelled">Cancelled</option>
             <option value="Archived - Invoiced">Archived</option>
           </select>
         </div>
@@ -507,6 +508,7 @@ function _esc(s) {
 function _statusColor(s) {
   if (s === 'Active') return '#22c55e';
   if (s === 'Completed') return '#64748b';
+  if (s === 'Cancelled') return '#ef4444';
   return '#f59e0b';
 }
 

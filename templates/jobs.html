@@ -236,6 +236,7 @@
       {% elif s in ('Suspended', 'Awaiting info from client', 'Awaiting Instructions') %}{% set sc = '#f59e0b' %}
       {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
       {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
+      {% elif s == 'Cancelled' %}{% set sc = '#ef4444' %}
       {% else %}{% set sc = '#6b7280' %}{% endif %}
 
       {% set bt = j.next_booking_type or '' %}

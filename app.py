@@ -2639,6 +2639,7 @@ def dashboard():
         ("Awaiting info from client", "awaiting"),
         ("Completed",                 "completed"),
         ("Invoiced",                  "invoiced"),
+        ("Cancelled",                 "cancelled"),
     ]
 
     def jrows(status):
@@ -3053,6 +3054,7 @@ def jobs_list():
         "Awaiting info from client",
         "Completed",
         "Invoiced",
+        "Cancelled",
         "Archived - Invoiced",
     ]
 
@@ -3470,7 +3472,7 @@ def _job_new_render(conn):
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
 
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
-    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
+    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced", "Cancelled"]
     priorities = ["Low", "Normal", "High", "Urgent"]
 
     return render_template("job_new.html", clients=clients, customers=customers,
@@ -3867,7 +3869,7 @@ def job_detail(job_id: int):
     form_templates = conn2.execute("SELECT * FROM form_templates WHERE active=1 ORDER BY name").fetchall()
     conn2.close()
 
-    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced"]
+    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced", "Cancelled"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
     priorities = ["Low", "Normal", "High", "Urgent"]
     item_types = ["vehicle", "property", "equipment", "other"]
@@ -4891,7 +4893,7 @@ def delete_job(job_id: int):
 def job_status_update(job_id: int):
     status = request.form.get("status", "").strip()
     allowed = ["New", "Active", "Active - Phone work only", "Suspended",
-               "Awaiting info from client", "Completed", "Invoiced"]
+               "Awaiting info from client", "Completed", "Invoiced", "Cancelled"]
     if status not in allowed:
         flash("Invalid status.", "danger")
         return redirect(url_for("jobs_list"))
@@ -4904,7 +4906,7 @@ def job_status_update(job_id: int):
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status Update", f"Status changed to '{status}'.", now, now))
-    if status in ("Completed", "Invoiced"):
+    if status in ("Completed", "Invoiced", "Cancelled"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
         pending_scheds = cur.execute(
@@ -4947,14 +4949,14 @@ def job_archive(job_id: int):
         conn.close()
         flash("Job not found.", "danger")
         return redirect(url_for("jobs_list"))
-    archivable = ("Completed", "Invoiced")
+    archivable = ("Completed", "Invoiced", "Cancelled")
     if job["status"] in ARCHIVED_STATUSES:
         conn.close()
         flash("Job is already archived.", "warning")
         return redirect(url_for("job_detail", job_id=job_id))
     if job["status"] not in archivable:
         conn.close()
-        flash(f"Only Completed or Invoiced jobs can be archived. Current status: {job['status']}.", "danger")
+        flash(f"Only Completed, Invoiced or Cancelled jobs can be archived. Current status: {job['status']}.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
     uid = session.get("user_id")
     ts = now_ts()
@@ -5314,7 +5316,7 @@ def job_update(job_id: int):
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status/Visit Update", f"Status set to '{status}'. Visit type set to '{visit_type}'.", now, now))
 
-    if status in ("Completed", "Invoiced"):
+    if status in ("Completed", "Invoiced", "Cancelled"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
         pending_scheds = cur.execute(

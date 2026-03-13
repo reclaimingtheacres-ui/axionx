@@ -58,6 +58,7 @@
 {% elif s in ('Suspended', 'Awaiting info from client') %}{% set sc = '#f59e0b' %}
 {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
 {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
+{% elif s == 'Cancelled' %}{% set sc = '#ef4444' %}
 {% elif s == 'Archived - Invoiced' %}{% set sc = '#d97706' %}
 {% elif s == 'Cold Stored' %}{% set sc = '#6366f1' %}
 {% else %}{% set sc = '#6b7280' %}{% endif %}
@@ -146,7 +147,7 @@
                      cursor:pointer; outline:none; appearance:none; -webkit-appearance:none;
                      padding-right:24px; background-image:url('data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2210%22 height%3D%2210%22 viewBox%3D%220 0 24 24%22%3E%3Cpath fill%3D%22%23{{ sc[1:] }}%22 d%3D%22M7 10l5 5 5-5z%22%2F%3E%3C%2Fsvg%3E');
                      background-repeat:no-repeat; background-position:right 6px center;">
-        {% for st in ['New','Active','Active - Phone work only','Suspended','Awaiting info from client','Completed','Invoiced'] %}
+        {% for st in ['New','Active','Active - Phone work only','Suspended','Awaiting info from client','Completed','Invoiced','Cancelled'] %}
           <option value="{{ st }}" {% if st == job.status %}selected{% endif %}>{{ st }}</option>
         {% endfor %}
       </select>
@@ -155,7 +156,7 @@
       {% endif %}
     </form>
 
-    {% if s in ('Invoiced', 'Completed') %}
+    {% if s in ('Invoiced', 'Completed', 'Cancelled') %}
     <form method="post" action="/jobs/{{ job.id }}/archive" style="display:inline;margin:0"
           onsubmit="return confirm('Archive this job? It will be removed from active views.')">
       <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive this file">Archive</button>
