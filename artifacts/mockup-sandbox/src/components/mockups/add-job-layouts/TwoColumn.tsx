@@ -112,7 +112,16 @@ function SecurityAssetBlock() {
         <Field label="COLOUR" placeholder="White" value="White" />
       </div>
       <div style={{ display: "flex", gap: 6 }}>
-        <Field label="ASSET ADDRESS" placeholder="Property/site address" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+            <label style={{ fontSize: ".7rem", fontWeight: 600, color: "#64748b", letterSpacing: ".03em" }}>ASSET ADDRESS</label>
+            <span style={{ fontSize: ".64rem", color: "#94a3b8", fontStyle: "italic" }}>from customer address</span>
+          </div>
+          <input value="42 Bourke St, Melbourne VIC 3000" readOnly style={{
+            width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6,
+            fontSize: ".8rem", color: "#1e293b", background: "#f0f7ff", outline: "none", cursor: "text"
+          }} />
+        </div>
         <Field label="SERIAL" placeholder="Equipment serial" flex="140px" />
       </div>
       <div style={{ marginTop: 4 }}>
