@@ -99,7 +99,7 @@
   ('Total Active', jobs_active + jobs_phone, '#d97706', 'Active + Phone work', 'active'),
   ('Needs Attention', jobs_suspended, '#dc2626', 'Suspended jobs', 'suspended'),
   ('Awaiting Response', jobs_awaiting, '#f59e0b', 'From clients', 'awaiting'),
-  ('Completed', completed_today, '#0d9488', 'Ready to invoice', 'completed_today'),
+  ('Completed', jobs_completed, '#0d9488', 'Ready to invoice', 'completed'),
 ] %}
 <div class="row g-3 mb-3">
   {% for label, value, colour, sub, cat in summary_cards %}

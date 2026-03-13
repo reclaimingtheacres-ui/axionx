@@ -2700,6 +2700,7 @@ def dashboard_jobs_api():
         "active":    "j.status IN ('Active','Active - Phone work only')",
         "suspended": "j.status = 'Suspended'",
         "awaiting":  "j.status = 'Awaiting info from client'",
+        "completed": "j.status = 'Completed'",
         "completed_today": f"j.status = 'Completed' AND date(j.updated_at) = '{_mel_now_d.isoformat()}'",
     }
     where = STATUS_MAP.get(category)
@@ -2707,7 +2708,8 @@ def dashboard_jobs_api():
         return jsonify(jobs=[], title="Unknown")
 
     TITLES = {"active": "Total Active", "suspended": "Needs Attention",
-              "awaiting": "Awaiting Response", "completed_today": "Completed"}
+              "awaiting": "Awaiting Response", "completed": "Completed",
+              "completed_today": "Completed Today"}
 
     agent_subq = """
         COALESCE(
