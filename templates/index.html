@@ -10,10 +10,43 @@
     border-radius: 14px;
     padding: 16px 18px;
     border-left: 4px solid var(--accent);
+    cursor: pointer;
+    transition: box-shadow .15s, transform .1s;
+    user-select: none;
   }
+  .ax-summary-card:hover{ box-shadow: 0 4px 16px rgba(0,0,0,.08); transform: translateY(-1px); }
+  .ax-summary-card.sc-active{ box-shadow: 0 2px 12px rgba(59,130,246,.25); border-color: var(--accent) !important; border-left-width: 4px; outline: 2px solid var(--accent); outline-offset: -1px; }
   .ax-summary-card .sc-label{ font-size: .78rem; color: var(--muted); margin-bottom: 4px; }
   .ax-summary-card .sc-value{ font-size: 28px; font-weight: 700; margin-bottom: 2px; }
   .ax-summary-card .sc-sub{ font-size: .72rem; color: var(--muted); }
+  .ax-mini-tile{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    border: 1px solid rgba(0,0,0,.08);
+    background: #f9fafb;
+    transition: background .12s;
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .ax-mini-tile:hover{ background: #f3f4f6; color: var(--text); text-decoration: none; }
+  .ax-mini-tile .mt-qty{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    border-radius: 10px;
+    padding: 0 6px;
+    font-size: .72rem;
+    font-weight: 700;
+    color: #fff;
+  }
   .ax-feed-row{
     padding: 12px 18px;
     display: flex;
@@ -45,6 +78,13 @@
     display: block;
   }
   .ax-sched-row:hover{ background: #f8fafc; color: inherit; text-decoration: none; }
+  #dashDetail .ax-feed-row{ border-bottom: 1px solid var(--line); }
+  #dashDetail .ax-feed-row:last-child{ border-bottom: none; }
+  .dash-back-btn{
+    background: none; border: none; cursor: pointer; color: var(--accent); font-size: .82rem; font-weight: 500;
+    padding: 0; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .dash-back-btn:hover{ text-decoration: underline; }
 </style>
 
 <form method="get" action="/jobs" class="mb-4">
@@ -56,15 +96,15 @@
 </form>
 
 {% set summary_cards = [
-  ('Total Active', jobs_active + jobs_phone, '#d97706', 'Active + Phone work'),
-  ('Needs Attention', jobs_suspended, '#dc2626', 'Suspended jobs'),
-  ('Awaiting Response', jobs_awaiting, '#f59e0b', 'From clients'),
-  ('Completed Today', completed_today, '#0d9488', 'Ready to invoice'),
+  ('Total Active', jobs_active + jobs_phone, '#d97706', 'Active + Phone work', 'active'),
+  ('Needs Attention', jobs_suspended, '#dc2626', 'Suspended jobs', 'suspended'),
+  ('Awaiting Response', jobs_awaiting, '#f59e0b', 'From clients', 'awaiting'),
+  ('Completed', completed_today, '#0d9488', 'Ready to invoice', 'completed_today'),
 ] %}
-<div class="row g-3 mb-4">
-  {% for label, value, colour, sub in summary_cards %}
+<div class="row g-3 mb-3">
+  {% for label, value, colour, sub, cat in summary_cards %}
   <div class="col-6 col-lg-3">
-    <div class="ax-summary-card" style="border-left-color:{{ colour }}">
+    <div class="ax-summary-card" style="border-left-color:{{ colour }}" data-category="{{ cat }}" onclick="loadDashJobs('{{ cat }}', this)">
       <div class="sc-label">{{ label }}</div>
       <div class="sc-value" style="color:{{ colour }}">{{ value }}</div>
       <div class="sc-sub">{{ sub }}</div>
@@ -73,62 +113,26 @@
   {% endfor %}
 </div>
 
-<div class="row g-2 mb-4">
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-all" href="/jobs">
-      <div class="ax-tile-title">All Jobs</div>
-      <div class="ax-tile-value">{{ jobs_all }}</div>
-    </a>
-  </div>
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-new" href="/jobs?status=New">
-      <div class="ax-tile-title">New</div>
-      <div class="ax-tile-value">{{ jobs_new }}</div>
-    </a>
-  </div>
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-active" href="/jobs?status=Active">
-      <div class="ax-tile-title">Active</div>
-      <div class="ax-tile-value">{{ jobs_active }}</div>
-    </a>
-  </div>
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-phone" href="/jobs?status=Active+-+Phone+work+only">
-      <div class="ax-tile-title">Phone Work</div>
-      <div class="ax-tile-value">{{ jobs_phone }}</div>
-    </a>
-  </div>
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-suspended" href="/jobs?status=Suspended">
-      <div class="ax-tile-title">Suspended</div>
-      <div class="ax-tile-value">{{ jobs_suspended }}</div>
-    </a>
-  </div>
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-awaiting" href="/jobs?status=Awaiting+info+from+client">
-      <div class="ax-tile-title">Awaiting</div>
-      <div class="ax-tile-value">{{ jobs_awaiting }}</div>
-    </a>
-  </div>
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a class="ax-mini-tile" href="/jobs?status=New">
+    New <span class="mt-qty" style="background:#16a34a">{{ jobs_new }}</span>
+  </a>
+  <a class="ax-mini-tile" href="/jobs?status=Active">
+    Active <span class="mt-qty" style="background:#d97706">{{ jobs_active }}</span>
+  </a>
+  <a class="ax-mini-tile" href="/jobs?status=Active+-+Phone+work+only">
+    Phone Work <span class="mt-qty" style="background:#2563eb">{{ jobs_phone }}</span>
+  </a>
+  <a class="ax-mini-tile" href="/jobs?status=Suspended">
+    Suspended <span class="mt-qty" style="background:#dc2626">{{ jobs_suspended }}</span>
+  </a>
+  <a class="ax-mini-tile" href="/jobs?status=Awaiting+info+from+client">
+    Awaiting <span class="mt-qty" style="background:#f59e0b">{{ jobs_awaiting }}</span>
+  </a>
   {% if session.get('role') != 'agent' %}
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-completed" href="/jobs?status=Completed">
-      <div class="ax-tile-title">Completed</div>
-      <div class="ax-tile-value">{{ jobs_completed }}</div>
-    </a>
-  </div>
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile ax-tile-invoiced" href="/jobs?status=Invoiced">
-      <div class="ax-tile-title">Invoiced</div>
-      <div class="ax-tile-value">{{ jobs_invoiced }}</div>
-    </a>
-  </div>
-  <div class="col-6 col-sm-4 col-md-3 col-xl">
-    <a class="ax-tile" href="/admin/archive" style="border-left:4px solid #d97706">
-      <div class="ax-tile-title">Archived</div>
-      <div class="ax-tile-value">{{ jobs_archived }}</div>
-    </a>
-  </div>
+  <a class="ax-mini-tile" href="/jobs?status=Completed">
+    Completed Today <span class="mt-qty" style="background:#0d9488">{{ completed_today }}</span>
+  </a>
   {% endif %}
 </div>
 
@@ -153,7 +157,9 @@
 
 <div class="row g-3">
   <div class="col-lg-8">
-    <div class="ax-card" style="overflow:hidden">
+    <div id="dashDetail" class="ax-card" style="overflow:hidden; display:none;"></div>
+
+    <div id="recentPanel" class="ax-card" style="overflow:hidden">
       <div class="ax-card-h d-flex align-items-center justify-content-between" style="padding:14px 18px;border-bottom:1px solid var(--line)">
         <div class="d-flex align-items-center gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -255,4 +261,110 @@
 {% if jobs_all == 0 %}
 <div style="color:var(--muted);text-align:center;padding:2rem 0;font-size:.9rem">No jobs yet.</div>
 {% endif %}
+
+<script>
+var _statusColours = {{ status_colours | tojson }};
+var _statusLabels = {{ status_labels | tojson }};
+var _todayIso = {{ today_iso | tojson }};
+var _activeCard = null;
+var _fetchSeq = 0;
+
+function _esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function loadDashJobs(category, cardEl) {
+  var cards = document.querySelectorAll('.ax-summary-card');
+  var detail = document.getElementById('dashDetail');
+  var recent = document.getElementById('recentPanel');
+
+  if (_activeCard === category) {
+    cards.forEach(function(c){ c.classList.remove('sc-active'); });
+    detail.style.display = 'none';
+    recent.style.display = '';
+    _activeCard = null;
+    return;
+  }
+
+  cards.forEach(function(c){ c.classList.remove('sc-active'); });
+  cardEl.classList.add('sc-active');
+  _activeCard = category;
+
+  detail.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--muted)">Loading...</div>';
+  detail.style.display = '';
+  recent.style.display = 'none';
+
+  var seq = ++_fetchSeq;
+  fetch('/dashboard/jobs?category=' + encodeURIComponent(category))
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (seq !== _fetchSeq) return;
+      var html = '<div class="ax-card-h d-flex align-items-center justify-content-between" style="padding:14px 18px;border-bottom:1px solid var(--line)">';
+      html += '<div class="d-flex align-items-center gap-2">';
+      html += '<span style="font-weight:600;font-size:.9rem">' + _esc(data.title) + '</span>';
+      html += '<span style="font-size:.75rem;color:var(--muted)">(' + parseInt(data.count,10) + ' jobs)</span>';
+      html += '</div>';
+      html += '<button class="dash-back-btn" onclick="closeDashDetail()">&lsaquo; Back to recent</button>';
+      html += '</div>';
+
+      if (!data.jobs || data.jobs.length === 0) {
+        html += '<div style="padding:2rem;text-align:center;color:var(--muted);font-size:.9rem">No jobs in this category.</div>';
+      } else {
+        for (var i = 0; i < data.jobs.length; i++) {
+          var j = data.jobs[i];
+          var pair = _statusColours[j.status] || ['#6b7280', '#f3f4f6'];
+          var sc = pair[0], sbg = pair[1];
+          var lbl = _statusLabels[j.status] || j.status;
+          var ua_str = '';
+          if (j.updated_at) {
+            var ua_date = j.updated_at.substring(0,10);
+            var ua_time = j.updated_at.substring(11,16);
+            if (ua_date === _todayIso) {
+              ua_str = 'Today ' + ua_time;
+            } else {
+              ua_str = j.updated_at.substring(8,10) + '/' + j.updated_at.substring(5,7) + ' ' + ua_time;
+            }
+          }
+          html += '<a href="/jobs/' + parseInt(j.id,10) + '" class="ax-feed-row">';
+          html += '<div class="d-flex align-items-center gap-3" style="flex:1;min-width:0">';
+          html += '<div class="ax-feed-icon" style="background:' + sbg + '">';
+          html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + sc + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>';
+          html += '</div>';
+          html += '<div style="min-width:0;flex:1">';
+          html += '<div class="d-flex align-items-center gap-2" style="margin-bottom:2px">';
+          html += '<span style="color:var(--accent);font-weight:600;font-size:.84rem">' + _esc(j.display_ref) + '</span>';
+          html += '<span style="font-weight:500;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(j.customer_label) + '</span>';
+          if (j.assigned_name) {
+            html += '<span style="font-size:.75rem;color:var(--muted);margin-left:auto;white-space:nowrap">' + _esc(j.assigned_name) + '</span>';
+          }
+          html += '</div>';
+          html += '<div class="d-flex align-items-center gap-2">';
+          html += '<span class="ax-status-badge" style="background:' + sbg + ';color:' + sc + ';border:1px solid ' + sc + '33">' + _esc(lbl) + '</span>';
+          if (!j.assigned_name) {
+            html += '<span style="font-size:.72rem;color:#dc2626;font-style:italic">Unassigned</span>';
+          }
+          html += '</div></div></div>';
+          if (ua_str) {
+            html += '<div style="font-size:.75rem;color:var(--muted);white-space:nowrap;margin-left:12px">' + ua_str + '</div>';
+          }
+          html += '</a>';
+        }
+      }
+      detail.innerHTML = html;
+    })
+    .catch(function(){
+      if (seq !== _fetchSeq) return;
+      detail.innerHTML = '<div style="padding:2rem;text-align:center;color:#dc2626;font-size:.9rem">Failed to load jobs.</div>';
+    });
+}
+
+function closeDashDetail() {
+  document.querySelectorAll('.ax-summary-card').forEach(function(c){ c.classList.remove('sc-active'); });
+  document.getElementById('dashDetail').style.display = 'none';
+  document.getElementById('recentPanel').style.display = '';
+  _activeCard = null;
+}
+</script>
 {% endblock %}

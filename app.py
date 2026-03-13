@@ -2686,6 +2686,72 @@ def dashboard():
         tomorrow_iso=(_today + _td(days=1)).isoformat())
 
 
+@app.get("/dashboard/jobs")
+@login_required
+def dashboard_jobs_api():
+    category = request.args.get("category", "").strip()
+    user_id = session.get("user_id")
+    role    = session.get("role")
+    conn = db()
+    cur  = conn.cursor()
+
+    _mel_now_d = datetime.now(_melbourne).date()
+    STATUS_MAP = {
+        "active":    "j.status IN ('Active','Active - Phone work only')",
+        "suspended": "j.status = 'Suspended'",
+        "awaiting":  "j.status = 'Awaiting info from client'",
+        "completed_today": f"j.status = 'Completed' AND date(j.updated_at) = '{_mel_now_d.isoformat()}'",
+    }
+    where = STATUS_MAP.get(category)
+    if not where:
+        return jsonify(jobs=[], title="Unknown")
+
+    TITLES = {"active": "Total Active", "suspended": "Needs Attention",
+              "awaiting": "Awaiting Response", "completed_today": "Completed"}
+
+    agent_subq = """
+        COALESCE(
+            (SELECT u2.full_name FROM schedules sx
+             JOIN users u2 ON u2.id = sx.assigned_to_user_id
+             WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed')
+             ORDER BY sx.scheduled_for ASC LIMIT 1),
+            u.full_name
+        ) AS assigned_name"""
+    sql = f"""
+        SELECT j.id, j.display_ref, j.status,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name, 'No customer') AS customer_label,
+               {agent_subq},
+               j.updated_at,
+               cu.address AS customer_address
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users u ON u.id = j.assigned_user_id
+        WHERE {where}"""
+    if role == "agent":
+        sql += """ AND (j.assigned_user_id = ? OR EXISTS (
+            SELECT 1 FROM schedules s WHERE s.job_id = j.id
+            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+        ))"""
+        sql += " ORDER BY j.updated_at DESC LIMIT 25"
+        cur.execute(sql, (user_id, user_id))
+    else:
+        sql += " ORDER BY j.updated_at DESC LIMIT 25"
+        cur.execute(sql)
+    rows = cur.fetchall()
+    conn.close()
+    jobs = []
+    for r in rows:
+        jobs.append({
+            "id": r["id"],
+            "display_ref": r["display_ref"],
+            "status": r["status"],
+            "customer_label": r["customer_label"],
+            "assigned_name": r["assigned_name"] or "",
+            "updated_at": r["updated_at"] or "",
+            "customer_address": r["customer_address"] or "",
+        })
+    return jsonify(jobs=jobs, title=TITLES.get(category, category), count=len(jobs))
+
 
 @app.get("/jobs")
 @login_required
