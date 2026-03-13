@@ -26,3 +26,4 @@ python-docx
 pytz
 reportlab
 werkzeug
+olefile

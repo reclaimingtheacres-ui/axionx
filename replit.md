@@ -249,6 +249,6 @@ Axion Prototype is a Flask-based field operations management application designe
 
 - **Database**: SQLite
 - **Frontend Libraries**: Bootstrap 5.3.3, Google Maps API, Leaflet.js, Leaflet.markercluster
-- **Backend Libraries**: Flask, `python-docx`, `pypdf`, `httpx[http2]`, `PyJWT`, `antiword` (external binary)
+- **Backend Libraries**: Flask, `python-docx`, `pypdf`, `httpx[http2]`, `PyJWT`, `olefile`, `antiword` (external binary, optional — `olefile` provides Python-native `.doc` fallback when antiword is unavailable, e.g. Azure deployment)
 - **AI Services**: OpenAI (gpt-4o-mini), Apple Core ML
 - **Mobile-Specific (iOS)**: WKWebView, SwiftUI, CoreLocation, NWPathMonitor, UNUserNotificationCenter, BackgroundTasks, MapKit

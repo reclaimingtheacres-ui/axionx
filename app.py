@@ -1108,29 +1108,137 @@ def _find_antiword():
     return None
 
 
-def _extract_text_doc(path):
-    import subprocess
-    antiword = _find_antiword()
-    if not antiword:
-        raise RuntimeError(
-            "Cannot read .doc files: antiword is not available. "
-            "Please save the file as .docx format and try again."
-        )
+def _extract_text_doc_olefile(path):
+    import olefile, re as _re, struct
+    ole = olefile.OleFileIO(path)
     try:
-        result = subprocess.run(
-            [antiword, "-w", "0", path],
-            capture_output=True, text=True, timeout=15
-        )
-    except FileNotFoundError:
-        raise RuntimeError(
-            "Cannot read .doc files: antiword could not be started. "
-            "Please save the file as .docx format and try again."
-        )
-    text = result.stdout.strip()
-    if not text and result.returncode != 0:
-        err = result.stderr.strip()
-        raise RuntimeError(f"Could not read the .doc file: {err or 'antiword returned no output'}")
-    return text
+        if not ole.exists("WordDocument"):
+            raise RuntimeError("Not a valid Word .doc file")
+        wd = ole.openstream("WordDocument").read()
+        if len(wd) < 24:
+            raise RuntimeError("WordDocument stream too short")
+        magic = struct.unpack_from("<H", wd, 0)[0]
+        flags = struct.unpack_from("<H", wd, 10)[0] if len(wd) > 12 else 0
+        is_complex = bool(flags & 0x0004)
+        ccpText = struct.unpack_from("<I", wd, 76)[0] if len(wd) > 80 else 0
+        table_name = "1Table" if (flags & 0x0200) else "0Table"
+        clx_data = None
+        if ole.exists(table_name):
+            clx_data = ole.openstream(table_name).read()
+        text_pieces = []
+        if clx_data and ccpText > 0:
+            i = 0
+            while i < len(clx_data):
+                if clx_data[i] == 0x02:
+                    if i + 4 > len(clx_data):
+                        break
+                    grpprl_len = struct.unpack_from("<H", clx_data, i + 1)[0]
+                    i += 3 + grpprl_len
+                elif clx_data[i] == 0x01:
+                    i += 1
+                    if i + 4 > len(clx_data):
+                        break
+                    n = struct.unpack_from("<I", clx_data, i)[0]
+                    i += 4
+                    cps = []
+                    for j in range(n + 1):
+                        if i + 4 > len(clx_data):
+                            break
+                        cps.append(struct.unpack_from("<I", clx_data, i)[0])
+                        i += 4
+                    for j in range(min(n, len(cps) - 1)):
+                        if i + 8 > len(clx_data):
+                            break
+                        fc_compressed = struct.unpack_from("<I", clx_data, i)[0]
+                        i += 8
+                        char_count = cps[j + 1] - cps[j]
+                        if char_count <= 0 or char_count > 500000:
+                            continue
+                        is_ansi = bool(fc_compressed & 0x40000000)
+                        fc_offset = fc_compressed & 0x3FFFFFFF
+                        if is_ansi:
+                            start = fc_offset // 2
+                            end = start + char_count
+                            if end <= len(wd):
+                                chunk = wd[start:end]
+                                text_pieces.append(chunk.decode("cp1252", errors="replace"))
+                        else:
+                            start = fc_offset
+                            end = start + char_count * 2
+                            if end <= len(wd):
+                                chunk = wd[start:end]
+                                text_pieces.append(chunk.decode("utf-16-le", errors="replace"))
+                    break
+                else:
+                    i += 1
+        text = "".join(text_pieces)
+        if len(text.strip()) < 20:
+            text_bytes = bytearray()
+            for b in wd:
+                if 32 <= b < 127 or b in (9, 10, 13):
+                    text_bytes.append(b)
+                else:
+                    text_bytes.append(32)
+            text = text_bytes.decode("ascii", errors="replace")
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        text = text.replace("\x07", "\t")
+        text = _re.sub(r'[^\x09\x0a\x20-\x7e\xc0-\xff]', ' ', text)
+        text = _re.sub(r'INCLUDEPICTURE\s+"[^"]*"[^\\]*(?:\\[^\n]*)*', '', text)
+        text = _re.sub(r'HYPERLINK\s+"[^"]*"[^\\]*(?:\\[^\n]*)*', '', text)
+        text = _re.sub(r'\\[ot]\s+"[^"]*"', '', text)
+        text = _re.sub(r'\\[*]\s+\w+', '', text)
+        text = _re.sub(r'[ \t]{3,}', '  ', text)
+        text = _re.sub(r'\n{3,}', '\n\n', text)
+        lines = []
+        skip_binary = True
+        for line in text.split('\n'):
+            stripped = line.strip()
+            if not stripped or len(stripped) <= 1:
+                continue
+            if skip_binary and _re.match(r'^[^a-zA-Z0-9]*$', stripped):
+                continue
+            if skip_binary and all(len(w) <= 2 for w in stripped.split()):
+                continue
+            has_alpha = sum(1 for c in stripped if c.isalpha())
+            if has_alpha < 3 and len(stripped) > 10:
+                continue
+            skip_binary = False
+            lines.append(stripped)
+        result = '\n'.join(lines)
+        return result.strip() if result.strip() else None
+    finally:
+        ole.close()
+
+
+def _extract_text_doc(path):
+    import subprocess, logging
+    _log = logging.getLogger(__name__)
+    antiword = _find_antiword()
+    if antiword:
+        try:
+            result = subprocess.run(
+                [antiword, "-w", "0", path],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                text = result.stdout.strip()
+                if text and len(text) > 10:
+                    return text
+            else:
+                _log.debug("antiword failed (rc=%d): %s", result.returncode, result.stderr.strip()[:200])
+        except FileNotFoundError:
+            _log.debug("antiword binary not found at %s", antiword)
+        except Exception as e:
+            _log.debug("antiword error: %s", e)
+    try:
+        text = _extract_text_doc_olefile(path)
+        if text:
+            return text
+    except Exception as e:
+        _log.debug("olefile .doc extraction failed: %s", e)
+    raise RuntimeError(
+        "Could not read .doc file. Try saving it as .docx format and uploading again."
+    )
 
 
 def _normalise_phone(s):
