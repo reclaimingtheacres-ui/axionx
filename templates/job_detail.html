@@ -270,7 +270,7 @@
                     <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.68rem;font-weight:600">{{ lc.role }}</span>
                     {% if lc.company %}<div class="fw-semibold small">{{ lc.company }}</div>{% endif %}
                     <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
-                    {% if lc.address %}<div class="small" style="color:var(--muted)">{{ lc.address }}</div>{% endif %}
+                    {% if lc.address or job.job_address %}<div class="small" style="color:var(--muted)">{{ lc.address or job.job_address }}</div>{% endif %}
                     {% if lc.primary_phone %}
                       <div class="small mt-1">
                         <span class="ax-ph" onclick="axPhone('{{ lc.primary_phone }}',event)">{{ lc.primary_phone }}</span>
