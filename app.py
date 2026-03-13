@@ -2520,11 +2520,22 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
 
     cur.execute("""
         UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
-        WHERE visit_type IN ('Urgent: Schedule Overdue', 'Schedule Due Today')
+        WHERE visit_type = 'Urgent: Schedule Overdue'
           AND status IN ('Pending', 'In Progress')
           AND job_id NOT IN (
               SELECT s.job_id FROM schedules s
-              WHERE date(s.scheduled_for, 'localtime') <= ?
+              WHERE date(s.scheduled_for, 'localtime') < ?
+                AND s.status NOT IN ('Cancelled', 'Completed')
+          )
+    """, (now_str, now_str, today))
+
+    cur.execute("""
+        UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+        WHERE visit_type = 'Schedule Due Today'
+          AND status IN ('Pending', 'In Progress')
+          AND job_id NOT IN (
+              SELECT s.job_id FROM schedules s
+              WHERE date(s.scheduled_for, 'localtime') = ?
                 AND s.status NOT IN ('Cancelled', 'Completed')
           )
     """, (now_str, now_str, today))
