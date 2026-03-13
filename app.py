@@ -10479,10 +10479,11 @@ def admin_settings():
         ai_usage = cur.fetchall()
     except Exception:
         ai_usage = []
+    clients_list = cur.execute("SELECT id, name FROM clients ORDER BY name").fetchall()
     conn.close()
     return render_template("settings.html", settings=settings, booking_types=booking_types,
                            tow_operators=tow_operators, auction_yards=auction_yards,
-                           ai_usage=ai_usage)
+                           ai_usage=ai_usage, clients_list=clients_list)
 
 
 @app.get("/admin/api/duplicates")
@@ -10490,6 +10491,9 @@ def admin_settings():
 @admin_required
 def admin_api_duplicates():
     conn = db()
+    q = (request.args.get("q") or "").strip().lower()
+    status_filter = (request.args.get("status") or "").strip()
+    client_filter = (request.args.get("client") or "").strip()
 
     base_sel = """
         SELECT j.id, j.display_ref, j.internal_job_number, j.account_number,
@@ -10502,35 +10506,50 @@ def admin_api_duplicates():
         LEFT JOIN customers cu ON cu.id = j.customer_id
     """
 
-    # --- Group 1: same internal_job_number (accidentally created duplicate jobs) ---
+    def _apply_filters(rows):
+        out = []
+        for r in rows:
+            if status_filter and r["status"] != status_filter:
+                continue
+            if client_filter and str(r.get("client_name") or "").lower() != client_filter.lower():
+                continue
+            if q:
+                haystack = " ".join(str(r.get(f) or "") for f in
+                    ("display_ref", "internal_job_number", "account_number",
+                     "client_reference", "lender_name", "client_name", "customer_name")).lower()
+                if q not in haystack:
+                    continue
+            out.append(dict(r))
+        return out
+
+    # --- Group 1: same internal_job_number ---
     rows_by_jobnum = conn.execute(base_sel + """
         WHERE j.internal_job_number IS NOT NULL AND j.internal_job_number != ''
         ORDER BY LOWER(j.internal_job_number), j.id
     """).fetchall()
 
     jobnum_groups = {}
-    for r in rows_by_jobnum:
+    for r in _apply_filters(rows_by_jobnum):
         key = (r["internal_job_number"] or "").strip().lower()
         if key:
-            jobnum_groups.setdefault(key, []).append(dict(r))
+            jobnum_groups.setdefault(key, []).append(r)
     dup_jobs_by_num = [
         {"key": v[0]["internal_job_number"].strip(), "match_type": "job_number", "jobs": v}
         for k, v in jobnum_groups.items() if len(v) > 1
     ]
 
-    # --- Group 2: same non-null account_number (same lender account on multiple jobs) ---
+    # --- Group 2: same non-null account_number ---
     rows_by_acct = conn.execute(base_sel + """
         WHERE j.account_number IS NOT NULL AND j.account_number != ''
         ORDER BY LOWER(j.account_number), j.id
     """).fetchall()
 
     acct_groups = {}
-    for r in rows_by_acct:
+    for r in _apply_filters(rows_by_acct):
         key = (r["account_number"] or "").strip().lower()
         if key:
-            acct_groups.setdefault(key, []).append(dict(r))
+            acct_groups.setdefault(key, []).append(r)
 
-    # Only include account_number groups that aren't already covered by job_number groups
     covered_ids = {j["id"] for grp in dup_jobs_by_num for j in grp["jobs"]}
     dup_jobs_by_acct = []
     for k, v in acct_groups.items():
@@ -10551,9 +10570,11 @@ def admin_api_duplicates():
     """).fetchall()
     name_groups = {}
     for r in dup_clients_raw:
-        key = (r["name"] or "").strip().lower()
-        if key:
-            name_groups.setdefault(key, []).append(dict(r))
+        rname = (r["name"] or "").strip().lower()
+        if rname:
+            if q and q not in rname:
+                continue
+            name_groups.setdefault(rname, []).append(dict(r))
     dup_clients = [
         {"key": k, "clients": v}
         for k, v in name_groups.items() if len(v) > 1

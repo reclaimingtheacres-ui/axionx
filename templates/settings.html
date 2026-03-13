@@ -414,9 +414,37 @@
     <div class="ax-card-h">Scan Existing Database</div>
     <div class="ax-card-b">
       <p class="small mb-3" style="color:var(--muted)">
-        Scans for duplicate <strong>jobs</strong> (same job number or account number) and duplicate <strong>clients</strong> (same name) already in the system.
+        Scans for duplicate <strong>jobs</strong> (same job number or account number) and duplicate <strong>clients</strong> (same name) already in the system. Use the search box to narrow results by name, account number, or contract reference.
       </p>
-      <button class="btn btn-primary btn-sm" onclick="dupScanDB()" id="dupScanDbBtn">Scan Database for Duplicates</button>
+      <div class="d-flex align-items-end gap-3 flex-wrap mb-3">
+        <div>
+          <label class="form-label mb-1" style="font-size:.75rem;font-weight:600">Search</label>
+          <input type="text" id="dupSearchQ" class="form-control form-control-sm" style="width:220px" placeholder="Name, account #, contract..." onkeydown="if(event.key==='Enter'){event.preventDefault();dupScanDB();}">
+        </div>
+        <div>
+          <label class="form-label mb-1" style="font-size:.75rem;font-weight:600">Status</label>
+          <select id="dupFilterStatus" class="form-select form-select-sm" style="width:160px">
+            <option value="">All Statuses</option>
+            <option value="New">New</option>
+            <option value="Active">Active</option>
+            <option value="Suspended">Suspended</option>
+            <option value="Awaiting info from client">Awaiting</option>
+            <option value="Completed">Completed</option>
+            <option value="Invoiced">Invoiced</option>
+            <option value="Archived - Invoiced">Archived</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label mb-1" style="font-size:.75rem;font-weight:600">Client</label>
+          <select id="dupFilterClient" class="form-select form-select-sm" style="width:180px">
+            <option value="">All Clients</option>
+            {% for cl in clients_list %}
+            <option value="{{ cl.name }}">{{ cl.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="dupScanDB()" id="dupScanDbBtn">Scan for Duplicates</button>
+      </div>
     </div>
   </div>
 
@@ -556,11 +584,14 @@ function dupScanDB() {
   document.getElementById('dupFileResultsSection').style.display = 'none';
   document.getElementById('dupDbMatchSection').style.display = 'none';
 
-  fetch('/admin/api/duplicates', {credentials: 'include'})
+  var _dq = encodeURIComponent((document.getElementById('dupSearchQ').value || '').trim());
+  var _ds = encodeURIComponent((document.getElementById('dupFilterStatus').value || '').trim());
+  var _dc = encodeURIComponent((document.getElementById('dupFilterClient').value || '').trim());
+  fetch('/admin/api/duplicates?q=' + _dq + '&status=' + _ds + '&client=' + _dc, {credentials: 'include'})
     .then(function(r) { return r.json(); })
     .then(function(data) {
       btn.disabled = false;
-      btn.textContent = 'Scan Database for Duplicates';
+      btn.textContent = 'Scan for Duplicates';
       loading.style.display = 'none';
       results.style.display = '';
 
@@ -625,7 +656,7 @@ function dupScanDB() {
     })
     .catch(function() {
       btn.disabled = false;
-      btn.textContent = 'Scan Database for Duplicates';
+      btn.textContent = 'Scan for Duplicates';
       loading.style.display = 'none';
       alert('Error scanning for duplicates. Please try again.');
     });
