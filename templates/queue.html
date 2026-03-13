@@ -236,7 +236,7 @@
     {% endif %}
   </td>
   {% if show_note_col %}
-  <td class="q-action-text">{{ c.instructions or '—' }}</td>
+  <td class="q-action-text" style="color:var(--accent);font-weight:600">New Note to Review</td>
   {% else %}
   <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
   {% endif %}
