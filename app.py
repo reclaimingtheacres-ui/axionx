@@ -3296,7 +3296,12 @@ def _job_new_render(conn):
                         autofill_confidence["customer_name"] = "created"
                         autofill_customer_is_new = True
                     except Exception:
-                        logging.exception("Auto-create customer from autofill failed")
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        import logging as _aclog
+                        _aclog.exception("Auto-create customer from autofill failed")
 
     if new_customer_id:
         cur.execute("SELECT address FROM customers WHERE id = ?", (new_customer_id,))
