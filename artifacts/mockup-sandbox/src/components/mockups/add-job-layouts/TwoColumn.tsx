@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Upload, Plus, Calendar, Clock, User, Car, DollarSign, FileText, MapPin, Sparkles, ChevronDown, ChevronRight, Info, AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Search, Upload, Plus, Calendar, Clock, User, Car, DollarSign, FileText, MapPin, Sparkles, ChevronDown, ChevronRight, Info, AlertTriangle, CheckCircle2, ShieldAlert, Save, CloudOff, RefreshCw } from "lucide-react";
 
 function Field({ label, placeholder, value, type, flex, children }: {
   label: string; placeholder?: string; value?: string; type?: string; flex?: string; children?: React.ReactNode;
@@ -166,8 +166,16 @@ export function TwoColumn() {
       <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px 40px" }}>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h1 style={{ fontSize: "1.2rem", fontWeight: 700, color: "#0f172a", margin: 0 }}>New Job</h1>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 4, padding: "3px 10px",
+              background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 99, fontSize: ".7rem",
+              color: "#16a34a", fontWeight: 500
+            }}>
+              <CheckCircle2 size={11} />
+              Draft saved 12s ago
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".78rem", color: "#374151", cursor: "pointer" }}>
@@ -303,11 +311,17 @@ export function TwoColumn() {
 
         <div style={{
           position: "sticky", bottom: 0, background: "#f1f5f9", padding: "12px 0 4px",
-          display: "flex", justifyContent: "flex-end", gap: 8, borderTop: "1px solid #e2e8f0", marginTop: 10
+          display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #e2e8f0", marginTop: 10
         }}>
-          <button style={{ padding: "7px 18px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".82rem", color: "#374151", cursor: "pointer" }}>Cancel</button>
-          <button style={{ padding: "7px 24px", background: "#1e293b", color: "#fff", border: "none", borderRadius: 7, fontSize: ".82rem", fontWeight: 600, cursor: "pointer" }}>Add Job</button>
-          <button style={{ padding: "7px 24px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 7, fontSize: ".82rem", fontWeight: 600, cursor: "pointer" }}>Save Job</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: ".72rem", color: "#94a3b8" }}>
+            <Save size={12} />
+            <span>Auto-saves every 10s · Incomplete jobs appear in <strong style={{ color: "#64748b" }}>Queue</strong> for completion</span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={{ padding: "7px 18px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".82rem", color: "#374151", cursor: "pointer" }}>Cancel</button>
+            <button style={{ padding: "7px 24px", background: "#1e293b", color: "#fff", border: "none", borderRadius: 7, fontSize: ".82rem", fontWeight: 600, cursor: "pointer" }}>Add Job</button>
+            <button style={{ padding: "7px 24px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 7, fontSize: ".82rem", fontWeight: 600, cursor: "pointer" }}>Save Job</button>
+          </div>
         </div>
 
       </div>
