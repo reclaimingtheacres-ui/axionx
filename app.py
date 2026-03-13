@@ -2710,7 +2710,7 @@ def dashboard():
 
     jobs_unassigned = 0
     if role in ("admin", "both"):
-        jobs_unassigned = jcount(f"assigned_user_id IS NULL AND {_excl_arch}")
+        jobs_unassigned = jcount("assigned_user_id IS NULL AND status NOT IN ('Completed','Invoiced','Archived - Invoiced','Cold Stored')")
 
     agent_subq = """
         COALESCE(
@@ -2994,7 +2994,7 @@ def jobs_list():
 
     filter_unassigned = request.args.get("unassigned", "").strip()
     if filter_unassigned == "1":
-        from_where += " AND j.assigned_user_id IS NULL"
+        from_where += " AND j.assigned_user_id IS NULL AND j.status NOT IN ('Completed','Invoiced','Archived - Invoiced','Cold Stored')"
 
     if filter_agent and role in ("admin", "both"):
         from_where += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled')))"
