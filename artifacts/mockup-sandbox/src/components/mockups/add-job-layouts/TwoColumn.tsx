@@ -1,4 +1,5 @@
-import { Search, Upload, Plus, Calendar, Clock, User, Car, DollarSign, FileText, MapPin } from "lucide-react";
+import { useState } from "react";
+import { Search, Upload, Plus, Calendar, Clock, User, Car, DollarSign, FileText, MapPin, Sparkles, ChevronDown, ChevronRight, Info } from "lucide-react";
 
 function Field({ label, placeholder, value, type, flex, children }: {
   label: string; placeholder?: string; value?: string; type?: string; flex?: string; children?: React.ReactNode;
@@ -39,6 +40,88 @@ function Card({ title, icon: Icon, children, muted }: { title: string; icon: any
         {muted && <span style={{ marginLeft: "auto", fontSize: ".65rem", color: "#94a3b8", fontWeight: 500 }}>optional</span>}
       </div>
       <div style={{ padding: "10px 12px" }}>{children}</div>
+    </div>
+  );
+}
+
+function SecurityAssetBlock() {
+  const [showParsed, setShowParsed] = useState(false);
+  const hasDescription = true;
+
+  return (
+    <div style={{ background: "#f8fafc", borderRadius: 7, padding: "8px 10px", border: "1px solid #f1f5f9" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <Sel label="TYPE" value="Vehicle" options={["Vehicle", "Equipment", "Property", "Other"]} flex="100px" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <label style={{ display: "block", fontSize: ".7rem", fontWeight: 600, color: "#64748b", marginBottom: 2, letterSpacing: ".03em" }}>DESCRIPTION</label>
+          <input
+            value="2019 Ford Ranger XL REG: ABC123 VIN: 6FPPXXMJ2PKL12345 White"
+            readOnly
+            style={{
+              width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6,
+              fontSize: ".8rem", color: "#1e293b", background: "#fff", outline: "none"
+            }}
+          />
+        </div>
+      </div>
+
+      {hasDescription && (
+        <div style={{ marginBottom: 6 }}>
+          <button
+            onClick={() => setShowParsed(!showParsed)}
+            style={{
+              display: "flex", alignItems: "center", gap: 4, background: "none", border: "none",
+              padding: "2px 0", fontSize: ".72rem", color: "#2563eb", cursor: "pointer", fontWeight: 500
+            }}
+          >
+            <Sparkles size={11} />
+            Auto-parsed details
+            {showParsed ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </button>
+          {showParsed && (
+            <div style={{
+              marginTop: 4, padding: "6px 8px", background: "#eff6ff", borderRadius: 6,
+              border: "1px solid #dbeafe", display: "flex", gap: 10, flexWrap: "wrap"
+            }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", flex: 1 }}>
+                {[
+                  ["Year", "2019"],
+                  ["Make", "Ford"],
+                  ["Model", "Ranger XL"],
+                  ["Colour", "White"],
+                  ["Engine", "—"],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: ".62rem", color: "#64748b", fontWeight: 600, letterSpacing: ".04em" }}>{k}</div>
+                    <div style={{ fontSize: ".76rem", color: "#1e293b", fontWeight: 600 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, alignSelf: "center" }}>
+                <Info size={11} color="#94a3b8" />
+                <span style={{ fontSize: ".65rem", color: "#94a3b8" }}>Parsed from description — used for forms</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <Field label="REGO" placeholder="ABC123" value="ABC123" />
+        <Field label="VIN" placeholder="VIN number" value="6FPPXXMJ2PKL12345" />
+        <Field label="COLOUR" placeholder="White" value="White" />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <Field label="ASSET ADDRESS" placeholder="Property/site address" />
+        <Field label="SERIAL" placeholder="Equipment serial" flex="140px" />
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <label style={{ display: "block", fontSize: ".7rem", fontWeight: 600, color: "#64748b", marginBottom: 2 }}>NOTES</label>
+        <input placeholder="Rego expiry, status, etc." readOnly style={{
+          width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6,
+          fontSize: ".8rem", outline: "none"
+        }} />
+      </div>
     </div>
   );
 }
@@ -112,27 +195,7 @@ export function TwoColumn() {
             </div>
 
             <Card title="Security / Asset" icon={Car} muted>
-              <div style={{ background: "#f8fafc", borderRadius: 7, padding: "8px 10px", border: "1px solid #f1f5f9" }}>
-                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                  <Sel label="TYPE" value="Vehicle" options={["Vehicle", "Equipment", "Property", "Other"]} flex="100px" />
-                  <Field label="DESCRIPTION" placeholder="e.g. 2019 Ford Ranger XL" />
-                </div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                  <Field label="YEAR" placeholder="2019" flex="60px" />
-                  <Field label="MAKE" placeholder="Ford" flex="90px" />
-                  <Field label="MODEL" placeholder="Ranger" flex="90px" />
-                  <Field label="COLOUR" placeholder="White" flex="70px" />
-                </div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                  <Field label="REGO" placeholder="ABC123" />
-                  <Field label="VIN" placeholder="VIN number" />
-                  <Field label="ENGINE" placeholder="Engine #" />
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Field label="ASSET ADDRESS" placeholder="Property/site address" />
-                  <Field label="SERIAL" placeholder="Equipment serial" flex="140px" />
-                </div>
-              </div>
+              <SecurityAssetBlock />
               <button style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, background: "none", border: "1px dashed #cbd5e1", borderRadius: 6, padding: "3px 10px", fontSize: ".74rem", color: "#2563eb", fontWeight: 600, cursor: "pointer" }}>
                 <Plus size={12} /> Add Another
               </button>
