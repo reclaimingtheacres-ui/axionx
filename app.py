@@ -2708,6 +2708,10 @@ def dashboard():
         jobs_invoiced  = jcount("status = 'Invoiced'")
         jobs_archived  = jcount("status = 'Archived - Invoiced'")
 
+    jobs_unassigned = 0
+    if role in ("admin", "both"):
+        jobs_unassigned = jcount(f"assigned_user_id IS NULL AND {_excl_arch}")
+
     agent_subq = """
         COALESCE(
             (SELECT u2.full_name FROM schedules sx
@@ -2807,6 +2811,7 @@ def dashboard():
         recent_activity=recent_activity,
         upcoming_schedules=upcoming_schedules,
         completed_today=completed_today,
+        jobs_unassigned=jobs_unassigned,
         today_iso=_today.isoformat(),
         tomorrow_iso=(_today + _td(days=1)).isoformat())
 
@@ -2986,6 +2991,10 @@ def jobs_list():
     if filter_client:
         from_where += " AND j.client_id = ?"
         params.append(filter_client)
+
+    filter_unassigned = request.args.get("unassigned", "").strip()
+    if filter_unassigned == "1":
+        from_where += " AND j.assigned_user_id IS NULL"
 
     if filter_agent and role in ("admin", "both"):
         from_where += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled')))"
