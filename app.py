@@ -2508,12 +2508,35 @@ def index():
 
 
 def auto_queue_schedule_alerts(cur, admin_user_id):
-    """Auto-create queue items for jobs with overdue/today/tomorrow schedules."""
+    """Auto-create queue items for jobs with overdue/today/tomorrow schedules.
+    Also auto-completes stale overdue/today cue items when the schedule has
+    been rescheduled to a future date, and skips jobs that already have a
+    pending Agent Note Review cue item."""
     import datetime as _dt
     _mel_now = datetime.now(_melbourne)
     today = _mel_now.date().isoformat()
     tomorrow = (_mel_now.date() + _dt.timedelta(days=1)).isoformat()
     now_str = _mel_now.isoformat(timespec="seconds")
+
+    cur.execute("""
+        UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+        WHERE visit_type IN ('Urgent: Schedule Overdue', 'Schedule Due Today')
+          AND status IN ('Pending', 'In Progress')
+          AND job_id NOT IN (
+              SELECT s.job_id FROM schedules s
+              WHERE date(s.scheduled_for, 'localtime') <= ?
+                AND s.status NOT IN ('Cancelled', 'Completed')
+          )
+    """, (now_str, now_str, today))
+
+    note_job_ids = set()
+    cur.execute("""
+        SELECT job_id FROM cue_items
+        WHERE visit_type = 'Agent Note Review'
+          AND status = 'Pending'
+    """)
+    for r in cur.fetchall():
+        note_job_ids.add(r["job_id"])
 
     cur.execute("""
         SELECT j.id, j.display_ref, s.scheduled_for,
@@ -2523,6 +2546,7 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
             SELECT job_id, MIN(scheduled_for) AS scheduled_for
             FROM schedules
             WHERE date(scheduled_for,'localtime') <= ?
+              AND status NOT IN ('Cancelled', 'Completed')
             GROUP BY job_id
         ) s ON s.job_id = j.id
         WHERE j.status NOT IN ('Completed', 'Invoiced', 'New', 'Archived - Invoiced', 'Cold Stored')
@@ -2536,6 +2560,9 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
     }
 
     for row in candidates:
+        if row["id"] in note_job_ids:
+            continue
+
         sched_date = row["sched_date"]
         if sched_date < today:
             bucket = "past"
@@ -10797,16 +10824,21 @@ def job_queue():
 
     _arch_excl = f"AND j.status NOT IN {ARCHIVED_STATUSES!r}"
 
+    _note_excl = """AND ci.job_id NOT IN (
+        SELECT job_id FROM cue_items
+        WHERE visit_type = 'Agent Note Review' AND status = 'Pending'
+    )"""
+
     cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')
-        {_arch_excl}
+        {_arch_excl} {_note_excl}
         ORDER BY ci.priority DESC, ci.created_at DESC
     """, overdue_types)
     overdue = cur.fetchall()
 
     cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
-        {_arch_excl}
+        {_arch_excl} {_note_excl}
         ORDER BY ci.created_at DESC
     """, (tomorrow_type,))
     due_tomorrow = cur.fetchall()
