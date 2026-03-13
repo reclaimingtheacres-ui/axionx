@@ -820,7 +820,11 @@ function toggleParsed(btn) {
 
     fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
       .then(function(r){ return r.text(); })
-      .then(function(html){ body.innerHTML = html; wireModalForm(); })
+      .then(function(html){
+        body.innerHTML = html;
+        wireModalForm();
+        if (typeof attachAddressAutocomplete === 'function') attachAddressAutocomplete(modalEl);
+      })
       .catch(function(){ body.innerHTML = '<p class="text-danger">Could not load form.</p>'; });
   };
 
