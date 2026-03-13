@@ -6,11 +6,16 @@
 <style>
   .jobs-sticky-header{
     position: sticky;
-    top: 0;
+    top: -1px;
     z-index: 20;
-    background: var(--card);
+    background: var(--card, #fff);
     border-radius: 16px 16px 0 0;
     border-bottom: 1px solid var(--line);
+    padding-bottom: 0;
+  }
+  .jobs-sticky-header.is-stuck{
+    border-radius: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
   }
   .ax-job-row{
     display: flex;
@@ -57,7 +62,7 @@
   }
 </style>
 
-<div class="ax-card" style="overflow:hidden">
+<div class="ax-card" style="overflow:clip">
   <div class="jobs-sticky-header">
     <div style="padding:12px 16px 0;display:flex;justify-content:space-between;align-items:center">
       <span style="font-weight:650;font-size:.95rem">Jobs</span>
@@ -165,6 +170,17 @@
     if (e.target.closest('form, select, button')) return;
     window.location.href = '/jobs/' + id;
   }
+  (function(){
+    var hdr = document.querySelector('.jobs-sticky-header');
+    if (!hdr || !window.IntersectionObserver) return;
+    var sentinel = document.createElement('div');
+    sentinel.style.height = '1px';
+    sentinel.style.marginBottom = '-1px';
+    hdr.parentNode.insertBefore(sentinel, hdr);
+    new IntersectionObserver(function(entries){
+      hdr.classList.toggle('is-stuck', !entries[0].isIntersecting);
+    }, {threshold: 1}).observe(sentinel);
+  })();
   </script>
 
   <div>
