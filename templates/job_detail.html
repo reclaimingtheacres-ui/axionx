@@ -1230,12 +1230,13 @@
             <thead>
               <tr>
                 <th>Date</th><th>Time</th><th>Type</th><th>Assigned</th><th>Notes</th><th>Status</th>
+                {% if session.get('role') in ('admin', 'both') %}<th style="width:1%"></th>{% endif %}
               </tr>
             </thead>
             <tbody>
               {% for s in schedules %}
               {% set is_terminal = s.status in ('Completed', 'Cancelled') %}
-              <tr>
+              <tr id="sched-row-{{ s.id }}">
                 <td>{{ s.scheduled_for[:10].split('-')|reverse|join('/') }}</td>
                 <td>{{ s.scheduled_for[11:16] }}</td>
                 <td>{{ s.booking_type_name }}</td>
@@ -1264,6 +1265,57 @@
                     </form>
                     {% endif %}
                   {% endif %}
+                </td>
+                {% if session.get('role') in ('admin', 'both') %}
+                <td>
+                  {% if not is_terminal %}
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                          style="font-size:.72rem;line-height:1.5;white-space:nowrap"
+                          onclick="openSchedEdit({{ s.id }}, {{ s.scheduled_for[:10] | tojson }}, {{ s.scheduled_for[11:16] | tojson }}, {{ s.booking_type_id | tojson }}, {{ (s.booking_type_name or '') | tojson }}, {{ (s.assigned_to_user_id or '') | tojson }}, {{ (s.notes or '') | tojson }})">
+                    Edit
+                  </button>
+                  {% endif %}
+                </td>
+                {% endif %}
+              </tr>
+              <tr id="sched-edit-{{ s.id }}" style="display:none;">
+                <td colspan="7" style="background:#f8fafc;padding:12px 14px;">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-auto">
+                      <label class="form-label mb-0" style="font-size:.72rem;font-weight:600">Date</label>
+                      <input type="date" id="se-date-{{ s.id }}" class="form-control form-control-sm" style="width:140px">
+                    </div>
+                    <div class="col-auto">
+                      <label class="form-label mb-0" style="font-size:.72rem;font-weight:600">Time</label>
+                      <input type="time" id="se-time-{{ s.id }}" class="form-control form-control-sm" style="width:120px">
+                    </div>
+                    <div class="col-auto">
+                      <label class="form-label mb-0" style="font-size:.72rem;font-weight:600">Type</label>
+                      <select id="se-bt-{{ s.id }}" class="form-select form-select-sm" style="width:160px">
+                        {% for bt in booking_types %}
+                        <option value="{{ bt.id }}">{{ bt.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="col-auto">
+                      <label class="form-label mb-0" style="font-size:.72rem;font-weight:600">Assigned</label>
+                      <select id="se-agent-{{ s.id }}" class="form-select form-select-sm" style="width:160px">
+                        <option value="">Unassigned</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.full_name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="col">
+                      <label class="form-label mb-0" style="font-size:.72rem;font-weight:600">Notes</label>
+                      <input type="text" id="se-notes-{{ s.id }}" class="form-control form-control-sm" placeholder="Notes">
+                    </div>
+                    <div class="col-auto d-flex gap-1">
+                      <button type="button" class="btn btn-sm btn-primary px-3" onclick="saveSchedEdit({{ s.id }})">Save</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary px-2" onclick="closeSchedEdit({{ s.id }})">Cancel</button>
+                    </div>
+                  </div>
+                  <div id="se-msg-{{ s.id }}" class="mt-1" style="font-size:.78rem;display:none;"></div>
                 </td>
               </tr>
               {% endfor %}
@@ -4672,6 +4724,59 @@ function axSaveClient() {
       })
       .catch(function() {});
   }
+
+  window.openSchedEdit = function(sid, dateStr, timeStr, btId, btName, agentId, notes) {
+    document.querySelectorAll('[id^="sched-edit-"]').forEach(function(r){ r.style.display='none'; });
+    var row = document.getElementById('sched-edit-' + sid);
+    if (!row) return;
+    row.style.display = '';
+    document.getElementById('se-date-' + sid).value = dateStr;
+    document.getElementById('se-time-' + sid).value = timeStr;
+    var btSel = document.getElementById('se-bt-' + sid);
+    if (btSel) btSel.value = btId || '';
+    var agSel = document.getElementById('se-agent-' + sid);
+    if (agSel) agSel.value = agentId || '';
+    document.getElementById('se-notes-' + sid).value = notes || '';
+    var msg = document.getElementById('se-msg-' + sid);
+    if (msg) { msg.style.display = 'none'; msg.textContent = ''; }
+  };
+
+  window.closeSchedEdit = function(sid) {
+    var row = document.getElementById('sched-edit-' + sid);
+    if (row) row.style.display = 'none';
+  };
+
+  window.saveSchedEdit = function(sid) {
+    var dateVal = document.getElementById('se-date-' + sid).value;
+    var timeVal = document.getElementById('se-time-' + sid).value || '09:00';
+    var btId = document.getElementById('se-bt-' + sid).value;
+    var agentId = document.getElementById('se-agent-' + sid).value;
+    var notes = document.getElementById('se-notes-' + sid).value;
+    var msg = document.getElementById('se-msg-' + sid);
+
+    if (!dateVal) { alert('Please select a date.'); return; }
+
+    var dt = dateVal + 'T' + timeVal + ':00';
+    var fd = new FormData();
+    fd.append('scheduled_for', dt);
+    fd.append('booking_type_id', btId);
+    fd.append('assigned_to_user_id', agentId);
+    fd.append('notes', notes);
+
+    fetch('/schedule/api/' + sid + '/update', { method: 'POST', body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (!data.ok) {
+          if (msg) { msg.textContent = data.error || 'Error saving.'; msg.style.display = ''; msg.style.color = '#dc2626'; }
+          return;
+        }
+        if (msg) { msg.textContent = 'Saved.'; msg.style.display = ''; msg.style.color = '#16a34a'; }
+        setTimeout(function(){ closeSchedEdit(sid); refreshScheduleTable(); }, 600);
+      })
+      .catch(function(){
+        if (msg) { msg.textContent = 'Network error.'; msg.style.display = ''; msg.style.color = '#dc2626'; }
+      });
+  };
 })();
 </script>
 
