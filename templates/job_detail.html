@@ -2203,7 +2203,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     {% if next_schedule %}
     <div class="fw-semibold">{{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }}</div>
     <div style="color:var(--muted)">{{ next_schedule.scheduled_for[11:16] }}{% if next_schedule.assigned_to_name %} &mdash; {{ next_schedule.assigned_to_name }}{% endif %}</div>
-    {% if next_schedule.booking_type %}<div class="small" style="color:var(--muted)">{{ next_schedule.booking_type }}</div>{% endif %}
+    {% if next_schedule.booking_type_name %}<div class="small" style="color:var(--muted)">{{ next_schedule.booking_type_name }}</div>{% endif %}
     {% else %}
     <span style="color:var(--muted)">No upcoming booking</span>
     {% endif %}
