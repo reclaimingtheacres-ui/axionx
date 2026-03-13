@@ -1579,9 +1579,10 @@ def _parse_instruction_text(text):
         r"Chassis\s*(?:No\.?|Number)[:\s]*([A-HJ-NPR-Z0-9]{11,17})",
     ])
     rego  = find_after([
-        r"\bReg(?:istration|o)?\b[:\s#]*([A-Za-z0-9]{2,9})\b",
-        r"\bPlate\b[:\s]*([A-Za-z0-9]{2,9})\b",
-        r"Registration\s*(?:Plate|Number)?[:\s]*([A-Za-z0-9]{2,9})\b",
+        r"Registration\s*(?:Plate|Number)?[:\s]+([A-Za-z0-9]{2,9})\b",
+        r"(?<![A-Za-z])Rego[:\s#]+([A-Za-z0-9]{2,9})\b",
+        r"(?<![A-Za-z])Reg[:\s#]+([A-Za-z0-9]{2,9})\b",
+        r"\bPlate\b[:\s]+([A-Za-z0-9]{2,9})\b",
     ])
     engine_no = find_after([
         r"Engine\s*[#\s]*(?:No\.?|Number)?[:\s]*([A-Za-z0-9\-\/]+)",
