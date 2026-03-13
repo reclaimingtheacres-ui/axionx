@@ -405,6 +405,10 @@
               onsubmit="this.querySelector('button[type=submit]').disabled=true;">
           <button type="submit" class="btn btn-outline-warning btn-sm" id="repairDueDatesBtn">Repair Due Dates</button>
         </form>
+        <form method="post" action="/admin/geoop-import/backfill-job-ids" class="d-inline ms-2"
+              onsubmit="this.querySelector('button[type=submit]').disabled=true; return confirm('This will backfill geoop_job_id on all previously imported jobs using staging data. This must be run before attachment ZIP recovery to enable direct job ID matching. Continue?');">
+          <button type="submit" class="btn btn-outline-success btn-sm" id="backfillJobIdsBtn">Backfill GeoOp Job IDs</button>
+        </form>
         <span id="repairDatesStatus" class="small text-muted"></span>
         <span id="repairRegsStatus" class="small text-muted ms-2"></span>
         <span id="repairDueDatesStatus" class="small text-muted ms-2"></span>
@@ -1446,6 +1450,7 @@ function _renderAuditResult(d) {
           if (d.current_zip) parts.push(d.current_zip);
           parts.push('Scanned: ' + (d.entries_scanned||0).toLocaleString());
           parts.push('Restored: ' + (d.files_restored||0).toLocaleString());
+          if (d.direct_linked) parts.push('Direct-linked: ' + d.direct_linked.toLocaleString());
           if (d.already_present) parts.push('Already present: ' + d.already_present.toLocaleString());
           parts.push('ZIPs: ' + (d.zips_processed||0) + '/' + (d.zips_total||0));
           statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + parts.join(' | ');
@@ -1453,7 +1458,9 @@ function _renderAuditResult(d) {
           setTimeout(pollRecovery, 2000);
         } else if (d.status === 'complete') {
           var msg = 'Done — ' + (d.files_restored||0).toLocaleString() + ' files restored';
+          if (d.direct_linked) msg += ', ' + d.direct_linked.toLocaleString() + ' direct-linked by job ID';
           if (d.already_present) msg += ', ' + d.already_present.toLocaleString() + ' already present';
+          if (d.skipped_no_match) msg += ', ' + d.skipped_no_match.toLocaleString() + ' no job match';
           if (d.no_db_mapping) msg += ', ' + d.no_db_mapping.toLocaleString() + ' no mapping';
           if (d.errors) msg += ', ' + d.errors.toLocaleString() + ' errors';
           statusEl.textContent = msg;

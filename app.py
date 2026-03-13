@@ -570,6 +570,7 @@ def init_db():
 
     add_column_if_missing(cur, "jobs", "costs2_cents", "INTEGER")
     add_column_if_missing(cur, "jobs", "geoop_source_description", "TEXT")
+    add_column_if_missing(cur, "jobs", "geoop_job_id", "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_payments (
@@ -10009,6 +10010,19 @@ def geoop_repair_phones():
         flash("Phone number repair started. Restoring leading zeroes and international prefixes.", "info")
     else:
         flash("Phone repair is already running. Please wait.", "warning")
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.post("/admin/geoop-import/backfill-job-ids")
+@admin_required
+def geoop_backfill_job_ids():
+    import logging as _log
+    try:
+        result = _geoop.backfill_geoop_job_ids()
+        flash(f"GeoOp Job ID backfill complete: {result['updated']} updated, {result['skipped']} skipped.", "success")
+    except Exception as e:
+        _log.getLogger(__name__).error("Backfill geoop_job_ids error: %s", e)
+        flash(f"Backfill error: {str(e)[:200]}", "danger")
     return redirect(url_for("geoop_import_page"))
 
 

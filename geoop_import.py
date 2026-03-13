@@ -1251,8 +1251,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
         geoop_id = sj["geoop_job_id"]
 
         existing = conn.execute(
-            "SELECT id FROM jobs WHERE internal_job_number=? OR client_job_number=?",
-            (sj["reference_no"], geoop_id)
+            "SELECT id FROM jobs WHERE internal_job_number=? OR client_job_number=? OR geoop_job_id=?",
+            (sj["reference_no"], geoop_id, str(geoop_id).strip())
         ).fetchone()
 
         if existing and mode == "insert_only":
@@ -1321,7 +1321,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     lender_name=?, account_number=?, regulation_type=?,
                     arrears_cents=?, costs_cents=?,
                     mmp_cents=?, job_due_date=?,
-                    deliver_to=?, client_id=COALESCE(?, client_id), updated_at=?
+                    deliver_to=?, client_id=COALESCE(?, client_id),
+                    geoop_job_id=COALESCE(geoop_job_id, ?), updated_at=?
                 WHERE id=?
             """, (
                 status, full_address, sj["raw_description"],
@@ -1330,7 +1331,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 sj["parsed_regulation_type"] or "",
                 sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
                 sj["parsed_nmpd_amount_cents"] or 0, sj["parsed_nmpd_date"] or "",
-                sj["parsed_deliver_to"] or "", client_id, ts,
+                sj["parsed_deliver_to"] or "", client_id,
+                str(geoop_id).strip(), ts,
                 existing["id"]
             ))
             legacy_exists = conn.execute(
@@ -1359,9 +1361,9 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     job_address, description, geoop_source_description,
                     lender_name, account_number, regulation_type,
                     arrears_cents, costs_cents, mmp_cents, job_due_date,
-                    deliver_to, client_job_number,
+                    deliver_to, client_job_number, geoop_job_id,
                     created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 ref_no, ref_no, sj["parsed_account_number"] or "",
                 cust_id, client_id, job_type, "New Visit", status, "Normal",
@@ -1370,7 +1372,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 sj["parsed_regulation_type"] or "",
                 sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
                 sj["parsed_nmpd_amount_cents"] or 0, sj["parsed_nmpd_date"] or "",
-                sj["parsed_deliver_to"] or "", geoop_id,
+                sj["parsed_deliver_to"] or "", geoop_id, str(geoop_id).strip(),
                 ts, ts
             ))
             axion_job_id = cur.lastrowid
@@ -1820,6 +1822,50 @@ def _ensure_job_note_file(conn, axion_note_id, staging_note, ts):
         """, (axion_note_id, stored, stored, ts))
     except Exception:
         pass
+
+
+def backfill_geoop_job_ids(conn=None):
+    import logging as _log
+    log = _log.getLogger("geoop_import")
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+    try:
+        rows = conn.execute("""
+            SELECT geoop_job_id, axion_job_id
+            FROM geoop_staging_jobs
+            WHERE axion_job_id IS NOT NULL AND geoop_job_id IS NOT NULL AND geoop_job_id != ''
+        """).fetchall()
+        updated = 0
+        skipped = 0
+        for r in rows:
+            gid = str(r["geoop_job_id"]).strip()
+            aid = r["axion_job_id"]
+            if not gid:
+                continue
+            existing = conn.execute(
+                "SELECT geoop_job_id FROM jobs WHERE id=?", (aid,)
+            ).fetchone()
+            if not existing:
+                skipped += 1
+                continue
+            current = (existing["geoop_job_id"] or "").strip()
+            if current == gid:
+                skipped += 1
+                continue
+            if current:
+                log.debug("Backfill geoop_job_ids: job %d already has geoop_job_id=%s, staging says %s — skipping", aid, current, gid)
+                skipped += 1
+                continue
+            conn.execute("UPDATE jobs SET geoop_job_id=? WHERE id=?", (gid, aid))
+            updated += 1
+        conn.commit()
+        log.info("Backfill geoop_job_ids: %d updated, %d skipped", updated, skipped)
+        return {"updated": updated, "skipped": skipped}
+    finally:
+        if close:
+            conn.close()
 
 
 def _link_staged_attachments(conn):
@@ -2795,20 +2841,28 @@ def _parse_zip_entry_path(path_str):
         if p == "attachments":
             att_idx = i
             break
-    if att_idx is not None and len(parts) >= att_idx + 4:
-        geoop_job_id = parts[att_idx + 1]
-        geoop_note_id = parts[att_idx + 2]
+    if att_idx is not None and len(parts) >= att_idx + 5:
+        account_id = parts[att_idx + 1].strip()
+        geoop_job_id = parts[att_idx + 2].strip()
+        geoop_note_id = parts[att_idx + 3].strip()
         if not geoop_job_id or not geoop_note_id:
             return None
         raw_filename = parts[-1]
-        underscore_idx = raw_filename.find("_")
-        filename = raw_filename[underscore_idx + 1:] if underscore_idx > 0 else raw_filename
-        if not filename:
+        if not raw_filename:
             return None
-        return geoop_job_id, geoop_note_id, filename
+        return geoop_job_id, geoop_note_id, raw_filename
+    if att_idx is not None and len(parts) >= att_idx + 4:
+        geoop_job_id = parts[att_idx + 1].strip()
+        geoop_note_id = parts[att_idx + 2].strip()
+        if not geoop_job_id or not geoop_note_id:
+            return None
+        raw_filename = parts[-1]
+        if not raw_filename:
+            return None
+        return geoop_job_id, geoop_note_id, raw_filename
     if len(parts) >= 4 and parts[0].isdigit() and parts[1].isdigit() and parts[2].isdigit():
-        geoop_job_id = parts[1]
-        geoop_note_id = parts[2]
+        geoop_job_id = parts[1].strip()
+        geoop_note_id = parts[2].strip()
         filename = parts[-1]
         if not filename:
             return None
@@ -2828,9 +2882,12 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
         "files_restored": 0,
         "already_present": 0,
         "no_db_mapping": 0,
+        "direct_linked": 0,
+        "skipped_no_match": 0,
         "parse_failed": 0,
         "errors": 0,
         "current_zip": "",
+        "unmatched_diagnostics": [],
     })
     target_dir = upload_dir or UPLOAD_FOLDER
 
@@ -2849,21 +2906,28 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
                       AND import_status = 'imported'
                     ORDER BY id DESC
                 """).fetchall():
-                    key = (r["geoop_note_id"], r["file_name"])
+                    key = (str(r["geoop_note_id"]).strip(), r["file_name"])
                     if key not in sf_map:
                         sf_map[key] = r["stored_filename"]
-                    nid = r["geoop_note_id"]
+                    nid = str(r["geoop_note_id"]).strip()
                     sf_note_counts[nid] = sf_note_counts.get(nid, 0) + 1
                     if sf_note_counts[nid] == 1:
                         sf_map[(nid, None)] = r["stored_filename"]
                     else:
                         sf_map.pop((nid, None), None)
 
+                geoop_job_map = {}
+                for r in conn.execute("""
+                    SELECT id, geoop_job_id FROM jobs
+                    WHERE geoop_job_id IS NOT NULL AND geoop_job_id != ''
+                """).fetchall():
+                    geoop_job_map[str(r["geoop_job_id"]).strip()] = r["id"]
+
             finally:
                 conn.close()
 
-            log.info("File recovery: %d staging file mappings, %d ZIPs to process",
-                     len(sf_map), len(zip_paths))
+            log.info("File recovery: %d staging file mappings, %d job ID mappings, %d ZIPs to process",
+                     len(sf_map), len(geoop_job_map), len(zip_paths))
 
             os.makedirs(target_dir, exist_ok=True)
 
@@ -2884,41 +2948,107 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
                                 continue
 
                             geoop_job_id, geoop_note_id, entry_filename = parsed
+                            geoop_job_id = str(geoop_job_id).strip()
+                            geoop_note_id = str(geoop_note_id).strip()
 
                             stored_name = sf_map.get((geoop_note_id, entry_filename))
                             if not stored_name:
-                                stored_name = sf_map.get((geoop_note_id, None))
+                                underscore_idx = entry_filename.find("_")
+                                stripped_name = entry_filename[underscore_idx + 1:] if underscore_idx > 0 else None
+                                if stripped_name:
+                                    stored_name = sf_map.get((geoop_note_id, stripped_name))
                             if not stored_name:
-                                _file_recovery_progress["no_db_mapping"] += 1
-                                continue
+                                stored_name = sf_map.get((geoop_note_id, None))
 
-                            safe_name = os.path.basename(stored_name)
-                            if not safe_name or safe_name != stored_name:
-                                _file_recovery_progress["errors"] += 1
-                                continue
-                            dest_path = os.path.join(target_dir, safe_name)
-                            abs_dest = os.path.abspath(dest_path)
-                            abs_target = os.path.abspath(target_dir)
-                            if not abs_dest.startswith(abs_target + os.sep):
-                                _file_recovery_progress["errors"] += 1
-                                continue
-                            if os.path.exists(dest_path):
-                                _file_recovery_progress["already_present"] += 1
-                                continue
+                            if stored_name:
+                                safe_name = os.path.basename(stored_name)
+                                if not safe_name or safe_name != stored_name:
+                                    _file_recovery_progress["errors"] += 1
+                                    continue
+                                dest_path = os.path.join(target_dir, safe_name)
+                                abs_dest = os.path.abspath(dest_path)
+                                abs_target = os.path.abspath(target_dir)
+                                if not abs_dest.startswith(abs_target + os.sep):
+                                    _file_recovery_progress["errors"] += 1
+                                    continue
+                                if os.path.exists(dest_path):
+                                    _file_recovery_progress["already_present"] += 1
+                                    continue
 
-                            try:
-                                data = zf.read(entry)
-                                with open(dest_path, "wb") as fh:
-                                    fh.write(data)
-                                _file_recovery_progress["files_restored"] += 1
-                            except Exception as ex:
-                                _file_recovery_progress["errors"] += 1
-                                log.warning("File recovery: error extracting %s: %s", entry, str(ex)[:200])
+                                try:
+                                    data = zf.read(entry)
+                                    with open(dest_path, "wb") as fh:
+                                        fh.write(data)
+                                    _file_recovery_progress["files_restored"] += 1
+                                except Exception as ex:
+                                    _file_recovery_progress["errors"] += 1
+                                    log.warning("File recovery: error extracting %s: %s", entry, str(ex)[:200])
+                            else:
+                                axion_job_id = geoop_job_map.get(geoop_job_id)
+                                if not axion_job_id:
+                                    _file_recovery_progress["skipped_no_match"] += 1
+                                    diag = _file_recovery_progress["unmatched_diagnostics"]
+                                    if len(diag) < 200:
+                                        diag.append({"geoop_job_id": geoop_job_id, "filename": entry_filename})
+                                    log.debug("File recovery: no job match for geoop_job_id=%s file=%s", geoop_job_id, entry_filename)
+                                    continue
+
+                                ext = os.path.splitext(entry_filename)[1] if "." in entry_filename else ""
+                                safe_stored = "geoop_{}_{}_{}{}".format(
+                                    geoop_job_id, geoop_note_id,
+                                    hashlib.md5(entry_filename.encode()).hexdigest()[:8], ext
+                                )
+                                dest_path = os.path.join(target_dir, safe_stored)
+                                abs_dest = os.path.abspath(dest_path)
+                                abs_target = os.path.abspath(target_dir)
+                                if not abs_dest.startswith(abs_target + os.sep):
+                                    _file_recovery_progress["errors"] += 1
+                                    continue
+                                if os.path.exists(dest_path):
+                                    _file_recovery_progress["already_present"] += 1
+                                    continue
+
+                                try:
+                                    data = zf.read(entry)
+                                    with open(dest_path, "wb") as fh:
+                                        fh.write(data)
+
+                                    dconn = _db()
+                                    try:
+                                        note = dconn.execute(
+                                            "SELECT id FROM job_field_notes WHERE job_id=? AND note_type='geoop_import' LIMIT 1",
+                                            (axion_job_id,)
+                                        ).fetchone()
+                                        if note:
+                                            dconn.execute("""
+                                                INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                                                VALUES (?, ?, ?, ?)
+                                            """, (note["id"], entry_filename, safe_stored, _now()))
+                                        else:
+                                            cur2 = dconn.cursor()
+                                            cur2.execute("""
+                                                INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, note_type, created_at)
+                                                VALUES (?, 1, ?, 'geoop_import', ?)
+                                            """, (axion_job_id, "[GeoOp Attachment Recovery]", _now()))
+                                            new_note_id = cur2.lastrowid
+                                            dconn.execute("""
+                                                INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                                                VALUES (?, ?, ?, ?)
+                                            """, (new_note_id, entry_filename, safe_stored, _now()))
+                                        dconn.commit()
+                                    finally:
+                                        dconn.close()
+
+                                    _file_recovery_progress["direct_linked"] += 1
+                                except Exception as ex:
+                                    _file_recovery_progress["errors"] += 1
+                                    log.warning("File recovery: error extracting/linking %s: %s", entry, str(ex)[:200])
 
                             if _file_recovery_progress["entries_scanned"] % 500 == 0:
-                                log.info("File recovery: scanned %d entries, restored %d",
+                                log.info("File recovery: scanned %d entries, restored %d, direct-linked %d",
                                          _file_recovery_progress["entries_scanned"],
-                                         _file_recovery_progress["files_restored"])
+                                         _file_recovery_progress["files_restored"],
+                                         _file_recovery_progress["direct_linked"])
 
                 except zipfile.BadZipFile as bze:
                     _file_recovery_progress["errors"] += 1
@@ -2931,9 +3061,11 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
 
             _file_recovery_progress["status"] = "complete"
             _file_recovery_progress["current_zip"] = ""
-            log.info("File recovery complete: %d files restored, %d already present, %d no mapping, %d errors",
+            log.info("File recovery complete: %d restored (staging), %d direct-linked (job ID), %d already present, %d no match, %d no mapping, %d errors",
                      _file_recovery_progress["files_restored"],
+                     _file_recovery_progress["direct_linked"],
                      _file_recovery_progress["already_present"],
+                     _file_recovery_progress["skipped_no_match"],
                      _file_recovery_progress["no_db_mapping"],
                      _file_recovery_progress["errors"])
         except Exception as e:
