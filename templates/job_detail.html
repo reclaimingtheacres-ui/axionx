@@ -3489,6 +3489,134 @@ function axCopyVin(btn) {
 })();
 </script>
 
+{% if session.get('role') in ('admin', 'both') %}
+<div class="modal fade" id="postNoteSchedModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title" style="color:var(--text)">Add a Schedule?</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="/jobs/{{ job.id }}/schedule" id="postNoteSchedForm">
+        <div class="modal-body">
+          <p class="small mb-3" style="color:var(--muted)">Note saved. Would you like to add a schedule entry for this job?</p>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Date</label>
+              <input type="date" id="pns_date_picker" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Displayed date</label>
+              <input type="text" name="schedule_date" id="pns_date_text" class="form-control"
+                     placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Time</label>
+              <input type="time" id="pns_time_picker" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small" style="color:var(--muted)">Displayed time</label>
+              <input type="text" name="schedule_time" id="pns_time_text" class="form-control"
+                     placeholder="hh:mm am" maxlength="8" autocomplete="off">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1" style="color:var(--muted)">Booking Type</label>
+            <div class="position-relative">
+              <input type="text" id="pns_bt_search" class="form-control"
+                     placeholder="Type to search or add new..." autocomplete="off">
+              <input type="hidden" name="booking_type_id" id="pns_bt_id_hidden">
+              <input type="hidden" name="booking_type_name" id="pns_bt_name_hidden">
+              <div id="pns_bt_dropdown" class="bt-combo-drop" style="display:none"></div>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small" style="color:var(--muted)">Assign To</label>
+            <select name="assigned_to_user_id" class="form-select">
+              <option value="">Unassigned</option>
+              {% for u in users %}
+                <option value="{{ u.id }}" {% if u.id == job.assigned_user_id %}selected{% endif %}>{{ u.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-1">
+            <label class="form-label small" style="color:var(--muted)">Notes (optional)</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Booking notes&#8230;"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
+          <button type="submit" class="btn btn-primary">Add Schedule</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var pnsDatePicker = document.getElementById('pns_date_picker');
+  var pnsDateText = document.getElementById('pns_date_text');
+  if (pnsDatePicker && pnsDateText) {
+    pnsDatePicker.addEventListener('change', function(){
+      var d = new Date(this.value + 'T00:00:00');
+      if (!isNaN(d)) pnsDateText.value = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+    });
+  }
+  var pnsTimePicker = document.getElementById('pns_time_picker');
+  var pnsTimeText = document.getElementById('pns_time_text');
+  if (pnsTimePicker && pnsTimeText) {
+    pnsTimePicker.addEventListener('change', function(){
+      var parts = this.value.split(':');
+      if (parts.length < 2) return;
+      var h = parseInt(parts[0],10), m = parts[1], ap = h >= 12 ? 'pm' : 'am';
+      h = h % 12 || 12;
+      pnsTimeText.value = h + ':' + m + ' ' + ap;
+    });
+  }
+  var _pnsBtInited = false;
+  function _pnsInitBt(){
+    if (_pnsBtInited) return;
+    if (typeof initBtCombo !== 'function') return;
+    var pnsBtSearch = document.getElementById('pns_bt_search');
+    if (pnsBtSearch) {
+      initBtCombo(pnsBtSearch, document.getElementById('pns_bt_id_hidden'), document.getElementById('pns_bt_name_hidden'), document.getElementById('pns_bt_dropdown'));
+      _pnsBtInited = true;
+    }
+  }
+  var _pnsEl = document.getElementById('postNoteSchedModal');
+  _pnsEl.addEventListener('show.bs.modal', _pnsInitBt);
+  _pnsEl.addEventListener('hidden.bs.modal', function(){
+    var form = document.getElementById('postNoteSchedForm');
+    if (form) form.reset();
+    document.getElementById('pns_bt_id_hidden').value = '';
+    document.getElementById('pns_bt_name_hidden').value = '';
+    var s = document.getElementById('pns_bt_search');
+    if (s) s.value = '';
+    document.getElementById('pns_date_text').value = '';
+    document.getElementById('pns_time_text').value = '';
+  });
+  if (new URLSearchParams(window.location.search).get('schedule_prompt') === '1') {
+    function _pnsWaitAndShow(){
+      if (typeof initBtCombo === 'function') {
+        _pnsInitBt();
+        new bootstrap.Modal(_pnsEl).show();
+      } else {
+        setTimeout(_pnsWaitAndShow, 200);
+      }
+    }
+    setTimeout(_pnsWaitAndShow, 400);
+    if (window.history && window.history.replaceState) {
+      var url = new URL(window.location);
+      url.searchParams.delete('schedule_prompt');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }
+})();
+</script>
+{% endif %}
+
 <script>
 (function () {
   if (new URLSearchParams(location.search).get('focus') === 'lender') {

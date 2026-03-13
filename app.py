@@ -7696,6 +7696,8 @@ def add_job_note(job_id: int):
             pass
 
     flash("Field note saved.", "success")
+    if session.get("role") in ("admin", "both"):
+        return redirect(url_for("job_detail", job_id=job_id) + "?schedule_prompt=1#tab-notes")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
 
