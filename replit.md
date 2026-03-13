@@ -57,6 +57,7 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Action buttons**: "Save Job" (primary submit), "Save & Add Another" (submits then redirects back with lender prefill), "Cancel" (back to jobs list).
 - **Entity creation**: "+ New" buttons for Client, Customer, Agent open popup modals for inline creation without leaving the form.
 - **Booking type combobox**: Schedule section uses searchable combobox with recent types, type-to-create capability.
+- **Autofill post-save flow**: When a job is created via document upload, the instruction document is automatically saved as both a `job_documents` record (type: Instruction) and a `job_field_notes` entry with the file attached (separate blob copy to avoid deletion coupling). After save, the user is redirected to the job detail Notes tab with the Add Note modal open so they can immediately add email notes or additional documents.
 
 **2c. Job List (Mobile — Distance Default + Search):**
 - Mobile app defaults to **Distance – Nearest First** sorting when GPS is available.

@@ -3366,6 +3366,7 @@ def job_create():
 
     # Link autofill document to the new job
     autofill_id = request.form.get("autofill_id", "").strip()
+    _had_autofill_doc = False
     if autofill_id and autofill_id.isdigit():
         pu_row = cur.execute("""
             SELECT pu.id, pu.original_filename, pu.storage_key, pu.content_type, pu.uploaded_by_user_id
@@ -3374,8 +3375,11 @@ def job_create():
             WHERE de.id = ?
         """, (int(autofill_id),)).fetchone()
         if pu_row:
+            import logging as _logging
+            _af_log = _logging.getLogger(__name__)
             pending_path = os.path.join(PENDING_UPLOAD_DIR, pu_row["storage_key"])
             stored_name  = f"{job_id}_autofill_{pu_row['original_filename']}"
+            note_copy_name = f"{job_id}_note_instruction_{pu_row['original_filename']}"
             try:
                 cur.execute("""
                     INSERT INTO job_documents
@@ -3385,17 +3389,33 @@ def job_create():
                       pu_row["content_type"], pu_row["uploaded_by_user_id"] or session.get("user_id"), now))
                 if _uploads_container:
                     with open(pending_path, "rb") as fh:
-                        import io as _io
                         _uploads_container.upload_blob(
                             name=stored_name, data=fh, overwrite=True,
                             content_settings=ContentSettings(content_type=pu_row["content_type"] or "application/octet-stream")
                         )
+                    with open(pending_path, "rb") as fh:
+                        _uploads_container.upload_blob(
+                            name=note_copy_name, data=fh, overwrite=True,
+                            content_settings=ContentSettings(content_type=pu_row["content_type"] or "application/octet-stream")
+                        )
                 else:
                     import shutil
-                    dest = os.path.join(UPLOAD_FOLDER, stored_name)
-                    shutil.copy2(pending_path, dest)
-            except Exception:
-                pass
+                    shutil.copy2(pending_path, os.path.join(UPLOAD_FOLDER, stored_name))
+                    shutil.copy2(pending_path, os.path.join(UPLOAD_FOLDER, note_copy_name))
+                _autofill_uid = pu_row["uploaded_by_user_id"] or session.get("user_id")
+                cur.execute("""
+                    INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
+                    VALUES (?, ?, ?, ?)
+                """, (job_id, _autofill_uid,
+                      f"Instruction document uploaded: {pu_row['original_filename']}", now))
+                _af_note_id = cur.lastrowid
+                cur.execute("""
+                    INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                    VALUES (?, ?, ?, ?)
+                """, (_af_note_id, note_copy_name, note_copy_name, now))
+                _had_autofill_doc = True
+            except Exception as _af_exc:
+                _af_log.warning("Failed to save autofill document for job %s: %s", job_id, _af_exc)
             finally:
                 try:
                     os.remove(pending_path)
@@ -3416,6 +3436,8 @@ def job_create():
         if lender_name:    params["lender_name"]    = lender_name
         if account_number: params["account_number"] = account_number
         return redirect(url_for("job_new", **params))
+    if _had_autofill_doc:
+        return redirect(url_for("job_detail", job_id=job_id) + "?add_note=1#tab-notes")
     return redirect(url_for("job_detail", job_id=job_id) + "?focus=lender")
 
 
