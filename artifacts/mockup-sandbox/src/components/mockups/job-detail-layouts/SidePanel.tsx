@@ -19,18 +19,20 @@ export default function SidePanel() {
         <button style={{ padding: '4px 10px', fontSize: '.76rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 8, cursor: 'pointer', fontWeight: 500, flexShrink: 0 }}>+ New Job</button>
       </div>
 
-      {/* Warning banner + action buttons */}
-      <div style={{ padding: '8px 20px', background: '#fffbeb', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      {/* Action buttons row */}
+      <div style={{ padding: '6px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 4 }}>
+        {['Add to Job ▾', 'Create Doc ▾', 'Copy ▾', 'Message ▾', 'Add Booking'].map(b => (
+          <button key={b} style={{ padding: '4px 10px', fontSize: '.72rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>{b}</button>
+        ))}
+      </div>
+
+      {/* Warning banner */}
+      <div style={{ padding: '6px 20px', background: '#fffbeb', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.78rem', color: '#92400e' }}>
           <span>⚠</span>
           <span>6 unfinished attendance updates</span>
-          <button style={{ padding: '2px 8px', fontSize: '.7rem', background: '#f59e0b', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer', fontWeight: 500 }}>View Drafts</button>
         </div>
-        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-          {['Add to Job ▾', 'Create Doc ▾', 'Copy ▾', 'Message ▾', 'Add Booking'].map(b => (
-            <button key={b} style={{ padding: '4px 10px', fontSize: '.72rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>{b}</button>
-          ))}
-        </div>
+        <button style={{ padding: '2px 8px', fontSize: '.7rem', background: '#f59e0b', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer', fontWeight: 500 }}>View Drafts</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', minHeight: 'calc(100vh - 86px)' }}>
