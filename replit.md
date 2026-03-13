@@ -112,6 +112,7 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Future placeholders**: Data Repair Tools, Bulk Client Linking, System Data Cleanup (structured but not yet implemented)
 
 **8c. GeoOp Staged Import Pipeline (`/admin/geoop-import`):**
+- **Password-gated access**: All GeoOp import routes use `@geoop_required` decorator — requires admin login PLUS a separate GeoOp password (stored in `GEOOP_PASSWORD` env secret). Unlock is per-session and user-bound (`session['geoop_unlocked']` = user ID). If `GEOOP_PASSWORD` is not set, the entire section is disabled. Login page at `/admin/geoop-login`. Uses `hmac.compare_digest` for constant-time comparison.
 - 3-step pipeline: Stage CSV → Review Diagnostics → Execute Import
 - Uses `geoop_import.py` module with 4 staging tables (`geoop_staging_jobs`, `geoop_staging_notes`, `geoop_staging_files`, `geoop_import_runs`)
 - `parse_description()` extracts from free-text GeoOp Description field: client name, account number, regulation type, amounts, costs, NMPD, security vehicle details (colour/year/make/model/REG/VIN), and deliver_to
