@@ -2189,6 +2189,13 @@ def _geoop_pw():
     return os.environ.get("GEOOP_PASSWORD", "")
 
 
+def _geoop_is_unlocked():
+    gpw = _geoop_pw()
+    if not gpw:
+        return True
+    return session.get("geoop_unlocked") == session.get("user_id")
+
+
 def geoop_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -2197,38 +2204,25 @@ def geoop_required(f):
         if session.get("role") not in ("admin", "both"):
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
-        if not _geoop_pw():
-            flash("GeoOp Import is disabled (no password configured).", "warning")
-            return redirect(url_for("index"))
-        if session.get("geoop_unlocked") != session.get("user_id"):
-            return redirect(url_for("geoop_login"))
+        if not _geoop_is_unlocked():
+            return redirect(url_for("geoop_import_page"))
         return f(*args, **kwargs)
     return wrapper
 
 
-@app.get("/admin/geoop-login")
+@app.post("/admin/geoop-unlock")
 @admin_required
-def geoop_login():
-    if not _geoop_pw():
-        flash("GeoOp Import is disabled (no password configured).", "warning")
-        return redirect(url_for("index"))
-    return render_template("geoop_login.html")
-
-
-@app.post("/admin/geoop-login")
-@admin_required
-def geoop_login_post():
+def geoop_unlock_post():
     gpw = _geoop_pw()
     if not gpw:
-        flash("GeoOp Import is disabled (no password configured).", "warning")
-        return redirect(url_for("index"))
+        return redirect(url_for("geoop_import_page"))
     pw = request.form.get("password", "")
     if _hmac.compare_digest(pw, gpw):
         session["geoop_unlocked"] = session["user_id"]
         flash("GeoOp Import unlocked.", "success")
-        return redirect(url_for("geoop_import_page"))
-    flash("Incorrect password.", "danger")
-    return redirect(url_for("geoop_login"))
+    else:
+        flash("Incorrect password.", "danger")
+    return redirect(url_for("geoop_import_page"))
 
 
 # -------- Login / Logout --------
@@ -9425,8 +9419,10 @@ def import_jobs():
 import geoop_import as _geoop
 
 @app.get("/admin/geoop-import")
-@geoop_required
+@admin_required
 def geoop_import_page():
+    if not _geoop_is_unlocked():
+        return render_template("geoop_login.html")
     conn = db()
     _geoop.ensure_staging_tables(conn)
     stats = {
