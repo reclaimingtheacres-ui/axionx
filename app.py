@@ -2183,6 +2183,52 @@ def admin_required(f):
     return wrapper
 
 
+import hmac as _hmac
+
+GEOOP_PASSWORD = os.environ.get("GEOOP_PASSWORD", "")
+
+
+def geoop_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            return _login_redirect()
+        if session.get("role") not in ("admin", "both"):
+            flash("Admin access required.", "danger")
+            return redirect(url_for("index"))
+        if not GEOOP_PASSWORD:
+            flash("GeoOp Import is disabled (no password configured).", "warning")
+            return redirect(url_for("index"))
+        if session.get("geoop_unlocked") != session.get("user_id"):
+            return redirect(url_for("geoop_login"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
+@app.get("/admin/geoop-login")
+@admin_required
+def geoop_login():
+    if not GEOOP_PASSWORD:
+        flash("GeoOp Import is disabled (no password configured).", "warning")
+        return redirect(url_for("index"))
+    return render_template("geoop_login.html")
+
+
+@app.post("/admin/geoop-login")
+@admin_required
+def geoop_login_post():
+    if not GEOOP_PASSWORD:
+        flash("GeoOp Import is disabled (no password configured).", "warning")
+        return redirect(url_for("index"))
+    pw = request.form.get("password", "")
+    if _hmac.compare_digest(pw, GEOOP_PASSWORD):
+        session["geoop_unlocked"] = session["user_id"]
+        flash("GeoOp Import unlocked.", "success")
+        return redirect(url_for("geoop_import_page"))
+    flash("Incorrect password.", "danger")
+    return redirect(url_for("geoop_login"))
+
+
 # -------- Login / Logout --------
 
 import smtplib as _smtplib
@@ -9377,7 +9423,7 @@ def import_jobs():
 import geoop_import as _geoop
 
 @app.get("/admin/geoop-import")
-@admin_required
+@geoop_required
 def geoop_import_page():
     conn = db()
     _geoop.ensure_staging_tables(conn)
@@ -9397,7 +9443,7 @@ def geoop_import_page():
 
 
 @app.post("/admin/geoop-import/stage")
-@admin_required
+@geoop_required
 def geoop_import_stage():
     jobs_file = request.files.get("jobs_csv")
     notes_file = request.files.get("notes_csv")
@@ -9478,7 +9524,7 @@ def geoop_import_stage():
 
 
 @app.get("/admin/geoop-import/diagnostics")
-@admin_required
+@geoop_required
 def geoop_import_diagnostics():
     conn = db()
     _geoop.ensure_staging_tables(conn)
@@ -9506,7 +9552,7 @@ def geoop_import_diagnostics():
 
 
 @app.post("/admin/geoop-import/execute")
-@admin_required
+@geoop_required
 def geoop_import_execute():
     mode = request.form.get("mode", "insert_only")
     if mode not in ("insert_only", "update"):
@@ -9575,7 +9621,7 @@ def geoop_import_execute():
 
 
 @app.get("/admin/geoop-import/rejects")
-@admin_required
+@geoop_required
 def geoop_import_rejects():
     conn = db()
     try:
@@ -9610,7 +9656,7 @@ def geoop_import_rejects():
 
 
 @app.post("/admin/geoop-import/scan-attachments")
-@admin_required
+@geoop_required
 def geoop_import_scan_attachments():
     attach_path = (request.form.get("attachments_path") or "").strip()
     if not attach_path or not os.path.isdir(attach_path):
@@ -9676,7 +9722,7 @@ def _run_azure_scan_background(sas_url, run_id):
 
 
 @app.post("/admin/geoop-import/scan-azure")
-@admin_required
+@geoop_required
 def geoop_import_scan_azure():
     sas_url = (request.form.get("azure_sas_url") or "").strip()
     if not sas_url:
@@ -9727,7 +9773,7 @@ def geoop_import_scan_azure():
 
 
 @app.get("/admin/geoop-import/scan-azure/progress/<int:run_id>")
-@admin_required
+@geoop_required
 def geoop_import_scan_azure_progress(run_id):
     progress = _geoop.get_azure_scan_progress(run_id)
     if progress:
@@ -9736,7 +9782,7 @@ def geoop_import_scan_azure_progress(run_id):
 
 
 @app.get("/admin/geoop-import/unmatched-report/<int:run_id>")
-@admin_required
+@geoop_required
 def geoop_unmatched_report(run_id):
     try:
         report = _geoop.get_unmatched_report(run_id)
@@ -9746,7 +9792,7 @@ def geoop_unmatched_report(run_id):
 
 
 @app.get("/admin/geoop-import/unmatched-report/<int:run_id>/csv")
-@admin_required
+@geoop_required
 def geoop_unmatched_csv(run_id):
     import csv as csv_mod
     try:
@@ -9768,7 +9814,7 @@ def geoop_unmatched_csv(run_id):
 
 
 @app.post("/admin/geoop-import/backfill-descriptions")
-@admin_required
+@geoop_required
 def geoop_import_backfill():
     conn = db()
     run_id = None
@@ -9822,7 +9868,7 @@ def geoop_import_backfill():
 
 
 @app.get("/admin/geoop-import/backfill-progress/<int:run_id>")
-@admin_required
+@geoop_required
 def geoop_backfill_progress(run_id):
     progress = _geoop.get_backfill_progress(run_id)
     if progress:
@@ -9831,7 +9877,7 @@ def geoop_backfill_progress(run_id):
 
 
 @app.get("/admin/geoop-import/scan-samples/<int:run_id>")
-@admin_required
+@geoop_required
 def geoop_scan_samples(run_id):
     try:
         data = _geoop.get_scan_samples(run_id)
@@ -9841,7 +9887,7 @@ def geoop_scan_samples(run_id):
 
 
 @app.get("/admin/geoop-import/backfill-samples/<int:run_id>")
-@admin_required
+@geoop_required
 def geoop_backfill_samples(run_id):
     try:
         data = _geoop.get_backfill_samples(run_id)
@@ -9853,7 +9899,7 @@ def geoop_backfill_samples(run_id):
 
 
 @app.post("/admin/geoop-import/backfill-clients")
-@admin_required
+@geoop_required
 def geoop_import_backfill_clients():
     conn = db()
     try:
@@ -9890,7 +9936,7 @@ def geoop_import_backfill_clients():
 
 
 @app.get("/admin/geoop-import/client-backfill-progress/<int:run_id>")
-@admin_required
+@geoop_required
 def geoop_client_backfill_progress(run_id):
     progress = _geoop.get_backfill_progress(run_id)
     if not progress:
@@ -9899,7 +9945,7 @@ def geoop_client_backfill_progress(run_id):
 
 
 @app.get("/admin/geoop-import/client-gap-report")
-@admin_required
+@geoop_required
 def geoop_client_gap_report():
     fmt = request.args.get("format", "json")
     report = _geoop.get_client_gap_report()
@@ -9920,7 +9966,7 @@ def geoop_client_gap_report():
 
 
 @app.get("/admin/geoop-import/attachment-audit")
-@admin_required
+@geoop_required
 def geoop_attachment_audit():
     action = request.args.get("action")
     if action == "start":
@@ -9946,7 +9992,7 @@ def geoop_attachment_audit():
 
 
 @app.post("/admin/geoop-import/backfill-attachments")
-@admin_required
+@geoop_required
 def geoop_import_backfill_attachments():
     conn = db()
     try:
@@ -9985,7 +10031,7 @@ def geoop_import_backfill_attachments():
 _link_staged_lock = threading.Lock()
 
 @app.post("/admin/geoop-import/link-staged-attachments")
-@admin_required
+@geoop_required
 def geoop_link_staged_attachments():
     if not _link_staged_lock.acquire(blocking=False):
         flash("Link Staged Attachments is already running. Please wait.", "warning")
@@ -10011,7 +10057,7 @@ def geoop_link_staged_attachments():
 
 
 @app.post("/admin/geoop-import/repair-dates")
-@admin_required
+@geoop_required
 def geoop_repair_dates():
     target = request.args.get("target", "both")
     started_notes = False
@@ -10033,7 +10079,7 @@ def geoop_repair_dates():
 
 
 @app.post("/admin/geoop-import/repair-phones")
-@admin_required
+@geoop_required
 def geoop_repair_phones():
     started = _geoop.repair_phone_numbers()
     if started:
@@ -10044,7 +10090,7 @@ def geoop_repair_phones():
 
 
 @app.post("/admin/geoop-import/backfill-job-ids")
-@admin_required
+@geoop_required
 def geoop_backfill_job_ids():
     import logging as _log
     try:
@@ -10057,7 +10103,7 @@ def geoop_backfill_job_ids():
 
 
 @app.post("/admin/geoop-import/repair-registrations")
-@admin_required
+@geoop_required
 def geoop_repair_registrations():
     started = _geoop.repair_registrations()
     if started:
@@ -10068,7 +10114,7 @@ def geoop_repair_registrations():
 
 
 @app.post("/admin/geoop-import/repair-due-dates")
-@admin_required
+@geoop_required
 def geoop_repair_due_dates():
     started = _geoop.repair_due_dates()
     if started:
@@ -10079,7 +10125,7 @@ def geoop_repair_due_dates():
 
 
 @app.get("/admin/geoop-import/repair-progress")
-@admin_required
+@geoop_required
 def geoop_repair_progress():
     return jsonify({
         "notes": _geoop.get_repair_dates_progress(),
@@ -10091,7 +10137,7 @@ def geoop_repair_progress():
 
 
 @app.get("/admin/geoop-import/repair-diagnostic")
-@admin_required
+@geoop_required
 def geoop_repair_diagnostic():
     conn = _geoop._db()
     try:
@@ -10204,7 +10250,7 @@ def geoop_repair_diagnostic():
 
 
 @app.post("/admin/geoop-import/recover-files")
-@admin_required
+@geoop_required
 def geoop_recover_files():
     zip_dir = request.form.get("zip_dir", "").strip()
     if not zip_dir:
@@ -10231,13 +10277,13 @@ def geoop_recover_files():
 
 
 @app.get("/admin/geoop-import/recover-files-progress")
-@admin_required
+@geoop_required
 def geoop_recover_files_progress():
     return jsonify(_geoop.get_file_recovery_progress())
 
 
 @app.get("/admin/geoop-import/repair-dates-progress")
-@admin_required
+@geoop_required
 def geoop_repair_dates_progress():
     return jsonify({
         "notes": _geoop.get_repair_dates_progress(),
@@ -10246,7 +10292,7 @@ def geoop_repair_dates_progress():
 
 
 @app.get("/admin/geoop-import/attachment-backfill-progress/<int:run_id>")
-@admin_required
+@geoop_required
 def geoop_attachment_backfill_progress(run_id):
     progress = _geoop.get_backfill_progress(run_id)
     if not progress:
@@ -10255,7 +10301,7 @@ def geoop_attachment_backfill_progress(run_id):
 
 
 @app.post("/admin/geoop-import/reset")
-@admin_required
+@geoop_required
 def geoop_import_reset():
     conn = db()
     _geoop.reset_staging(conn)

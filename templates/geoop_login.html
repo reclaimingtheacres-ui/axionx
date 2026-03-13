@@ -1,0 +1,23 @@
+{% extends "layout.html" %}
+{% block title %}GeoOp Import — Unlock{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width:440px;">
+  <div class="ax-card">
+    <div class="ax-card-h">GeoOp Import — Password Required</div>
+    <div class="ax-card-b">
+      <p class="text-muted mb-3">This area is restricted. Enter the GeoOp password to continue.</p>
+      <form method="post" action="/admin/geoop-login">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Password</label>
+          <input type="password" name="password" class="form-control" required autofocus autocomplete="off">
+        </div>
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Unlock</button>
+          <a href="/" class="btn btn-outline-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
