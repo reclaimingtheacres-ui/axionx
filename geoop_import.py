@@ -12,6 +12,54 @@ import uuid
 import zipfile
 from datetime import datetime
 
+try:
+    import pytz
+    _MELB_TZ = pytz.timezone("Australia/Melbourne")
+except ImportError:
+    _MELB_TZ = None
+
+
+def _utc_to_melb(iso_str):
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        if _MELB_TZ:
+            if dt.tzinfo is None:
+                dt = pytz.utc.localize(dt)
+            dt = dt.astimezone(_MELB_TZ)
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+    except (ValueError, AttributeError):
+        return None
+
+
+_NOTE_DATE_RE = re.compile(
+    r"^(\d{1,2})([A-Za-z]{3})(\d{2,4})\s+(\d{1,2}:\d{2})\b"
+)
+_MONTH_MAP = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _parse_note_text_date(text):
+    if not text:
+        return None
+    m = _NOTE_DATE_RE.match(text.strip())
+    if not m:
+        return None
+    day, mon_str, year_str, time_str = m.groups()
+    mon = _MONTH_MAP.get(mon_str.lower())
+    if not mon:
+        return None
+    year = int(year_str)
+    if year < 100:
+        year += 2000
+    try:
+        h, mi = time_str.split(":")
+        dt = datetime(year, mon, int(day), int(h), int(mi))
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
 def _preserve_phone_text(val):
     """Restore leading zero on Australian phone numbers stripped by Excel/CSV numeric coercion.
 
@@ -1938,14 +1986,16 @@ def import_staged_notes(conn=None):
                 note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
 
             raw_date = note["file_date"] or ""
-            if not raw_date:
-                raw_date = job_date_map.get(note["geoop_job_id"], "")
-            note_date = raw_date or ts
-            try:
-                from datetime import datetime as _dt
-                dt = _dt.fromisoformat(note_date.replace("Z", "+00:00"))
-                note_date = dt.strftime("%Y-%m-%dT%H:%M:%S")
-            except (ValueError, AttributeError):
+            note_date = None
+            if raw_date:
+                note_date = _utc_to_melb(raw_date)
+            if not note_date:
+                note_date = _parse_note_text_date(note_text)
+            if not note_date:
+                fallback = job_date_map.get(note["geoop_job_id"], "")
+                if fallback:
+                    note_date = _utc_to_melb(fallback)
+            if not note_date:
                 note_date = ts
 
             try:
@@ -3553,14 +3603,16 @@ def backfill_attachment_links(run_id=None):
                     note_text = "[Attachment: " + (note["file_name"] or "file") + "]"
 
                 raw_date = note["file_date"] or ""
-                if not raw_date:
-                    raw_date = job_date_map.get(note["geoop_job_id"], "")
-                note_date = raw_date or ts
-                try:
-                    from datetime import datetime as _dt
-                    dt = _dt.fromisoformat(note_date.replace("Z", "+00:00"))
-                    note_date = dt.strftime("%Y-%m-%dT%H:%M:%S")
-                except (ValueError, AttributeError):
+                note_date = None
+                if raw_date:
+                    note_date = _utc_to_melb(raw_date)
+                if not note_date:
+                    note_date = _parse_note_text_date(note_text)
+                if not note_date:
+                    fallback = job_date_map.get(note["geoop_job_id"], "")
+                    if fallback:
+                        note_date = _utc_to_melb(fallback)
+                if not note_date:
                     note_date = ts
 
                 try:
@@ -3624,7 +3676,7 @@ def repair_note_dates():
     if not _repair_dates_lock.acquire(blocking=False):
         return False
     _repair_dates_progress.clear()
-    _repair_dates_progress.update({"status": "running", "updated": 0, "skipped": 0, "total": 0})
+    _repair_dates_progress.update({"status": "running", "updated": 0, "skipped": 0, "text_parsed": 0, "total": 0})
 
     def _run():
         import logging
@@ -3634,6 +3686,7 @@ def repair_note_dates():
             try:
                 updated = 0
                 skipped = 0
+                text_parsed = 0
 
                 job_date_map = {}
                 for r in conn.execute("""
@@ -3643,7 +3696,7 @@ def repair_note_dates():
                     job_date_map[r["geoop_job_id"]] = r["date_modified"] or r["date_created"] or ""
 
                 rows = conn.execute("""
-                    SELECT sn.axion_note_id, sn.file_date, sn.geoop_job_id
+                    SELECT sn.axion_note_id, sn.file_date, sn.geoop_job_id, sn.note_description
                     FROM geoop_staging_notes sn
                     WHERE sn.axion_note_id IS NOT NULL
                       AND sn.import_status = 'imported'
@@ -3660,17 +3713,23 @@ def repair_note_dates():
                         continue
                     seen_note_ids.add(nid)
 
+                    clean_date = None
                     raw_date = r["file_date"] or ""
-                    if not raw_date:
-                        raw_date = job_date_map.get(r["geoop_job_id"], "")
-                    if not raw_date:
-                        skipped += 1
-                        continue
+                    if raw_date:
+                        clean_date = _utc_to_melb(raw_date)
 
-                    try:
-                        dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
-                        clean_date = dt.strftime("%Y-%m-%dT%H:%M:%S")
-                    except (ValueError, AttributeError):
+                    if not clean_date:
+                        parsed = _parse_note_text_date(r["note_description"])
+                        if parsed:
+                            clean_date = parsed
+                            text_parsed += 1
+
+                    if not clean_date:
+                        fallback = job_date_map.get(r["geoop_job_id"], "")
+                        if fallback:
+                            clean_date = _utc_to_melb(fallback)
+
+                    if not clean_date:
                         skipped += 1
                         continue
 
@@ -3684,6 +3743,7 @@ def repair_note_dates():
                         conn.commit()
                         updated += len(batch)
                         _repair_dates_progress["updated"] = updated
+                        _repair_dates_progress["text_parsed"] = text_parsed
                         batch = []
 
                 if batch:
@@ -3695,9 +3755,11 @@ def repair_note_dates():
                     updated += len(batch)
 
                 _repair_dates_progress.update({
-                    "status": "complete", "updated": updated, "skipped": skipped
+                    "status": "complete", "updated": updated, "skipped": skipped,
+                    "text_parsed": text_parsed,
                 })
-                log.info("Repair note dates complete: %d updated, %d skipped", updated, skipped)
+                log.info("Repair note dates complete: %d updated, %d skipped, %d parsed from text",
+                         updated, skipped, text_parsed)
             finally:
                 conn.close()
         except Exception as e:
