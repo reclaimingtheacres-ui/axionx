@@ -19,20 +19,17 @@ export default function SidePanel() {
         <button style={{ padding: '4px 10px', fontSize: '.76rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 8, cursor: 'pointer', fontWeight: 500, flexShrink: 0 }}>+ New Job</button>
       </div>
 
-      {/* Action buttons row */}
-      <div style={{ padding: '6px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 4 }}>
-        {['Add to Job ▾', 'Create Doc ▾', 'Copy ▾', 'Message ▾', 'Add Booking'].map(b => (
-          <button key={b} style={{ padding: '4px 10px', fontSize: '.72rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>{b}</button>
-        ))}
-      </div>
-
-      {/* Warning banner */}
-      <div style={{ padding: '6px 20px', background: '#fffbeb', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.78rem', color: '#92400e' }}>
-          <span>⚠</span>
-          <span>6 unfinished attendance updates</span>
+      {/* Action buttons + warning badge */}
+      <div style={{ padding: '6px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {['Add to Job ▾', 'Create Doc ▾', 'Copy ▾', 'Message ▾', 'Add Booking'].map(b => (
+            <button key={b} style={{ padding: '4px 10px', fontSize: '.72rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>{b}</button>
+          ))}
         </div>
-        <button style={{ padding: '2px 8px', fontSize: '.7rem', background: '#f59e0b', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer', fontWeight: 500 }}>View Drafts</button>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 6, padding: '3px 10px', fontSize: '.72rem', color: '#92400e', flexShrink: 0 }}>
+          <span>⚠ 6 unfinished updates</span>
+          <button style={{ padding: '1px 7px', fontSize: '.66rem', background: '#f59e0b', color: '#fff', border: 0, borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>View</button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', minHeight: 'calc(100vh - 86px)' }}>
