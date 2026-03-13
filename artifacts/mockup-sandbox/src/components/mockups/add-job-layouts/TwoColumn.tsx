@@ -319,8 +319,7 @@ export function TwoColumn() {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button style={{ padding: "7px 18px", background: "#fff", border: "1px solid #d1d5db", borderRadius: 7, fontSize: ".82rem", color: "#374151", cursor: "pointer" }}>Cancel</button>
-            <button style={{ padding: "7px 24px", background: "#1e293b", color: "#fff", border: "none", borderRadius: 7, fontSize: ".82rem", fontWeight: 600, cursor: "pointer" }}>Add Job</button>
-            <button style={{ padding: "7px 24px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 7, fontSize: ".82rem", fontWeight: 600, cursor: "pointer" }}>Save Job</button>
+            <button style={{ padding: "7px 28px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 7, fontSize: ".85rem", fontWeight: 600, cursor: "pointer" }}>Save Job</button>
           </div>
         </div>
 
