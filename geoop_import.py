@@ -224,7 +224,7 @@ def _parse_money(s):
         return 0
     s = s.replace(",", "").replace("$", "").replace(" ", "").strip()
     try:
-        return int(float(s) * 100)
+        return round(float(s) * 100)
     except (ValueError, TypeError):
         return 0
 
@@ -321,10 +321,11 @@ def parse_description(desc):
     if costs_match:
         result["parsed_costs_cents"] = _parse_money(costs_match.group(1))
 
+    _date_sep = r'(?:on\s+(?:the\s+)?|Due\s+(?:F/?N\s+)?|Due\s+Date\s+)?'
     _nmpd_patterns = [
-        r'(?:^|(?<=\s)|(?<=\d))N[MW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+(?:the\s+)?)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
-        r'(?:(?<![A-Za-z])|(?<=inc))NPD[:\s]+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
-        r'(?:^|(?<=\s)|(?<=\d))N[FW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?:^|(?<=\s)|(?<=\d))N[MW]PD\s+\$?\s*\$?\s*([\d,]+\.?\d*)\s+' + _date_sep + r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?:(?<![A-Za-z])|(?<=inc))NPD[:\s]+\$?\s*\$?\s*([\d,]+\.?\d*)\s+' + _date_sep + r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?:^|(?<=\s)|(?<=\d))N[FW]PD\s+\$?\s*\$?\s*([\d,]+\.?\d*)\s+' + _date_sep + r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
         r'(?<![A-Za-z])(?:Due|PMT\s+Due)\s+(?:Date\s+)?(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
     ]
     nmpd_match = None
