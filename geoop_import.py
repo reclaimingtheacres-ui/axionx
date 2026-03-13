@@ -279,7 +279,9 @@ def parse_description(desc):
     if reg_match:
         raw_reg = reg_match.group(1).strip()
         reg_clean = re.sub(r'\s*\([^)]*\)$', '', raw_reg).strip().upper()
-        result["parsed_reg"] = reg_clean
+        reg_clean = re.sub(r'VIN$', '', reg_clean, flags=re.IGNORECASE).strip()
+        if len(reg_clean) >= 2:
+            result["parsed_reg"] = reg_clean
 
     deliver_match = re.search(r'Deliver\s+to[:\s]*(.+?)(?:\.\s*$|$)', clean, re.IGNORECASE)
     if deliver_match:
@@ -3840,18 +3842,26 @@ def repair_registrations():
                 _repair_reg_progress["total"] = len(ji_rows)
                 log.info("Repair registrations: %d geoop-sourced job_items to check", len(ji_rows))
 
-                _bad_reg_values = {"ULATED", "GULATED", "EGULATED", "REGULATED", "NREGULATED",
-                                   "ulated", "gulated", "egulated", "regulated", "nregulated"}
+                _bad_reg_suffixes = ("ULATED", "GULATED", "EGULATED", "REGULATED", "NREGULATED")
+                def _is_bad_reg(val):
+                    if not val:
+                        return False
+                    v = val.upper()
+                    if v in _bad_reg_suffixes:
+                        return True
+                    if v.endswith("VIN"):
+                        return True
+                    return False
                 items_actually_updated = 0
                 for r in ji_rows:
                     parsed = parse_description(r["desc_text"])
                     new_reg = parsed.get("parsed_reg", "")
                     old_reg = r["reg"] or ""
-                    if old_reg and old_reg not in _bad_reg_values and old_reg == new_reg:
+                    if old_reg and not _is_bad_reg(old_reg) and old_reg == new_reg:
                         continue
                     safe_to_update = (
                         not old_reg
-                        or old_reg in _bad_reg_values
+                        or _is_bad_reg(old_reg)
                     )
                     if not safe_to_update:
                         continue
