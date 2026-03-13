@@ -3840,19 +3840,29 @@ def repair_registrations():
                 _repair_reg_progress["total"] = len(ji_rows)
                 log.info("Repair registrations: %d geoop-sourced job_items to check", len(ji_rows))
 
+                _bad_reg_values = {"ULATED", "GULATED", "EGULATED", "REGULATED", "NREGULATED",
+                                   "ulated", "gulated", "egulated", "regulated", "nregulated"}
                 items_actually_updated = 0
                 for r in ji_rows:
                     parsed = parse_description(r["desc_text"])
                     new_reg = parsed.get("parsed_reg", "")
                     old_reg = r["reg"] or ""
-                    if new_reg and new_reg != old_reg:
-                        if old_reg:
-                            continue
-                        cur = conn.execute(
-                            "UPDATE job_items SET reg = ? WHERE id = ?",
-                            (new_reg, r["id"])
-                        )
-                        items_actually_updated += cur.rowcount
+                    if old_reg and old_reg not in _bad_reg_values and old_reg == new_reg:
+                        continue
+                    safe_to_update = (
+                        not old_reg
+                        or old_reg in _bad_reg_values
+                    )
+                    if not safe_to_update:
+                        continue
+                    new_val = new_reg or ""
+                    if new_val == old_reg:
+                        continue
+                    cur = conn.execute(
+                        "UPDATE job_items SET reg = ? WHERE id = ?",
+                        (new_val, r["id"])
+                    )
+                    items_actually_updated += cur.rowcount
                 conn.commit()
                 _repair_reg_progress["items_fixed"] = items_actually_updated
 
