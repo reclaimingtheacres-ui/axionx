@@ -2185,7 +2185,8 @@ def admin_required(f):
 
 import hmac as _hmac
 
-GEOOP_PASSWORD = os.environ.get("GEOOP_PASSWORD", "")
+def _geoop_pw():
+    return os.environ.get("GEOOP_PASSWORD", "")
 
 
 def geoop_required(f):
@@ -2196,7 +2197,7 @@ def geoop_required(f):
         if session.get("role") not in ("admin", "both"):
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
-        if not GEOOP_PASSWORD:
+        if not _geoop_pw():
             flash("GeoOp Import is disabled (no password configured).", "warning")
             return redirect(url_for("index"))
         if session.get("geoop_unlocked") != session.get("user_id"):
@@ -2208,7 +2209,7 @@ def geoop_required(f):
 @app.get("/admin/geoop-login")
 @admin_required
 def geoop_login():
-    if not GEOOP_PASSWORD:
+    if not _geoop_pw():
         flash("GeoOp Import is disabled (no password configured).", "warning")
         return redirect(url_for("index"))
     return render_template("geoop_login.html")
@@ -2217,11 +2218,12 @@ def geoop_login():
 @app.post("/admin/geoop-login")
 @admin_required
 def geoop_login_post():
-    if not GEOOP_PASSWORD:
+    gpw = _geoop_pw()
+    if not gpw:
         flash("GeoOp Import is disabled (no password configured).", "warning")
         return redirect(url_for("index"))
     pw = request.form.get("password", "")
-    if _hmac.compare_digest(pw, GEOOP_PASSWORD):
+    if _hmac.compare_digest(pw, gpw):
         session["geoop_unlocked"] = session["user_id"]
         flash("GeoOp Import unlocked.", "success")
         return redirect(url_for("geoop_import_page"))
