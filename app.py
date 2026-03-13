@@ -2600,6 +2600,24 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
         """, (row["id"], visit_type, today, priority,
               admin_user_id, now_str, now_str))
 
+    cur.execute("""
+        UPDATE jobs SET assigned_user_id = sub.agent_id, updated_at = ?
+        FROM (
+            SELECT s.job_id, s.assigned_to_user_id AS agent_id
+            FROM schedules s
+            INNER JOIN (
+                SELECT job_id, MIN(scheduled_for) AS min_sf
+                FROM schedules
+                WHERE status NOT IN ('Cancelled', 'Completed')
+                GROUP BY job_id
+            ) ms ON ms.job_id = s.job_id AND ms.min_sf = s.scheduled_for
+            WHERE s.status NOT IN ('Cancelled', 'Completed')
+              AND s.assigned_to_user_id IS NOT NULL
+        ) sub
+        WHERE jobs.id = sub.job_id
+          AND (jobs.assigned_user_id IS NULL OR jobs.assigned_user_id != sub.agent_id)
+    """, (now_str,))
+
 @app.get("/dashboard")
 @login_required
 def dashboard():
