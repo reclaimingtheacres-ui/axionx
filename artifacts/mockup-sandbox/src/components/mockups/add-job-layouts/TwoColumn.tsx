@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Upload, Plus, Calendar, Clock, User, Car, DollarSign, FileText, MapPin, Sparkles, ChevronDown, ChevronRight, Info } from "lucide-react";
+import { Search, Upload, Plus, Calendar, Clock, User, Car, DollarSign, FileText, MapPin, Sparkles, ChevronDown, ChevronRight, Info, AlertTriangle, CheckCircle2, ShieldAlert } from "lucide-react";
 
 function Field({ label, placeholder, value, type, flex, children }: {
   label: string; placeholder?: string; value?: string; type?: string; flex?: string; children?: React.ReactNode;
@@ -81,9 +81,9 @@ function SecurityAssetBlock() {
           {showParsed && (
             <div style={{
               marginTop: 4, padding: "6px 8px", background: "#eff6ff", borderRadius: 6,
-              border: "1px solid #dbeafe", display: "flex", gap: 10, flexWrap: "wrap"
+              border: "1px solid #dbeafe"
             }}>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", flex: 1 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
                 {[
                   ["Year", "2019"],
                   ["Make", "Ford"],
@@ -97,9 +97,22 @@ function SecurityAssetBlock() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, alignSelf: "center" }}>
-                <Info size={11} color="#94a3b8" />
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <Sparkles size={10} color="#94a3b8" />
                 <span style={{ fontSize: ".65rem", color: "#94a3b8" }}>Parsed from description — used for forms</span>
+              </div>
+
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #bfdbfe" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                  <Clock size={10} color="#94a3b8" />
+                  <span style={{ fontSize: ".65rem", color: "#94a3b8", fontWeight: 500 }}>Populated after job creation from Vehicle Registration notes</span>
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: ".62rem", color: "#64748b", fontWeight: 600, letterSpacing: ".04em" }}>Rego Expiry</div>
+                    <div style={{ fontSize: ".76rem", color: "#94a3b8", fontStyle: "italic" }}>pending</div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -107,7 +120,19 @@ function SecurityAssetBlock() {
       )}
 
       <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-        <Field label="REGO" placeholder="ABC123" value="ABC123" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <label style={{ display: "block", fontSize: ".7rem", fontWeight: 600, color: "#64748b", marginBottom: 2, letterSpacing: ".03em" }}>REGO</label>
+          <div style={{ position: "relative" }}>
+            <input value="ABC123" readOnly style={{
+              width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6,
+              fontSize: ".8rem", color: "#1e293b", background: "#f0f7ff", outline: "none"
+            }} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }}>
+            <AlertTriangle size={10} color="#ef4444" />
+            <span style={{ fontSize: ".62rem", color: "#ef4444", fontWeight: 500 }}>Rego mismatch — VicRoads shows XYZ789</span>
+          </div>
+        </div>
         <Field label="VIN" placeholder="VIN number" value="6FPPXXMJ2PKL12345" />
         <Field label="COLOUR" placeholder="White" value="White" />
       </div>
@@ -126,7 +151,7 @@ function SecurityAssetBlock() {
       </div>
       <div style={{ marginTop: 4 }}>
         <label style={{ display: "block", fontSize: ".7rem", fontWeight: 600, color: "#64748b", marginBottom: 2 }}>NOTES</label>
-        <input placeholder="Rego expiry, status, etc." readOnly style={{
+        <input placeholder="Additional security notes..." readOnly style={{
           width: "100%", padding: "5px 8px", border: "1px solid #e2e8f0", borderRadius: 6,
           fontSize: ".8rem", outline: "none"
         }} />
