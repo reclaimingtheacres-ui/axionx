@@ -1313,6 +1313,9 @@ def import_staged_jobs(mode="insert_only", conn=None):
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
 
+        _nmpd_date = sj["parsed_nmpd_date"] or ""
+        _pmt_freq = "Monthly" if _nmpd_date else ""
+
         if existing and mode == "update":
             conn.execute("""
                 UPDATE jobs SET
@@ -1321,6 +1324,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     lender_name=?, account_number=?, regulation_type=?,
                     arrears_cents=?, costs_cents=?,
                     mmp_cents=?, job_due_date=?,
+                    payment_frequency=COALESCE(NULLIF(payment_frequency,''), ?),
                     deliver_to=?, client_id=COALESCE(?, client_id),
                     geoop_job_id=COALESCE(geoop_job_id, ?), updated_at=?
                 WHERE id=?
@@ -1330,7 +1334,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 sj["parsed_client_name"] or "", sj["parsed_account_number"] or "",
                 sj["parsed_regulation_type"] or "",
                 sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
-                sj["parsed_nmpd_amount_cents"] or 0, sj["parsed_nmpd_date"] or "",
+                sj["parsed_nmpd_amount_cents"] or 0, _nmpd_date,
+                _pmt_freq,
                 sj["parsed_deliver_to"] or "", client_id,
                 str(geoop_id).strip(), ts,
                 existing["id"]
@@ -1361,9 +1366,9 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     job_address, description, geoop_source_description,
                     lender_name, account_number, regulation_type,
                     arrears_cents, costs_cents, mmp_cents, job_due_date,
-                    deliver_to, client_job_number, geoop_job_id,
+                    payment_frequency, deliver_to, client_job_number, geoop_job_id,
                     created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 ref_no, ref_no, sj["parsed_account_number"] or "",
                 cust_id, client_id, job_type, "New Visit", status, "Normal",
@@ -1371,8 +1376,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 sj["parsed_client_name"] or "", sj["parsed_account_number"] or "",
                 sj["parsed_regulation_type"] or "",
                 sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
-                sj["parsed_nmpd_amount_cents"] or 0, sj["parsed_nmpd_date"] or "",
-                sj["parsed_deliver_to"] or "", geoop_id, str(geoop_id).strip(),
+                sj["parsed_nmpd_amount_cents"] or 0, _nmpd_date,
+                _pmt_freq, sj["parsed_deliver_to"] or "", geoop_id, str(geoop_id).strip(),
                 ts, ts
             ))
             axion_job_id = cur.lastrowid
@@ -1588,6 +1593,9 @@ def _backfill_one_job(conn, row, ts):
     if has_parsed_fields:
         result["fields_parsed"] = 1
 
+    _bf_nmpd_date = parsed.get("parsed_nmpd_date", "") or ""
+    _bf_pmt_freq = "Monthly" if _bf_nmpd_date else ""
+
     conn.execute("""
         UPDATE jobs SET
             geoop_source_description = CASE WHEN (geoop_source_description IS NULL OR geoop_source_description = '') THEN ? ELSE geoop_source_description END,
@@ -1598,6 +1606,7 @@ def _backfill_one_job(conn, row, ts):
             costs_cents = CASE WHEN (costs_cents IS NULL OR costs_cents = 0) THEN ? ELSE costs_cents END,
             mmp_cents = CASE WHEN (mmp_cents IS NULL OR mmp_cents = 0) THEN ? ELSE mmp_cents END,
             job_due_date = CASE WHEN (job_due_date IS NULL OR job_due_date = '') THEN ? ELSE job_due_date END,
+            payment_frequency = CASE WHEN (payment_frequency IS NULL OR payment_frequency = '') THEN ? ELSE payment_frequency END,
             deliver_to = CASE WHEN (deliver_to IS NULL OR deliver_to = '') THEN ? ELSE deliver_to END,
             updated_at = ?
         WHERE id = ?
@@ -1609,7 +1618,8 @@ def _backfill_one_job(conn, row, ts):
         parsed.get("parsed_amount_cents", 0) or 0,
         parsed.get("parsed_costs_cents", 0) or 0,
         parsed.get("parsed_nmpd_amount_cents", 0) or 0,
-        parsed.get("parsed_nmpd_date", "") or "",
+        _bf_nmpd_date,
+        _bf_pmt_freq,
         parsed.get("parsed_deliver_to", "") or "",
         ts,
         axion_job_id
@@ -4184,10 +4194,12 @@ def repair_due_dates():
                     if new_date == old_normalised:
                         continue
 
+                    _rep_freq = "Monthly" if new_date else ""
                     cur = conn.execute("""
-                        UPDATE jobs SET job_due_date = ?, mmp_cents = ?
+                        UPDATE jobs SET job_due_date = ?, mmp_cents = ?,
+                            payment_frequency = COALESCE(NULLIF(payment_frequency, ''), ?)
                         WHERE id = ?
-                    """, (new_date, new_amount, r["id"]))
+                    """, (new_date, new_amount, _rep_freq, r["id"]))
                     jobs_actually_updated += cur.rowcount
 
                 conn.commit()

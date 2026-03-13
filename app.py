@@ -2011,7 +2011,8 @@ def _add_months(d, n):
 
 def advance_due_date_display(due_date_str, payment_frequency):
     """Return the next upcoming due date (string YYYY-MM-DD) by advancing
-    past today according to the payment frequency.  Used for display only."""
+    past today according to the payment frequency.  Used for display only.
+    Defaults to monthly if no frequency is set."""
     if not due_date_str:
         return due_date_str
     try:
@@ -2021,19 +2022,17 @@ def advance_due_date_display(due_date_str, payment_frequency):
     today = datetime.now(_melbourne).date()
     if due >= today:
         return due_date_str
-    freq = (payment_frequency or "").lower()
+    freq = (payment_frequency or "monthly").lower()
     from datetime import timedelta as _td
     max_iter = 1000
     i = 0
     while due < today and i < max_iter:
-        if "month" in freq:
-            due = _add_months(due, 1)
-        elif "fortnight" in freq:
+        if "fortnight" in freq:
             due += _td(days=14)
         elif "week" in freq:
             due += _td(days=7)
         else:
-            break
+            due = _add_months(due, 1)
         i += 1
     return due.isoformat()
 
