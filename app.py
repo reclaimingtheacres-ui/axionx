@@ -9744,20 +9744,19 @@ def geoop_repair_diagnostic():
             new_date = parsed.get("parsed_nmpd_date", "")
             new_amount = parsed.get("parsed_nmpd_amount_cents", 0) or 0
             old_is_raw = bool(_re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$', old_date))
-            safe = not old_date or old_is_raw
-            would_update = bool(new_date) and new_date != old_date and safe
+            old_normalised = _geoop._normalise_au_date(old_date) if old_is_raw else old_date
+            would_update = bool(new_date) and new_date != old_normalised
             repair_trace.append({
                 "job_id": r["id"],
                 "old_date": old_date,
+                "old_normalised": old_normalised,
                 "new_date": new_date,
                 "new_amount": new_amount,
                 "old_is_raw": old_is_raw,
-                "safe_to_update": safe,
                 "would_update": would_update,
                 "skip_reason": (
                     "no_new_date" if not new_date else
-                    "already_correct" if new_date == old_date else
-                    "not_safe" if not safe else
+                    "already_correct" if new_date == old_normalised else
                     "WILL_UPDATE"
                 ),
                 "desc_snippet": desc[:300],

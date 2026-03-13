@@ -3955,15 +3955,12 @@ def repair_due_dates():
                     if not new_date:
                         continue
 
-                    if new_date == old_date:
-                        continue
-
+                    old_normalised = old_date
                     old_is_raw = bool(re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$', old_date))
-                    safe_to_update = (
-                        not old_date
-                        or old_is_raw
-                    )
-                    if not safe_to_update:
+                    if old_is_raw:
+                        old_normalised = _normalise_au_date(old_date)
+
+                    if new_date == old_normalised:
                         continue
 
                     cur = conn.execute("""
