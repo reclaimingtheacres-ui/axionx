@@ -30,11 +30,13 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **2a. Job Scheduling (Booking Type Combobox):** All booking type fields across the system (job detail inline form, schedule prompt modal, add bookings modal, new job form) use a unified searchable combobox with type-to-search, type-to-select, and create-new behaviour. Recently used types appear at the top with a "recent" label. New types are saved via `/booking-type/ajax` with case/spacing normalization to prevent duplicates. After saving a booking, users remain on the same page (AJAX submission) with a success message — no redirect to Jobs or other screens.
 
-**2b. Job List (Web — Sorting, Pagination, Sticky Header):**
+**2b. Job List (Web — Streamlined List Layout):**
+- **Streamlined list design (Design C)**: Compact rows with a coloured status bar on the left edge. Each row shows job ref + customer on line one, client/reg/job-type on line two. Right side: agent name, schedule date, booking pill, and status dropdown (admin) or pill (agent).
 - Default sort: **Oldest Scheduled** — overdue jobs first, then earliest upcoming, then unscheduled. The `next_scheduled` subquery includes all pending schedules (not just future ones), so overdue dates surface at the top.
 - Server-side **pagination**: 25 jobs per page (configurable 25/50/100 via dropdown). Count query + LIMIT/OFFSET.
-- **Sticky header**: Jobs heading, search, status filter, sort, more filters, and filter button stay fixed at the top while scrolling, with a subtle background.
-- **Single operational date**: Only `next_scheduled` is shown in the job row (as a badge). Overdue dates are highlighted in red with "OVERDUE" prefix. The `updated_at` date has been removed from the list to avoid confusion.
+- **Sticky header**: Jobs heading, search, status filter, sort, more filters, per-page selector, and result count stay fixed at the top while scrolling.
+- Full-row click navigates to job detail. Interactive controls (status dropdown, Update Emailed button) use event delegation to avoid conflict with row navigation.
+- **Edge cases handled**: "No client", "Unassigned" (red), "No schedule", "No booking" all shown explicitly.
 - Sort options: Oldest Scheduled (default), Active first, Agent A–Z, Job # high–low, Client ref high–low.
 
 **2c. Job List (Mobile — Distance Default + Search):**

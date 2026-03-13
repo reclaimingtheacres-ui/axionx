@@ -3,63 +3,105 @@
 {% block page_title %}Jobs{% endblock %}
 
 {% block content %}
-<div class="ax-card">
-  <div class="jobs-sticky-header" style="position:sticky;top:0;z-index:20;background:var(--bg, #f8f9fa);padding-bottom:4px;">
-    <div class="ax-card-h d-flex justify-content-between align-items-center" style="background:var(--card);border-radius:12px 12px 0 0;">
-      <div>Jobs</div>
-      {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
+<style>
+  .jobs-sticky-header{
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--card);
+    border-radius: 16px 16px 0 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .ax-job-row{
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    transition: background .1s;
+    text-decoration: none;
+    color: inherit;
+  }
+  .ax-job-row:hover{ background: #f8fafc; color: inherit; text-decoration: none; }
+  .ax-status-bar{
+    width: 3px;
+    height: 32px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .ax-status-pill{
+    font-size: .7rem;
+    font-weight: 600;
+    border-radius: 99px;
+    padding: 2px 10px;
+    white-space: nowrap;
+    display: inline-block;
+    text-align: center;
+    min-width: 70px;
+  }
+  .ax-booking-pill{
+    font-size: .68rem;
+    font-weight: 600;
+    border-radius: 99px;
+    padding: 2px 9px;
+    white-space: nowrap;
+    color: #fff;
+  }
+  .ax-sched-tag{
+    font-size: .7rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+</style>
+
+<div class="ax-card" style="overflow:hidden">
+  <div class="jobs-sticky-header">
+    <div style="padding:12px 16px 0;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:650;font-size:.95rem">Jobs</span>
+      {% if session.get('role') in ('admin', 'both') %}<a class="btn btn-primary btn-sm" href="/jobs/new">+ New Job</a>{% endif %}
     </div>
-    <div style="background:var(--card);padding:0 1rem;">
 
     {% set has_advanced = filter_client or filter_agent or filter_btype or filter_date_from or filter_date_to %}
-    <form class="mb-2" method="get" id="jobs-filter-form">
-
-      <div class="row g-2 mb-2">
-        <div class="col-12 col-lg-4">
-          <input class="form-control" name="q" placeholder="Search job no., client, customer, rego, VIN, address..." value="{{ q }}">
+    <form method="get" id="jobs-filter-form" style="padding:10px 16px 0">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <div style="flex:1 1 240px;position:relative">
+          <input class="form-control form-control-sm" name="q" placeholder="Search job no., client, customer, rego, VIN..." value="{{ q }}" style="padding-left:30px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:9px;top:8px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </div>
-        <div class="col-6 col-lg-2">
-          <select class="form-select" name="status">
-            <option value="">All statuses</option>
-            {% for s in statuses %}
-              <option value="{{s}}" {% if s == status %}selected{% endif %}>{{ s }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-6 col-lg-2">
-          <select class="form-select" name="sort">
-            <option value="scheduled"  {% if sort == 'scheduled' %}selected{% endif %}>Sort: Oldest Scheduled</option>
-            <option value="active"     {% if sort == 'active' %}selected{% endif %}>Sort: Active first</option>
-            <option value="agent"      {% if sort == 'agent' %}selected{% endif %}>Sort: Agent A–Z</option>
-            <option value="job_number" {% if sort == 'job_number' %}selected{% endif %}>Sort: Job # high–low</option>
-            <option value="client_ref" {% if sort == 'client_ref' %}selected{% endif %}>Sort: Client ref high–low</option>
-          </select>
-        </div>
-        <div class="col-6 col-lg-2">
-          <button type="button" id="adv-toggle"
-                  onclick="axToggleAdv()"
-                  style="width:100%;padding:.375rem .75rem;border:1px solid {% if has_advanced %}var(--accent){% else %}var(--line){% endif %};border-radius:8px;background:{% if has_advanced %}rgba(96,165,250,.1){% else %}var(--card){% endif %};color:{% if has_advanced %}var(--accent){% else %}var(--text){% endif %};font-size:.875rem;cursor:pointer;white-space:nowrap;">
-            More filters{% if has_advanced %} ●{% endif %} <span id="adv-arrow">{% if has_advanced %}▲{% else %}▼{% endif %}</span>
-          </button>
-        </div>
-        <div class="col-6 col-lg-1">
-          <button class="btn btn-outline-secondary w-100" type="submit">Filter</button>
-        </div>
-        <div class="col-12 col-lg-1">
-          <select class="form-select" name="per_page" onchange="document.getElementById('jobs-filter-form').submit()">
-            <option value="25"  {% if per_page == 25 %}selected{% endif %}>25 / page</option>
-            <option value="50"  {% if per_page == 50 %}selected{% endif %}>50 / page</option>
-            <option value="100" {% if per_page == 100 %}selected{% endif %}>100 / page</option>
-          </select>
-        </div>
+        <select class="form-select form-select-sm" name="status" style="flex:0 0 140px">
+          <option value="">All statuses</option>
+          {% for s in statuses %}
+            <option value="{{s}}" {% if s == status %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        <select class="form-select form-select-sm" name="sort" style="flex:0 0 170px">
+          <option value="scheduled"  {% if sort == 'scheduled' %}selected{% endif %}>Sort: Oldest Scheduled</option>
+          <option value="active"     {% if sort == 'active' %}selected{% endif %}>Sort: Active first</option>
+          <option value="agent"      {% if sort == 'agent' %}selected{% endif %}>Sort: Agent A–Z</option>
+          <option value="job_number" {% if sort == 'job_number' %}selected{% endif %}>Sort: Job # high–low</option>
+          <option value="client_ref" {% if sort == 'client_ref' %}selected{% endif %}>Sort: Client ref high–low</option>
+        </select>
+        <button type="button" id="adv-toggle" onclick="axToggleAdv()"
+                style="padding:4px 12px;border:1px solid {% if has_advanced %}var(--accent){% else %}var(--line){% endif %};border-radius:8px;background:{% if has_advanced %}rgba(96,165,250,.1){% else %}var(--card){% endif %};color:{% if has_advanced %}var(--accent){% else %}var(--muted){% endif %};font-size:.8rem;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          Filters{% if has_advanced %} <span style="color:var(--accent)">●</span>{% endif %}
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" type="submit" style="padding:4px 14px;font-size:.8rem">Filter</button>
+        <select class="form-select form-select-sm" name="per_page" onchange="document.getElementById('jobs-filter-form').submit()" style="flex:0 0 90px">
+          <option value="25"  {% if per_page == 25 %}selected{% endif %}>25</option>
+          <option value="50"  {% if per_page == 50 %}selected{% endif %}>50</option>
+          <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+        </select>
       </div>
 
       <input type="hidden" name="page" value="1">
 
-      <div id="adv-filters" style="display:{% if has_advanced %}flex{% else %}none{% endif %};flex-wrap:wrap;gap:8px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:4px;">
-
-        <div style="flex:1;min-width:140px;">
-          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Client</label>
+      <div id="adv-filters" style="display:{% if has_advanced %}flex{% else %}none{% endif %};flex-wrap:wrap;gap:8px;padding:10px 12px;background:#f9fafb;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
+        <div style="flex:1;min-width:130px">
+          <label style="font-size:.7rem;color:var(--muted);display:block;margin-bottom:2px;font-weight:500">Client</label>
           <select class="form-select form-select-sm" name="client_id">
             <option value="">All clients</option>
             {% for c in clients_list %}
@@ -67,10 +109,9 @@
             {% endfor %}
           </select>
         </div>
-
         {% if session.get('role') in ('admin', 'both') %}
-        <div style="flex:1;min-width:140px;">
-          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Agent</label>
+        <div style="flex:1;min-width:130px">
+          <label style="font-size:.7rem;color:var(--muted);display:block;margin-bottom:2px;font-weight:500">Agent</label>
           <select class="form-select form-select-sm" name="agent_id">
             <option value="">All agents</option>
             {% for a in agents_list %}
@@ -79,9 +120,8 @@
           </select>
         </div>
         {% endif %}
-
-        <div style="flex:1;min-width:160px;">
-          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Booking type</label>
+        <div style="flex:1;min-width:140px">
+          <label style="font-size:.7rem;color:var(--muted);display:block;margin-bottom:2px;font-weight:500">Booking type</label>
           <select class="form-select form-select-sm" name="booking_type_id">
             <option value="">All booking types</option>
             {% for bt in btypes_list %}
@@ -89,28 +129,23 @@
             {% endfor %}
           </select>
         </div>
-
-        <div style="flex:1;min-width:130px;">
-          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Updated from</label>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:.7rem;color:var(--muted);display:block;margin-bottom:2px;font-weight:500">Updated from</label>
           <input type="date" class="form-control form-control-sm" name="date_from" value="{{ filter_date_from }}">
         </div>
-
-        <div style="flex:1;min-width:130px;">
-          <label style="font-size:.72rem;color:var(--muted);display:block;margin-bottom:3px;font-weight:500;">Updated to</label>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:.7rem;color:var(--muted);display:block;margin-bottom:2px;font-weight:500">Updated to</label>
           <input type="date" class="form-control form-control-sm" name="date_to" value="{{ filter_date_to }}">
         </div>
-
         {% if has_advanced %}
-        <div style="display:flex;align-items:flex-end;padding-bottom:1px;">
-          <a href="/jobs" style="font-size:.78rem;color:#ef4444;text-decoration:none;padding:6px 10px;border:1px solid #ef444440;border-radius:7px;white-space:nowrap;">✕ Clear</a>
+        <div style="display:flex;align-items:flex-end;padding-bottom:1px">
+          <a href="/jobs" style="font-size:.75rem;color:#ef4444;text-decoration:none;padding:5px 9px;border:1px solid #ef444440;border-radius:7px;white-space:nowrap">Clear</a>
         </div>
         {% endif %}
-
       </div>
-
     </form>
 
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 2px 6px;font-size:.78rem;color:var(--muted);border-bottom:1px solid var(--line, #e5e7eb);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 16px;font-size:.76rem;color:var(--muted)">
       {% if total_jobs > 0 %}
         <span>Showing {{ ((page - 1) * per_page) + 1 }}–{{ [page * per_page, total_jobs] | min }} of {{ total_jobs }} job{{ 's' if total_jobs != 1 }}</span>
         <span>Page {{ page }} of {{ total_pages }}</span>
@@ -118,172 +153,144 @@
         <span>No jobs found</span>
       {% endif %}
     </div>
-
-    </div>
-
-    <script>
-    function axToggleAdv() {
-      var el  = document.getElementById('adv-filters');
-      var arr = document.getElementById('adv-arrow');
-      var btn = document.getElementById('adv-toggle');
-      var open = el.style.display !== 'none';
-      el.style.display  = open ? 'none' : 'flex';
-      arr.textContent   = open ? '▼' : '▲';
-    }
-    </script>
   </div>
 
-  <div class="ax-card-b">
+  <script>
+  function axToggleAdv() {
+    var el = document.getElementById('adv-filters');
+    var open = el.style.display !== 'none';
+    el.style.display = open ? 'none' : 'flex';
+  }
+  function axGoJob(e, id) {
+    if (e.target.closest('form, select, button')) return;
+    window.location.href = '/jobs/' + id;
+  }
+  </script>
 
+  <div>
     {% for j in jobs %}
-      {% set is_suspended = j.status in ['Suspended', 'Awaiting Instructions'] %}
+      {% set s = j.status %}
+      {% if s == 'New' %}{% set sc = '#3b82f6' %}
+      {% elif s in ('Active', 'Active - Phone work only') %}{% set sc = '#22c55e' %}
+      {% elif s in ('Suspended', 'Awaiting info from client', 'Awaiting Instructions') %}{% set sc = '#f59e0b' %}
+      {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
+      {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
+      {% else %}{% set sc = '#6b7280' %}{% endif %}
+
       {% set bt = j.next_booking_type or '' %}
-      {% if is_suspended %}
-        {% set badge_color = '#ef4444' %}
-      {% elif 'Update' in bt %}
-        {% set badge_color = '#2563eb' %}
-      {% elif 'New' in bt %}
-        {% set badge_color = '#22c55e' %}
-      {% elif 'Re-attend' in bt %}
-        {% set badge_color = '#f59e0b' %}
-      {% else %}
-        {% set badge_color = '#9ca3af' %}
-      {% endif %}
+      {% if 'Update' in bt %}{% set bt_color = '#2563eb' %}
+      {% elif 'New' in bt %}{% set bt_color = '#22c55e' %}
+      {% elif 'Re-attend' in bt %}{% set bt_color = '#f59e0b' %}
+      {% else %}{% set bt_color = '#9ca3af' %}{% endif %}
 
-      <div style="display:flex;align-items:stretch;gap:12px;padding:.7rem 0;
-                  border-bottom:1px solid #e5e7eb;{% if loop.first %}padding-top:.2rem;{% endif %}">
+      <div class="ax-job-row" onclick="axGoJob(event,{{ j.id }})">
+        <div class="ax-status-bar" style="background:{{ sc }}"></div>
 
-        <a href="/jobs/{{ j.id }}" class="text-decoration-none flex-grow-1" style="min-width:0;color:inherit;">
-          <div class="fw-semibold" style="font-size:.95rem;">
-            {{ j.display_ref }}{% if j.customer_label %} &mdash; {{ j.customer_label }}{% endif %}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:1px">
+            <span style="color:var(--accent);font-weight:700;font-size:.84rem">{{ j.display_ref }}</span>
+            <span style="font-weight:600;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ j.customer_label or j.customer_name or '' }}</span>
           </div>
-          <div class="small" style="color:var(--muted)">
-            {{ j.client_name or "No client" }}{% if j.asset_reg %} &nbsp;|&nbsp; Reg: {{ j.asset_reg }}{% endif %}
-          </div>
-          <div class="small" style="color:var(--muted)">
-            {{ j.job_type }} | {{ j.visit_type }} | {{ j.priority }}
-          </div>
-          <div class="d-flex flex-wrap gap-1 mt-1">
-            {% if j.assigned_name %}
-              <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(96,165,250,.13);color:var(--accent);border:1px solid rgba(96,165,250,.25);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.75"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
-                {{ j.assigned_name }}
-              </span>
-            {% else %}
-              <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(156,163,175,.1);color:var(--muted);border:1px solid rgba(156,163,175,.2);border-radius:999px;padding:1px 9px;font-size:.72rem;">
-                Unassigned
-              </span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-size:.74rem;color:var(--muted)">{{ j.client_name or 'No client' }}</span>
+            {% if j.asset_reg %}
+              <span style="font-size:.74rem;color:var(--line)">·</span>
+              <span style="font-size:.74rem;color:var(--text);font-family:monospace;font-weight:500">{{ j.asset_reg }}</span>
             {% endif %}
-            {% if j.next_scheduled %}
-              {% set is_overdue = j.next_scheduled < now_iso %}
-              {% if is_overdue %}
-                {% set sched_bg = 'rgba(239,68,68,.12)' %}
-                {% set sched_color = '#ef4444' %}
-                {% set sched_border = 'rgba(239,68,68,.3)' %}
-              {% else %}
-                {% set sched_bg = 'rgba(52,211,153,.12)' %}
-                {% set sched_color = '#34d399' %}
-                {% set sched_border = 'rgba(52,211,153,.25)' %}
-              {% endif %}
-              <span style="display:inline-flex;align-items:center;gap:4px;background:{{ sched_bg }};color:{{ sched_color }};border:1px solid {{ sched_border }};border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:500;">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style="opacity:.8"><path d="M19 4h-1V2h-2v2H8V2H6v2H5C3.9 4 3 4.9 3 6v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z"/></svg>
-                {% if is_overdue %}OVERDUE {% endif %}{{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[:4] }} {{ j.next_scheduled[11:16] }}
-              </span>
-            {% endif %}
+            <span style="font-size:.74rem;color:var(--line)">·</span>
+            <span style="font-size:.74rem;color:var(--muted)">{{ j.job_type }}</span>
           </div>
-        </a>
+        </div>
 
-        <div style="width:180px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;">
-          {% if bt %}
-            <span style="display:inline-block;background:{{ badge_color }};color:#fff;border-radius:999px;padding:.25rem .85rem;font-size:.8rem;font-weight:600;white-space:nowrap;">
-              {{ bt }}
-            </span>
+        <div style="text-align:right;min-width:90px;flex-shrink:0">
+          <div style="font-size:.76rem;font-weight:500;color:{% if j.assigned_name %}var(--text){% else %}#dc2626{% endif %};margin-bottom:1px">
+            {{ j.assigned_name or 'Unassigned' }}
+          </div>
+          {% if j.next_scheduled %}
+            {% set is_overdue = j.next_scheduled < now_iso %}
+            <div class="ax-sched-tag" style="color:{% if is_overdue %}#ef4444{% else %}var(--muted){% endif %};font-weight:{% if is_overdue %}600{% else %}400{% endif %};justify-content:flex-end">
+              {% if is_overdue %}<span style="font-size:.62rem;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;border-radius:3px;padding:0 4px">OVERDUE</span>{% endif %}
+              {{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[2:4] }} {{ j.next_scheduled[11:16] }}
+            </div>
           {% else %}
-            <span style="display:inline-block;background:#e5e7eb;color:#6b7280;border-radius:999px;padding:.25rem .85rem;font-size:.8rem;font-weight:500;white-space:nowrap;">
-              No booking
-            </span>
-          {% endif %}
-          {% if 'Update' in bt and j.next_sched_id %}
-            <form method="post" action="/jobs/{{ j.id }}/note-update-emailed" style="margin:0;">
-              <button type="submit" class="btn btn-sm" style="font-size:.72rem;padding:2px 10px;border:1px solid #2563eb;color:#2563eb;background:#fff;border-radius:999px;">
-                ✉ Update Emailed
-              </button>
-            </form>
+            <div style="font-size:.7rem;color:var(--line)">No schedule</div>
           {% endif %}
         </div>
 
-        {% set s = j.status %}
-        {% if s == 'New' %}{% set sc = '#3b82f6' %}
-        {% elif s in ('Active', 'Active - Phone work only') %}{% set sc = '#22c55e' %}
-        {% elif s in ('Suspended', 'Awaiting info from client', 'Awaiting Instructions') %}{% set sc = '#f59e0b' %}
-        {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
-        {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
-        {% else %}{% set sc = '#6b7280' %}{% endif %}
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;min-width:80px;justify-content:center">
+          {% if bt %}
+            <span class="ax-booking-pill" style="background:{{ bt_color }}">{{ bt }}</span>
+            {% if 'Update' in bt and j.next_sched_id %}
+              <form method="post" action="/jobs/{{ j.id }}/note-update-emailed" style="margin:0">
+                <button type="submit" style="font-size:.62rem;padding:2px 7px;border:1px solid #2563eb;color:#2563eb;background:#fff;border-radius:99px;cursor:pointer;white-space:nowrap">✉ Emailed</button>
+              </form>
+            {% endif %}
+          {% else %}
+            <span style="font-size:.7rem;color:var(--muted)">No booking</span>
+          {% endif %}
+        </div>
 
-        <div class="text-end flex-shrink-0" style="min-width:120px;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:4px;">
-          {% if session.get('role') == 'admin' %}
-            <form method="post" action="/jobs/{{ j.id }}/status" style="margin:0;">
+        <div style="flex-shrink:0">
+          {% if session.get('role') in ('admin', 'both') %}
+            <form method="post" action="/jobs/{{ j.id }}/status" style="margin:0">
               <select name="status" onchange="this.form.submit()"
-                      style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;
-                             border-radius:999px;padding:3px 10px;font-size:.76rem;font-weight:600;
+                      class="ax-status-pill"
+                      style="background:{{ sc }}15;color:{{ sc }};border:1.5px solid {{ sc }}40;
                              cursor:pointer;outline:none;appearance:none;-webkit-appearance:none;
-                             padding-right:22px;min-width:100px;
-                             background-image:url('data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2210%22 height%3D%2210%22 viewBox%3D%220 0 24 24%22%3E%3Cpath fill%3D%22%23{{ sc[1:] }}%22 d%3D%22M7 10l5 5 5-5z%22%2F%3E%3C%2Fsvg%3E');
-                             background-repeat:no-repeat;background-position:right 6px center;
-                             background-color:{{ sc }}15;">
+                             padding-right:20px;
+                             background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%2210%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%23{{ sc[1:] }}%22 d=%22M7 10l5 5 5-5z%22/%3E%3C/svg%3E');
+                             background-repeat:no-repeat;background-position:right 5px center;
+                             background-color:{{ sc }}15">
                 {% for st in statuses %}
                   <option value="{{ st }}" {% if st == j.status %}selected{% endif %}>{{ st }}</option>
                 {% endfor %}
               </select>
             </form>
           {% else %}
-            <span style="display:inline-block;background:{{ sc }}20;color:{{ sc }};
-                         border:1.5px solid {{ sc }}50;border-radius:999px;
-                         padding:3px 12px;font-size:.76rem;font-weight:600;white-space:nowrap;">
-              {{ j.status }}
-            </span>
+            <span class="ax-status-pill" style="background:{{ sc }}15;color:{{ sc }};border:1.5px solid {{ sc }}40">{{ j.status }}</span>
           {% endif %}
         </div>
-
       </div>
     {% else %}
-      <div style="color:var(--muted)" class="py-3 text-center">No jobs found.</div>
+      <div style="color:var(--muted);padding:2rem;text-align:center;font-size:.88rem">No jobs found.</div>
     {% endfor %}
+  </div>
 
-    {% if total_pages > 1 %}
-    <nav style="display:flex;justify-content:center;align-items:center;gap:4px;padding:16px 0 8px;flex-wrap:wrap;">
-      {% set base_params = 'q=' ~ (q|urlencode) ~ '&status=' ~ (status|urlencode) ~ '&sort=' ~ (sort|urlencode) ~ '&per_page=' ~ per_page ~ '&client_id=' ~ (filter_client|urlencode) ~ '&agent_id=' ~ (filter_agent|urlencode) ~ '&booking_type_id=' ~ (filter_btype|urlencode) ~ '&date_from=' ~ (filter_date_from|urlencode) ~ '&date_to=' ~ (filter_date_to|urlencode) %}
+  {% if total_pages > 1 %}
+  <nav style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--line);font-size:.82rem;color:var(--muted)">
+    {% set base_params = 'q=' ~ (q|urlencode) ~ '&status=' ~ (status|urlencode) ~ '&sort=' ~ (sort|urlencode) ~ '&per_page=' ~ per_page ~ '&client_id=' ~ (filter_client|urlencode) ~ '&agent_id=' ~ (filter_agent|urlencode) ~ '&booking_type_id=' ~ (filter_btype|urlencode) ~ '&date_from=' ~ (filter_date_from|urlencode) ~ '&date_to=' ~ (filter_date_to|urlencode) %}
+    <span>Showing {{ ((page - 1) * per_page) + 1 }}–{{ [page * per_page, total_jobs] | min }} of {{ total_jobs }}</span>
+    <div style="display:flex;gap:4px;align-items:center">
       {% if page > 1 %}
-        <a href="/jobs?{{ base_params }}&page={{ page - 1 }}" style="padding:6px 12px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--accent);text-decoration:none;">← Previous</a>
+        <a href="/jobs?{{ base_params }}&page={{ page - 1 }}" style="padding:5px 10px;border:1px solid var(--line);border-radius:8px;color:var(--accent);text-decoration:none;font-size:.8rem">&#8592; Prev</a>
       {% endif %}
 
       {% set start_page = [1, page - 2] | max %}
       {% set end_page = [total_pages, page + 2] | min %}
 
       {% if start_page > 1 %}
-        <a href="/jobs?{{ base_params }}&page=1" style="padding:6px 10px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--text);text-decoration:none;">1</a>
-        {% if start_page > 2 %}<span style="padding:0 4px;color:var(--muted);">…</span>{% endif %}
+        <a href="/jobs?{{ base_params }}&page=1" style="padding:5px 9px;border:1px solid var(--line);border-radius:8px;color:var(--text);text-decoration:none;font-size:.8rem">1</a>
+        {% if start_page > 2 %}<span style="padding:0 3px;color:var(--muted)">…</span>{% endif %}
       {% endif %}
 
       {% for p in range(start_page, end_page + 1) %}
         {% if p == page %}
-          <span style="padding:6px 10px;border:1px solid var(--accent);border-radius:8px;font-size:.82rem;color:#fff;background:var(--accent);font-weight:600;">{{ p }}</span>
+          <span style="padding:5px 9px;border:1px solid var(--accent);border-radius:8px;color:#fff;background:var(--accent);font-weight:600;font-size:.8rem">{{ p }}</span>
         {% else %}
-          <a href="/jobs?{{ base_params }}&page={{ p }}" style="padding:6px 10px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--text);text-decoration:none;">{{ p }}</a>
+          <a href="/jobs?{{ base_params }}&page={{ p }}" style="padding:5px 9px;border:1px solid var(--line);border-radius:8px;color:var(--text);text-decoration:none;font-size:.8rem">{{ p }}</a>
         {% endif %}
       {% endfor %}
 
       {% if end_page < total_pages %}
-        {% if end_page < total_pages - 1 %}<span style="padding:0 4px;color:var(--muted);">…</span>{% endif %}
-        <a href="/jobs?{{ base_params }}&page={{ total_pages }}" style="padding:6px 10px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--text);text-decoration:none;">{{ total_pages }}</a>
+        {% if end_page < total_pages - 1 %}<span style="padding:0 3px;color:var(--muted)">…</span>{% endif %}
+        <a href="/jobs?{{ base_params }}&page={{ total_pages }}" style="padding:5px 9px;border:1px solid var(--line);border-radius:8px;color:var(--text);text-decoration:none;font-size:.8rem">{{ total_pages }}</a>
       {% endif %}
 
       {% if page < total_pages %}
-        <a href="/jobs?{{ base_params }}&page={{ page + 1 }}" style="padding:6px 12px;border:1px solid var(--line, #e5e7eb);border-radius:8px;font-size:.82rem;color:var(--accent);text-decoration:none;">Next →</a>
+        <a href="/jobs?{{ base_params }}&page={{ page + 1 }}" style="padding:5px 10px;border:1px solid var(--line);border-radius:8px;color:var(--accent);text-decoration:none;font-size:.8rem">Next &#8594;</a>
       {% endif %}
-    </nav>
-    {% endif %}
-
-  </div>
+    </div>
+  </nav>
+  {% endif %}
 </div>
 {% endblock %}
