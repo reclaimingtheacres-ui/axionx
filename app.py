@@ -9726,6 +9726,44 @@ def geoop_repair_diagnostic():
         """).fetchall()
         result["jobs_with_raw_date_format"] = [dict(r) for r in sample_raw_dates]
 
+        import re as _re
+        npd_detail = conn.execute("""
+            SELECT j.id, j.job_due_date, j.mmp_cents,
+                   j.geoop_source_description AS desc_text
+            FROM jobs j
+            WHERE j.geoop_source_description LIKE '%NPD%'
+              AND j.geoop_source_description IS NOT NULL
+              AND j.geoop_source_description != ''
+            LIMIT 10
+        """).fetchall()
+        repair_trace = []
+        for r in npd_detail:
+            desc = r["desc_text"]
+            old_date = r["job_due_date"] or ""
+            parsed = _geoop.parse_description(desc)
+            new_date = parsed.get("parsed_nmpd_date", "")
+            new_amount = parsed.get("parsed_nmpd_amount_cents", 0) or 0
+            old_is_raw = bool(_re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$', old_date))
+            safe = not old_date or old_is_raw
+            would_update = bool(new_date) and new_date != old_date and safe
+            repair_trace.append({
+                "job_id": r["id"],
+                "old_date": old_date,
+                "new_date": new_date,
+                "new_amount": new_amount,
+                "old_is_raw": old_is_raw,
+                "safe_to_update": safe,
+                "would_update": would_update,
+                "skip_reason": (
+                    "no_new_date" if not new_date else
+                    "already_correct" if new_date == old_date else
+                    "not_safe" if not safe else
+                    "WILL_UPDATE"
+                ),
+                "desc_snippet": desc[:300],
+            })
+        result["repair_trace_npd_jobs"] = repair_trace
+
         return jsonify(result)
     finally:
         conn.close()
