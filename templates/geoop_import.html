@@ -386,12 +386,12 @@
       </div>
       <hr class="my-2">
       <p class="small text-muted mb-2">
-        <strong>Data Repair Tools</strong> — Fix known GeoOp import data-quality issues. Dates: restores original GeoOp created/modified dates. Phones: restores leading zeroes and +61 prefixes stripped by Excel.
+        <strong>Data Repair Tools</strong> — Fix known GeoOp import data-quality issues. Dates: converts UTC to Melbourne time and parses dates from note text. Phones: restores leading zeroes and +61 prefixes stripped by Excel.
       </p>
       <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
         <form method="post" action="/admin/geoop-import/repair-dates?target=both" class="m-0"
-              onsubmit="this.querySelector('button').disabled=true; return confirm('This will update created_at dates on all imported jobs and notes using original GeoOp dates. Continue?');">
-          <button type="submit" class="btn btn-outline-primary btn-sm" id="repairDatesBtn">Repair Original Dates</button>
+              onsubmit="this.querySelector('button').disabled=true; return confirm('This will re-process all imported note and job dates: converts UTC to Melbourne time, parses dates from note text, and fixes chronological ordering. Continue?');">
+          <button type="submit" class="btn btn-outline-primary btn-sm" id="repairDatesBtn">Repair Note &amp; Job Dates</button>
         </form>
         <form method="post" action="/admin/geoop-import/repair-phones" class="m-0"
               onsubmit="this.querySelector('button').disabled=true; return confirm('This will restore leading zeroes and international prefixes on all phone numbers. Continue?');">
