@@ -218,7 +218,7 @@
     data-agent-id="{{ c.job_assigned_uid or '' }}"
     data-client="{{ (c.client_name or '')|e }}"
     data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}"
-    style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions')){window.open('/jobs/'+this.dataset.jobId,'_blank')}">
+    style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions')){window.open('/jobs/'+this.dataset.jobId,'_blank');dismissItem({{ c.id }})}">
   <td>
     <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
   </td>
