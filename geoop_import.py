@@ -320,15 +320,16 @@ def parse_description(desc):
         result["parsed_costs_cents"] = _parse_money(costs_match.group(1))
 
     _nmpd_patterns = [
-        r'(?<![A-Za-z])N[MW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+(?:the\s+)?)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
-        r'(?<![A-Za-z])NPD[:\s]+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
-        r'(?<![A-Za-z])N[FW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?:^|(?<=\s)|(?<=\d))N[MW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+(?:the\s+)?)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?:(?<![A-Za-z])|(?<=inc))NPD[:\s]+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?:^|(?<=\s)|(?<=\d))N[FW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
         r'(?<![A-Za-z])(?:Due|PMT\s+Due)\s+(?:Date\s+)?(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
     ]
     nmpd_match = None
     for _pat in _nmpd_patterns:
-        nmpd_match = re.search(_pat, clean, re.IGNORECASE)
-        if nmpd_match:
+        all_matches = list(re.finditer(_pat, clean, re.IGNORECASE))
+        if all_matches:
+            nmpd_match = all_matches[-1]
             break
     if nmpd_match:
         groups = nmpd_match.groups()
@@ -3806,46 +3807,29 @@ def repair_registrations():
         try:
             conn = _db()
             try:
-                rows = conn.execute("""
-                    SELECT sj.id, sj.geoop_job_id, sj.raw_description, sj.parsed_reg,
-                           sj.axion_job_id
-                    FROM geoop_staging_jobs sj
-                    WHERE sj.raw_description IS NOT NULL AND sj.raw_description != ''
-                      AND sj.import_status = 'imported'
+                staging_rows = conn.execute("""
+                    SELECT id, raw_description, parsed_reg, axion_job_id
+                    FROM geoop_staging_jobs
+                    WHERE raw_description IS NOT NULL AND raw_description != ''
+                      AND import_status IN ('imported', 'updated')
                 """).fetchall()
-                _repair_reg_progress["total"] = len(rows)
-                log.info("Repair registrations: %d staging rows to check", len(rows))
-
                 staging_batch = []
                 item_batch = []
-                for r in rows:
-                    desc = r["raw_description"]
-                    old_reg = r["parsed_reg"] or ""
-
-                    parsed = parse_description(desc)
+                for r in staging_rows:
+                    parsed = parse_description(r["raw_description"])
                     new_reg = parsed.get("parsed_reg", "")
-
+                    old_reg = r["parsed_reg"] or ""
                     if new_reg != old_reg:
                         staging_batch.append((new_reg, r["id"]))
                         if r["axion_job_id"]:
                             item_batch.append((new_reg, r["axion_job_id"], old_reg))
-
-                    if len(staging_batch) >= 500:
-                        conn.executemany(
-                            "UPDATE geoop_staging_jobs SET parsed_reg = ? WHERE id = ?",
-                            staging_batch
-                        )
-                        conn.commit()
-                        _repair_reg_progress["staging_fixed"] += len(staging_batch)
-                        staging_batch = []
-
                 if staging_batch:
                     conn.executemany(
                         "UPDATE geoop_staging_jobs SET parsed_reg = ? WHERE id = ?",
                         staging_batch
                     )
                     conn.commit()
-                    _repair_reg_progress["staging_fixed"] += len(staging_batch)
+                _repair_reg_progress["staging_fixed"] = len(staging_batch)
 
                 items_actually_updated = 0
                 for new_reg, axion_job_id, old_reg in item_batch:
@@ -3855,11 +3839,42 @@ def repair_registrations():
                     """, (new_reg, axion_job_id, old_reg))
                     items_actually_updated += cur.rowcount
                 conn.commit()
+
+                ji_rows = conn.execute("""
+                    SELECT ji.id, ji.job_id, ji.reg,
+                           COALESCE(j.geoop_source_description, j.description) AS desc_text,
+                           sj.parsed_reg AS old_staged_reg
+                    FROM job_items ji
+                    JOIN jobs j ON j.id = ji.job_id
+                    JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id
+                    WHERE ji.item_type = 'vehicle'
+                      AND sj.import_status IN ('imported', 'updated')
+                      AND COALESCE(j.geoop_source_description, j.description) IS NOT NULL
+                      AND COALESCE(j.geoop_source_description, j.description) != ''
+                """).fetchall()
+                _repair_reg_progress["total"] = len(ji_rows)
+                log.info("Repair registrations: %d job_items to check", len(ji_rows))
+
+                for r in ji_rows:
+                    parsed = parse_description(r["desc_text"])
+                    new_reg = parsed.get("parsed_reg", "")
+                    old_reg = r["reg"] or ""
+                    old_staged = r["old_staged_reg"] or ""
+                    if new_reg and new_reg != old_reg:
+                        safe = (not old_reg or old_reg == old_staged)
+                        if not safe:
+                            continue
+                        cur = conn.execute(
+                            "UPDATE job_items SET reg = ? WHERE id = ?",
+                            (new_reg, r["id"])
+                        )
+                        items_actually_updated += cur.rowcount
+                conn.commit()
                 _repair_reg_progress["items_fixed"] = items_actually_updated
 
                 _repair_reg_progress["status"] = "complete"
                 log.info("Repair registrations complete: %d staging, %d items fixed",
-                         _repair_reg_progress["staging_fixed"], items_actually_updated)
+                         len(staging_batch), items_actually_updated)
             finally:
                 conn.close()
         except Exception as e:
@@ -3891,62 +3906,79 @@ def repair_due_dates():
         try:
             conn = _db()
             try:
-                rows = conn.execute("""
-                    SELECT sj.id, sj.raw_description, sj.parsed_nmpd_date,
-                           sj.axion_job_id
-                    FROM geoop_staging_jobs sj
-                    WHERE sj.raw_description IS NOT NULL AND sj.raw_description != ''
-                      AND sj.import_status IN ('imported', 'updated')
+                staging_rows = conn.execute("""
+                    SELECT id, raw_description, parsed_nmpd_date, parsed_nmpd_amount_cents
+                    FROM geoop_staging_jobs
+                    WHERE raw_description IS NOT NULL AND raw_description != ''
+                      AND import_status IN ('imported', 'updated')
                 """).fetchall()
-                _repair_due_dates_progress["total"] = len(rows)
-                log.info("Repair due dates: %d staging rows to check", len(rows))
-
                 staging_batch = []
-                job_batch = []
-                for r in rows:
-                    desc = r["raw_description"]
-                    old_date = r["parsed_nmpd_date"] or ""
-
-                    parsed = parse_description(desc)
+                for r in staging_rows:
+                    parsed = parse_description(r["raw_description"])
                     new_date = parsed.get("parsed_nmpd_date", "")
                     new_amount = parsed.get("parsed_nmpd_amount_cents", 0) or 0
-
+                    old_date = r["parsed_nmpd_date"] or ""
                     if new_date != old_date:
                         staging_batch.append((new_date, new_amount, r["id"]))
-                        if r["axion_job_id"]:
-                            job_batch.append((new_date, new_amount, r["axion_job_id"], old_date))
-
-                    if len(staging_batch) >= 500:
-                        conn.executemany(
-                            "UPDATE geoop_staging_jobs SET parsed_nmpd_date = ?, parsed_nmpd_amount_cents = ? WHERE id = ?",
-                            staging_batch
-                        )
-                        conn.commit()
-                        _repair_due_dates_progress["staging_fixed"] += len(staging_batch)
-                        staging_batch = []
-
                 if staging_batch:
                     conn.executemany(
                         "UPDATE geoop_staging_jobs SET parsed_nmpd_date = ?, parsed_nmpd_amount_cents = ? WHERE id = ?",
                         staging_batch
                     )
                     conn.commit()
-                    _repair_due_dates_progress["staging_fixed"] += len(staging_batch)
+                _repair_due_dates_progress["staging_fixed"] = len(staging_batch)
+                log.info("Repair due dates: %d staging rows fixed", len(staging_batch))
+
+                job_rows = conn.execute("""
+                    SELECT j.id, j.job_due_date, j.mmp_cents,
+                           COALESCE(j.geoop_source_description, j.description) AS desc_text,
+                           sj.parsed_nmpd_date AS old_staged_date
+                    FROM jobs j
+                    JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id
+                    WHERE sj.import_status IN ('imported', 'updated')
+                      AND COALESCE(j.geoop_source_description, j.description) IS NOT NULL
+                      AND COALESCE(j.geoop_source_description, j.description) != ''
+                """).fetchall()
+                _repair_due_dates_progress["total"] = len(job_rows)
+                log.info("Repair due dates: %d jobs to check", len(job_rows))
 
                 jobs_actually_updated = 0
-                for new_date, new_amount, axion_job_id, old_date_for_job in job_batch:
+                for r in job_rows:
+                    desc = r["desc_text"]
+                    old_date = r["job_due_date"] or ""
+                    old_staged = r["old_staged_date"] or ""
+
+                    parsed = parse_description(desc)
+                    new_date = parsed.get("parsed_nmpd_date", "")
+                    new_amount = parsed.get("parsed_nmpd_amount_cents", 0) or 0
+
+                    if not new_date:
+                        continue
+
+                    if new_date == old_date:
+                        continue
+
+                    old_is_raw = bool(re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$', old_date))
+                    safe_to_update = (
+                        not old_date
+                        or old_date == old_staged
+                        or (old_is_raw and _normalise_au_date(old_date) == new_date)
+                    )
+                    if not safe_to_update:
+                        continue
+
                     cur = conn.execute("""
                         UPDATE jobs SET job_due_date = ?, mmp_cents = ?
                         WHERE id = ?
-                          AND (job_due_date IS NULL OR job_due_date = '' OR job_due_date = ?)
-                    """, (new_date, new_amount, axion_job_id, old_date_for_job))
+                    """, (new_date, new_amount, r["id"]))
                     jobs_actually_updated += cur.rowcount
+
                 conn.commit()
                 _repair_due_dates_progress["jobs_fixed"] = jobs_actually_updated
 
                 _repair_due_dates_progress["status"] = "complete"
                 log.info("Repair due dates complete: %d staging, %d jobs fixed",
-                         _repair_due_dates_progress["staging_fixed"], jobs_actually_updated)
+                         len(staging_batch), jobs_actually_updated)
             finally:
                 conn.close()
         except Exception as e:
