@@ -7718,6 +7718,14 @@ def add_job_note(job_id: int):
 
     flash("Field note saved.", "success")
     if session.get("role") in ("admin", "both"):
+        _sconn = db()
+        has_active_schedule = _sconn.execute(
+            "SELECT 1 FROM schedules WHERE job_id = ? AND status NOT IN ('Cancelled', 'Completed') LIMIT 1",
+            (job_id,)
+        ).fetchone()
+        _sconn.close()
+        if has_active_schedule:
+            return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
         return redirect(url_for("job_detail", job_id=job_id) + "?schedule_prompt=1#tab-notes")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
