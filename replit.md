@@ -20,6 +20,7 @@ Axion Prototype is a Flask-based field operations management application designe
 ### Design Patterns & Features
 
 **1. Role-Based Access Control:** Differentiates 'Admin' and 'Agent' roles with tailored access to features like job visibility, dashboards, cues, assignment boards, reports, and user management.
+- **Agent Draft Lockout**: Agents with 5+ unfinished attendance update drafts are blocked from accessing Jobs list, Job detail, My Today, and mobile Schedule/Jobs pages — redirected to `/my/drafts`. At 4 drafts, the banner flashes amber with a warning that access will be restricted at 5. At 5+, the banner turns red. Update-builder remains accessible so agents can complete their drafts. `DRAFT_LOCKOUT_THRESHOLD = 5` constant in `app.py`. Only applies to `role == 'agent'`, not admin/both.
 
 **2. Dynamic Queue System:** Provides an admin-only view with 'Agent Notes – Pending Review' pinned at the top (hidden when empty, sorted by most recently updated), followed by 'Overdue' and 'Currently Due' sections. When a job is rescheduled or updated, its cue items are auto-completed and the queue view refreshes automatically on tab focus via `/queue/active-cue-ids` polling. Direct email composition and job updates available inline.
 - **Agent ID column**: Every queue row shows the assigned agent as a styled badge (blue for assigned, amber for unassigned).

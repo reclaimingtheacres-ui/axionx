@@ -8,6 +8,15 @@
 </div>
 
 {% if drafts %}
+{% if drafts|length >= 5 and session.get('role') == 'agent' %}
+<div class="mb-3 px-3 py-2"
+     style="background:rgba(220,38,38,.1);border:1.5px solid rgba(220,38,38,.4);border-radius:8px">
+  <span style="color:#991b1b;font-size:.875rem;font-weight:600">
+    &#128683; <strong>Access to jobs and schedules is suspended.</strong> You have <strong>{{ drafts|length }}</strong> unfinished attendance updates.
+    Complete all updates below to restore access.
+  </span>
+</div>
+{% else %}
 <div class="mb-3 px-3 py-2"
      style="background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:8px">
   <span style="color:#92400e;font-size:.875rem">
@@ -16,6 +25,7 @@
     Open each one to review and complete it.
   </span>
 </div>
+{% endif %}
 
 <div class="list-group">
   {% for d in drafts %}

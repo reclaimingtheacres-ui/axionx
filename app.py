@@ -1010,6 +1010,33 @@ def inject_globals():
     }
 
 
+DRAFT_LOCKOUT_THRESHOLD = 5
+
+def _agent_draft_count(uid):
+    try:
+        conn = db()
+        row = conn.execute(
+            "SELECT COUNT(*) c FROM job_updates WHERE created_by_user_id=? AND status='draft'",
+            (uid,)
+        ).fetchone()
+        conn.close()
+        return row["c"] if row else 0
+    except Exception:
+        return 0
+
+def _check_agent_lockout():
+    role = session.get("role")
+    if role not in ("agent",):
+        return None
+    uid = session.get("user_id")
+    if not uid:
+        return None
+    count = _agent_draft_count(uid)
+    if count >= DRAFT_LOCKOUT_THRESHOLD:
+        return redirect(url_for("my_drafts"))
+    return None
+
+
 # -------- Helpers --------
 
 
@@ -2758,6 +2785,9 @@ def dashboard_jobs_api():
 @app.get("/jobs")
 @login_required
 def jobs_list():
+    lockout = _check_agent_lockout()
+    if lockout:
+        return lockout
     status       = request.args.get("status", "").strip()
     q            = request.args.get("q", "").strip()
     sort         = request.args.get("sort", "").strip()
@@ -3572,6 +3602,9 @@ def job_create():
 @app.get("/jobs/<int:job_id>")
 @login_required
 def job_detail(job_id: int):
+    lockout = _check_agent_lockout()
+    if lockout:
+        return lockout
     conn = db()
     cur = conn.cursor()
 
@@ -11248,6 +11281,9 @@ def report_monthly():
 @app.get("/my/today")
 @login_required
 def my_today():
+    lockout = _check_agent_lockout()
+    if lockout:
+        return lockout
     today = datetime.now().date().isoformat()
     today_display = today[8:10] + "/" + today[5:7] + "/" + today[:4]
     user_id = session.get("user_id")
@@ -11963,6 +11999,9 @@ def m_api_auth_revoke_all_tokens():
 @app.get("/m/schedule/today")
 @mobile_login_required
 def m_today():
+    lockout = _check_agent_lockout()
+    if lockout:
+        return lockout
     uid   = session.get("user_id")
     today = datetime.now(_melbourne).date().isoformat()
     today_display = today[8:10] + "/" + today[5:7] + "/" + today[:4]
@@ -12183,6 +12222,9 @@ def _mobile_jobs_query(uid, role, params_in):
 @app.get("/m/jobs")
 @mobile_login_required
 def m_jobs():
+    lockout = _check_agent_lockout()
+    if lockout:
+        return lockout
     uid  = session.get("user_id")
     role = session.get("role", "")
     params_in = {
@@ -12298,6 +12340,9 @@ def m_jobs_prefs_save():
 @app.get("/m/job/<int:job_id>")
 @mobile_login_required
 def m_job_detail(job_id):
+    lockout = _check_agent_lockout()
+    if lockout:
+        return lockout
     uid  = session.get("user_id")
     role = session.get("role", "")
     conn = db()

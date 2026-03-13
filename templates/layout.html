@@ -415,6 +415,35 @@
       {% endwith %}
 
       {% if pending_draft_count and session.get('role') in ('agent', 'both') %}
+      {% if pending_draft_count >= 5 and session.get('role') == 'agent' %}
+      <div id="ax-draft-banner" class="d-flex align-items-center justify-content-between mb-3 px-3 py-2"
+           style="background:rgba(220,38,38,.12);border:1.5px solid rgba(220,38,38,.45);border-radius:8px;cursor:pointer"
+           onclick="window.location.href='/my/drafts'">
+        <div class="d-flex align-items-center gap-2">
+          <span style="font-size:1.1rem">&#128683;</span>
+          <span style="font-size:.875rem;color:#991b1b;font-weight:600">
+            Access to jobs is suspended. You have {{ pending_draft_count }} unfinished attendance updates. Complete them to restore access.
+          </span>
+        </div>
+        <span class="badge" style="background:#dc2626;color:#fff;font-size:.75rem">Complete Now</span>
+      </div>
+      {% elif pending_draft_count >= 4 and session.get('role') == 'agent' %}
+      <div id="ax-draft-banner" class="ax-draft-flash d-flex align-items-center justify-content-between mb-3 px-3 py-2"
+           style="border:1.5px solid rgba(217,119,6,.5);border-radius:8px;cursor:pointer"
+           onclick="window.location.href='/my/drafts'">
+        <div class="d-flex align-items-center gap-2">
+          <span style="font-size:1.1rem">&#9888;</span>
+          <span style="font-size:.875rem;color:#92400e;font-weight:600">
+            Warning: You have {{ pending_draft_count }} unfinished updates. Access to jobs will be restricted at 5. Complete your updates now.
+          </span>
+        </div>
+        <span class="badge" style="background:#d97706;color:#fff;font-size:.75rem">View Drafts</span>
+      </div>
+      <style>
+        @keyframes ax-flash-warn{0%,100%{background:rgba(217,119,6,.08)}50%{background:rgba(217,119,6,.25)}}
+        .ax-draft-flash{animation:ax-flash-warn 1.5s ease-in-out infinite}
+      </style>
+      {% else %}
       <div id="ax-draft-banner" class="d-flex align-items-center justify-content-between mb-3 px-3 py-2"
            style="background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.35);border-radius:8px;cursor:pointer"
            onclick="window.location.href='/my/drafts'">
@@ -426,6 +455,7 @@
         </div>
         <span class="badge" style="background:#d97706;color:#fff;font-size:.75rem">View Drafts</span>
       </div>
+      {% endif %}
       {% endif %}
 
       {% block content %}{% endblock %}

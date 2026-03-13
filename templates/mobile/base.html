@@ -280,6 +280,36 @@ a { color: var(--accent); text-decoration: none; }
       <div class="m-flash m-flash-{{ 'danger' if cat in ('danger','error') else ('warning' if cat == 'warning' else 'success') }}">{{ msg }}</div>
     {% endfor %}
   {% endwith %}
+
+  {% if pending_draft_count and session.get('role') in ('agent', 'both') %}
+  {% if pending_draft_count >= 5 and session.get('role') == 'agent' %}
+  <div onclick="window.location.href='/my/drafts'" style="margin:10px 14px;padding:10px 14px;background:rgba(220,38,38,.12);border:1.5px solid rgba(220,38,38,.45);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:1rem">&#128683;</span>
+      <span style="font-size:.82rem;color:#991b1b;font-weight:600">Access to jobs is suspended. You have {{ pending_draft_count }} unfinished updates. Complete them to restore access.</span>
+    </div>
+    <span style="background:#dc2626;color:#fff;font-size:.7rem;font-weight:600;padding:3px 10px;border-radius:99px;white-space:nowrap">Complete Now</span>
+  </div>
+  {% elif pending_draft_count >= 4 and session.get('role') == 'agent' %}
+  <style>@keyframes m-flash-warn{0%,100%{background:rgba(217,119,6,.08)}50%{background:rgba(217,119,6,.25)}}</style>
+  <div onclick="window.location.href='/my/drafts'" style="margin:10px 14px;padding:10px 14px;border:1.5px solid rgba(217,119,6,.5);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;animation:m-flash-warn 1.5s ease-in-out infinite">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:1rem">&#9888;</span>
+      <span style="font-size:.82rem;color:#92400e;font-weight:600">Warning: {{ pending_draft_count }} unfinished updates. Access to jobs will be restricted at 5.</span>
+    </div>
+    <span style="background:#d97706;color:#fff;font-size:.7rem;font-weight:600;padding:3px 10px;border-radius:99px;white-space:nowrap">View Drafts</span>
+  </div>
+  {% else %}
+  <div onclick="window.location.href='/my/drafts'" style="margin:10px 14px;padding:10px 14px;background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.35);border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:1rem">&#9888;</span>
+      <span style="font-size:.82rem;color:#92400e;font-weight:500">You have {{ pending_draft_count }} unfinished update{{ 's' if pending_draft_count != 1 else '' }} requiring completion.</span>
+    </div>
+    <span style="background:#d97706;color:#fff;font-size:.7rem;font-weight:600;padding:3px 10px;border-radius:99px;white-space:nowrap">View Drafts</span>
+  </div>
+  {% endif %}
+  {% endif %}
+
   {% block content %}{% endblock %}
 </main>
 
