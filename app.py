@@ -10510,8 +10510,9 @@ def admin_api_duplicates():
 
     def _apply_filters(rows):
         out = []
-        for r in rows:
-            if status_filter and r["status"] != status_filter:
+        for _r in rows:
+            r = dict(_r)
+            if status_filter and r.get("status") != status_filter:
                 continue
             if client_filter and str(r.get("client_name") or "").lower() != client_filter.lower():
                 continue
@@ -10521,7 +10522,7 @@ def admin_api_duplicates():
                      "client_reference", "lender_name", "client_name", "customer_name")).lower()
                 if q not in haystack:
                     continue
-            out.append(dict(r))
+            out.append(r)
         return out
 
     # --- Group 1: same internal_job_number ---
