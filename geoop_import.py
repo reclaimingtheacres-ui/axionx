@@ -3808,21 +3808,18 @@ def repair_registrations():
             conn = _db()
             try:
                 staging_rows = conn.execute("""
-                    SELECT id, raw_description, parsed_reg, axion_job_id
+                    SELECT id, raw_description, parsed_reg
                     FROM geoop_staging_jobs
                     WHERE raw_description IS NOT NULL AND raw_description != ''
                       AND import_status IN ('imported', 'updated')
                 """).fetchall()
                 staging_batch = []
-                item_batch = []
                 for r in staging_rows:
                     parsed = parse_description(r["raw_description"])
                     new_reg = parsed.get("parsed_reg", "")
                     old_reg = r["parsed_reg"] or ""
                     if new_reg != old_reg:
                         staging_batch.append((new_reg, r["id"]))
-                        if r["axion_job_id"]:
-                            item_batch.append((new_reg, r["axion_job_id"], old_reg))
                 if staging_batch:
                     conn.executemany(
                         "UPDATE geoop_staging_jobs SET parsed_reg = ? WHERE id = ?",
@@ -3831,38 +3828,25 @@ def repair_registrations():
                     conn.commit()
                 _repair_reg_progress["staging_fixed"] = len(staging_batch)
 
-                items_actually_updated = 0
-                for new_reg, axion_job_id, old_reg in item_batch:
-                    cur = conn.execute("""
-                        UPDATE job_items SET reg = ?
-                        WHERE job_id = ? AND item_type = 'vehicle' AND reg = ?
-                    """, (new_reg, axion_job_id, old_reg))
-                    items_actually_updated += cur.rowcount
-                conn.commit()
-
                 ji_rows = conn.execute("""
                     SELECT ji.id, ji.job_id, ji.reg,
-                           COALESCE(j.geoop_source_description, j.description) AS desc_text,
-                           sj.parsed_reg AS old_staged_reg
+                           j.geoop_source_description AS desc_text
                     FROM job_items ji
                     JOIN jobs j ON j.id = ji.job_id
-                    JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id
                     WHERE ji.item_type = 'vehicle'
-                      AND sj.import_status IN ('imported', 'updated')
-                      AND COALESCE(j.geoop_source_description, j.description) IS NOT NULL
-                      AND COALESCE(j.geoop_source_description, j.description) != ''
+                      AND j.geoop_source_description IS NOT NULL
+                      AND j.geoop_source_description != ''
                 """).fetchall()
                 _repair_reg_progress["total"] = len(ji_rows)
-                log.info("Repair registrations: %d job_items to check", len(ji_rows))
+                log.info("Repair registrations: %d geoop-sourced job_items to check", len(ji_rows))
 
+                items_actually_updated = 0
                 for r in ji_rows:
                     parsed = parse_description(r["desc_text"])
                     new_reg = parsed.get("parsed_reg", "")
                     old_reg = r["reg"] or ""
-                    old_staged = r["old_staged_reg"] or ""
                     if new_reg and new_reg != old_reg:
-                        safe = (not old_reg or old_reg == old_staged)
-                        if not safe:
+                        if old_reg:
                             continue
                         cur = conn.execute(
                             "UPDATE job_items SET reg = ? WHERE id = ?",
@@ -3931,22 +3915,18 @@ def repair_due_dates():
 
                 job_rows = conn.execute("""
                     SELECT j.id, j.job_due_date, j.mmp_cents,
-                           COALESCE(j.geoop_source_description, j.description) AS desc_text,
-                           sj.parsed_nmpd_date AS old_staged_date
+                           j.geoop_source_description AS desc_text
                     FROM jobs j
-                    JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id
-                    WHERE sj.import_status IN ('imported', 'updated')
-                      AND COALESCE(j.geoop_source_description, j.description) IS NOT NULL
-                      AND COALESCE(j.geoop_source_description, j.description) != ''
+                    WHERE j.geoop_source_description IS NOT NULL
+                      AND j.geoop_source_description != ''
                 """).fetchall()
                 _repair_due_dates_progress["total"] = len(job_rows)
-                log.info("Repair due dates: %d jobs to check", len(job_rows))
+                log.info("Repair due dates: %d geoop-sourced jobs to check", len(job_rows))
 
                 jobs_actually_updated = 0
                 for r in job_rows:
                     desc = r["desc_text"]
                     old_date = r["job_due_date"] or ""
-                    old_staged = r["old_staged_date"] or ""
 
                     parsed = parse_description(desc)
                     new_date = parsed.get("parsed_nmpd_date", "")
@@ -3961,8 +3941,7 @@ def repair_due_dates():
                     old_is_raw = bool(re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}$', old_date))
                     safe_to_update = (
                         not old_date
-                        or old_date == old_staged
-                        or (old_is_raw and _normalise_au_date(old_date) == new_date)
+                        or old_is_raw
                     )
                     if not safe_to_update:
                         continue

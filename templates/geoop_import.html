@@ -1383,7 +1383,7 @@ function _renderAuditResult(d) {
           regsStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Regs: checking ' + (regs.total||0).toLocaleString() + ' jobs…';
           regsBtn.disabled = true;
         } else if (regs.status === 'complete') {
-          regsStatusEl.textContent = 'Regs: ' + (regs.staging_fixed||0).toLocaleString() + ' staging, ' + (regs.items_fixed||0).toLocaleString() + ' items fixed';
+          regsStatusEl.textContent = 'Regs: ' + (regs.staging_fixed||0).toLocaleString() + ' staging, ' + (regs.items_fixed||0).toLocaleString() + ' items fixed (checked ' + (regs.total||0).toLocaleString() + ')';
           regsBtn.disabled = false;
         } else if (regs.status === 'error') {
           regsStatusEl.textContent = 'Regs: error';
@@ -1393,7 +1393,7 @@ function _renderAuditResult(d) {
           dueDatesStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Due dates: checking ' + (dueDates.total||0).toLocaleString() + ' jobs…';
           dueDatesBtn.disabled = true;
         } else if (dueDates.status === 'complete') {
-          dueDatesStatusEl.textContent = 'Due dates: ' + (dueDates.staging_fixed||0).toLocaleString() + ' staging, ' + (dueDates.jobs_fixed||0).toLocaleString() + ' jobs fixed';
+          dueDatesStatusEl.textContent = 'Due dates: ' + (dueDates.staging_fixed||0).toLocaleString() + ' staging, ' + (dueDates.jobs_fixed||0).toLocaleString() + ' jobs fixed (checked ' + (dueDates.total||0).toLocaleString() + ')';
           dueDatesBtn.disabled = false;
         } else if (dueDates.status === 'error') {
           dueDatesStatusEl.textContent = 'Due dates: error';
