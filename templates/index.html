@@ -3,6 +3,50 @@
 {% block page_title %}Home{% endblock %}
 
 {% block content %}
+<style>
+  .ax-summary-card{
+    background: #ffffff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px;
+    border-left: 4px solid var(--accent);
+  }
+  .ax-summary-card .sc-label{ font-size: .78rem; color: var(--muted); margin-bottom: 4px; }
+  .ax-summary-card .sc-value{ font-size: 28px; font-weight: 700; margin-bottom: 2px; }
+  .ax-summary-card .sc-sub{ font-size: .72rem; color: var(--muted); }
+  .ax-feed-row{
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: background .1s;
+    text-decoration: none;
+    color: inherit;
+  }
+  .ax-feed-row:hover{ background: #f8fafc; color: inherit; text-decoration: none; }
+  .ax-feed-icon{
+    width: 36px; height: 36px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .ax-status-badge{
+    font-size: .7rem; font-weight: 600;
+    border-radius: 6px; padding: 2px 8px;
+    white-space: nowrap;
+    display: inline-block;
+  }
+  .ax-sched-row{
+    padding: 12px 18px;
+    cursor: pointer;
+    transition: background .1s;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+  .ax-sched-row:hover{ background: #f8fafc; color: inherit; text-decoration: none; }
+</style>
+
 <form method="get" action="/jobs" class="mb-4">
   <div class="input-group input-group-lg">
     <input type="text" name="q" class="form-control ax-search"
@@ -10,6 +54,24 @@
     <button class="btn btn-primary ax-search-btn" type="submit">Search</button>
   </div>
 </form>
+
+{% set summary_cards = [
+  ('Total Active', jobs_active + jobs_phone, '#d97706', 'Active + Phone work'),
+  ('Needs Attention', jobs_suspended, '#dc2626', 'Suspended jobs'),
+  ('Awaiting Response', jobs_awaiting, '#f59e0b', 'From clients'),
+  ('Completed Today', completed_today, '#0d9488', 'Ready to invoice'),
+] %}
+<div class="row g-3 mb-4">
+  {% for label, value, colour, sub in summary_cards %}
+  <div class="col-6 col-lg-3">
+    <div class="ax-summary-card" style="border-left-color:{{ colour }}">
+      <div class="sc-label">{{ label }}</div>
+      <div class="sc-value" style="color:{{ colour }}">{{ value }}</div>
+      <div class="sc-sub">{{ sub }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
 
 <div class="row g-2 mb-4">
   <div class="col-6 col-sm-4 col-md-3 col-xl">
@@ -32,7 +94,7 @@
   </div>
   <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-phone" href="/jobs?status=Active+-+Phone+work+only">
-      <div class="ax-tile-title">Active Phone Work</div>
+      <div class="ax-tile-title">Phone Work</div>
       <div class="ax-tile-value">{{ jobs_phone }}</div>
     </a>
   </div>
@@ -44,7 +106,7 @@
   </div>
   <div class="col-6 col-sm-4 col-md-3 col-xl">
     <a class="ax-tile ax-tile-awaiting" href="/jobs?status=Awaiting+info+from+client">
-      <div class="ax-tile-title">Awaiting Instructions</div>
+      <div class="ax-tile-title">Awaiting</div>
       <div class="ax-tile-value">{{ jobs_awaiting }}</div>
     </a>
   </div>
@@ -70,79 +132,127 @@
   {% endif %}
 </div>
 
-{% set label_map = {
-  'New':                       ('New',                   '#3ddc84'),
-  'Active':                    ('Active',                '#ffd166'),
-  'Active - Phone work only':  ('Active Phone Work',     '#60a5fa'),
-  'Suspended':                 ('Suspended',             '#ff5c5c'),
-  'Awaiting info from client': ('Awaiting Instructions', '#f59e0b'),
-  'Completed':                 ('Completed',             '#14b8a6'),
-  'Invoiced':                  ('Invoiced',              '#b8b8b8'),
+{% set status_colours = {
+  'New':                       ('#16a34a', '#f0fdf4'),
+  'Active':                    ('#d97706', '#fffbeb'),
+  'Active - Phone work only':  ('#2563eb', '#eff6ff'),
+  'Suspended':                 ('#dc2626', '#fef2f2'),
+  'Awaiting info from client': ('#f59e0b', '#fffbeb'),
+  'Completed':                 ('#0d9488', '#f0fdfa'),
+  'Invoiced':                  ('#6b7280', '#f9fafb'),
+} %}
+{% set status_labels = {
+  'New': 'New',
+  'Active': 'Active',
+  'Active - Phone work only': 'Phone Work',
+  'Suspended': 'Suspended',
+  'Awaiting info from client': 'Awaiting',
+  'Completed': 'Completed',
+  'Invoiced': 'Invoiced',
 } %}
 
-{% for status, key in status_list %}
-  {% if not (session.get('role') == 'agent' and status in ['Completed', 'Invoiced']) %}
-  {% set jobs = rows_by_status[status] %}
-  {% if jobs %}
-  {% set lbl, colour = label_map[status] %}
-  <div class="ax-card mb-3">
-    <div class="ax-card-h d-flex align-items-center gap-2" style="padding-bottom:10px">
-      <span style="width:8px;height:8px;border-radius:50%;background:{{ colour }};flex-shrink:0;display:inline-block"></span>
-      <span style="color:{{ colour }};font-size:.85rem;font-weight:600">{{ lbl }}</span>
-      <span class="badge rounded-pill ms-1" style="background:{{ colour }}22;color:{{ colour }};border:1px solid {{ colour }}44;font-size:.75rem">{{ jobs|length }}</span>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-sm mb-0" style="font-size:.85rem">
-        <thead>
-          <tr style="color:var(--muted)">
-            <th style="font-weight:500;border-color:var(--line)">Job Ref</th>
-            <th style="font-weight:500;border-color:var(--line)">Customer</th>
-            <th style="font-weight:500;border-color:var(--line)">Agent</th>
-            <th style="font-weight:500;border-color:var(--line)">Next Schedule</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for j in jobs %}
-          <tr style="cursor:pointer;border-color:var(--line)" onclick="window.location='/jobs/{{ j.id }}'">
-            <td style="border-color:var(--line);color:var(--accent);font-weight:600">{{ j.display_ref }}</td>
-            <td style="border-color:var(--line);color:var(--text);font-weight:500">{{ j.customer_label or j.customer_name }}</td>
-            <td style="border-color:var(--line);color:var(--muted)">{{ j.assigned_name or '&#8212;' }}</td>
-            <td style="border-color:var(--line)">
-              {% if j.next_scheduled %}
-                {% set ns = j.next_scheduled %}
-                {% set ns_date = ns[:10] %}
-                {% set ns_time = ns[11:16] %}
-                {% set ns_dd = ns[8:10] %}
-                {% set ns_mm = ns[5:7] %}
-                {% set ns_yy = ns[2:4] %}
-                {% if ns_date == today_iso %}
-                  <span style="color:#ffd166;font-weight:600">Today {{ ns_time }}</span>
-                {% elif ns_date == tomorrow_iso %}
-                  <span style="color:#60a5fa">Tomorrow {{ ns_time }}</span>
-                {% else %}
-                  <span style="color:var(--muted)">{{ ns_dd }}/{{ ns_mm }}/{{ ns_yy }} {{ ns_time }}</span>
-                {% endif %}
-              {% else %}
-                <span style="color:var(--line)">&#8212;</span>
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="ax-card" style="overflow:hidden">
+      <div class="ax-card-h d-flex align-items-center justify-content-between" style="padding:14px 18px;border-bottom:1px solid var(--line)">
+        <div class="d-flex align-items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span style="font-weight:600;font-size:.9rem">Recent Activity</span>
+        </div>
+        <a href="/jobs" style="font-size:.8rem;color:var(--accent);text-decoration:none;font-weight:500">
+          View all jobs &rsaquo;
+        </a>
+      </div>
+      {% if recent_activity %}
+      {% for j in recent_activity %}
+      {% set sc, sbg = status_colours.get(j.status, ('#6b7280', '#f3f4f6')) %}
+      <a href="/jobs/{{ j.id }}" class="ax-feed-row" style="border-bottom:{% if not loop.last %}1px solid var(--line){% else %}none{% endif %}">
+        <div class="d-flex align-items-center gap-3" style="flex:1;min-width:0">
+          <div class="ax-feed-icon" style="background:{{ sbg }}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{ sc }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+          </div>
+          <div style="min-width:0;flex:1">
+            <div class="d-flex align-items-center gap-2" style="margin-bottom:2px">
+              <span style="color:var(--accent);font-weight:600;font-size:.84rem">{{ j.display_ref }}</span>
+              <span style="font-weight:500;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ j.customer_label }}</span>
+              {% if j.assigned_name %}
+              <span style="font-size:.75rem;color:var(--muted);margin-left:auto;white-space:nowrap">{{ j.assigned_name }}</span>
               {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="ax-status-badge" style="background:{{ sbg }};color:{{ sc }};border:1px solid {{ sc }}33">{{ status_labels.get(j.status, j.status) }}</span>
+              {% if not j.assigned_name %}
+              <span style="font-size:.72rem;color:#dc2626;font-style:italic">Unassigned</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% if j.updated_at %}
+        <div style="font-size:.75rem;color:var(--muted);white-space:nowrap;margin-left:12px">
+          {% set ua = j.updated_at %}
+          {% set ua_date = ua[:10] %}
+          {% set ua_time = ua[11:16] %}
+          {% set ua_dd = ua[8:10] %}
+          {% set ua_mm = ua[5:7] %}
+          {% if ua_date == today_iso %}
+            Today {{ ua_time }}
+          {% elif ua_date == tomorrow_iso %}
+            Tomorrow {{ ua_time }}
+          {% else %}
+            {{ ua_dd }}/{{ ua_mm }} {{ ua_time }}
+          {% endif %}
+        </div>
+        {% endif %}
+      </a>
+      {% endfor %}
+      {% else %}
+      <div style="padding:2rem;text-align:center;color:var(--muted);font-size:.9rem">No recent activity.</div>
+      {% endif %}
     </div>
   </div>
-  {% endif %}
-  {% endif %}
-{% endfor %}
+
+  <div class="col-lg-4">
+    <div class="ax-card" style="overflow:hidden">
+      <div class="ax-card-h d-flex align-items-center gap-2" style="padding:14px 18px;border-bottom:1px solid var(--line)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span style="font-weight:600;font-size:.9rem">Upcoming Schedules</span>
+      </div>
+      {% if upcoming_schedules %}
+      {% for s in upcoming_schedules %}
+      <a href="/jobs/{{ s.id }}" class="ax-sched-row" style="border-bottom:{% if not loop.last %}1px solid var(--line){% else %}none{% endif %}">
+        <div class="d-flex justify-content-between" style="margin-bottom:4px">
+          <span style="color:var(--accent);font-weight:600;font-size:.84rem">{{ s.display_ref }}</span>
+          {% if s.next_scheduled %}
+            {% set ns = s.next_scheduled %}
+            {% set ns_date = ns[:10] %}
+            {% set ns_time = ns[11:16] %}
+            {% set ns_dd = ns[8:10] %}
+            {% set ns_mm = ns[5:7] %}
+            {% if ns_date == today_iso %}
+              <span style="font-size:.78rem;font-weight:500;color:#d97706">Today {{ ns_time }}</span>
+            {% elif ns_date == tomorrow_iso %}
+              <span style="font-size:.78rem;font-weight:500;color:#60a5fa">Tomorrow {{ ns_time }}</span>
+            {% else %}
+              <span style="font-size:.78rem;font-weight:500;color:var(--muted)">{{ ns_dd }}/{{ ns_mm }} {{ ns_time }}</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <div style="font-size:.8rem;color:var(--muted)">
+          {{ s.customer_label }} &middot; {{ s.assigned_name or 'Unassigned' }}
+        </div>
+      </a>
+      {% endfor %}
+      <div style="padding:10px 18px;border-top:1px solid var(--line);text-align:center">
+        <a href="/schedule" style="font-size:.8rem;color:var(--accent);text-decoration:none;font-weight:500">View full schedule &rarr;</a>
+      </div>
+      {% else %}
+      <div style="padding:2rem;text-align:center;color:var(--muted);font-size:.9rem">No upcoming schedules.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
 
 {% if jobs_all == 0 %}
 <div style="color:var(--muted);text-align:center;padding:2rem 0;font-size:.9rem">No jobs yet.</div>
 {% endif %}
-
-<div class="mt-3">
-  {% if session.get('role') != 'agent' %}
-  <a class="btn btn-primary" href="/jobs/new">+ New Job</a>
-  {% endif %}
-</div>
 {% endblock %}

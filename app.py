@@ -2468,7 +2468,85 @@ def dashboard():
         jobs_invoiced  = jcount("status = 'Invoiced'")
         jobs_archived  = jcount("status = 'Archived - Invoiced'")
 
-    rows_by_status = {status: jrows(status) for status, _ in STATUS_LIST}
+    agent_subq = """
+        COALESCE(
+            (SELECT u2.full_name FROM schedules sx
+             JOIN users u2 ON u2.id = sx.assigned_to_user_id
+             WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed')
+             ORDER BY sx.scheduled_for ASC LIMIT 1),
+            u.full_name
+        ) AS assigned_name"""
+    sched_subq = """
+        (SELECT sx2.scheduled_for FROM schedules sx2
+         WHERE sx2.job_id = j.id
+           AND date(sx2.scheduled_for) >= date('now','localtime')
+         ORDER BY sx2.scheduled_for ASC LIMIT 1) AS next_scheduled"""
+    base_sel = f"""
+        SELECT j.id, j.display_ref, j.status,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name, 'No customer') AS customer_label,
+               {agent_subq},
+               {sched_subq},
+               j.updated_at
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users u ON u.id = j.assigned_user_id"""
+
+    if role == "agent":
+        recent_sql = base_sel + f"""
+            WHERE {_excl_arch} AND (j.assigned_user_id = ? OR EXISTS (
+                SELECT 1 FROM schedules s WHERE s.job_id = j.id
+                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+            ))
+            ORDER BY j.updated_at DESC LIMIT 15"""
+        cur.execute(recent_sql, (user_id, user_id))
+    else:
+        recent_sql = base_sel + f"""
+            WHERE {_excl_arch}
+            ORDER BY j.updated_at DESC LIMIT 15"""
+        cur.execute(recent_sql)
+    recent_activity = cur.fetchall()
+
+    sched_sel = f"""
+        SELECT j.id, j.display_ref,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name, 'No customer') AS customer_label,
+               {agent_subq},
+               s_next.scheduled_for AS next_scheduled
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users u ON u.id = j.assigned_user_id
+        JOIN (
+            SELECT job_id, MIN(scheduled_for) AS scheduled_for
+            FROM schedules
+            WHERE date(scheduled_for) >= date('now','localtime')
+            GROUP BY job_id
+        ) s_next ON s_next.job_id = j.id
+        WHERE {_excl_arch}"""
+    if role == "agent":
+        sched_sel += """
+            AND (j.assigned_user_id = ? OR EXISTS (
+                SELECT 1 FROM schedules s WHERE s.job_id = j.id
+                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+            ))"""
+        sched_sel += " ORDER BY s_next.scheduled_for ASC LIMIT 6"
+        cur.execute(sched_sel, (user_id, user_id))
+    else:
+        sched_sel += " ORDER BY s_next.scheduled_for ASC LIMIT 6"
+        cur.execute(sched_sel)
+    upcoming_schedules = cur.fetchall()
+
+    _mel_now_d = datetime.now(_melbourne).date()
+    completed_today = 0
+    if role == "agent":
+        cur.execute("""SELECT COUNT(*) AS c FROM jobs
+            WHERE status = 'Completed' AND date(updated_at) = ?
+            AND (assigned_user_id = ? OR EXISTS (
+                SELECT 1 FROM schedules s WHERE s.job_id = jobs.id
+                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+            ))""", (_mel_now_d.isoformat(), user_id, user_id))
+    else:
+        cur.execute("SELECT COUNT(*) AS c FROM jobs WHERE status = 'Completed' AND date(updated_at) = ?",
+                    (_mel_now_d.isoformat(),))
+    completed_today = cur.fetchone()["c"]
 
     # Auto-flag overdue / today / tomorrow schedules into the job queue
     _admin_id = user_id if role in ("admin", "both") else None
@@ -2486,8 +2564,9 @@ def dashboard():
         jobs_awaiting=jobs_awaiting, jobs_completed=jobs_completed,
         jobs_invoiced=jobs_invoiced,
         jobs_archived=jobs_archived,
-        rows_by_status=rows_by_status,
-        status_list=STATUS_LIST,
+        recent_activity=recent_activity,
+        upcoming_schedules=upcoming_schedules,
+        completed_today=completed_today,
         today_iso=_today.isoformat(),
         tomorrow_iso=(_today + _td(days=1)).isoformat())
 
