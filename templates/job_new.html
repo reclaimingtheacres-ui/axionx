@@ -3,388 +3,728 @@
 {% block page_title %}New Job{% endblock %}
 
 {% block content %}
-<div class="ax-card">
-  <div class="ax-card-h">Create Job</div>
-  <div class="ax-card-b">
+{%- macro conf_badge(field) -%}
+  {%- set c = autofill_confidence.get(field) if autofill_confidence else None -%}
+  {%- if c == 'matched' -%}
+    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#16a34a;color:#fff;vertical-align:middle;" title="Matched to database record">Matched</span>
+  {%- elif c == 'extracted' -%}
+    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#2563eb;color:#fff;vertical-align:middle;" title="Extracted from document">Extracted</span>
+  {%- elif c == 'review' -%}
+    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#f59e0b;color:#fff;vertical-align:middle;" title="Needs review — possible match">Review</span>
+  {%- endif -%}
+{%- endmacro -%}
 
-    {# ── Confidence badge macro ────────────────────────────────────────── #}
-    {%- macro conf_badge(field) -%}
-      {%- set c = autofill_confidence.get(field) if autofill_confidence else None -%}
-      {%- if c == 'matched' -%}
-        <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#16a34a;color:#fff;vertical-align:middle;" title="Matched to database record">Matched</span>
-      {%- elif c == 'extracted' -%}
-        <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#2563eb;color:#fff;vertical-align:middle;" title="Extracted from document">Extracted</span>
-      {%- elif c == 'review' -%}
-        <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#f59e0b;color:#fff;vertical-align:middle;" title="Needs review — possible match">Review</span>
-      {%- endif -%}
-    {%- endmacro -%}
+<style>
+.nj-card{background:#fff;border-radius:10px;border:1px solid var(--line);overflow:hidden;margin-bottom:14px;}
+.nj-card-h{display:flex;align-items:center;gap:6px;padding:8px 14px;border-bottom:1px solid rgba(0,0,0,.06);background:#fafbfc;font-weight:600;font-size:.82rem;color:var(--text);}
+.nj-card-h svg{width:15px;height:15px;flex-shrink:0;}
+.nj-card-h .nj-opt{margin-left:auto;font-size:.68rem;color:var(--muted);font-weight:500;}
+.nj-card-b{padding:12px 14px;}
+.nj-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.nj-row:last-child{margin-bottom:0;}
+.nj-lbl{display:block;font-size:.72rem;font-weight:600;color:#64748b;margin-bottom:2px;letter-spacing:.03em;}
+.nj-draft-bar{display:flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.18);border-radius:8px;font-size:.78rem;color:var(--muted);margin-bottom:12px;}
+.nj-draft-bar svg{width:14px;height:14px;color:var(--accent);}
+.nj-parsed-toggle{display:inline-flex;align-items:center;gap:4px;background:none;border:none;padding:2px 0;font-size:.72rem;color:var(--accent);cursor:pointer;font-weight:500;}
+.nj-parsed-panel{margin-top:4px;padding:6px 10px;background:rgba(96,165,250,.06);border-radius:6px;border:1px solid rgba(96,165,250,.15);}
+.nj-parsed-grid{display:flex;gap:14px;flex-wrap:wrap;}
+.nj-parsed-item .nj-pk{font-size:.62rem;color:#64748b;font-weight:600;letter-spacing:.04em;}
+.nj-parsed-item .nj-pv{font-size:.76rem;color:var(--text);font-weight:600;}
+.nj-rego-ok{color:#16a34a;font-size:.7rem;font-weight:500;display:inline-flex;align-items:center;gap:3px;}
+.nj-rego-warn{color:#f59e0b;font-size:.7rem;font-weight:500;display:inline-flex;align-items:center;gap:3px;}
+.asset-row{background:#f8fafc;border-radius:7px;padding:10px 12px;border:1px solid #f1f5f9;margin-bottom:8px;}
+@media(min-width:992px){
+  .nj-two-col{display:grid;grid-template-columns:1fr 380px;gap:18px;align-items:start;}
+  .nj-right{position:sticky;top:16px;}
+}
+@media(max-width:991.98px){
+  .nj-two-col{display:flex;flex-direction:column;gap:14px;}
+}
+.bt-combo-drop{position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.10);}
+.bt-combo-item{padding:8px 12px;cursor:pointer;font-size:.85rem;border-bottom:1px solid rgba(0,0,0,.05);display:flex;align-items:center;gap:6px;}
+.bt-combo-item:hover,.bt-combo-item.bt-active{background:rgba(96,165,250,.1);}
+.bt-combo-item .bt-recent{font-size:.62rem;color:var(--accent);border:1px solid rgba(37,99,235,.2);border-radius:4px;padding:0 4px;font-weight:600;}
+.bt-add-new{color:var(--accent);font-weight:600;font-style:italic;}
+</style>
 
-    <!-- Auto-fill upload zone -->
-    {% if autofill_notice %}
-    {%- set _needs_review_fields = [] -%}
-    {%- if autofill_confidence -%}
-      {%- for k, v in autofill_confidence.items() if not v -%}
-        {%- if _needs_review_fields.append(k) -%}{%- endif -%}
-      {%- endfor -%}
-    {%- endif -%}
-    {%- set _source_label = '' -%}
-    {%- set _af_source = autofill.get('_source', '') if autofill else '' -%}
-    {%- if _af_source == 'acs_worksheet' -%}
-      {%- set _source_label = 'ACS Worksheet' -%}
-    {%- elif _af_source == 'wise_group' -%}
-      {%- set _source_label = 'Wise Group' -%}
-    {%- endif -%}
-    {%- set _review_count = 0 -%}
-    {%- if autofill_confidence -%}
-      {%- for k, v in autofill_confidence.items() if v == 'review' -%}
-        {%- if loop.first %}{%- set _review_count = loop.length -%}{%- endif -%}
-      {%- endfor -%}
-    {%- endif -%}
-    <div class="mb-3 p-3 d-flex align-items-start gap-3"
-         style="background:rgba(96,165,250,.08);border:1.5px solid rgba(96,165,250,.35);border-radius:14px;">
-      <span style="font-size:1.4rem;line-height:1;flex-shrink:0;">&#128196;</span>
-      <div class="flex-grow-1">
-        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-          <strong style="color:var(--text)">Auto-filled from document</strong>
-          {% if _source_label %}<span class="badge me-1" style="background:#6366f1;color:#fff;font-weight:600;font-size:.72rem;">{{ _source_label }}</span>{% endif %}
-          {% if autofill_filename %}<span class="text-muted" style="font-size:.82rem;">— {{ autofill_filename }}</span>{% endif %}
-        </div>
-        <div style="font-size:.83rem;color:var(--muted);line-height:1.5;">
-          {% if autofill_filled_count %}
-            <span class="badge me-1" style="background:#16a34a;color:#fff;font-weight:600;">{{ autofill_filled_count }} field{{ 's' if autofill_filled_count != 1 }} populated</span>
-          {% endif %}
-          Review every field below before saving &mdash; all fields are editable.
-          The <em>Schedule</em> tab is the only tab that normally requires manual entry.
-          The source document will be attached automatically when you save.
-        </div>
-        <div class="mt-2 d-flex gap-2 flex-wrap">
-          <button type="button" class="btn btn-sm btn-primary py-0 px-3"
-                  onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('detailsModal')).show()"
-                  style="font-size:.82rem;">
-            Review Lender &amp; Security &rarr;
-          </button>
-        </div>
-      </div>
+{% if autofill_notice %}
+{%- set _af_source = autofill.get('_source', '') if autofill else '' -%}
+{%- set _source_label = '' -%}
+{%- if _af_source == 'acs_worksheet' %}{%- set _source_label = 'ACS Worksheet' -%}
+{%- elif _af_source == 'wise_group' %}{%- set _source_label = 'Wise Group' -%}{%- endif -%}
+<div class="mb-3 p-3 d-flex align-items-start gap-3"
+     style="background:rgba(96,165,250,.08);border:1.5px solid rgba(96,165,250,.35);border-radius:14px;">
+  <span style="font-size:1.4rem;line-height:1;flex-shrink:0;">&#128196;</span>
+  <div class="flex-grow-1">
+    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+      <strong style="color:var(--text)">Auto-filled from document</strong>
+      {% if _source_label %}<span class="badge me-1" style="background:#6366f1;color:#fff;font-weight:600;font-size:.72rem;">{{ _source_label }}</span>{% endif %}
+      {% if autofill_filename %}<span class="text-muted" style="font-size:.82rem;">— {{ autofill_filename }}</span>{% endif %}
     </div>
-    {% else %}
-    <div class="mb-3">
-      <button type="button" class="btn btn-outline-secondary btn-sm"
-              onclick="document.getElementById('autofillZone').classList.toggle('d-none')"
-              style="font-size:.82rem">
-        &#128196; Upload instruction document to auto-fill
-      </button>
-      <div id="autofillZone" class="d-none mt-2">
-        <form method="post" action="/jobs/new/autofill-upload" enctype="multipart/form-data"
-              style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-          <input type="file" name="instruction_file" class="form-control form-control-sm"
-                 accept=".pdf,.docx,.doc" style="max-width:340px" required>
-          <button type="submit" class="btn btn-primary btn-sm">Extract &amp; Auto-fill</button>
-          <span class="small" style="color:var(--muted)">PDF and Word (.docx recommended — .doc may not work on all systems)</span>
-        </form>
-      </div>
+    <div style="font-size:.83rem;color:var(--muted);line-height:1.5;">
+      {% if autofill_filled_count %}
+        <span class="badge me-1" style="background:#16a34a;color:#fff;font-weight:600;">{{ autofill_filled_count }} field{{ 's' if autofill_filled_count != 1 }} populated</span>
+      {% endif %}
+      Review every field below before saving &mdash; all fields are editable.
     </div>
-    {% endif %}
-
-    <form method="post" id="newJobForm">
-      {% if autofill_id %}<input type="hidden" name="autofill_id" value="{{ autofill_id }}">{% endif %}
-      <div class="row g-3 mb-3">
-        <div class="col-12 col-lg-3">
-          <label class="form-label">Job Number</label>
-          <div class="form-control" style="background:rgba(96,165,250,.08)!important; border-color:rgba(96,165,250,.3)!important; color:var(--accent)!important; font-weight:700; letter-spacing:.05em">
-            {{ next_number }}
-          </div>
-          <div class="form-text" style="color:var(--muted)">Auto-generated &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit;vertical-align:baseline" onclick="openEntityModal('settings', '/admin/settings/popup')">change</button></div>
-        </div>
-        <div class="col-12 col-lg-5">
-          <label class="form-label">Contract Number {{ conf_badge('client_reference') }}</label>
-          <div class="position-relative">
-            <input class="form-control" name="client_reference" id="client_reference" placeholder="e.g., AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,'').replace(/[a-z]/g,c=>c.toUpperCase()); syncCJN(); syncContractToAccount();" autocomplete="off">
-            <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
-          </div>
-          <div class="form-text" style="color:var(--muted)">Type to search previous jobs and clone</div>
-        </div>
-        <div class="col-12 col-lg-4">
-          <label class="form-label d-flex align-items-center gap-2">
-            Client Job Number {{ conf_badge('our_ref') }}
-            <span style="font-weight:400;font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:4px;">
-              <input type="checkbox" id="cjn_same" style="cursor:pointer;">
-              same as contract number
-            </span>
-          </label>
-          <input class="form-control" name="client_job_number" id="client_job_number" placeholder="e.g., CJN-001" oninput="this.value=this.value.replace(/\s/g,'')"
-                 value="{{ prefill_client_job_number or '' }}">
-        </div>
-      </div>
-
-      <div class="row g-3 mb-3">
-        <div class="col-12 col-lg-6">
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label mb-0">Client {{ conf_badge('lender_name') }}</label>
-            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
-                    onclick="openEntityModal('client','/clients/new-popup')"
-                    title="Create new client">+&nbsp;New</button>
-          </div>
-          <div class="position-relative">
-            <input type="text" class="form-control" id="client_search"
-                   placeholder="Type to search client..." autocomplete="off" spellcheck="false">
-            <input type="hidden" name="client_id" id="client_id_val">
-            <div id="client_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:#ffffff; border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
-          </div>
-        </div>
-        <div class="col-12 col-lg-6">
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <label class="form-label mb-0">Customer {{ conf_badge('customer_name') }}</label>
-            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
-                    onclick="openEntityModal('customer','/customers/new-popup')"
-                    title="Create new customer">+&nbsp;New</button>
-          </div>
-          <div class="position-relative">
-            <input type="text" class="form-control" id="customer_search"
-                   placeholder="Type to search customer..." autocomplete="off" spellcheck="false">
-            <input type="hidden" name="customer_id" id="customer_id_val">
-            <div id="customer_dropdown" style="display:none; position:absolute; z-index:9999; width:100%; top:calc(100% + 4px); background:#ffffff; border:1px solid var(--line); border-radius:12px; overflow:hidden; max-height:220px; overflow-y:auto;"></div>
-          </div>
-        </div>
-      </div>
-
-
-      <div class="mb-3">
-        <label class="form-label">Customer Address {{ conf_badge('customer_address') }}</label>
-        <input class="form-control ax-address" id="customer_address" name="customer_address" placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false" value="{{ prefill_customer_address }}">
-      </div>
-
-
-      <div class="row g-3 mb-3">
-        <div class="col-12 col-lg-3">
-          <label class="form-label">Job Type</label>
-          <select class="form-select" name="job_type" id="jobTypeSelect">
-            {% for jt in job_types %}<option value="{{ jt.name }}">{{ jt.name }}</option>{% endfor %}
-          </select>
-          {% if session.get('role') == 'admin' %}
-          <button class="btn btn-outline-secondary btn-sm mt-2" type="button"
-                  data-bs-toggle="collapse" data-bs-target="#addJobType">+ Add Job Type</button>
-          <div class="collapse mt-2" id="addJobType">
-            <div class="input-group">
-              <input id="addJobTypeInput" class="form-control" placeholder="New job type name…">
-              <button class="btn btn-outline-primary" type="button" onclick="submitNewJobType()">Save</button>
-            </div>
-          </div>
-          {% endif %}
-        </div>
-        <div class="col-12 col-lg-3">
-          <label class="form-label">Visit Type</label>
-          <select class="form-select" name="visit_type">
-            {% for vt in visit_types %}<option value="{{vt}}">{{vt}}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="col-12 col-lg-3">
-          <label class="form-label">Status</label>
-          <select class="form-select" name="status">
-            {% for st in statuses %}<option value="{{st}}">{{st}}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="col-12 col-lg-3">
-          <label class="form-label">Priority</label>
-          <select class="form-select" name="priority">
-            {% for p in priorities %}<option value="{{p}}" {% if p == 'Normal' %}selected{% endif %}>{{p}}</option>{% endfor %}
-          </select>
-        </div>
-      </div>
-
-      <div class="mb-3">
-        <label class="form-label">Job Address</label>
-        <input class="form-control ax-address" id="job_address" name="job_address" placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false">
-        <label style="display:flex; gap:.5rem; align-items:center; margin-top:.4rem; color:var(--muted); font-size:.85rem; cursor:pointer;">
-          <input type="checkbox" id="job_same_as_customer" checked>
-          Use customer address
-        </label>
-      </div>
-
-
-      <script>
-      function addAssetRow() {
-        const wrap = document.getElementById("assetsWrap");
-        const first = wrap.querySelector(".asset-row");
-        const clone = first.cloneNode(true);
-        clone.querySelectorAll("input").forEach(i => { i.value = ""; delete i._pacElement; });
-        clone.querySelectorAll("select").forEach(s => s.selectedIndex = 0);
-        clone.querySelectorAll("[data-gmp-bound]").forEach(i => delete i.dataset.gmpBound);
-        clone.querySelectorAll("gmp-place-autocomplete").forEach(pac => pac.remove());
-        clone.querySelectorAll("input[type='hidden'][name]").forEach(i => { i.type = "text"; i.className = "form-control asset-address"; });
-        wrap.appendChild(clone);
-        if (typeof window.axionInitPlaces === "function") window.axionInitPlaces();
-        if (typeof window.axionSyncAssets === "function") window.axionSyncAssets();
-      }
-
-      function removeAssetRow(btn) {
-        const wrap = document.getElementById("assetsWrap");
-        const rows = wrap.querySelectorAll(".asset-row");
-        if (rows.length <= 1) {
-          rows[0].querySelectorAll("input").forEach(i => i.value = "");
-          rows[0].querySelectorAll("select").forEach(s => s.selectedIndex = 0);
-          return;
-        }
-        btn.closest(".asset-row").remove();
-      }
-      </script>
-
-      <script>
-      (function () {
-        function buildDesc(row) {
-          var year   = (row.querySelector('.asset-year')   || {}).value || '';
-          var make   = (row.querySelector('.asset-make')   || {}).value || '';
-          var model  = (row.querySelector('.asset-model')  || {}).value || '';
-          var colour = (row.querySelector('.asset-colour') || {}).value || '';
-          var engine = (row.querySelector('.asset-engine') || {}).value || '';
-          var rego   = (row.querySelector('.asset-rego')   || {}).value || '';
-          var vin    = (row.querySelector('.asset-vin')    || {}).value || '';
-          var parts  = [year, make, model].filter(function(v){ return v.trim(); });
-          if (colour.trim()) parts.push(colour.trim());
-          if (engine.trim()) parts.push('ENG: ' + engine.trim());
-          if (rego.trim())   parts.push('REG: ' + rego.trim());
-          if (vin.trim())    parts.push('VIN: ' + vin.trim());
-          return parts.join(' ');
-        }
-
-        function parseDesc(row, desc) {
-          var yearM   = desc.match(/\b((?:19|20)\d{2})\b/);
-          var engM    = desc.match(/ENG:\s*(\S+)/i);
-          var regM    = desc.match(/REG:\s*(\S+)/i);
-          var vinM    = desc.match(/VIN:\s*(\S+)/i);
-          var base    = desc
-            .replace(/ENG:\s*\S+/gi, '')
-            .replace(/REG:\s*\S+/gi, '')
-            .replace(/VIN:\s*\S+/gi, '')
-            .replace(/\b(?:19|20)\d{2}\b/, '')
-            .trim();
-          var words   = base.split(/\s+/).filter(Boolean);
-          var make    = words[0] || '';
-          var model   = words.slice(1).join(' ');
-
-          function set(cls, val) {
-            var el = row.querySelector(cls);
-            if (el) el.value = val;
-          }
-          set('.asset-year',   yearM  ? yearM[1]  : '');
-          set('.asset-make',   make);
-          set('.asset-model',  model);
-          set('.asset-engine', engM   ? engM[1]   : '');
-          set('.asset-rego',   regM   ? regM[1]   : '');
-          set('.asset-vin',    vinM   ? vinM[1]   : '');
-        }
-
-        var wrap = document.getElementById('assetsWrap');
-        if (!wrap) return;
-
-        var _updatingDesc = false;
-        var _updatingFields = false;
-
-        wrap.addEventListener('input', function (e) {
-          var row = e.target.closest('.asset-row');
-          if (!row) return;
-
-          if (e.target.classList.contains('asset-description')) {
-            if (_updatingDesc) return;
-            _updatingFields = true;
-            parseDesc(row, e.target.value);
-            _updatingFields = false;
-          } else if (
-            e.target.classList.contains('asset-year')   ||
-            e.target.classList.contains('asset-make')   ||
-            e.target.classList.contains('asset-model')  ||
-            e.target.classList.contains('asset-colour') ||
-            e.target.classList.contains('asset-engine') ||
-            e.target.classList.contains('asset-rego')   ||
-            e.target.classList.contains('asset-vin')
-          ) {
-            if (_updatingFields) return;
-            _updatingDesc = true;
-            var descEl = row.querySelector('.asset-description');
-            if (descEl) descEl.value = buildDesc(row);
-            _updatingDesc = false;
-          }
-        });
-      })();
-      </script>
-
-      <script>
-      (function () {
-        const customer = document.getElementById("customer_address");
-        const job = document.getElementById("job_address");
-        const jobSync = document.getElementById("job_same_as_customer");
-        const assetSync = document.getElementById("asset_same_as_customer");
-        if (!customer) return;
-
-        let jobManuallyEdited = false;
-        let assetManuallyEdited = false;
-
-        function setField(input, value) {
-          if (typeof window.axionSetAddress === "function") {
-            window.axionSetAddress(input, value);
-          } else {
-            input.value = value;
-          }
-        }
-
-        function syncJob() {
-          if (!jobSync || !jobSync.checked || jobManuallyEdited || !job) return;
-          setField(job, customer.value || "");
-        }
-
-        function syncAssets() {
-          if (!assetSync || !assetSync.checked || assetManuallyEdited) return;
-          document.querySelectorAll(".asset-address").forEach(a => setField(a, customer.value || ""));
-        }
-
-        window.axionSyncAssets = syncAssets;
-
-        customer.addEventListener("change", function () { syncJob(); syncAssets(); });
-        customer.addEventListener("input",  function () { syncJob(); syncAssets(); });
-
-        if (job) {
-          job.addEventListener("input", function () {
-            jobManuallyEdited = true;
-            if (jobSync) jobSync.checked = false;
-          });
-        }
-
-        document.addEventListener("input", function (e) {
-          if (e.target.classList.contains("asset-address")) {
-            assetManuallyEdited = true;
-            if (assetSync) assetSync.checked = false;
-          }
-        });
-
-        if (jobSync) {
-          jobSync.addEventListener("change", function () {
-            if (jobSync.checked) { jobManuallyEdited = false; syncJob(); }
-          });
-        }
-
-        if (assetSync) {
-          assetSync.addEventListener("change", function () {
-            if (assetSync.checked) { assetManuallyEdited = false; syncAssets(); }
-          });
-        }
-
-        syncJob();
-        syncAssets();
-      })();
-      </script>
-
-
-      <div class="mt-3 d-flex gap-2">
-        <button class="btn btn-primary" type="button"
-                onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('detailsModal')).show()">
-          Next
-        </button>
-        <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
-      </div>
-
+  </div>
+</div>
+{% else %}
+<div class="mb-3">
+  <button type="button" class="btn btn-outline-secondary btn-sm"
+          onclick="document.getElementById('autofillZone').classList.toggle('d-none')"
+          style="font-size:.82rem">
+    &#128196; Upload instruction document to auto-fill
+  </button>
+  <div id="autofillZone" class="d-none mt-2">
+    <form method="post" action="/jobs/new/autofill-upload" enctype="multipart/form-data"
+          style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+      <input type="file" name="instruction_file" class="form-control form-control-sm"
+             accept=".pdf,.docx,.doc" style="max-width:340px" required>
+      <button type="submit" class="btn btn-primary btn-sm">Extract &amp; Auto-fill</button>
+      <span class="small" style="color:var(--muted)">PDF and Word (.docx recommended)</span>
     </form>
   </div>
 </div>
+{% endif %}
 
+<div class="nj-draft-bar" id="draftBar" style="display:none;">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+  <span id="draftStatus">Draft saved</span>
+  <button type="button" class="btn btn-sm btn-link p-0 ms-auto" style="font-size:.75rem;" onclick="clearDraft()">Discard draft</button>
+</div>
+
+<form method="post" id="newJobForm">
+{% if autofill_id %}<input type="hidden" name="autofill_id" value="{{ autofill_id }}">{% endif %}
+<input type="hidden" name="add_another" id="add_another_input" value="">
+
+<div class="nj-two-col">
+
+  <!-- ════════════ LEFT COLUMN ════════════ -->
+  <div class="nj-left">
+
+    <!-- Job ID Card -->
+    <div class="nj-card">
+      <div class="nj-card-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>
+        Job Identification
+      </div>
+      <div class="nj-card-b">
+        <div class="nj-row">
+          <div style="flex:0 0 140px;">
+            <label class="nj-lbl">Job Number</label>
+            <div class="form-control form-control-sm" style="background:rgba(96,165,250,.08)!important;border-color:rgba(96,165,250,.3)!important;color:var(--accent)!important;font-weight:700;letter-spacing:.05em">
+              {{ next_number }}
+            </div>
+            <div class="form-text" style="color:var(--muted);font-size:.7rem;">Auto &mdash; <button type="button" class="btn btn-link p-0 border-0 align-baseline" style="color:var(--accent);font-size:inherit" onclick="openEntityModal('settings', '/admin/settings/popup')">change</button></div>
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <label class="nj-lbl">Contract Number {{ conf_badge('client_reference') }}</label>
+            <div class="position-relative">
+              <input class="form-control form-control-sm" name="client_reference" id="client_reference" placeholder="e.g. AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,'').replace(/[a-z]/g,c=>c.toUpperCase()); syncCJN(); syncContractToAccount();" autocomplete="off">
+              <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
+            </div>
+            <div class="form-text" style="color:var(--muted);font-size:.7rem;">Type to search &amp; clone</div>
+          </div>
+          <div style="flex:1;min-width:140px;">
+            <label class="nj-lbl d-flex align-items-center gap-2">
+              Client Job No. {{ conf_badge('our_ref') }}
+              <span style="font-weight:400;font-size:.7rem;color:var(--muted);display:inline-flex;align-items:center;gap:3px;">
+                <input type="checkbox" id="cjn_same" style="cursor:pointer;"> same
+              </span>
+            </label>
+            <input class="form-control form-control-sm" name="client_job_number" id="client_job_number" placeholder="CJN-001" oninput="this.value=this.value.replace(/\s/g,'')"
+                   value="{{ prefill_client_job_number or '' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Client & Customer Card -->
+    <div class="nj-card">
+      <div class="nj-card-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Client &amp; Customer
+      </div>
+      <div class="nj-card-b">
+        <div class="nj-row">
+          <div style="flex:1;min-width:180px;">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="nj-lbl mb-0">Client {{ conf_badge('lender_name') }}</label>
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.7rem;line-height:1.4;"
+                      onclick="openEntityModal('client','/clients/new-popup')">+ New</button>
+            </div>
+            <div class="position-relative">
+              <input type="text" class="form-control form-control-sm" id="client_search"
+                     placeholder="Search client…" autocomplete="off" spellcheck="false">
+              <input type="hidden" name="client_id" id="client_id_val">
+              <div id="client_dropdown" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
+            </div>
+          </div>
+          <div style="flex:1;min-width:180px;">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="nj-lbl mb-0">Customer {{ conf_badge('customer_name') }}</label>
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.7rem;line-height:1.4;"
+                      onclick="openEntityModal('customer','/customers/new-popup')">+ New</button>
+            </div>
+            <div class="position-relative">
+              <input type="text" class="form-control form-control-sm" id="customer_search"
+                     placeholder="Search customer…" autocomplete="off" spellcheck="false">
+              <input type="hidden" name="customer_id" id="customer_id_val">
+              <div id="customer_dropdown" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
+            </div>
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Customer Address {{ conf_badge('customer_address') }}</label>
+            <input class="form-control form-control-sm ax-address" id="customer_address" name="customer_address" placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false" value="{{ prefill_customer_address }}">
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Job Address</label>
+            <input class="form-control form-control-sm ax-address" id="job_address" name="job_address" placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false">
+            <label style="display:flex;gap:.4rem;align-items:center;margin-top:3px;color:var(--muted);font-size:.72rem;cursor:pointer;">
+              <input type="checkbox" id="job_same_as_customer" checked> Use customer address
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Classification Row -->
+    <div class="nj-card">
+      <div class="nj-card-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        Classification
+      </div>
+      <div class="nj-card-b">
+        <div class="nj-row">
+          <div style="flex:1;min-width:120px;">
+            <label class="nj-lbl">Job Type</label>
+            <select class="form-select form-select-sm" name="job_type" id="jobTypeSelect">
+              {% for jt in job_types %}<option value="{{ jt.name }}">{{ jt.name }}</option>{% endfor %}
+            </select>
+            {% if session.get('role') == 'admin' %}
+            <button class="btn btn-outline-secondary btn-sm mt-1 py-0 px-2" type="button" style="font-size:.68rem;"
+                    data-bs-toggle="collapse" data-bs-target="#addJobType">+ Add</button>
+            <div class="collapse mt-1" id="addJobType">
+              <div class="input-group input-group-sm">
+                <input id="addJobTypeInput" class="form-control" placeholder="New type…">
+                <button class="btn btn-outline-primary" type="button" onclick="submitNewJobType()">Save</button>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          <div style="flex:1;min-width:120px;">
+            <label class="nj-lbl">Visit Type</label>
+            <select class="form-select form-select-sm" name="visit_type">
+              {% for vt in visit_types %}<option value="{{vt}}">{{vt}}</option>{% endfor %}
+            </select>
+          </div>
+          <div style="flex:1;min-width:100px;">
+            <label class="nj-lbl">Status</label>
+            <select class="form-select form-select-sm" name="status">
+              {% for st in statuses %}<option value="{{st}}">{{st}}</option>{% endfor %}
+            </select>
+          </div>
+          <div style="flex:1;min-width:100px;">
+            <label class="nj-lbl">Priority</label>
+            <select class="form-select form-select-sm" name="priority">
+              {% for p in priorities %}<option value="{{p}}" {% if p == 'Normal' %}selected{% endif %}>{{p}}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Security / Asset Card -->
+    <div class="nj-card">
+      <div class="nj-card-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        Security / Asset
+        <label class="nj-opt" style="display:flex;gap:4px;align-items:center;cursor:pointer;">
+          <input type="checkbox" id="asset_same_as_customer"> Use customer address
+        </label>
+      </div>
+      <div class="nj-card-b">
+        {% set _sec = autofill.security if autofill else None %}
+        <div id="assetsWrap">
+          <div class="asset-row">
+            <div class="nj-row">
+              <div style="flex:0 0 130px;">
+                <label class="nj-lbl">Type</label>
+                {% set _stype = autofill.security_type if autofill else 'Vehicle' %}
+                <select class="form-select form-select-sm" name="asset_type[]">
+                  <option {% if _stype == 'Vehicle' %}selected{% endif %}>Vehicle</option>
+                  <option {% if _stype == 'Property' %}selected{% endif %}>Property</option>
+                  <option {% if _stype == 'Equipment' %}selected{% endif %}>Equipment</option>
+                  <option {% if _stype == 'Other' %}selected{% endif %}>Other</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:200px;">
+                <label class="nj-lbl">Description {{ conf_badge('year') if _sec and _sec.year }}</label>
+                <input class="form-control form-control-sm asset-description" name="asset_description[]"
+                       placeholder="e.g. 2019 Ford Ranger XL REG: ABC123 VIN: … ENG: …"
+                       value="{% if _sec %}{{ _sec.description or ([_sec.year, _sec.make, _sec.model, _sec.colour] | select | join(' ')) }}{% endif %}">
+              </div>
+            </div>
+            <div id="parsedToggleWrap" style="margin-top:4px;">
+              <button type="button" class="nj-parsed-toggle" onclick="toggleParsed(this)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><path d="M12 3l1.912 5.813L20 10l-4.794 2.688L14.118 19 12 15.5 9.882 19l-1.088-6.312L4 10l6.088-1.187z"/></svg>
+                Auto-parsed details
+                <svg class="nj-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+              <div class="nj-parsed-panel" style="display:none;">
+                <div class="nj-parsed-grid">
+                  <div class="nj-parsed-item"><div class="nj-pk">YEAR</div><div class="nj-pv asset-parsed-year">—</div></div>
+                  <div class="nj-parsed-item"><div class="nj-pk">MAKE</div><div class="nj-pv asset-parsed-make">—</div></div>
+                  <div class="nj-parsed-item"><div class="nj-pk">MODEL</div><div class="nj-pv asset-parsed-model">—</div></div>
+                  <div class="nj-parsed-item"><div class="nj-pk">COLOUR</div><div class="nj-pv asset-parsed-colour">—</div></div>
+                  <div class="nj-parsed-item"><div class="nj-pk">ENGINE</div><div class="nj-pv asset-parsed-engine">—</div></div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                  <span class="nj-rego-ok" id="regoStatus" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <span id="regoStatusText"></span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <input type="hidden" class="asset-year" name="asset_year[]" value="{{ _sec.year if _sec else '' }}">
+            <input type="hidden" class="asset-make" name="asset_make[]" value="{{ _sec.make if _sec else '' }}">
+            <input type="hidden" class="asset-model" name="asset_model[]" value="{{ _sec.model if _sec else '' }}">
+            <input type="hidden" class="asset-colour" name="asset_colour[]" value="{{ _sec.colour if _sec else '' }}">
+            <input type="hidden" class="asset-engine" name="asset_engine[]" value="{{ _sec.engine_number if _sec else '' }}">
+            <div class="nj-row" style="margin-top:6px;">
+              <div style="flex:1;min-width:120px;">
+                <label class="nj-lbl">Rego</label>
+                <input class="form-control form-control-sm asset-rego" name="asset_rego[]" placeholder="Rego"
+                       value="{{ _sec.rego if _sec else '' }}">
+              </div>
+              <div style="flex:1;min-width:140px;">
+                <label class="nj-lbl">VIN</label>
+                <input class="form-control form-control-sm asset-vin" name="asset_vin[]" placeholder="VIN"
+                       value="{{ _sec.vin if _sec else '' }}">
+              </div>
+            </div>
+            <div class="nj-row" style="margin-top:6px;">
+              <div style="flex:1;">
+                <label class="nj-lbl">Asset Address</label>
+                <input class="form-control form-control-sm asset-address ax-address" name="asset_address[]"
+                       placeholder="Asset address (property/site)" autocomplete="off" spellcheck="false"
+                       value="{{ autofill.asset_address if autofill and autofill.asset_address else '' }}">
+              </div>
+              <div style="flex:0 0 140px;">
+                <label class="nj-lbl">Serial</label>
+                <input class="form-control form-control-sm" name="asset_serial[]" placeholder="Serial (equip)">
+              </div>
+            </div>
+            <div style="margin-top:6px;">
+              <label class="nj-lbl">Asset Notes</label>
+              <input class="form-control form-control-sm" name="asset_notes[]" placeholder="Rego expiry, status, etc."
+                     value="{% if _sec and _sec.reg_expiry %}Rego: {{ _sec.reg_expiry }}{% endif %}{% if _sec and _sec.reg_note %}{% if _sec and _sec.reg_expiry %} | {% endif %}{{ _sec.reg_note }}{% endif %}">
+            </div>
+            <div class="mt-2 d-flex justify-content-end">
+              <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.7rem;" onclick="removeAssetRow(this)">Remove</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.72rem;" onclick="addAssetRow()">+ Add Security</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════ RIGHT COLUMN ════════════ -->
+  <div class="nj-right">
+
+    <!-- Lender & Financial Card -->
+    <div class="nj-card">
+      <div class="nj-card-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        Lender &amp; Financial
+        <span class="nj-opt">optional</span>
+      </div>
+      <div class="nj-card-b">
+        <div class="nj-row">
+          <div style="flex:1;min-width:140px;">
+            <label class="nj-lbl">Lender {{ conf_badge('lender_name') }}</label>
+            <input class="form-control form-control-sm" name="lender_name" id="lender_name"
+                   list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off"
+                   value="{{ prefill_lender_name or (autofill.lender_name if autofill else '') }}">
+            <datalist id="lender_list">
+              {% for ln in known_lenders %}<option value="{{ ln }}">{% endfor %}
+            </datalist>
+          </div>
+          <div style="flex:1;min-width:120px;">
+            <label class="nj-lbl">Account # {{ conf_badge('account_number') }}</label>
+            <input class="form-control form-control-sm" name="account_number" placeholder="1234567"
+                   value="{{ prefill_account_number or (autofill.account_number if autofill else '') }}">
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Regulation {{ conf_badge('regulated_type') }}</label>
+            {% set _rt = autofill.regulated_type if autofill else '' %}
+            <select class="form-select form-select-sm" name="regulation_type">
+              <option value="">Select…</option>
+              <option {% if _rt == 'REGULATED' %}selected{% endif %}>REGULATED</option>
+              <option {% if _rt == 'UNREGULATED' %}selected{% endif %}>UNREGULATED</option>
+            </select>
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Arrears</label>
+            <input class="form-control form-control-sm" name="arrears" placeholder="$0.00"
+                   value="{{ autofill.financials.arrears if autofill and autofill.financials else '' }}">
+          </div>
+          <div style="flex:1;">
+            <label class="nj-lbl">Costs</label>
+            <input class="form-control form-control-sm" name="costs" placeholder="$0.00"
+                   value="{{ prefill_costs or '' }}">
+          </div>
+          <div style="flex:1;">
+            <label class="nj-lbl">MMP</label>
+            <input class="form-control form-control-sm" name="mmp" placeholder="$0.00">
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Due Date</label>
+            <input class="form-control form-control-sm" type="date" name="job_due_date">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Instructions Card -->
+    <div class="nj-card">
+      <div class="nj-card-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Details &amp; Instructions
+      </div>
+      <div class="nj-card-b">
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Deliver To {{ conf_badge('deliver_to') }}</label>
+            <input class="form-control form-control-sm" name="deliver_to" id="deliver_to_input"
+                   list="deliver_to_list" placeholder="Auction yard…" autocomplete="off"
+                   value="{{ prefill_deliver_to or '' }}">
+            <datalist id="deliver_to_list">
+              {% for yard in auction_yards %}<option value="{{ yard.name }}">{% endfor %}
+            </datalist>
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Description &amp; Instructions {{ conf_badge('instructions') }}</label>
+            <textarea class="form-control form-control-sm" name="description" rows="6"
+                      placeholder="Job description, instructions, access codes, contact times…"
+                      style="resize:vertical;">{% if autofill and autofill.instructions_raw %}{{ autofill.instructions_raw }}{% endif %}</textarea>
+            <div class="form-text" style="color:var(--muted);font-size:.68rem;">Visible to assigned agents.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule Card -->
+    <div class="nj-card">
+      <div class="nj-card-h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Initial Schedule
+        <span class="nj-opt">optional</span>
+      </div>
+      <div class="nj-card-b">
+        <div class="nj-row">
+          <div style="flex:1;min-width:160px;">
+            <label class="nj-lbl">Booking Type</label>
+            <div class="position-relative">
+              <input type="text" id="sched_bt_search" class="form-control form-control-sm"
+                     placeholder="Search or enter new…" autocomplete="off">
+              <input type="hidden" name="sched_booking_type_id" id="sched_bt_id_hidden">
+              <input type="hidden" name="sched_booking_type_name" id="sched_bt_name_hidden">
+              <div id="sched_bt_drop" class="bt-combo-drop" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Date</label>
+            <input type="date" class="form-control form-control-sm" id="sched_date" name="sched_date">
+          </div>
+          <div style="flex:0 0 100px;">
+            <label class="nj-lbl">Time</label>
+            <input type="time" class="form-control form-control-sm" name="sched_time" value="09:00">
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Assigned To</label>
+            <div class="d-flex gap-1 align-items-end">
+              <select class="form-select form-select-sm" name="sched_assigned_user_id" style="flex:1;">
+                <option value="">— Unassigned —</option>
+                {% for u in users %}
+                <option value="{{ u.id }}" {% if new_user_id and u.id == new_user_id %}selected{% endif %}>{{ u.full_name }}</option>
+                {% endfor %}
+              </select>
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.7rem;line-height:1.4;white-space:nowrap;"
+                      onclick="openEntityModal('agent','/users/new-popup')">+ New</button>
+            </div>
+          </div>
+        </div>
+        <div class="nj-row">
+          <div style="flex:1;">
+            <label class="nj-lbl">Schedule Notes</label>
+            <textarea class="form-control form-control-sm" name="sched_notes" rows="2"
+                      placeholder="Notes for this appointment…" style="resize:vertical;"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="d-flex gap-2 mb-4">
+      <button type="submit" class="btn btn-primary flex-grow-1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:text-bottom;margin-right:4px;"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save Job
+      </button>
+      <button type="button" class="btn btn-outline-secondary" onclick="submitAddJob()">Save &amp; Add Another</button>
+      <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
+    </div>
+
+  </div>
+</div>
+</form>
+
+<!-- ── Asset row JS ─────────────────────────────────────────────────────── -->
+<script>
+function addAssetRow() {
+  var wrap = document.getElementById("assetsWrap");
+  var first = wrap.querySelector(".asset-row");
+  var clone = first.cloneNode(true);
+  clone.querySelectorAll("input").forEach(function(i) { i.value = ""; delete i._pacElement; });
+  clone.querySelectorAll("select").forEach(function(s) { s.selectedIndex = 0; });
+  clone.querySelectorAll("[data-gmp-bound]").forEach(function(i) { delete i.dataset.gmpBound; });
+  clone.querySelectorAll("gmp-place-autocomplete").forEach(function(pac) { pac.remove(); });
+  clone.querySelectorAll("input[type='hidden'][name]").forEach(function(i) {
+    if (i.classList.contains('asset-year') || i.classList.contains('asset-make') ||
+        i.classList.contains('asset-model') || i.classList.contains('asset-colour') ||
+        i.classList.contains('asset-engine')) return;
+    i.type = "text"; i.className = "form-control form-control-sm asset-address";
+  });
+  var parsedPanel = clone.querySelector('.nj-parsed-panel');
+  if (parsedPanel) parsedPanel.style.display = 'none';
+  clone.querySelectorAll('.nj-pv').forEach(function(el) { el.textContent = '\u2014'; });
+  wrap.appendChild(clone);
+  if (typeof window.axionInitPlaces === "function") window.axionInitPlaces();
+  if (typeof window.axionSyncAssets === "function") window.axionSyncAssets();
+}
+
+function removeAssetRow(btn) {
+  var wrap = document.getElementById("assetsWrap");
+  var rows = wrap.querySelectorAll(".asset-row");
+  if (rows.length <= 1) {
+    rows[0].querySelectorAll("input").forEach(function(i) { i.value = ""; });
+    rows[0].querySelectorAll("select").forEach(function(s) { s.selectedIndex = 0; });
+    rows[0].querySelectorAll('.nj-pv').forEach(function(el) { el.textContent = '\u2014'; });
+    return;
+  }
+  btn.closest(".asset-row").remove();
+}
+
+function toggleParsed(btn) {
+  var row = btn.closest('.asset-row');
+  if (!row) return;
+  var panel = row.querySelector('.nj-parsed-panel');
+  var chev = btn.querySelector('.nj-chevron');
+  if (!panel) return;
+  var showing = panel.style.display !== 'none';
+  panel.style.display = showing ? 'none' : '';
+  if (chev) chev.style.transform = showing ? '' : 'rotate(90deg)';
+}
+</script>
+
+<!-- ── parseDesc bidirectional sync ──────────────────────────────────────── -->
+<script>
+(function () {
+  function buildDesc(row) {
+    var year   = (row.querySelector('.asset-year')   || {}).value || '';
+    var make   = (row.querySelector('.asset-make')   || {}).value || '';
+    var model  = (row.querySelector('.asset-model')  || {}).value || '';
+    var colour = (row.querySelector('.asset-colour') || {}).value || '';
+    var engine = (row.querySelector('.asset-engine') || {}).value || '';
+    var rego   = (row.querySelector('.asset-rego')   || {}).value || '';
+    var vin    = (row.querySelector('.asset-vin')    || {}).value || '';
+    var parts  = [year, make, model].filter(function(v) { return v.trim(); });
+    if (colour.trim()) parts.push(colour.trim());
+    if (engine.trim()) parts.push('ENG: ' + engine.trim());
+    if (rego.trim())   parts.push('REG: ' + rego.trim());
+    if (vin.trim())    parts.push('VIN: ' + vin.trim());
+    return parts.join(' ');
+  }
+
+  function parseDesc(row, desc) {
+    var yearM   = desc.match(/\b((?:19|20)\d{2})\b/);
+    var engM    = desc.match(/ENG:\s*(\S+)/i);
+    var regM    = desc.match(/REG:\s*(\S+)/i);
+    var vinM    = desc.match(/VIN:\s*(\S+)/i);
+    var base    = desc
+      .replace(/ENG:\s*\S+/gi, '')
+      .replace(/REG:\s*\S+/gi, '')
+      .replace(/VIN:\s*\S+/gi, '')
+      .replace(/\b(?:19|20)\d{2}\b/, '')
+      .trim();
+    var words   = base.split(/\s+/).filter(Boolean);
+    var make    = words[0] || '';
+    var model   = words.slice(1).join(' ');
+
+    function set(cls, val) {
+      var el = row.querySelector(cls);
+      if (el) el.value = val;
+    }
+    set('.asset-year',   yearM  ? yearM[1]  : '');
+    set('.asset-make',   make);
+    set('.asset-model',  model);
+    set('.asset-engine', engM   ? engM[1]   : '');
+    set('.asset-rego',   regM   ? regM[1]   : '');
+    set('.asset-vin',    vinM   ? vinM[1]   : '');
+
+    updateParsedDisplay(row);
+  }
+
+  window._njUpdateParsedDisplay = updateParsedDisplay;
+  function updateParsedDisplay(row) {
+    var fields = ['year','make','model','colour','engine'];
+    fields.forEach(function(f) {
+      var hidden = row.querySelector('.asset-' + f);
+      var display = row.querySelector('.asset-parsed-' + f);
+      if (hidden && display) {
+        display.textContent = hidden.value || '\u2014';
+      }
+    });
+    var regoEl = row.querySelector('.asset-rego');
+    var regoStatus = row.querySelector('#regoStatus');
+    if (regoEl && regoStatus) {
+      var rego = regoEl.value.trim();
+      if (rego) {
+        regoStatus.style.display = '';
+        var txt = regoStatus.querySelector('#regoStatusText');
+        if (txt) txt.textContent = 'REG: ' + rego;
+      } else {
+        regoStatus.style.display = 'none';
+      }
+    }
+  }
+
+  var wrap = document.getElementById('assetsWrap');
+  if (!wrap) return;
+
+  var _updatingDesc = false;
+  var _updatingFields = false;
+
+  wrap.addEventListener('input', function (e) {
+    var row = e.target.closest('.asset-row');
+    if (!row) return;
+
+    if (e.target.classList.contains('asset-description')) {
+      if (_updatingDesc) return;
+      _updatingFields = true;
+      parseDesc(row, e.target.value);
+      _updatingFields = false;
+    } else if (
+      e.target.classList.contains('asset-rego') ||
+      e.target.classList.contains('asset-vin')
+    ) {
+      if (_updatingFields) return;
+      _updatingDesc = true;
+      var descEl = row.querySelector('.asset-description');
+      if (descEl) descEl.value = buildDesc(row);
+      _updatingDesc = false;
+      updateParsedDisplay(row);
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', function() {
+    wrap.querySelectorAll('.asset-row').forEach(function(row) {
+      var desc = row.querySelector('.asset-description');
+      if (desc && desc.value.trim()) {
+        parseDesc(row, desc.value);
+      }
+    });
+  });
+})();
+</script>
+
+<!-- ── Address sync (customer → job, customer → assets) ─────────────────── -->
+<script>
+(function () {
+  var customer = document.getElementById("customer_address");
+  var job = document.getElementById("job_address");
+  var jobSync = document.getElementById("job_same_as_customer");
+  var assetSync = document.getElementById("asset_same_as_customer");
+  if (!customer) return;
+
+  var jobManuallyEdited = false;
+  var assetManuallyEdited = false;
+
+  function setField(input, value) {
+    if (typeof window.axionSetAddress === "function") {
+      window.axionSetAddress(input, value);
+    } else {
+      input.value = value;
+    }
+  }
+
+  function syncJob() {
+    if (!jobSync || !jobSync.checked || jobManuallyEdited || !job) return;
+    setField(job, customer.value || "");
+  }
+
+  function syncAssets() {
+    if (!assetSync || !assetSync.checked || assetManuallyEdited) return;
+    document.querySelectorAll(".asset-address").forEach(function(a) { setField(a, customer.value || ""); });
+  }
+
+  window.axionSyncAssets = syncAssets;
+
+  customer.addEventListener("change", function () { syncJob(); syncAssets(); });
+  customer.addEventListener("input",  function () { syncJob(); syncAssets(); });
+
+  if (job) {
+    job.addEventListener("input", function () {
+      jobManuallyEdited = true;
+      if (jobSync) jobSync.checked = false;
+    });
+  }
+
+  document.addEventListener("input", function (e) {
+    if (e.target.classList.contains("asset-address")) {
+      assetManuallyEdited = true;
+      if (assetSync) assetSync.checked = false;
+    }
+  });
+
+  if (jobSync) {
+    jobSync.addEventListener("change", function () {
+      if (jobSync.checked) { jobManuallyEdited = false; syncJob(); }
+    });
+  }
+
+  if (assetSync) {
+    assetSync.addEventListener("change", function () {
+      if (assetSync.checked) { assetManuallyEdited = false; syncAssets(); }
+    });
+  }
+
+  syncJob();
+  syncAssets();
+})();
+</script>
+
+<!-- ── Typeaheads, entity modal, clone ──────────────────────────────────── -->
 <script>
 (function () {
   var CR_KEY = 'axion_job_new_client_ref';
@@ -393,7 +733,7 @@
   if (crField) {
     var saved = localStorage.getItem(CR_KEY);
     if (saved && !crField.value) crField.value = saved;
-    document.querySelector('form').addEventListener('submit', function () {
+    document.getElementById('newJobForm').addEventListener('submit', function () {
       localStorage.removeItem(CR_KEY);
     });
   }
@@ -418,13 +758,10 @@
 
     function render(items) {
       dropEl.innerHTML = '';
-      if (!items.length) {
-        dropEl.style.display = 'none';
-        return;
-      }
+      if (!items.length) { dropEl.style.display = 'none'; return; }
       items.slice(0, 12).forEach(function(item) {
         var div = document.createElement('div');
-        div.style.cssText = 'padding:9px 14px;cursor:pointer;color:#111827;font-size:.9rem;border-bottom:1px solid rgba(0,0,0,.08);';
+        div.style.cssText = 'padding:8px 12px;cursor:pointer;color:#111827;font-size:.85rem;border-bottom:1px solid rgba(0,0,0,.06);';
         div.textContent = item.label;
         div.addEventListener('mousedown', function(e) {
           e.preventDefault();
@@ -433,7 +770,7 @@
           dropEl.style.display = 'none';
           if (cfg.onSelect) cfg.onSelect(item);
         });
-        div.addEventListener('mouseenter', function(){ div.style.background='rgba(96,165,250,.15)'; });
+        div.addEventListener('mouseenter', function(){ div.style.background='rgba(96,165,250,.12)'; });
         div.addEventListener('mouseleave', function(){ div.style.background=''; });
         dropEl.appendChild(div);
       });
@@ -464,16 +801,12 @@
                   onSelect: function(item) {
                     var addrField = document.getElementById('customer_address');
                     if (addrField && item.address) {
-                      if (window.axionSetAddress) {
-                        window.axionSetAddress(addrField, item.address);
-                      } else {
-                        addrField.value = item.address;
-                      }
+                      if (window.axionSetAddress) { window.axionSetAddress(addrField, item.address); }
+                      else { addrField.value = item.address; }
                     }
                   }
                 });
 
-  /* ── Entity modal ────────────────────────────────────────────────────── */
   var _modalTarget = null;
   var _bsModal = null;
 
@@ -513,7 +846,7 @@
         applyTypeahead(_modalTarget, data);
         if (_bsModal) _bsModal.hide();
       })
-      .catch(function(){ if (errEl) { errEl.textContent = 'Network error. Please try again.'; errEl.classList.remove('d-none'); } });
+      .catch(function(){ if (errEl) { errEl.textContent = 'Network error.'; errEl.classList.remove('d-none'); } });
     });
   }
 
@@ -524,7 +857,7 @@
     } else if (target === 'customer') {
       searchId = 'customer_search'; hiddenId = 'customer_id_val'; dataArr = CUSTOMER_DATA;
     } else if (target === 'agent') {
-      var sel = document.querySelector('select[name="assigned_user_id"]');
+      var sel = document.querySelector('select[name="sched_assigned_user_id"]');
       if (!sel) return;
       var opt = Array.from(sel.options).find(function(o){ return o.value == String(data.id); });
       if (!opt) {
@@ -535,7 +868,7 @@
       return;
     } else if (target === 'settings') {
       if (data.next_number) {
-        var numEl = document.querySelector('.ax-card-b .form-control[style]');
+        var numEl = document.querySelector('.nj-card-b .form-control[style]');
         if (numEl) numEl.textContent = data.next_number;
       }
       return;
@@ -559,430 +892,41 @@
       }
     }
   }
-})();
-</script>
 
-{% if autofill %}
-<script>
-(function() {
-  var custSearch = document.getElementById('customer_search');
-  if (custSearch && !custSearch.value) {
-    {% if autofill_customer_id %}
-    {# Matched: makeTypeahead already set the label via preselect. Do nothing. #}
-    {% elif autofill_customer_display %}
-    custSearch.value = {{ autofill_customer_display | tojson }};
-    {% elif autofill.customer and autofill.customer.full_name %}
-    custSearch.value = {{ autofill.customer.full_name | tojson }};
-    {% elif autofill.customer and autofill.customer.company %}
-    custSearch.value = {{ autofill.customer.company | tojson }};
-    {% endif %}
-  }
-})();
-</script>
-{% endif %}
-
-<script>
-function addPhoneRow() {
-  var container = document.getElementById('phoneRows');
-  var first = container.querySelector('.phone-row');
-  var clone = first.cloneNode(true);
-  clone.querySelectorAll('input').forEach(function(i){ i.value = ''; });
-  container.appendChild(clone);
-}
-function removePhoneRow(btn) {
-  var container = document.getElementById('phoneRows');
-  var rows = container.querySelectorAll('.phone-row');
-  if (rows.length <= 1) {
-    rows[0].querySelectorAll('input').forEach(function(i){ i.value = ''; });
-  } else {
-    btn.closest('.phone-row').remove();
-  }
-}
-function addEmailRow() {
-  var container = document.getElementById('emailRows');
-  var first = container.querySelector('.email-row');
-  var clone = first.cloneNode(true);
-  clone.querySelectorAll('input').forEach(function(i){ i.value = ''; });
-  container.appendChild(clone);
-}
-function updateSeqPreview() {
-  var prefix = document.getElementById('seq_prefix');
-  var seqNum = document.getElementById('seq_number');
-  var el = document.getElementById('seq_preview');
-  if (!prefix || !seqNum || !el) return;
-  var num = parseInt(seqNum.value || '0', 10) + 1;
-  el.textContent = prefix.value + String(num).padStart(3, '0');
-}
-function removeEmailRow(btn) {
-  var container = document.getElementById('emailRows');
-  var rows = container.querySelectorAll('.email-row');
-  if (rows.length <= 1) {
-    rows[0].querySelectorAll('input').forEach(function(i){ i.value = ''; });
-  } else {
-    btn.closest('.email-row').remove();
-  }
-}
-function submitNewJobType() {
-  var inp = document.getElementById('addJobTypeInput');
-  var val = (inp ? inp.value : '').trim();
-  if (!val) return;
-  var fd = new FormData();
-  fd.append('new_job_type', val);
-  fetch('/job-type', { method: 'POST', body: fd })
-    .then(function() { location.reload(); })
-    .catch(function() { alert('Could not save job type. Please try again.'); });
-}
-</script>
-{% endblock %}
-
-{% block modals %}
-{%- macro conf_badge(field) -%}
-  {%- set c = autofill_confidence.get(field) if autofill_confidence else None -%}
-  {%- if c == 'matched' -%}
-    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#16a34a;color:#fff;vertical-align:middle;" title="Matched to database record">Matched</span>
-  {%- elif c == 'extracted' -%}
-    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#2563eb;color:#fff;vertical-align:middle;" title="Extracted from document">Extracted</span>
-  {%- elif c == 'review' -%}
-    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#f59e0b;color:#fff;vertical-align:middle;" title="Needs review — possible match">Review</span>
-  {%- endif -%}
-{%- endmacro -%}
-<!-- ── Details & Schedule modal ──────────────────────────────────────── -->
-<div class="modal fade" id="detailsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
-    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
-      <div class="modal-header" style="border-bottom:1px solid var(--line);">
-        <h5 class="modal-title" style="color:var(--text)">Details &amp; Schedule</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-
-      <!-- Tab nav -->
-      <div class="px-3 pt-3 pb-0" style="border-bottom:1px solid var(--line);">
-        <ul class="nav nav-tabs border-0" id="detailsTabs">
-          <li class="nav-item">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#dtab-lender" type="button">Lender &amp; Security</button>
-          </li>
-          <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dtab-details" type="button">Details &amp; Instructions</button>
-          </li>
-          <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#dtab-schedule" type="button">Schedule</button>
-          </li>
-        </ul>
-      </div>
-
-      <div class="modal-body tab-content">
-
-        <!-- ── Tab 1: Lender & Security ─────────────────────────────── -->
-        <div class="tab-pane fade show active" id="dtab-lender">
-          <div class="mb-1 mt-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">LENDER DETAILS</div>
-          <div class="row g-2 mb-2">
-            <div class="col-12 col-lg-4">
-              <label class="form-label">Lender {{ conf_badge('lender_name') }}</label>
-              <input class="form-control" name="lender_name" id="lender_name" form="newJobForm"
-                     list="lender_list" placeholder="e.g. Nissan Finance" autocomplete="off"
-                     value="{{ prefill_lender_name or (autofill.lender_name if autofill else '') }}">
-              <datalist id="lender_list">
-                {% for ln in known_lenders %}<option value="{{ ln }}">{% endfor %}
-              </datalist>
-            </div>
-            <div class="col-12 col-lg-4">
-              <label class="form-label">Account Number {{ conf_badge('account_number') }}</label>
-              <input class="form-control" name="account_number" form="newJobForm" placeholder="e.g. 1234567"
-                     value="{{ prefill_account_number or (autofill.account_number if autofill else '') }}">
-            </div>
-            <div class="col-12 col-lg-4">
-              <label class="form-label">Regulation {{ conf_badge('regulated_type') }}</label>
-              <select class="form-select" name="regulation_type" form="newJobForm">
-                <option value="">Select…</option>
-                {% set _rt = autofill.regulated_type if autofill else '' %}
-                <option {% if _rt == 'REGULATED' %}selected{% endif %}>REGULATED</option>
-                <option {% if _rt == 'UNREGULATED' %}selected{% endif %}>UNREGULATED</option>
-              </select>
-            </div>
-          </div>
-          <div class="row g-2 mb-3">
-            <div class="col-12 col-md-3">
-              <label class="form-label">Arrears</label>
-              <input class="form-control" name="arrears" form="newJobForm" placeholder="$0.00"
-                     value="{{ autofill.financials.arrears if autofill and autofill.financials else '' }}">
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label">Costs</label>
-              <input class="form-control" name="costs" form="newJobForm" placeholder="$0.00"
-                     value="{{ prefill_costs or '' }}">
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label">MMP</label>
-              <input class="form-control" name="mmp" form="newJobForm" placeholder="$0.00">
-            </div>
-            <div class="col-12 col-md-3">
-              <label class="form-label">Due Date</label>
-              <input class="form-control" type="date" name="job_due_date" form="newJobForm">
-            </div>
-          </div>
-
-          <hr style="border-color:var(--line);margin:1rem 0">
-
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <div style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">SECURITY DETAILS</div>
-            <label style="display:flex;gap:.5rem;align-items:center;font-weight:400;font-size:.85rem;color:var(--muted);cursor:pointer;">
-              <input type="checkbox" id="asset_same_as_customer">
-              Use customer address
-            </label>
-          </div>
-          {% set _sec = autofill.security if autofill else None %}
-          <div id="assetsWrap">
-            <div class="asset-row border rounded p-3 mb-2" style="border-color:var(--line)!important">
-              <div class="row g-2">
-                <div class="col-12 col-lg-3">
-                  <label class="form-label">Security Type</label>
-                  {% set _stype = autofill.security_type if autofill else 'Vehicle' %}
-                  <select class="form-select" name="asset_type[]" form="newJobForm">
-                    <option {% if _stype == 'Vehicle' %}selected{% endif %}>Vehicle</option>
-                    <option {% if _stype == 'Property' %}selected{% endif %}>Property</option>
-                    <option {% if _stype == 'Equipment' %}selected{% endif %}>Equipment</option>
-                    <option {% if _stype == 'Other' %}selected{% endif %}>Other</option>
-                  </select>
-                </div>
-                <div class="col-12 col-lg-9">
-                  <label class="form-label">Description {{ conf_badge('year') if _sec and _sec.year }}</label>
-                  <input class="form-control asset-description" name="asset_description[]" form="newJobForm"
-                         placeholder="e.g. 2019 Ford Ranger XL REG: ABC123 VIN: … ENG: …"
-                         value="{% if _sec %}{{ _sec.description or ([_sec.year, _sec.make, _sec.model, _sec.colour] | select | join(' ')) }}{% endif %}">
-                </div>
-              </div>
-              <div class="row g-2 mt-2">
-                <div class="col-6 col-md-2">
-                  <input class="form-control asset-year" name="asset_year[]" form="newJobForm" placeholder="Year"
-                         value="{{ _sec.year if _sec else '' }}">
-                </div>
-                <div class="col-6 col-md-3">
-                  <input class="form-control asset-make" name="asset_make[]" form="newJobForm" placeholder="Make"
-                         value="{{ _sec.make if _sec else '' }}">
-                </div>
-                <div class="col-6 col-md-3">
-                  <input class="form-control asset-model" name="asset_model[]" form="newJobForm" placeholder="Model"
-                         value="{{ _sec.model if _sec else '' }}">
-                </div>
-                <div class="col-6 col-md-4">
-                  <input class="form-control asset-colour" name="asset_colour[]" form="newJobForm" placeholder="Colour"
-                         value="{{ _sec.colour if _sec else '' }}">
-                </div>
-              </div>
-              <div class="row g-2 mt-2">
-                <div class="col-12 col-md-4">
-                  <input class="form-control asset-rego" name="asset_rego[]" form="newJobForm" placeholder="Rego"
-                         value="{{ _sec.rego if _sec else '' }}">
-                </div>
-                <div class="col-12 col-md-4">
-                  <input class="form-control asset-vin" name="asset_vin[]" form="newJobForm" placeholder="VIN"
-                         value="{{ _sec.vin if _sec else '' }}">
-                </div>
-                <div class="col-12 col-md-4">
-                  <input class="form-control asset-engine" name="asset_engine[]" form="newJobForm" placeholder="Engine"
-                         value="{{ _sec.engine_number if _sec else '' }}">
-                </div>
-              </div>
-              <div class="row g-2 mt-2">
-                <div class="col-12 col-md-8">
-                  <input class="form-control asset-address ax-address" name="asset_address[]" form="newJobForm"
-                         placeholder="Asset address (property/site)" autocomplete="off" spellcheck="false"
-                         value="{{ autofill.asset_address if autofill and autofill.asset_address else '' }}">
-                </div>
-                <div class="col-12 col-md-4">
-                  <input class="form-control" name="asset_serial[]" form="newJobForm" placeholder="Serial (equipment)">
-                </div>
-              </div>
-              <div class="row g-2 mt-2">
-                <div class="col-12">
-                  <input class="form-control" name="asset_notes[]" form="newJobForm" placeholder="Notes (rego expiry, status, etc.)"
-                         value="{% if _sec and _sec.reg_expiry %}Rego: {{ _sec.reg_expiry }}{% endif %}{% if _sec and _sec.reg_note %}{% if _sec and _sec.reg_expiry %} | {% endif %}{{ _sec.reg_note }}{% endif %}">
-                </div>
-              </div>
-              <div class="mt-2 d-flex justify-content-end">
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="removeAssetRow(this)">Remove</button>
-              </div>
-            </div>
-          </div>
-          <div class="mt-2 mb-3">
-            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="addAssetRow()">+ Add Security</button>
-          </div>
-        </div>
-
-        <!-- ── Tab 2: Details & Instructions ─────────────────────────── -->
-        <div class="tab-pane fade" id="dtab-details">
-          <div class="mb-1 mt-1" style="font-size:.75rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">JOB DETAILS &amp; INSTRUCTIONS</div>
-          <div class="mb-3">
-            <label class="form-label">Deliver To {{ conf_badge('deliver_to') }}</label>
-            <input class="form-control" name="deliver_to" form="newJobForm"
-                   id="deliver_to_input"
-                   list="deliver_to_list"
-                   placeholder="Type auction yard name…"
-                   autocomplete="off"
-                   value="{{ prefill_deliver_to or '' }}">
-            <datalist id="deliver_to_list">
-              {% for yard in auction_yards %}<option value="{{ yard.name }}">{% endfor %}
-            </datalist>
-          </div>
-          <div class="mb-1">
-            <label class="form-label">Description &amp; Instructions {{ conf_badge('instructions') }}</label>
-            <textarea class="form-control" name="description" form="newJobForm" rows="9"
-                      placeholder="Job description, field agent instructions, access codes, contact times, background information…"
-                      style="resize:vertical;">{% if autofill and autofill.instructions_raw %}{{ autofill.instructions_raw }}{% endif %}</textarea>
-            <div class="form-text" style="color:var(--muted)">Visible to assigned agents on their job view.</div>
-          </div>
-        </div>
-
-        <!-- ── Tab 3: Schedule ────────────────────────────────────────── -->
-        <div class="tab-pane fade" id="dtab-schedule">
-          <p class="small mb-3" style="color:var(--muted)">
-            Optionally create an initial schedule entry when the job is saved.
-          </p>
-          <div class="row g-3 mb-3">
-            <div class="col-12 col-lg-5">
-              <label class="form-label fw-semibold">Booking Type</label>
-              <div class="position-relative">
-                <input type="text" id="sched_bt_search" class="form-control"
-                       placeholder="Type to search or enter new…" autocomplete="off">
-                <input type="hidden" name="sched_booking_type_id"   id="sched_bt_id_hidden"   form="newJobForm">
-                <input type="hidden" name="sched_booking_type_name" id="sched_bt_name_hidden"  form="newJobForm">
-                <div id="sched_bt_drop" class="bt-combo-drop" style="display:none"></div>
-              </div>
-            </div>
-            <div class="col-12 col-lg-3">
-              <label class="form-label fw-semibold">Date</label>
-              <input type="date" class="form-control" id="sched_date" name="sched_date" form="newJobForm">
-            </div>
-            <div class="col-12 col-lg-2">
-              <label class="form-label fw-semibold">Time</label>
-              <input type="time" class="form-control" name="sched_time" form="newJobForm" value="09:00">
-            </div>
-          </div>
-          <div class="row g-3 mb-3">
-            <div class="col-12 col-lg-5">
-              <label class="form-label fw-semibold">Assigned To</label>
-              <select class="form-select" name="sched_assigned_user_id" form="newJobForm">
-                <option value="">— Unassigned —</option>
-                {% for u in users %}
-                <option value="{{ u.id }}">{{ u.full_name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-          <div class="mb-1">
-            <label class="form-label fw-semibold">Schedule Notes</label>
-            <textarea class="form-control" name="sched_notes" form="newJobForm" rows="3"
-                      placeholder="Notes for this appointment…" style="resize:vertical;"></textarea>
-          </div>
-        </div>
-
-      </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line);">
-        <div class="d-flex gap-2 w-100 justify-content-end">
-          <button type="button" class="btn btn-outline-secondary" id="detailsBackBtn" onclick="detailsModalBack()">Back</button>
-          <button type="button" class="btn btn-secondary" onclick="submitAddJob()">Add Job</button>
-          <input type="hidden" name="add_another" id="add_another_input" form="newJobForm" value="">
-          <button type="submit" form="newJobForm" class="btn btn-primary">Save</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── Entity popup modal ─────────────────────────────────────────────── -->
-<div class="modal fade" id="entityModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
-      <div class="modal-header" style="border-bottom:1px solid var(--line);">
-        <h5 class="modal-title" style="color:var(--text)">New</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="entityModalBody">
-        <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal fade" id="cloneModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
-      <div class="modal-header" style="border-bottom:1px solid var(--line);">
-        <h5 class="modal-title" style="color:var(--text)">Clone Previous Job</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body" id="cloneModalBody">
-        <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
-      </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line);">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary" id="cloneConfirmBtn" style="display:none;">Clone into New Job</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-(function () {
-  /* ── "Same as reference" sync ─────────────────────────────────────── */
-  var crEl  = document.getElementById('client_reference');
-  var cjnEl = document.getElementById('client_job_number');
-  var cjnChk = document.getElementById('cjn_same');
-
-  function syncCJN() {
-    if (cjnChk && cjnChk.checked && crEl && cjnEl) {
-      cjnEl.value = crEl.value;
-    }
-  }
-  window.syncCJN = syncCJN;
-
-  if (cjnChk) {
-    cjnChk.addEventListener('change', function () {
-      if (cjnChk.checked) { syncCJN(); cjnEl.readOnly = true; cjnEl.style.opacity = ''; }
-      else { cjnEl.readOnly = false; cjnEl.value = ''; cjnEl.focus(); }
-    });
-  }
-
-  if (cjnEl) {
-    cjnEl.addEventListener('input', function () {
-      if (cjnChk) cjnChk.checked = false;
-    });
-  }
-
-  /* ── Reference search typeahead (on client_reference field) ─────── */
+  /* ── Reference search typeahead ───────────────────────────────────── */
   var refResults = document.getElementById('ref_results');
   var _cloneData = null;
   var _cloneBs   = null;
 
-  if (crEl && refResults) {
-    crEl.addEventListener('input', function () {
-      var q = crEl.value.trim();
+  if (crField && refResults) {
+    crField.addEventListener('input', function () {
+      var q = crField.value.trim();
       if (q.length < 2) { refResults.style.display = 'none'; return; }
       fetch('/jobs/search-reference?q=' + encodeURIComponent(q))
         .then(function (r) { return r.json(); })
         .then(function (items) {
           refResults.innerHTML = '';
           if (!items.length) {
-            refResults.innerHTML = '<div style="padding:10px 14px;color:var(--muted);font-size:.85rem;">No matching jobs found.</div>';
+            refResults.innerHTML = '<div style="padding:10px 14px;color:var(--muted);font-size:.85rem;">No matching jobs.</div>';
             refResults.style.display = '';
             return;
           }
           items.forEach(function (job) {
             var d = document.createElement('div');
-            d.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.06);font-size:.88rem;';
+            d.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.06);font-size:.85rem;';
             var ref = job.client_reference || job.client_job_number || '';
             d.innerHTML = '<span style="font-weight:600;">' + escHtml(job.display_ref) + '</span>'
               + ' &mdash; ' + escHtml(job.customer_name || 'No customer')
               + '<br><span style="color:var(--muted);font-size:.78rem;">'
-              + escHtml(job.client_name || '') + (ref ? ' &nbsp;|&nbsp; Ref: ' + escHtml(ref) : '')
-              + ' &nbsp;|&nbsp; ' + escHtml(job.status)
+              + escHtml(job.client_name || '') + (ref ? ' | Ref: ' + escHtml(ref) : '')
+              + ' | ' + escHtml(job.status)
               + '</span>';
             d.addEventListener('mouseenter', function () { d.style.background = 'rgba(96,165,250,.1)'; });
             d.addEventListener('mouseleave', function () { d.style.background = ''; });
             d.addEventListener('mousedown', function (e) {
               e.preventDefault();
               refResults.style.display = 'none';
-              crEl.value = ref || job.display_ref;
+              crField.value = ref || job.display_ref;
               syncCJN();
               loadCloneModal(job.id);
             });
@@ -992,11 +936,11 @@ function submitNewJobType() {
         });
     });
 
-    crEl.addEventListener('blur', function () {
+    crField.addEventListener('blur', function () {
       setTimeout(function () { refResults.style.display = 'none'; }, 200);
     });
-    crEl.addEventListener('focus', function () {
-      if (crEl.value.trim().length >= 2) crEl.dispatchEvent(new Event('input'));
+    crField.addEventListener('focus', function () {
+      if (crField.value.trim().length >= 2) crField.dispatchEvent(new Event('input'));
     });
   }
 
@@ -1004,12 +948,12 @@ function submitNewJobType() {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  /* ── Clone modal ─────────────────────────────────────────────────── */
+  /* ── Clone modal ──────────────────────────────────────────────────── */
   function loadCloneModal(jobId) {
     var modalEl = document.getElementById('cloneModal');
     var body    = document.getElementById('cloneModalBody');
     var btn     = document.getElementById('cloneConfirmBtn');
-    body.innerHTML = '<div class="text-center py-3" style="color:var(--muted)">Loading…</div>';
+    body.innerHTML = '<div class="text-center py-3" style="color:var(--muted)">Loading\u2026</div>';
     btn.style.display = 'none';
     _cloneData = null;
 
@@ -1059,8 +1003,8 @@ function submitNewJobType() {
         html += '<div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:6px;font-size:.85rem;">';
         html += '<strong>' + escHtml(a.item_type) + '</strong>';
         if (a.description) html += ' &mdash; ' + escHtml(a.description);
-        if (a.reg) html += ' &nbsp;|&nbsp; Reg: ' + escHtml(a.reg);
-        if (a.make || a.model) html += ' &nbsp;|&nbsp; ' + escHtml(a.make) + ' ' + escHtml(a.model);
+        if (a.reg) html += ' | Reg: ' + escHtml(a.reg);
+        if (a.make || a.model) html += ' | ' + escHtml(a.make) + ' ' + escHtml(a.model);
         html += '</div>';
       });
     }
@@ -1073,11 +1017,11 @@ function submitNewJobType() {
     applyClone(_cloneData);
   });
 
-  /* ── applyClone — populate the form ─────────────────────────────── */
+  /* ── applyClone — populate the form ───────────────────────────────── */
   function applyClone(d) {
-    /* Client reference & job number */
     var cr = document.getElementById('client_reference');
     var cjn = document.getElementById('client_job_number');
+    var cjnChk = document.getElementById('cjn_same');
     if (cr) cr.value = d.client_reference || '';
     if (cjn) {
       if (cjnChk && cjnChk.checked) {
@@ -1087,7 +1031,6 @@ function submitNewJobType() {
       }
     }
 
-    /* Client typeahead */
     if (d.client_id) {
       var cliSearch = document.getElementById('client_search');
       var cliHidden = document.getElementById('client_id_val');
@@ -1095,7 +1038,6 @@ function submitNewJobType() {
       if (cliHidden) cliHidden.value = d.client_id || '';
     }
 
-    /* Customer typeahead + address */
     if (d.customer_id) {
       var cusSearch = document.getElementById('customer_search');
       var cusHidden = document.getElementById('customer_id_val');
@@ -1110,7 +1052,6 @@ function submitNewJobType() {
       }
     }
 
-    /* Selects */
     function setSelect(name, val) {
       var el = document.querySelector('select[name="' + name + '"]');
       if (!el) return;
@@ -1122,9 +1063,7 @@ function submitNewJobType() {
     setSelect('visit_type', d.visit_type);
     setSelect('status', d.status);
     setSelect('priority', d.priority);
-    if (typeof toggleLenderAsset === 'function') toggleLenderAsset();
 
-    /* Address & description */
     var jaEl = document.getElementById('job_address');
     if (jaEl && d.job_address) {
       if (window.axionSetAddress) window.axionSetAddress(jaEl, d.job_address);
@@ -1135,7 +1074,6 @@ function submitNewJobType() {
     var descEl = document.querySelector('textarea[name="description"]');
     if (descEl) descEl.value = d.description || '';
 
-    /* Lender fields */
     function setInput(name, val) {
       var el = document.querySelector('[name="' + name + '"]');
       if (el && val) el.value = val;
@@ -1148,7 +1086,6 @@ function submitNewJobType() {
     setInput('mmp', d.mmp);
     setInput('job_due_date', d.job_due_date);
 
-    /* Assets — clear existing rows then add cloned ones */
     if (d.assets && d.assets.length) {
       var wrap = document.getElementById('assetsWrap');
       if (wrap) {
@@ -1158,9 +1095,9 @@ function submitNewJobType() {
           var rows = wrap.querySelectorAll('.asset-row');
           var row = rows[rows.length - 1];
           if (!row) return;
-          function setRowInput(placeholder, val) {
+          function setRowInput(cls, val) {
             if (!val) return;
-            var el = row.querySelector('input[placeholder="' + placeholder + '"]');
+            var el = row.querySelector('.' + cls);
             if (el) el.value = val;
           }
           var typeMap = {'vehicle':'Vehicle','property':'Property','equipment':'Equipment'};
@@ -1171,14 +1108,18 @@ function submitNewJobType() {
               if (typeSel.options[i].value === want) { typeSel.selectedIndex=i; break; }
             }
           }
-          var descInp = row.querySelector('input[name="asset_description[]"]');
+          var descInp = row.querySelector('.asset-description');
           if (descInp) descInp.value = a.description || '';
-          setRowInput('Rego', a.reg);
-          setRowInput('VIN', a.vin);
-          setRowInput('Year', a.year);
-          setRowInput('Make', a.make);
-          setRowInput('Model', a.model);
-          setRowInput('Serial (equipment)', a.serial_number);
+          setRowInput('asset-rego', a.reg);
+          setRowInput('asset-vin', a.vin);
+          row.querySelector('.asset-year').value = a.year || '';
+          row.querySelector('.asset-make').value = a.make || '';
+          row.querySelector('.asset-model').value = a.model || '';
+          row.querySelector('.asset-colour').value = a.colour || '';
+          row.querySelector('.asset-engine').value = a.engine_number || '';
+          var serialInp = row.querySelector('[name="asset_serial[]"]');
+          if (serialInp && a.serial_number) serialInp.value = a.serial_number;
+          if (typeof window._njUpdateParsedDisplay === 'function') window._njUpdateParsedDisplay(row);
           var addrInp = row.querySelector('.asset-address');
           if (addrInp && a.property_address) {
             if (window.axionSetAddress) window.axionSetAddress(addrInp, a.property_address);
@@ -1189,40 +1130,65 @@ function submitNewJobType() {
       }
     }
 
-    /* Scroll to top of form */
-    document.querySelector('form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('newJobForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 })();
 </script>
 
+{% if autofill %}
 <script>
-/* ── Modal tab switching + per-tab footer ───────────────────────────── */
-window.goToModalTab = function(tabId) {
-  var btn = document.querySelector('[data-bs-target="#' + tabId + '"]');
-  if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
-};
+(function() {
+  var custSearch = document.getElementById('customer_search');
+  if (custSearch && !custSearch.value) {
+    {% if autofill_customer_id %}
+    {% elif autofill_customer_display %}
+    custSearch.value = {{ autofill_customer_display | tojson }};
+    {% elif autofill.customer and autofill.customer.full_name %}
+    custSearch.value = {{ autofill.customer.full_name | tojson }};
+    {% elif autofill.customer and autofill.customer.company %}
+    custSearch.value = {{ autofill.customer.company | tojson }};
+    {% endif %}
+  }
+})();
+</script>
+{% endif %}
 
-function updateModalFooter(activeTabId) {
-  var map = { 'dtab-lender': 'mf-lender', 'dtab-details': 'mf-details', 'dtab-schedule': 'mf-schedule' };
-  Object.keys(map).forEach(function(tab) {
-    var el = document.getElementById(map[tab]);
-    if (el) el.style.display = (tab === activeTabId) ? '' : 'none';
+<script>
+function submitNewJobType() {
+  var inp = document.getElementById('addJobTypeInput');
+  var val = (inp ? inp.value : '').trim();
+  if (!val) return;
+  var fd = new FormData();
+  fd.append('new_job_type', val);
+  fetch('/job-type', { method: 'POST', body: fd })
+    .then(function() { location.reload(); })
+    .catch(function() { alert('Could not save job type.'); });
+}
+
+/* ── "Same as reference" sync ─────────────────────────────────────── */
+var crEl  = document.getElementById('client_reference');
+var cjnEl = document.getElementById('client_job_number');
+var cjnChk = document.getElementById('cjn_same');
+
+function syncCJN() {
+  if (cjnChk && cjnChk.checked && crEl && cjnEl) {
+    cjnEl.value = crEl.value;
+  }
+}
+window.syncCJN = syncCJN;
+
+if (cjnChk) {
+  cjnChk.addEventListener('change', function () {
+    if (cjnChk.checked) { syncCJN(); cjnEl.readOnly = true; }
+    else { cjnEl.readOnly = false; cjnEl.value = ''; cjnEl.focus(); }
   });
 }
 
-document.querySelectorAll('#detailsModal [data-bs-toggle="tab"]').forEach(function(btn) {
-  btn.addEventListener('shown.bs.tab', function(e) {
-    var target = e.target.getAttribute('data-bs-target').replace('#', '');
-    updateModalFooter(target);
+if (cjnEl) {
+  cjnEl.addEventListener('input', function () {
+    if (cjnChk) cjnChk.checked = false;
   });
-});
-
-/* ── Add Job: submit then redirect to new job pre-filled with lender ── */
-window.submitAddJob = function() {
-  var inp = document.getElementById('add_another_input');
-  if (inp) inp.value = '1';
-  document.getElementById('newJobForm').submit();
-};
+}
 
 /* ── Contract Number → Account Number sync ──────────────────────────── */
 window.syncContractToAccount = function() {
@@ -1238,25 +1204,6 @@ document.addEventListener('DOMContentLoaded', function() {
     accEl.addEventListener('input', function() { accEl._userEdited = true; });
   }
 
-  /* ── Asset address sync fix (DOMContentLoaded so modal elements exist) */
-  var customer = document.getElementById('customer_address');
-  var assetSync = document.getElementById('asset_same_as_customer');
-  if (customer && assetSync) {
-    function setField(input, value) {
-      if (typeof window.axionSetAddress === 'function') window.axionSetAddress(input, value);
-      else input.value = value;
-    }
-    function syncAssets() {
-      if (!assetSync.checked) return;
-      document.querySelectorAll('.asset-address').forEach(function(a) { setField(a, customer.value || ''); });
-    }
-    window.axionSyncAssets = syncAssets;
-    assetSync.addEventListener('change', function() { if (assetSync.checked) syncAssets(); });
-    customer.addEventListener('change', syncAssets);
-    customer.addEventListener('input',  syncAssets);
-  }
-
-  /* ── Prefill lender & account from URL params (after "Add Job") ───── */
   var params = new URLSearchParams(window.location.search);
   var prefillLender  = params.get('lender_name')    || '{{ prefill_lender_name|e }}';
   var prefillAccount = params.get('account_number') || '{{ prefill_account_number|e }}';
@@ -1265,11 +1212,19 @@ document.addEventListener('DOMContentLoaded', function() {
     var accEl2 = document.querySelector('[name="account_number"]');
     if (lnEl  && prefillLender)  lnEl.value  = prefillLender;
     if (accEl2 && prefillAccount) { accEl2.value = prefillAccount; accEl2._userEdited = true; }
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('detailsModal')).show();
   }
 });
 
-/* ── Booking type typeahead for Schedule tab ────────────────────────── */
+/* ── Submit "Add Job" (save & add another) ──────────────────────────── */
+window.submitAddJob = function() {
+  var inp = document.getElementById('add_another_input');
+  if (inp) inp.value = '1';
+  document.getElementById('newJobForm').submit();
+};
+</script>
+
+<!-- ── Booking type combobox ─────────────────────────────────────────── -->
+<script>
 (function () {
   var BT_DATA = [
     {% for bt in booking_types %}{"id":{{ bt.id }},"name":{{ bt.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
@@ -1311,9 +1266,8 @@ document.addEventListener('DOMContentLoaded', function() {
     items.slice(0, 12).forEach(function (bt) {
       var div = document.createElement('div');
       div.className = 'bt-combo-item';
-      var isRecent = recent.indexOf(bt.id) !== -1;
       div.textContent = bt.name;
-      if (isRecent) {
+      if (recent.indexOf(bt.id) !== -1) {
         var badge = document.createElement('span');
         badge.className = 'bt-recent';
         badge.textContent = 'recent';
@@ -1335,7 +1289,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (!exists) {
         var addDiv = document.createElement('div');
         addDiv.className = 'bt-combo-item bt-add-new';
-        addDiv.textContent = 'Add new booking type: \u201c' + trimmed + '\u201d';
+        addDiv.textContent = 'Add new: \u201c' + trimmed + '\u201d';
         addDiv.addEventListener('mousedown', function(e) {
           e.preventDefault();
           var fd = new FormData(); fd.append('name', trimmed);
@@ -1398,6 +1352,7 @@ document.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
+<!-- ── Default schedule date to tomorrow ─────────────────────────────── -->
 <script>
 (function () {
   var el = document.getElementById('sched_date');
@@ -1412,16 +1367,187 @@ document.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
-{% if autofill %}
+<!-- ── Auto-save draft system ────────────────────────────────────────── -->
 <script>
-/* Auto-open the Lender & Security tab when a document has been auto-filled */
-document.addEventListener('DOMContentLoaded', function () {
-  var modalEl = document.getElementById('detailsModal');
-  if (!modalEl) return;
-  var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-  /* Small delay so Bootstrap styles are applied before opening */
-  setTimeout(function () { modal.show(); }, 350);
-});
+(function () {
+  var DRAFT_KEY = 'axionx_job_draft';
+  var DRAFT_INTERVAL = 10000;
+  var draftBar = document.getElementById('draftBar');
+  var draftStatus = document.getElementById('draftStatus');
+  var form = document.getElementById('newJobForm');
+  var _lastSavedJson = '';
+  var _draftTimer = null;
+  var _lastSaveTime = null;
+  var _tickTimer = null;
+  var _isSubmitting = false;
+
+  form.addEventListener('submit', function() { _isSubmitting = true; });
+
+  function collectFormData() {
+    var data = {};
+    var inputs = form.querySelectorAll('input, select, textarea');
+    inputs.forEach(function(el) {
+      var name = el.name;
+      if (!name) return;
+      if (name === 'autofill_id' || name === 'add_another') return;
+      if (name.endsWith('[]')) {
+        if (!data[name]) data[name] = [];
+        data[name].push(el.value);
+      } else {
+        data[name] = el.type === 'checkbox' ? el.checked : el.value;
+      }
+    });
+    var clientSearch = document.getElementById('client_search');
+    var customerSearch = document.getElementById('customer_search');
+    if (clientSearch) data['_client_search'] = clientSearch.value;
+    if (customerSearch) data['_customer_search'] = customerSearch.value;
+    return data;
+  }
+
+  function saveDraft() {
+    if (_isSubmitting) return;
+    var data = collectFormData();
+    var json = JSON.stringify(data);
+    if (json === _lastSavedJson) return;
+
+    var hasContent = false;
+    var skipKeys = ['status', 'priority', 'visit_type', 'sched_time', 'sched_date', 'job_type', '_client_search', '_customer_search'];
+    for (var key in data) {
+      if (skipKeys.indexOf(key) !== -1) continue;
+      var val = data[key];
+      if (Array.isArray(val)) {
+        if (val.some(function(v) { return v && v.trim(); })) { hasContent = true; break; }
+      } else if (typeof val === 'string' && val.trim()) {
+        hasContent = true; break;
+      }
+    }
+    if (!hasContent) return;
+
+    try {
+      localStorage.setItem(DRAFT_KEY, json);
+      _lastSavedJson = json;
+      _lastSaveTime = Date.now();
+      updateDraftDisplay();
+      draftBar.style.display = '';
+    } catch(e) {}
+  }
+
+  function updateDraftDisplay() {
+    if (!_lastSaveTime) return;
+    var secs = Math.floor((Date.now() - _lastSaveTime) / 1000);
+    if (secs < 5) draftStatus.textContent = 'Draft saved just now';
+    else if (secs < 60) draftStatus.textContent = 'Draft saved ' + secs + 's ago';
+    else draftStatus.textContent = 'Draft saved ' + Math.floor(secs / 60) + 'm ago';
+  }
+
+  window.clearDraft = function() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
+    draftBar.style.display = 'none';
+    _lastSavedJson = '';
+    _lastSaveTime = null;
+  };
+
+  function restoreDraft() {
+    try {
+      var json = localStorage.getItem(DRAFT_KEY);
+      if (!json) return;
+      var data = JSON.parse(json);
+      if (!data) return;
+
+      for (var key in data) {
+        if (key.startsWith('_')) {
+          if (key === '_client_search') {
+            var cs = document.getElementById('client_search');
+            if (cs && !cs.value) cs.value = data[key];
+          }
+          if (key === '_customer_search') {
+            var cus = document.getElementById('customer_search');
+            if (cus && !cus.value) cus.value = data[key];
+          }
+          continue;
+        }
+        if (key.endsWith('[]')) {
+          var vals = data[key];
+          if (!Array.isArray(vals)) continue;
+          var els = form.querySelectorAll('[name="' + key + '"]');
+          for (var i = 0; i < vals.length; i++) {
+            if (i >= els.length && key === 'asset_type[]') addAssetRow();
+            els = form.querySelectorAll('[name="' + key + '"]');
+            if (i < els.length) els[i].value = vals[i];
+          }
+        } else {
+          var el = form.querySelector('[name="' + key + '"]');
+          if (!el) continue;
+          if (el.type === 'checkbox') el.checked = data[key];
+          else el.value = data[key];
+        }
+      }
+
+      _lastSavedJson = json;
+      _lastSaveTime = Date.now() - 1000;
+      updateDraftDisplay();
+      draftBar.style.display = '';
+
+      var wrap = document.getElementById('assetsWrap');
+      if (wrap && typeof window._njUpdateParsedDisplay === 'function') {
+        wrap.querySelectorAll('.asset-row').forEach(function(row) {
+          window._njUpdateParsedDisplay(row);
+        });
+      }
+    } catch(e) {}
+  }
+
+  var hasAutofill = {{ 'true' if autofill else 'false' }};
+  var hasNewClient = {{ 'true' if new_client_id else 'false' }};
+  var hasNewCustomer = {{ 'true' if new_customer_id else 'false' }};
+  var hasNewUser = {{ 'true' if new_user_id else 'false' }};
+  if (!hasAutofill && !hasNewClient && !hasNewCustomer && !hasNewUser) {
+    restoreDraft();
+  }
+
+  _draftTimer = setInterval(saveDraft, DRAFT_INTERVAL);
+  _tickTimer = setInterval(updateDraftDisplay, 5000);
+
+  form.addEventListener('submit', function() {
+    clearDraft();
+    clearInterval(_draftTimer);
+    clearInterval(_tickTimer);
+  });
+})();
 </script>
-{% endif %}
+
+{% endblock %}
+
+{% block modals %}
+<div class="modal fade" id="entityModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);">
+        <h5 class="modal-title" style="color:var(--text)">New</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="entityModalBody">
+        <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="cloneModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);">
+        <h5 class="modal-title" style="color:var(--text)">Clone Previous Job</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="cloneModalBody">
+        <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="cloneConfirmBtn" style="display:none;">Clone into New Job</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

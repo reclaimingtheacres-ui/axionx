@@ -46,6 +46,18 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Right sidebar** (280px, XL+ only): Persistent panel with Job Info (type, visit, priority, internal #, client ref), Assigned agent (avatar + name), Schedule (next booking date/time/type), Financial (payments received, count), Activity (notes/docs/bookings counts). Sidebar scrolls independently from main content.
 - **Flex layout**: Outer flex container with overflow hidden; tab content and sidebar each have independent `overflow-y:auto`. Archive/Cold Store banners remain above the action bar.
 
+**2b3. New Job Form (Web — Two-Column Single Page / Design B):**
+- **Single-page layout**: No more modal with tabs. All fields visible on one scrollable page.
+- **Two-column grid** (lg+): Left column has Job ID, Client & Customer, Classification, Security/Asset cards. Right column (380px, sticky) has Lender & Financial, Instructions, Schedule cards plus Save/Cancel buttons.
+- **Auto-parsed vehicle details**: Year/Make/Model/Colour/Engine fields are hidden inputs, auto-parsed from the Description field via `parseDesc()` bidirectional sync. Collapsible "Auto-parsed details" toggle shows parsed values as read-only display.
+- **Address sync**: Customer address auto-populates Job Address (checkbox "Use customer address") and Asset Address (checkbox "Use customer address" in Security card header).
+- **Contract→Account sync**: Contract Number auto-populates Account Number field until user manually edits it.
+- **Auto-save drafts**: Client-side localStorage draft system. Saves every 10 seconds, shows "Draft saved Xs ago" indicator bar. Drafts auto-restore on page load (unless autofill/new entity redirect). "Discard draft" button clears saved data.
+- **Clone from reference**: Typing in Contract Number triggers search typeahead, selecting a result opens Clone modal to pre-fill form from existing job.
+- **Action buttons**: "Save Job" (primary submit), "Save & Add Another" (submits then redirects back with lender prefill), "Cancel" (back to jobs list).
+- **Entity creation**: "+ New" buttons for Client, Customer, Agent open popup modals for inline creation without leaving the form.
+- **Booking type combobox**: Schedule section uses searchable combobox with recent types, type-to-create capability.
+
 **2c. Job List (Mobile — Distance Default + Search):**
 - Mobile app defaults to **Distance – Nearest First** sorting when GPS is available.
 - If GPS permission is denied, falls back to Visit Date sort with a warning banner.

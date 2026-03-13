@@ -3125,7 +3125,8 @@ def _job_new_render(conn):
                            auction_yards=auction_yards,
                            autofill=autofill,
                            autofill_id=autofill_id,
-                           autofill_notice=autofill_notice)
+                           autofill_notice=autofill_notice,
+                           autofill_filename=autofill_filename)
 
 
 @app.post("/jobs/new")
