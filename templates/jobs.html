@@ -60,6 +60,27 @@
     gap: 3px;
     white-space: nowrap;
   }
+  .ax-add-drop{position:relative;display:inline-block}
+  .ax-add-btn{
+    width:28px;height:28px;border-radius:50%;border:1.5px solid var(--line);
+    background:#fff;color:var(--muted);cursor:pointer;display:flex;
+    align-items:center;justify-content:center;font-size:1rem;
+    transition:border-color .15s,color .15s,background .15s;line-height:1;padding:0;
+  }
+  .ax-add-btn:hover{border-color:var(--accent);color:var(--accent);background:#eff6ff}
+  .ax-add-menu{
+    display:none;position:fixed;
+    background:#fff;border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 4px 16px rgba(0,0,0,.12);min-width:200px;
+    z-index:9999;overflow:hidden;padding:4px 0;
+  }
+  .ax-add-drop.open .ax-add-menu{display:block}
+  .ax-add-menu a{
+    display:block;padding:7px 14px;font-size:.78rem;color:var(--text);
+    text-decoration:none;white-space:nowrap;
+  }
+  .ax-add-menu a:hover{background:#f0f4ff;color:var(--accent)}
+  .ax-add-menu .ax-add-sep{border-top:1px solid var(--line);margin:3px 0}
 </style>
 
 <div class="ax-card" style="overflow:clip">
@@ -167,9 +188,33 @@
     el.style.display = open ? 'none' : 'flex';
   }
   function axGoJob(e, id) {
-    if (e.target.closest('form, select, button')) return;
+    if (e.target.closest('form, select, button, .ax-add-drop')) return;
     window.location.href = '/jobs/' + id;
   }
+  function axToggleDrop(el) {
+    var wasOpen = el.classList.contains('open');
+    document.querySelectorAll('.ax-add-drop').forEach(function(d){ d.classList.remove('open'); });
+    if (!wasOpen) {
+      var menu = el.querySelector('.ax-add-menu');
+      var btn = el.querySelector('.ax-add-btn');
+      var r = btn.getBoundingClientRect();
+      menu.style.display = 'block';
+      var mh = menu.offsetHeight;
+      menu.style.display = '';
+      var top = r.bottom + 4;
+      if (top + mh > window.innerHeight - 8) top = r.top - mh - 4;
+      menu.style.top = top + 'px';
+      menu.style.right = (window.innerWidth - r.right) + 'px';
+      el.classList.add('open');
+    }
+  }
+  function axCloseDrops() {
+    document.querySelectorAll('.ax-add-drop.open').forEach(function(d){ d.classList.remove('open'); });
+  }
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.ax-add-drop')) axCloseDrops();
+  });
+  window.addEventListener('scroll', axCloseDrops, true);
   (function(){
     var hdr = document.querySelector('.jobs-sticky-header');
     if (!hdr || !window.IntersectionObserver) return;
@@ -265,6 +310,15 @@
           {% else %}
             <span class="ax-status-pill" style="background:{{ sc }}15;color:{{ sc }};border:1.5px solid {{ sc }}40">{{ j.status }}</span>
           {% endif %}
+        </div>
+
+        <div class="ax-add-drop" style="flex-shrink:0" onclick="event.stopPropagation()">
+          <button class="ax-add-btn" type="button" onclick="axToggleDrop(this.parentNode)" title="Add to job">+</button>
+          <div class="ax-add-menu">
+            <a href="/jobs/{{ j.id }}/update-builder">&#x2728; Create Update (AI Assist)</a>
+            <div class="ax-add-sep"></div>
+            <a href="/jobs/{{ j.id }}?add_note=1#tab-notes">&#x1F4DD; Add Note</a>
+          </div>
         </div>
       </div>
     {% else %}
