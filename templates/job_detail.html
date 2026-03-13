@@ -52,22 +52,22 @@
 </div>
 {% endif %}
 
-<div class="d-flex justify-content-between align-items-start mb-2 flex-wrap gap-2">
-  <div>
-    <div style="color:var(--muted); font-size:.85rem">
-      Internal: {{ job.internal_job_number }}{% if job.client_reference %} | Client Ref: {{ job.client_reference }}{% endif %}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} | {{ cx }}{% endif %}
-    </div>
-    <div class="small mt-1" style="color:var(--muted)">
-      {{ job.job_type }} | {{ job.visit_type }} | Priority: {{ job.priority }}{% if next_schedule %} | Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% if next_schedule.assigned_to_name %} — {{ next_schedule.assigned_to_name }}{% endif %}{% elif job.assigned_name %} | Assigned: {{ job.assigned_name }}{% endif %}
-    </div>
-  </div>
+{% set s = job.status %}
+{% if s == 'New' %}{% set sc = '#3b82f6' %}
+{% elif s in ('Active', 'Active - Phone work only') %}{% set sc = '#22c55e' %}
+{% elif s in ('Suspended', 'Awaiting info from client') %}{% set sc = '#f59e0b' %}
+{% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
+{% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
+{% elif s == 'Archived - Invoiced' %}{% set sc = '#d97706' %}
+{% elif s == 'Cold Stored' %}{% set sc = '#6366f1' %}
+{% else %}{% set sc = '#6b7280' %}{% endif %}
 
-  <!-- ===== ACTION BAR ===== -->
-  <div class="d-flex align-items-center gap-2 flex-wrap">
+<!-- ===== ACTION BAR (blue buttons) ===== -->
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+  <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
 
     {% if session.get('role') in ('admin', 'both') %}
 
-    <!-- Add to Job -->
     <div class="dropdown">
       <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
         Add to Job
@@ -82,7 +82,6 @@
       </ul>
     </div>
 
-    <!-- Create Document -->
     <div class="dropdown">
       <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
         Create Document
@@ -103,7 +102,6 @@
       </ul>
     </div>
 
-    <!-- Copy -->
     <div class="dropdown">
       <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
         Copy
@@ -117,7 +115,6 @@
       </ul>
     </div>
 
-    <!-- Send Message -->
     <div class="dropdown">
       <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
         Send Message
@@ -129,62 +126,50 @@
       </ul>
     </div>
 
-    <!-- Add Bookings -->
     <button class="btn btn-primary btn-sm" type="button"
             onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).show()">
       Add Bookings
     </button>
 
-    <!-- Status pill -->
-    <form method="post" action="/jobs/{{ job.id }}/status" class="d-inline">
-      {% set s = job.status %}
-      {% if s == 'New' %}{% set sc = '#3b82f6' %}
-      {% elif s in ('Active', 'Active - Phone work only') %}{% set sc = '#22c55e' %}
-      {% elif s in ('Suspended', 'Awaiting info from client') %}{% set sc = '#f59e0b' %}
-      {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
-      {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
-      {% elif s == 'Archived - Invoiced' %}{% set sc = '#d97706' %}
-      {% elif s == 'Cold Stored' %}{% set sc = '#6366f1' %}
-      {% else %}{% set sc = '#6b7280' %}{% endif %}
+    {% else %}
+    <a href="/jobs/{{ job.id }}/update-builder" class="btn btn-primary btn-sm">&#x2728; Create Update (AI Assist)</a>
+    {% endif %}
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+    {% if session.get('role') in ('admin', 'both') %}
+    <form method="post" action="/jobs/{{ job.id }}/status" class="d-inline" style="margin:0">
       {% if s not in ('Archived - Invoiced', 'Cold Stored') %}
       <select name="status" data-current-status="{{ job.status }}" onchange="handleStatusChange(this)"
               style="background:{{ sc }}20; color:{{ sc }}; border:1.5px solid {{ sc }}50;
-                     border-radius:999px; padding:4px 12px; font-size:.82rem; font-weight:600;
+                     border-radius:999px; padding:3px 10px; font-size:.78rem; font-weight:600;
                      cursor:pointer; outline:none; appearance:none; -webkit-appearance:none;
-                     padding-right:28px; background-image:url('data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2212%22 height%3D%2212%22 viewBox%3D%220 0 24 24%22%3E%3Cpath fill%3D%22%23{{ sc[1:] }}%22 d%3D%22M7 10l5 5 5-5z%22%2F%3E%3C%2Fsvg%3E');
-                     background-repeat:no-repeat; background-position:right 8px center;">
+                     padding-right:24px; background-image:url('data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2210%22 height%3D%2210%22 viewBox%3D%220 0 24 24%22%3E%3Cpath fill%3D%22%23{{ sc[1:] }}%22 d%3D%22M7 10l5 5 5-5z%22%2F%3E%3C%2Fsvg%3E');
+                     background-repeat:no-repeat; background-position:right 6px center;">
         {% for st in ['New','Active','Active - Phone work only','Suspended','Awaiting info from client','Completed','Invoiced'] %}
           <option value="{{ st }}" {% if st == job.status %}selected{% endif %}>{{ st }}</option>
         {% endfor %}
       </select>
       {% else %}
-      <span style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;border-radius:999px;padding:4px 14px;font-size:.82rem;font-weight:600">{{ s }}</span>
+      <span style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;border-radius:999px;padding:3px 12px;font-size:.78rem;font-weight:600">{{ s }}</span>
       {% endif %}
     </form>
 
     {% if s in ('Invoiced', 'Completed') %}
-    <form method="post" action="/jobs/{{ job.id }}/archive" style="display:inline"
+    <form method="post" action="/jobs/{{ job.id }}/archive" style="display:inline;margin:0"
           onsubmit="return confirm('Archive this job? It will be removed from active views.')">
       <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive this file">Archive</button>
     </form>
     {% endif %}
 
     {% else %}
-    <!-- Agent: AI Assist + status badge only -->
-    <a href="/jobs/{{ job.id }}/update-builder" class="btn btn-primary btn-sm">&#x2728; Create Update (AI Assist)</a>
-    <span class="badge fs-6"
-          style="{% set s = job.status %}
-                 {% if s == 'New' %}background:#3b82f620;color:#3b82f6;border:1.5px solid #3b82f650
-                 {% elif s in ('Active','Active - Phone work only') %}background:#22c55e20;color:#22c55e;border:1.5px solid #22c55e50
-                 {% elif s in ('Suspended','Awaiting info from client') %}background:#f59e0b20;color:#f59e0b;border:1.5px solid #f59e0b50
-                 {% elif s == 'Completed' %}background:#14b8a620;color:#14b8a6;border:1.5px solid #14b8a650
-                 {% elif s == 'Invoiced' %}background:#a855f720;color:#a855f7;border:1.5px solid #a855f750
-                 {% else %}background:#6b728020;color:#6b7280;border:1.5px solid #6b728050{% endif %}">
-      {{ job.status }}
-    </span>
+    <span style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;border-radius:999px;padding:3px 12px;font-size:.78rem;font-weight:600">{{ s }}</span>
     {% endif %}
-
   </div>
+</div>
+
+<div class="d-xl-none" style="color:var(--muted);font-size:.78rem;margin-bottom:6px">
+  {{ job.job_type }} &middot; {{ job.visit_type }} &middot; {{ job.priority }}{% if job.internal_job_number %} &middot; {{ job.internal_job_number }}{% endif %}{% if job.assigned_name %} &middot; {{ job.assigned_name }}{% endif %}{% if next_schedule %} &middot; Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% endif %}
 </div>
 
 <!-- ======== TAB NAV ======== -->
@@ -250,8 +235,10 @@
 }
 </style>
 
-<!-- ======== TAB CONTENT ======== -->
-<div class="tab-content" style="flex:1;overflow-y:auto;min-height:0">
+<!-- ======== TAB CONTENT + SIDEBAR GRID ======== -->
+<div style="display:flex;flex:1;overflow:hidden;min-height:0;gap:0">
+
+<div class="tab-content" style="flex:1;overflow-y:auto;min-height:0;padding-right:16px">
 
 <!-- ======== TAB: JOB ======== -->
 <div class="tab-pane fade show active" id="tab-job" role="tabpanel">
@@ -2120,6 +2107,88 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 {% endif %}
 
 </div><!-- /tab-content -->
+
+<!-- ======== RIGHT SIDEBAR ======== -->
+<div class="ax-sidebar-right d-none d-xl-block" style="width:280px;flex-shrink:0;overflow-y:auto;border-left:1px solid var(--line);padding:12px 14px;font-size:.84rem">
+
+  <div class="mb-3">
+    <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">JOB INFO</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
+      <span style="color:var(--muted)">Type</span>
+      <span class="fw-semibold">{{ job.job_type }}</span>
+      <span style="color:var(--muted)">Visit</span>
+      <span class="fw-semibold">{{ job.visit_type }}</span>
+      <span style="color:var(--muted)">Priority</span>
+      <span class="fw-semibold">{{ job.priority }}</span>
+      <span style="color:var(--muted)">Internal #</span>
+      <span class="fw-semibold">{{ job.internal_job_number }}</span>
+      {% if job.client_reference %}
+      <span style="color:var(--muted)">Client Ref</span>
+      <span class="fw-semibold">{{ job.client_reference }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <hr style="border-color:var(--line);margin:10px 0">
+
+  <div class="mb-3">
+    <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">ASSIGNED</div>
+    {% if job.assigned_name %}
+    <div class="d-flex align-items-center gap-2">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0">{{ job.assigned_name[:1] }}</div>
+      <span class="fw-semibold">{{ job.assigned_name }}</span>
+    </div>
+    {% else %}
+    <span style="color:var(--muted)">Unassigned</span>
+    {% endif %}
+  </div>
+
+  <hr style="border-color:var(--line);margin:10px 0">
+
+  <div class="mb-3">
+    <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">SCHEDULE</div>
+    {% if next_schedule %}
+    <div class="fw-semibold">{{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }}</div>
+    <div style="color:var(--muted)">{{ next_schedule.scheduled_for[11:16] }}{% if next_schedule.assigned_to_name %} &mdash; {{ next_schedule.assigned_to_name }}{% endif %}</div>
+    {% if next_schedule.booking_type %}<div class="small" style="color:var(--muted)">{{ next_schedule.booking_type }}</div>{% endif %}
+    {% else %}
+    <span style="color:var(--muted)">No upcoming booking</span>
+    {% endif %}
+  </div>
+
+  <hr style="border-color:var(--line);margin:10px 0">
+
+  <div class="mb-3">
+    <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">FINANCIAL</div>
+    {% if job_payments %}
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
+      <span style="color:var(--muted)">Received</span>
+      <span class="fw-semibold" style="color:#22c55e">${{ "%.2f"|format(payments_total_cents / 100) }}</span>
+      <span style="color:var(--muted)">Payments</span>
+      <span class="fw-semibold">{{ job_payments|length }}</span>
+    </div>
+    {% else %}
+    <span style="color:var(--muted)">No payments recorded</span>
+    {% endif %}
+  </div>
+
+  <hr style="border-color:var(--line);margin:10px 0">
+
+  <div>
+    <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">ACTIVITY</div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
+      <span style="color:var(--muted)">Notes</span>
+      <span class="fw-semibold">{{ field_notes|length }}</span>
+      <span style="color:var(--muted)">Docs</span>
+      <span class="fw-semibold">{{ documents|length }}</span>
+      <span style="color:var(--muted)">Bookings</span>
+      <span class="fw-semibold">{{ schedules|length }}</span>
+    </div>
+  </div>
+
+</div><!-- /ax-sidebar-right -->
+
+</div><!-- /tab-content + sidebar flex container -->
 
 <script>
 window.addEventListener('load', function () {

@@ -39,6 +39,13 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Edge cases handled**: "No client", "Unassigned" (red), "No schedule", "No booking" all shown explicitly.
 - Sort options: Oldest Scheduled (default), Active first, Agent A–Z, Job # high–low, Client ref high–low.
 
+**2b2. Job Detail (Web — Side Panel Layout / Design B):**
+- **Compact header**: Page title shows job ref + customer (from layout.html `block page_title`). Action bar row with blue dropdown buttons (Add to Job, Create Document, Copy, Send Message, Add Bookings) on the left, status pill on the right. Admin gets editable status select; agents get read-only badge.
+- **Compact info row** (sub-XL only): Shows job type · visit · priority · internal # · assigned agent · next schedule date — visible when the right sidebar is hidden.
+- **Tab navigation**: Job | Notes & Docs | Schedule | Forms | Settings (admin only). Same tab structure as before.
+- **Right sidebar** (280px, XL+ only): Persistent panel with Job Info (type, visit, priority, internal #, client ref), Assigned agent (avatar + name), Schedule (next booking date/time/type), Financial (payments received, count), Activity (notes/docs/bookings counts). Sidebar scrolls independently from main content.
+- **Flex layout**: Outer flex container with overflow hidden; tab content and sidebar each have independent `overflow-y:auto`. Archive/Cold Store banners remain above the action bar.
+
 **2c. Job List (Mobile — Distance Default + Search):**
 - Mobile app defaults to **Distance – Nearest First** sorting when GPS is available.
 - If GPS permission is denied, falls back to Visit Date sort with a warning banner.
