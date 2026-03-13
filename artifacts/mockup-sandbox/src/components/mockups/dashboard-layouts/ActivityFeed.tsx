@@ -168,16 +168,24 @@ export function ActivityFeed() {
                   }}>
                     <ArrowUpRight size={16} color={statusConfig[item.status]?.color || '#6b7280'} />
                   </div>
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                       <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '.84rem' }}>{item.ref}</span>
                       <span style={{ fontWeight: 500, fontSize: '.84rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.customer}
                       </span>
+                      {item.agent !== '—' && (
+                        <span style={{ fontSize: '.75rem', color: 'var(--muted)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+                          {item.agent}
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: '.75rem', color: 'var(--muted)' }}>{item.action}</span>
                       <StatusBadge status={item.status} />
+                      {item.agent === '—' && (
+                        <span style={{ fontSize: '.72rem', color: '#dc2626', fontStyle: 'italic', marginLeft: 4 }}>Unassigned</span>
+                      )}
                     </div>
                   </div>
                 </div>
