@@ -3513,15 +3513,19 @@ def job_create():
         sched_dt = f"{sched_date}T{sched_time or '09:00'}:00"
         resolved_sched_bt = _resolve_booking_type(cur, sched_bt_id, sched_bt_name)
         if resolved_sched_bt:
+            sched_assigned_int = int(sched_user_id) if sched_user_id else None
             cur.execute("""
                 INSERT INTO schedules
                 (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_at, updated_at)
                 VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?)
             """, (job_id, resolved_sched_bt, sched_dt, sched_notes,
-                  int(sched_user_id) if sched_user_id else None, now, now))
+                  sched_assigned_int, now, now))
             _write_schedule_history(cur, cur.lastrowid, job_id, "created",
                                     new_scheduled_for=sched_dt, new_status="Scheduled",
                                     changed_by_user_id=session.get("user_id"))
+            if sched_assigned_int:
+                cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                            (sched_assigned_int, now, job_id))
 
     # Link autofill document to the new job
     autofill_id = request.form.get("autofill_id", "").strip()
@@ -3976,6 +3980,9 @@ def add_schedule(job_id: int):
                             changed_by_user_id=caller_id)
     _auto_complete_schedule_cues(cur, job_id, ts)
     _sync_visit_type_from_booking(cur, job_id, bt_status, ts)
+    if assigned_to:
+        cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                    (assigned_to, ts, job_id))
     conn.commit()
     conn.close()
 
@@ -4050,6 +4057,10 @@ def add_schedule_ajax(job_id: int):
                 (job_id, f"Booking '{bt_name}' added for {dt_str[:10]}.", now, now))
     _auto_complete_schedule_cues(cur, job_id, now)
     _sync_visit_type_from_booking(cur, job_id, bt_name, now)
+    last_assigned = next((c["assigned_to"] for c in reversed(created) if c["assigned_to"]), None)
+    if last_assigned:
+        cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                    (last_assigned, now, job_id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "count": len(created)})
@@ -4160,6 +4171,9 @@ def job_activate(job_id):
                                         new_scheduled_for=dt_str, new_status=bt_status,
                                         changed_by_user_id=caller_id)
                 _auto_complete_schedule_cues(cur, job_id, now)
+                if assigned_int:
+                    cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                                (assigned_int, now_ts(), job_id))
         except Exception:
             flash("Schedule date/time invalid — status updated but no schedule created.", "warning")
 
@@ -4463,6 +4477,9 @@ def schedule_api_update(sched_id):
         if new_agent_id != old_agent:
             cur.execute("UPDATE schedules SET assigned_to_user_id = ? WHERE id = ?", (new_agent_id, sched_id))
             changes.append("Agent reassigned")
+            if new_agent_id:
+                cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                            (new_agent_id, now_ts(), sched["job_id"]))
 
     if new_bt and new_bt.isdigit():
         old_bt = sched["booking_type_id"]
