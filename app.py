@@ -7946,17 +7946,32 @@ def delete_note_attachment(job_id: int, note_id: int, file_id: int):
 @app.get("/uploads/<path:filename>")
 @login_required
 def serve_upload(filename):
+    import logging as _log
     if _uploads_container:
         try:
             blob_client = _uploads_container.get_blob_client(filename)
             download    = blob_client.download_blob()
             mime        = mimetypes.guess_type(filename)[0] or "application/octet-stream"
             return Response(download.readall(), mimetype=mime)
-        except Exception:
-            pass
+        except Exception as e:
+            _log.warning("Blob fetch failed for %r: %s", filename, e)
     local_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     if os.path.exists(local_path):
         return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+    conn = db()
+    orphan = conn.execute(
+        "SELECT id FROM job_note_files WHERE filename=? OR filepath=?",
+        (filename, filename)
+    ).fetchone()
+    conn.close()
+    if orphan:
+        _log.warning("Orphan note-file record for %r (id=%s) — file not in storage", filename, orphan["id"])
+        return render_template("error_500.html",
+            error_message="This file is referenced in the database but the actual file data has not been imported into storage yet. "
+                          "This typically happens with GeoOp-imported attachments that haven't been backfilled. "
+                          "An admin can run the Attachment Backfill from the GeoOp Import page to resolve this.",
+            path=f"/uploads/{filename}"), 404
+    _log.warning("File not found locally or in blob: %r", filename)
     abort(404)
 
 

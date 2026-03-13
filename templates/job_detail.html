@@ -2785,6 +2785,8 @@ document.addEventListener('click', function(e) {
     dl.href   = url;
     dl.download = filename;
     open.href = url;
+    open.style.display = '';
+    dl.style.display = '';
     _revokePrev();
 
     if (IMAGE_EXT.includes(ext)) {
@@ -2803,21 +2805,33 @@ document.addEventListener('click', function(e) {
           body.appendChild(img);
         })
         .catch(function() {
-          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:2rem">&#9888;</div><div style="font-size:.9rem;margin-top:8px">Could not load image. Use <strong>Open File</strong> or <strong>Save / Download</strong>.</div></div>';
+          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:2rem">&#9888;</div><div style="font-size:.9rem;margin-top:8px">This file is not available. It may not have been imported yet.</div></div>';
+          open.style.display = 'none';
+          dl.style.display = 'none';
         });
 
     } else if (PDF_EXT.includes(ext)) {
+      _showLoading(body);
       body.style.display = 'block';
-      body.innerHTML = '';
-      var embed = document.createElement('embed');
-      embed.src = url;
-      embed.type = 'application/pdf';
-      embed.style.cssText = 'width:100%;height:65vh;border:0;display:block';
-      body.appendChild(embed);
-      var fallback = document.createElement('div');
-      fallback.style.cssText = 'padding:6px 12px;font-size:.75rem;color:var(--muted);text-align:center';
-      fallback.innerHTML = 'PDF not displaying? Use <strong>Open File</strong> to view in your browser or <strong>Save / Download</strong>.';
-      body.appendChild(fallback);
+      fetch(url, {method: 'HEAD', credentials: 'include'})
+        .then(function(r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          body.innerHTML = '';
+          var embed = document.createElement('embed');
+          embed.src = url;
+          embed.type = 'application/pdf';
+          embed.style.cssText = 'width:100%;height:65vh;border:0;display:block';
+          body.appendChild(embed);
+          var fallback = document.createElement('div');
+          fallback.style.cssText = 'padding:6px 12px;font-size:.75rem;color:var(--muted);text-align:center';
+          fallback.innerHTML = 'PDF not displaying? Use <strong>Save / Download</strong> below.';
+          body.appendChild(fallback);
+        })
+        .catch(function() {
+          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:2rem">&#9888;</div><div style="font-size:.9rem;margin-top:8px">This file is not available. It may not have been imported yet.</div></div>';
+          open.style.display = 'none';
+          dl.style.display = 'none';
+        });
 
     } else if (TXT_EXT.includes(ext)) {
       _showLoading(body);
@@ -2832,7 +2846,9 @@ document.addEventListener('click', function(e) {
           body.appendChild(pre);
         })
         .catch(function() {
-          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">Could not load file. Use <strong>Open File</strong> or <strong>Save / Download</strong>.</div>';
+          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">This file is not available. It may not have been imported yet.</div>';
+          open.style.display = 'none';
+          dl.style.display = 'none';
         });
 
     } else if (AUDIO_EXT.includes(ext)) {
@@ -2856,6 +2872,13 @@ document.addEventListener('click', function(e) {
             'This file cannot be previewed here. Use the buttons below to open, save, or share it.' +
           '</div>' +
         '</div>';
+      fetch(url, {method: 'HEAD', credentials: 'include'})
+        .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); })
+        .catch(function() {
+          body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:2rem">&#9888;</div><div style="font-size:.9rem;margin-top:8px">This file is not available. It may not have been imported yet.</div></div>';
+          open.style.display = 'none';
+          dl.style.display = 'none';
+        });
     }
     _previewModal.show();
   };

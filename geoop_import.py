@@ -1752,7 +1752,7 @@ def _resolve_stored_name(conn, geoop_note_id, original_filename):
     if sf2:
         return sf2["stored_filename"]
 
-    return original_filename
+    return None
 
 
 def _ensure_job_note_file(conn, axion_note_id, staging_note, ts):
@@ -1761,6 +1761,9 @@ def _ensure_job_note_file(conn, axion_note_id, staging_note, ts):
         return
 
     stored = _resolve_stored_name(conn, staging_note["geoop_note_id"], file_name)
+
+    if not stored:
+        return
 
     try:
         conn.execute("""
@@ -1818,9 +1821,12 @@ def _link_staged_attachments(conn):
                 (row["geoop_note_id"], row["file_name"]),
                 sf_map.get(
                     (row["geoop_note_id"], None),
-                    row["file_name"]
+                    None
                 )
             )
+
+            if not stored:
+                continue
 
             try:
                 cur = conn.execute("""
