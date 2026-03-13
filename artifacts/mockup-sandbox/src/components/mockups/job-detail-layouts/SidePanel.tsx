@@ -7,23 +7,33 @@ export default function SidePanel() {
 
   return (
     <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#fff', minHeight: '100vh', color: '#111827' }}>
-      {/* Minimal top bar */}
+      {/* Top bar: job ref + status */}
       <div style={{ padding: '10px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20, background: '#fff' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <span style={{ fontWeight: 700, fontSize: '1rem', color: '#2563eb' }}>2601071</span>
-          <span style={{ fontWeight: 600, fontSize: '.92rem' }}>THE TRUSTEE FOR THE SAPAVADIYA FAMILY TRUST</span>
+          <span style={{ fontWeight: 600, fontSize: '.92rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>THE TRUSTEE FOR THE SAPAVADIYA FAMILY TRUST</span>
           <select style={{ background: '#22c55e15', color: '#22c55e', border: '1.5px solid #22c55e40', borderRadius: 99, padding: '3px 10px', fontSize: '.76rem', fontWeight: 600, appearance: 'none' as const }}>
             <option>Active</option>
           </select>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
+        <button style={{ padding: '4px 10px', fontSize: '.76rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 8, cursor: 'pointer', fontWeight: 500, flexShrink: 0 }}>+ New Job</button>
+      </div>
+
+      {/* Warning banner + action buttons */}
+      <div style={{ padding: '8px 20px', background: '#fffbeb', borderBottom: '1px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.78rem', color: '#92400e' }}>
+          <span>⚠</span>
+          <span>6 unfinished attendance updates</span>
+          <button style={{ padding: '2px 8px', fontSize: '.7rem', background: '#f59e0b', color: '#fff', border: 0, borderRadius: 5, cursor: 'pointer', fontWeight: 500 }}>View Drafts</button>
+        </div>
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           {['Add to Job ▾', 'Create Doc ▾', 'Copy ▾', 'Message ▾', 'Add Booking'].map(b => (
-            <button key={b} style={{ padding: '4px 10px', fontSize: '.72rem', background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>{b}</button>
+            <button key={b} style={{ padding: '4px 10px', fontSize: '.72rem', background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>{b}</button>
           ))}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', minHeight: 'calc(100vh - 46px)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', minHeight: 'calc(100vh - 86px)' }}>
         {/* Main content */}
         <div style={{ borderRight: '1px solid #e5e7eb' }}>
           {/* Tabs */}
@@ -32,18 +42,13 @@ export default function SidePanel() {
               <button key={t} onClick={() => setActiveTab(t)} style={{ padding: '8px 16px', fontSize: '.82rem', fontWeight: activeTab === t ? 600 : 400, color: activeTab === t ? '#2563eb' : '#6b7280', borderBottom: `2px solid ${activeTab === t ? '#2563eb' : 'transparent'}`, background: 'none', border: 'none', cursor: 'pointer', marginBottom: -2 }}>
                 {t}
                 {t === 'Notes & Docs' && <span style={{ background: '#ef4444', color: '#fff', borderRadius: 99, padding: '0 5px', fontSize: '.62rem', marginLeft: 4, fontWeight: 600 }}>14</span>}
+                {t === 'Schedule' && <span style={{ background: '#e5e7eb', color: '#6b7280', borderRadius: 99, padding: '0 5px', fontSize: '.62rem', marginLeft: 4 }}>1</span>}
               </button>
             ))}
           </div>
 
-          {/* Warning */}
-          <div style={{ margin: '12px 20px', padding: '8px 14px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, fontSize: '.78rem', color: '#92400e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>⚠ 6 unfinished attendance updates</span>
-            <button style={{ padding: '2px 8px', fontSize: '.72rem', background: '#f59e0b', color: '#fff', border: 0, borderRadius: 6, cursor: 'pointer' }}>View Drafts</button>
-          </div>
-
           {/* Content area */}
-          <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: '14px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {/* Customer */}
             <div style={{ padding: '12px 14px', background: '#f9fafb', borderRadius: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
