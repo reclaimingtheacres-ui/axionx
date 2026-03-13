@@ -9655,37 +9655,78 @@ def geoop_repair_progress():
     })
 
 
-@app.get("/admin/geoop-import/reg-diagnostic")
+@app.get("/admin/geoop-import/repair-diagnostic")
 @admin_required
-def geoop_reg_diagnostic():
+def geoop_repair_diagnostic():
     conn = _geoop._db()
     try:
-        staging_total = conn.execute(
-            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status = 'imported'"
+        result = {}
+
+        result["staging_total"] = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs"
         ).fetchone()[0]
-        staging_with_desc = conn.execute(
-            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status = 'imported' AND raw_description IS NOT NULL AND raw_description != ''"
+        result["staging_by_status"] = {
+            r[0] or "NULL": r[1] for r in conn.execute(
+                "SELECT import_status, COUNT(*) FROM geoop_staging_jobs GROUP BY import_status"
+            ).fetchall()
+        }
+        result["staging_with_raw_desc"] = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE raw_description IS NOT NULL AND raw_description != ''"
         ).fetchone()[0]
-        staging_with_reg = conn.execute(
-            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status = 'imported' AND parsed_reg IS NOT NULL AND parsed_reg != ''"
+        result["staging_with_axion_job_id"] = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE axion_job_id IS NOT NULL"
         ).fetchone()[0]
-        bad_regs = conn.execute(
-            "SELECT id, geoop_job_id, parsed_reg, substr(raw_description, 1, 200) AS desc_preview FROM geoop_staging_jobs WHERE parsed_reg LIKE '%ULATED%' LIMIT 20"
-        ).fetchall()
-        item_bad = conn.execute(
-            "SELECT ji.id, ji.job_id, ji.reg FROM job_items WHERE ji.reg LIKE '%ULATED%' LIMIT 20"
-        ).fetchall()
-        sample_unreg = conn.execute(
-            "SELECT id, geoop_job_id, parsed_reg, substr(raw_description, 1, 300) AS desc_preview FROM geoop_staging_jobs WHERE raw_description LIKE '%nregulated%' AND import_status = 'imported' LIMIT 5"
-        ).fetchall()
-        return jsonify({
-            "staging_imported_total": staging_total,
-            "staging_with_description": staging_with_desc,
-            "staging_with_parsed_reg": staging_with_reg,
-            "bad_regs_ulated": [dict(r) for r in bad_regs],
-            "item_bad_regs": [dict(r) for r in item_bad],
-            "sample_unregulated_jobs": [dict(r) for r in sample_unreg],
-        })
+        result["staging_with_parsed_reg"] = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE parsed_reg IS NOT NULL AND parsed_reg != ''"
+        ).fetchone()[0]
+        result["staging_with_parsed_nmpd"] = conn.execute(
+            "SELECT COUNT(*) FROM geoop_staging_jobs WHERE parsed_nmpd_date IS NOT NULL AND parsed_nmpd_date != ''"
+        ).fetchone()[0]
+
+        result["jobs_total"] = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        result["jobs_with_geoop_source_desc"] = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE geoop_source_description IS NOT NULL AND geoop_source_description != ''"
+        ).fetchone()[0]
+        result["jobs_with_description"] = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE description IS NOT NULL AND description != ''"
+        ).fetchone()[0]
+        result["jobs_with_due_date"] = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE job_due_date IS NOT NULL AND job_due_date != ''"
+        ).fetchone()[0]
+        result["jobs_desc_contains_NPD"] = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE COALESCE(geoop_source_description, description) LIKE '%NPD%'"
+        ).fetchone()[0]
+        result["jobs_desc_contains_REG"] = conn.execute(
+            "SELECT COUNT(*) FROM jobs WHERE COALESCE(geoop_source_description, description) LIKE '%REG%'"
+        ).fetchone()[0]
+
+        result["jobs_linked_to_staging"] = conn.execute(
+            "SELECT COUNT(*) FROM jobs j JOIN geoop_staging_jobs sj ON sj.axion_job_id = j.id"
+        ).fetchone()[0]
+
+        result["job_items_vehicle"] = conn.execute(
+            "SELECT COUNT(*) FROM job_items WHERE item_type = 'vehicle'"
+        ).fetchone()[0]
+
+        sample_npd = conn.execute("""
+            SELECT j.id, j.job_due_date, j.mmp_cents,
+                   substr(COALESCE(j.geoop_source_description, j.description), 1, 300) AS desc_preview
+            FROM jobs j
+            WHERE COALESCE(j.geoop_source_description, j.description) LIKE '%NPD%'
+            LIMIT 5
+        """).fetchall()
+        result["sample_npd_jobs"] = [dict(r) for r in sample_npd]
+
+        sample_raw_dates = conn.execute("""
+            SELECT id, job_due_date FROM jobs
+            WHERE job_due_date GLOB '[0-9][0-9]/[0-9][0-9]/[0-9][0-9]'
+               OR job_due_date GLOB '[0-9]/[0-9]/[0-9][0-9]'
+               OR job_due_date GLOB '[0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]'
+            LIMIT 10
+        """).fetchall()
+        result["jobs_with_raw_date_format"] = [dict(r) for r in sample_raw_dates]
+
+        return jsonify(result)
     finally:
         conn.close()
 
