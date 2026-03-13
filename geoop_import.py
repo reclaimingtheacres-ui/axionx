@@ -229,6 +229,24 @@ def _parse_money(s):
         return 0
 
 
+def _normalise_au_date(raw):
+    if not raw:
+        return ""
+    raw = raw.strip()
+    parts = re.split(r'[/\-]', raw)
+    if len(parts) != 3:
+        return raw
+    try:
+        day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+        if year < 100:
+            year = year + 2000 if year <= 69 else year + 1900
+        from datetime import date as _date
+        d = _date(year, month, day)
+        return d.isoformat()
+    except (ValueError, TypeError):
+        return raw
+
+
 def parse_description(desc):
     if not desc:
         return {}
@@ -301,23 +319,24 @@ def parse_description(desc):
     if costs_match:
         result["parsed_costs_cents"] = _parse_money(costs_match.group(1))
 
-    nmpd_match = re.search(
-        r'N[MW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+(?:the\s+)?)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
-        clean, re.IGNORECASE
-    )
-    if not nmpd_match:
-        nmpd_match = re.search(
-            r'NPD[:\s]*\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
-            clean, re.IGNORECASE
-        )
-    if not nmpd_match:
-        nmpd_match = re.search(
-            r'N[FW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
-            clean, re.IGNORECASE
-        )
+    _nmpd_patterns = [
+        r'(?<![A-Za-z])N[MW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+(?:the\s+)?)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?<![A-Za-z])NPD[:\s]+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?<![A-Za-z])N[FW]PD\s+\$?\s*([\d,]+\.?\d*)\s+(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(?<![A-Za-z])(?:Due|PMT\s+Due)\s+(?:Date\s+)?(?:on\s+)?(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+    ]
+    nmpd_match = None
+    for _pat in _nmpd_patterns:
+        nmpd_match = re.search(_pat, clean, re.IGNORECASE)
+        if nmpd_match:
+            break
     if nmpd_match:
-        result["parsed_nmpd_amount_cents"] = _parse_money(nmpd_match.group(1))
-        result["parsed_nmpd_date"] = nmpd_match.group(2)
+        groups = nmpd_match.groups()
+        if len(groups) == 2:
+            result["parsed_nmpd_amount_cents"] = _parse_money(groups[0])
+            result["parsed_nmpd_date"] = _normalise_au_date(groups[1])
+        elif len(groups) == 1:
+            result["parsed_nmpd_date"] = _normalise_au_date(groups[0])
 
     sec_match = re.search(r'Security[:\s]*(.+?)(?:\s+REG[:\s]|\s+VIN[:\s]|Deliver\s+to|$)', clean, re.IGNORECASE)
     if sec_match:
@@ -3848,6 +3867,93 @@ def repair_registrations():
             _repair_reg_progress.update({"status": "error", "error": str(e)[:500]})
         finally:
             _repair_reg_lock.release()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return True
+
+
+_repair_due_dates_lock = threading.Lock()
+_repair_due_dates_progress = {"status": "idle"}
+
+def get_repair_due_dates_progress():
+    return dict(_repair_due_dates_progress)
+
+def repair_due_dates():
+    if not _repair_due_dates_lock.acquire(blocking=False):
+        return False
+    _repair_due_dates_progress.clear()
+    _repair_due_dates_progress.update({"status": "running", "staging_fixed": 0, "jobs_fixed": 0, "total": 0})
+
+    def _run():
+        import logging
+        log = logging.getLogger("geoop_import")
+        try:
+            conn = _db()
+            try:
+                rows = conn.execute("""
+                    SELECT sj.id, sj.raw_description, sj.parsed_nmpd_date,
+                           sj.axion_job_id
+                    FROM geoop_staging_jobs sj
+                    WHERE sj.raw_description IS NOT NULL AND sj.raw_description != ''
+                      AND sj.import_status IN ('imported', 'updated')
+                """).fetchall()
+                _repair_due_dates_progress["total"] = len(rows)
+                log.info("Repair due dates: %d staging rows to check", len(rows))
+
+                staging_batch = []
+                job_batch = []
+                for r in rows:
+                    desc = r["raw_description"]
+                    old_date = r["parsed_nmpd_date"] or ""
+
+                    parsed = parse_description(desc)
+                    new_date = parsed.get("parsed_nmpd_date", "")
+                    new_amount = parsed.get("parsed_nmpd_amount_cents", 0) or 0
+
+                    if new_date != old_date:
+                        staging_batch.append((new_date, new_amount, r["id"]))
+                        if r["axion_job_id"]:
+                            job_batch.append((new_date, new_amount, r["axion_job_id"], old_date))
+
+                    if len(staging_batch) >= 500:
+                        conn.executemany(
+                            "UPDATE geoop_staging_jobs SET parsed_nmpd_date = ?, parsed_nmpd_amount_cents = ? WHERE id = ?",
+                            staging_batch
+                        )
+                        conn.commit()
+                        _repair_due_dates_progress["staging_fixed"] += len(staging_batch)
+                        staging_batch = []
+
+                if staging_batch:
+                    conn.executemany(
+                        "UPDATE geoop_staging_jobs SET parsed_nmpd_date = ?, parsed_nmpd_amount_cents = ? WHERE id = ?",
+                        staging_batch
+                    )
+                    conn.commit()
+                    _repair_due_dates_progress["staging_fixed"] += len(staging_batch)
+
+                jobs_actually_updated = 0
+                for new_date, new_amount, axion_job_id, old_date_for_job in job_batch:
+                    cur = conn.execute("""
+                        UPDATE jobs SET job_due_date = ?, mmp_cents = ?
+                        WHERE id = ?
+                          AND (job_due_date IS NULL OR job_due_date = '' OR job_due_date = ?)
+                    """, (new_date, new_amount, axion_job_id, old_date_for_job))
+                    jobs_actually_updated += cur.rowcount
+                conn.commit()
+                _repair_due_dates_progress["jobs_fixed"] = jobs_actually_updated
+
+                _repair_due_dates_progress["status"] = "complete"
+                log.info("Repair due dates complete: %d staging, %d jobs fixed",
+                         _repair_due_dates_progress["staging_fixed"], jobs_actually_updated)
+            finally:
+                conn.close()
+        except Exception as e:
+            log.error("Repair due dates failed: %s", e)
+            _repair_due_dates_progress.update({"status": "error", "error": str(e)[:500]})
+        finally:
+            _repair_due_dates_lock.release()
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()

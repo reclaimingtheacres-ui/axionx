@@ -9632,6 +9632,17 @@ def geoop_repair_registrations():
     return redirect(url_for("geoop_import_page"))
 
 
+@app.post("/admin/geoop-import/repair-due-dates")
+@admin_required
+def geoop_repair_due_dates():
+    started = _geoop.repair_due_dates()
+    if started:
+        flash("Due date repair started. Re-parsing NMPD/Due dates from original descriptions.", "info")
+    else:
+        flash("Due date repair is already running. Please wait.", "warning")
+    return redirect(url_for("geoop_import_page"))
+
+
 @app.get("/admin/geoop-import/repair-progress")
 @admin_required
 def geoop_repair_progress():
@@ -9640,6 +9651,7 @@ def geoop_repair_progress():
         "jobs": _geoop.get_repair_job_dates_progress(),
         "phones": _geoop.get_repair_phones_progress(),
         "registrations": _geoop.get_repair_reg_progress(),
+        "due_dates": _geoop.get_repair_due_dates_progress(),
     })
 
 

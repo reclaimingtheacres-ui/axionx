@@ -401,8 +401,13 @@
               onsubmit="this.querySelector('button[type=submit]').disabled=true;">
           <button type="submit" class="btn btn-outline-info btn-sm" id="repairRegsBtn">Repair Registrations</button>
         </form>
+        <form method="post" action="/admin/geoop-import/repair-due-dates" class="d-inline ms-2"
+              onsubmit="this.querySelector('button[type=submit]').disabled=true;">
+          <button type="submit" class="btn btn-outline-warning btn-sm" id="repairDueDatesBtn">Repair Due Dates</button>
+        </form>
         <span id="repairDatesStatus" class="small text-muted"></span>
         <span id="repairRegsStatus" class="small text-muted ms-2"></span>
+        <span id="repairDueDatesStatus" class="small text-muted ms-2"></span>
       </div>
       <hr class="my-2">
       <p class="small text-muted mb-2">
@@ -1337,9 +1342,11 @@ function _renderAuditResult(d) {
 (function() {
   var statusEl = document.getElementById('repairDatesStatus');
   var regsStatusEl = document.getElementById('repairRegsStatus');
+  var dueDatesStatusEl = document.getElementById('repairDueDatesStatus');
   var datesBtn = document.getElementById('repairDatesBtn');
   var phonesBtn = document.getElementById('repairPhonesBtn');
   var regsBtn = document.getElementById('repairRegsBtn');
+  var dueDatesBtn = document.getElementById('repairDueDatesBtn');
   function pollRepair() {
     fetch('/admin/geoop-import/repair-progress')
       .then(function(r) { return r.json(); })
@@ -1348,7 +1355,8 @@ function _renderAuditResult(d) {
         var jobs = d.jobs || {};
         var phones = d.phones || {};
         var regs = d.registrations || {};
-        var running = notes.status === 'running' || jobs.status === 'running' || phones.status === 'running' || regs.status === 'running';
+        var dueDates = d.due_dates || {};
+        var running = notes.status === 'running' || jobs.status === 'running' || phones.status === 'running' || regs.status === 'running' || dueDates.status === 'running';
         var parts = [];
         if (notes.status === 'running') {
           parts.push('Notes: ' + (notes.updated||0).toLocaleString() + '/' + (notes.total||0).toLocaleString());
@@ -1381,6 +1389,16 @@ function _renderAuditResult(d) {
           regsStatusEl.textContent = 'Regs: error';
           regsBtn.disabled = false;
         }
+        if (dueDates.status === 'running') {
+          dueDatesStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Due dates: checking ' + (dueDates.total||0).toLocaleString() + ' jobs…';
+          dueDatesBtn.disabled = true;
+        } else if (dueDates.status === 'complete') {
+          dueDatesStatusEl.textContent = 'Due dates: ' + (dueDates.staging_fixed||0).toLocaleString() + ' staging, ' + (dueDates.jobs_fixed||0).toLocaleString() + ' jobs fixed';
+          dueDatesBtn.disabled = false;
+        } else if (dueDates.status === 'error') {
+          dueDatesStatusEl.textContent = 'Due dates: error';
+          dueDatesBtn.disabled = false;
+        }
         if (running) {
           statusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + parts.join(' | ');
           datesBtn.disabled = notes.status === 'running' || jobs.status === 'running';
@@ -1391,7 +1409,7 @@ function _renderAuditResult(d) {
           datesBtn.disabled = false;
           phonesBtn.disabled = false;
         }
-      }).catch(function() { if (datesBtn.disabled || phonesBtn.disabled || regsBtn.disabled) setTimeout(pollRepair, 5000); });
+      }).catch(function() { if (datesBtn.disabled || phonesBtn.disabled || regsBtn.disabled || dueDatesBtn.disabled) setTimeout(pollRepair, 5000); });
   }
   pollRepair();
   datesBtn.closest('form').addEventListener('submit', function() {
@@ -1407,6 +1425,11 @@ function _renderAuditResult(d) {
   regsBtn.closest('form').addEventListener('submit', function() {
     regsBtn.disabled = true;
     regsStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting…';
+    setTimeout(pollRepair, 2000);
+  });
+  dueDatesBtn.closest('form').addEventListener('submit', function() {
+    dueDatesBtn.disabled = true;
+    dueDatesStatusEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Starting…';
     setTimeout(pollRepair, 2000);
   });
 })();
