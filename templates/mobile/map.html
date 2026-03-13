@@ -87,6 +87,17 @@
 .jl-actions a + a { border-left: 1px solid #e5e7eb; }
 .jl-actions a.navigate { color: #16a34a; }
 
+/* ── My-location button ── */
+#my-loc-btn {
+  position: absolute; bottom: 12px; right: 12px; z-index: 10;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: #fff; border: none; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: #2563eb;
+}
+#my-loc-btn:active { background: #eff6ff; }
+#my-loc-btn svg { width: 20px; height: 20px; }
+
 /* ── No maps banner ── */
 #no-maps-banner {
   background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px;
@@ -125,6 +136,12 @@
 <div id="map-wrap">
   {% if google_maps_api_key %}
   <div id="gmap"></div>
+  <button id="my-loc-btn" title="Centre on my location">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+      <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+    </svg>
+  </button>
   {% else %}
   <div id="no-maps-banner">
     Google Maps API key is not configured. Job list is still available below.
@@ -375,6 +392,8 @@ function loadJobs(filter){
 }
 
 /* ── GPS tracking ── */
+let firstFix = true;
+
 function sendLocation(pos){
   const {latitude:lat, longitude:lng, accuracy} = pos.coords;
   agentPos = {lat, lng};
@@ -396,6 +415,10 @@ function sendLocation(pos){
         zIndex: 999
       });
     }
+    if(firstFix){
+      firstFix = false;
+      centreOnAgent();
+    }
   }
 
   // Update distance in list
@@ -406,15 +429,29 @@ function sendLocation(pos){
   if(locSt) locSt.textContent = 'Updated ' + new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
 
   // Post to backend
-  fetch('/m/api/location/update', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
-    body: JSON.stringify({lat, lng, accuracy, timestamp: new Date().toISOString()})
-  });
+  if(GPS_ENABLED){
+    fetch('/m/api/location/update', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+      body: JSON.stringify({lat, lng, accuracy, timestamp: new Date().toISOString()})
+    });
+  }
+}
+
+function centreOnAgent(){
+  if(!map || !agentPos) return;
+  if(allJobs.length){
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(agentPos);
+    allJobs.forEach(j=>{ if(j.lat && j.lng) bounds.extend({lat:j.lat, lng:j.lng}); });
+    map.fitBounds(bounds, {padding:40});
+  } else {
+    map.setCenter(agentPos);
+    map.setZoom(13);
+  }
 }
 
 function startGPS(){
-  if(!GPS_ENABLED){ return; }
   if(!navigator.geolocation){
     document.getElementById('loc-denied-banner').style.display='block';
     return;
@@ -422,11 +459,13 @@ function startGPS(){
   navigator.geolocation.getCurrentPosition(sendLocation, ()=>{
     document.getElementById('loc-denied-banner').style.display='block';
   }, {enableHighAccuracy:true, timeout:10000});
-  // Repeated updates
-  setInterval(()=>{
-    navigator.geolocation.getCurrentPosition(sendLocation, null,
-      {enableHighAccuracy:true, timeout:10000});
-  }, GPS_INTERVAL);
+
+  if(GPS_ENABLED){
+    setInterval(()=>{
+      navigator.geolocation.getCurrentPosition(sendLocation, null,
+        {enableHighAccuracy:true, timeout:10000});
+    }, GPS_INTERVAL);
+  }
   // Refresh when page becomes visible again
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState==='visible'){
@@ -471,6 +510,21 @@ function initGoogleMapsMobile(){
       loadJobs(currentFilter);
     });
   });
+
+  // My-location button
+  const locBtn = document.getElementById('my-loc-btn');
+  if(locBtn){
+    locBtn.addEventListener('click', ()=>{
+      if(agentPos){
+        centreOnAgent();
+      } else {
+        navigator.geolocation && navigator.geolocation.getCurrentPosition(
+          pos => { sendLocation(pos); centreOnAgent(); },
+          null, {enableHighAccuracy:true, timeout:10000}
+        );
+      }
+    });
+  }
 
   // Load initial jobs
   loadJobs(currentFilter);
