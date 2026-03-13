@@ -2993,11 +2993,8 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
                                     log.debug("File recovery: no job match for geoop_job_id=%s file=%s", geoop_job_id, entry_filename)
                                     continue
 
-                                ext = os.path.splitext(entry_filename)[1] if "." in entry_filename else ""
-                                safe_stored = "geoop_{}_{}_{}{}".format(
-                                    geoop_job_id, geoop_note_id,
-                                    hashlib.md5(entry_filename.encode()).hexdigest()[:8], ext
-                                )
+                                safe_base = re.sub(r'[^\w.\-]', '_', entry_filename)
+                                safe_stored = "geoop_{}_{}".format(geoop_job_id, safe_base)
                                 dest_path = os.path.join(target_dir, safe_stored)
                                 abs_dest = os.path.abspath(dest_path)
                                 abs_target = os.path.abspath(target_dir)
@@ -3015,31 +3012,44 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
 
                                     dconn = _db()
                                     try:
-                                        note = dconn.execute(
-                                            "SELECT id FROM job_field_notes WHERE job_id=? AND note_type='geoop_import' LIMIT 1",
-                                            (axion_job_id,)
+                                        orphan = dconn.execute(
+                                            "SELECT jnf.id FROM job_note_files jnf "
+                                            "JOIN job_field_notes jfn ON jfn.id = jnf.job_field_note_id "
+                                            "WHERE jfn.job_id=? AND (jnf.filename=? OR jnf.filepath=?)",
+                                            (axion_job_id, entry_filename, entry_filename)
                                         ).fetchone()
-                                        if note:
-                                            dconn.execute("""
-                                                INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
-                                                VALUES (?, ?, ?, ?)
-                                            """, (note["id"], entry_filename, safe_stored, _now()))
+                                        if orphan:
+                                            dconn.execute(
+                                                "UPDATE job_note_files SET filename=?, filepath=?, uploaded_at=? WHERE id=?",
+                                                (safe_stored, safe_stored, _now(), orphan["id"])
+                                            )
                                         else:
-                                            cur2 = dconn.cursor()
-                                            cur2.execute("""
-                                                INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, note_type, created_at)
-                                                VALUES (?, 1, ?, 'geoop_import', ?)
-                                            """, (axion_job_id, "[GeoOp Attachment Recovery]", _now()))
-                                            new_note_id = cur2.lastrowid
-                                            dconn.execute("""
-                                                INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
-                                                VALUES (?, ?, ?, ?)
-                                            """, (new_note_id, entry_filename, safe_stored, _now()))
+                                            note = dconn.execute(
+                                                "SELECT id FROM job_field_notes WHERE job_id=? AND note_type='geoop_import' LIMIT 1",
+                                                (axion_job_id,)
+                                            ).fetchone()
+                                            if note:
+                                                dconn.execute("""
+                                                    INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                                                    VALUES (?, ?, ?, ?)
+                                                """, (note["id"], safe_stored, safe_stored, _now()))
+                                            else:
+                                                cur2 = dconn.cursor()
+                                                cur2.execute("""
+                                                    INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, note_type, created_at)
+                                                    VALUES (?, 1, ?, 'geoop_import', ?)
+                                                """, (axion_job_id, "[GeoOp Attachment Recovery]", _now()))
+                                                new_note_id = cur2.lastrowid
+                                                dconn.execute("""
+                                                    INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
+                                                    VALUES (?, ?, ?, ?)
+                                                """, (new_note_id, safe_stored, safe_stored, _now()))
                                         dconn.commit()
                                     finally:
                                         dconn.close()
 
                                     _file_recovery_progress["direct_linked"] += 1
+                                    log.info("File recovery: direct-linked %s -> job %d as %s", entry_filename, axion_job_id, safe_stored)
                                 except Exception as ex:
                                     _file_recovery_progress["errors"] += 1
                                     log.warning("File recovery: error extracting/linking %s: %s", entry, str(ex)[:200])
