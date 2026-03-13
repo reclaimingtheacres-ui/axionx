@@ -7988,13 +7988,18 @@ def serve_upload(filename):
     if os.path.exists(local_path):
         return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
     conn = db()
-    orphan = conn.execute(
-        "SELECT id FROM job_note_files WHERE filename=? OR filepath=?",
+    alt_row = conn.execute(
+        "SELECT id, filename, filepath FROM job_note_files WHERE filename=? OR filepath=?",
         (filename, filename)
     ).fetchone()
     conn.close()
-    if orphan:
-        _log.warning("Orphan note-file record for %r (id=%s) — file not in storage", filename, orphan["id"])
+    if alt_row:
+        alt_disk = alt_row["filepath"] or alt_row["filename"]
+        if alt_disk and alt_disk != filename:
+            alt_path = os.path.join(app.config["UPLOAD_FOLDER"], os.path.basename(alt_disk))
+            if os.path.exists(alt_path):
+                return send_from_directory(app.config["UPLOAD_FOLDER"], os.path.basename(alt_disk))
+        _log.warning("Orphan note-file record for %r (id=%s) — file not in storage", filename, alt_row["id"])
         return render_template("error_500.html",
             error_message="This file is referenced in the database but the actual file data has not been imported into storage yet. "
                           "This typically happens with GeoOp-imported attachments that haven't been backfilled. "

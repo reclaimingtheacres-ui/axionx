@@ -2995,33 +2995,43 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
 
                                 safe_base = re.sub(r'[^\w.\-]', '_', entry_filename)
                                 safe_stored = "geoop_{}_{}".format(geoop_job_id, safe_base)
+                                orig_safe = os.path.basename(entry_filename)
+                                orig_path = os.path.join(target_dir, orig_safe) if orig_safe else None
                                 dest_path = os.path.join(target_dir, safe_stored)
                                 abs_dest = os.path.abspath(dest_path)
                                 abs_target = os.path.abspath(target_dir)
                                 if not abs_dest.startswith(abs_target + os.sep):
                                     _file_recovery_progress["errors"] += 1
                                     continue
-                                if os.path.exists(dest_path):
+                                already_orig = orig_path and os.path.exists(orig_path)
+                                already_safe = os.path.exists(dest_path)
+                                if already_orig and already_safe:
                                     _file_recovery_progress["already_present"] += 1
                                     continue
 
                                 try:
                                     data = zf.read(entry)
-                                    with open(dest_path, "wb") as fh:
-                                        fh.write(data)
+                                    if not already_safe:
+                                        with open(dest_path, "wb") as fh:
+                                            fh.write(data)
+                                    if orig_path and not already_orig and orig_safe != safe_stored:
+                                        abs_orig = os.path.abspath(orig_path)
+                                        if abs_orig.startswith(os.path.abspath(target_dir) + os.sep):
+                                            with open(orig_path, "wb") as fh2:
+                                                fh2.write(data)
 
                                     dconn = _db()
                                     try:
                                         orphan = dconn.execute(
-                                            "SELECT jnf.id FROM job_note_files jnf "
+                                            "SELECT jnf.id, jnf.filename, jnf.filepath FROM job_note_files jnf "
                                             "JOIN job_field_notes jfn ON jfn.id = jnf.job_field_note_id "
-                                            "WHERE jfn.job_id=? AND (jnf.filename=? OR jnf.filepath=?)",
-                                            (axion_job_id, entry_filename, entry_filename)
+                                            "WHERE jfn.job_id=? AND (jnf.filename=? OR jnf.filepath=? OR jnf.filename=? OR jnf.filepath=?)",
+                                            (axion_job_id, entry_filename, entry_filename, safe_stored, safe_stored)
                                         ).fetchone()
                                         if orphan:
                                             dconn.execute(
-                                                "UPDATE job_note_files SET filename=?, filepath=?, uploaded_at=? WHERE id=?",
-                                                (safe_stored, safe_stored, _now(), orphan["id"])
+                                                "UPDATE job_note_files SET filepath=?, uploaded_at=? WHERE id=?",
+                                                (safe_stored, _now(), orphan["id"])
                                             )
                                         else:
                                             note = dconn.execute(
@@ -3032,7 +3042,7 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
                                                 dconn.execute("""
                                                     INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
                                                     VALUES (?, ?, ?, ?)
-                                                """, (note["id"], safe_stored, safe_stored, _now()))
+                                                """, (note["id"], entry_filename, safe_stored, _now()))
                                             else:
                                                 cur2 = dconn.cursor()
                                                 cur2.execute("""
@@ -3043,7 +3053,7 @@ def recover_files_from_zips(zip_paths, upload_dir=None):
                                                 dconn.execute("""
                                                     INSERT OR IGNORE INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
                                                     VALUES (?, ?, ?, ?)
-                                                """, (new_note_id, safe_stored, safe_stored, _now()))
+                                                """, (new_note_id, entry_filename, safe_stored, _now()))
                                         dconn.commit()
                                     finally:
                                         dconn.close()
