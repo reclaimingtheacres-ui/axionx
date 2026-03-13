@@ -7,6 +7,8 @@
   {%- set c = autofill_confidence.get(field) if autofill_confidence else None -%}
   {%- if c == 'matched' -%}
     <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#16a34a;color:#fff;vertical-align:middle;" title="Matched to database record">Matched</span>
+  {%- elif c == 'created' -%}
+    <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#8b5cf6;color:#fff;vertical-align:middle;" title="New customer auto-created from document">New</span>
   {%- elif c == 'extracted' -%}
     <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:#2563eb;color:#fff;vertical-align:middle;" title="Extracted from document">Extracted</span>
   {%- elif c == 'review' -%}

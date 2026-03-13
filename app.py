@@ -1305,7 +1305,7 @@ def _parse_instruction_text(text):
         ])
 
         acs_customer = find_after([
-            r"Customer\s*:?\s*([A-Z][A-Z ,.'&\-]{2,60}?)(?:\s{2,}|\s*DOB|\s*$)",
+            r"Customer\s*:?\s*([A-Z][A-Z0-9 ,.'&\-]{2,80}?)(?:\s{2,}|\s*DOB|\s*$)",
         ])
         acs_dob = find_after([r"DOB\s*:?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})"])
 
@@ -1320,6 +1320,13 @@ def _parse_instruction_text(text):
         acs_mobile = find_after([r"(?:^|\n)\s*Mob\s*:?\s+([+0-9\(\)\s\-]{8,20})"])
         acs_ph_home = find_after([r"Ph\s*Hm\s*:?\s*([+0-9\(\)\s\-]{8,20})"])
         acs_ph_bus = find_after([r"Ph\s*Bus\s*:?\s*([+0-9\(\)\s\-]{8,20})"])
+        if not acs_mobile and not acs_ph_home and not acs_ph_bus:
+            _gtor_phone = find_after([
+                r"G/tor\s*:?[\s\S]*?\n\s*(0[0-9\s\-]{8,14})\s*\n",
+                r"\n\s*(04[0-9]{8})\s*\n",
+            ])
+            if _gtor_phone:
+                acs_mobile = _gtor_phone
         acs_email_raw = find_after([r"Email\s*:?\s*([^\s@]+@[^\s]+)"])
         acs_email = None
         if acs_email_raw and "auscollect" not in acs_email_raw.lower():
@@ -1352,10 +1359,10 @@ def _parse_instruction_text(text):
             acs_engine = None
         acs_reg_exp = find_after([r"Reg\s*Exp\s*:?\s*([^\n]{3,40}?)(?:\s{2,}|\s*\n|\s*$)"])
 
-        acs_arrears = find_after([r"Arrears\s*\$?\s*([0-9,]+\.?\d{0,2})"])
-        acs_install_due = find_after([r"Install\s*due\s*\$?\s*([0-9,]+\.?\d{0,2})"])
+        acs_arrears = find_after([r"(?:^|\n)\s*Arrears\s*\$?\s*([0-9][0-9,]*\.?\d{0,2})"])
+        acs_install_due = find_after([r"Install\s*due\s*\$?\s*([0-9][0-9,]*\.?\d{0,2})"])
         acs_next_due = find_after([r"Next\s*Due\s*:?\s*([0-9]{1,2}[\/\-][0-9]{1,2}[\/\-][0-9]{2,4})"])
-        acs_total_collect = find_after([r"Total\s*collect\s*\$?\s*([0-9,]+\.?\d{0,2})"])
+        acs_total_collect = find_after([r"Total\s*collect\s*\$?\s*([0-9][0-9,]*\.?\d{0,2})"])
 
         acs_make = acs_model = None
         if acs_make_model:
@@ -3101,6 +3108,7 @@ def _job_new_render(conn):
 
     autofill_customer_id      = None
     autofill_customer_display = None
+    autofill_customer_is_new  = False
     autofill_confidence       = {}
     autofill_filled_count     = 0
 
@@ -3145,6 +3153,7 @@ def _job_new_render(conn):
                     autofill_confidence["lender_name"] = "matched"
 
         # ── Customer lookup: search by name or company ──────────────────────
+        autofill_customer_is_new = False
         if not new_customer_id:
             cust_data = autofill.get("customer") or {}
             cust_full    = (cust_data.get("full_name") or "").strip()
@@ -3154,7 +3163,6 @@ def _job_new_render(conn):
 
             if search_name:
                 parts = search_name.lower().split()
-                # Try last name match first (most selective)
                 cust_match = None
                 if len(parts) >= 2:
                     cust_match = cur.execute("""
@@ -3175,6 +3183,52 @@ def _job_new_render(conn):
                         disp_parts.append(f"({cust_match['company']})")
                     autofill_customer_display = " ".join(p for p in disp_parts if p)
                     autofill_confidence["customer_name"] = "matched"
+                else:
+                    try:
+                        _af_now = now_ts()
+                        _af_first = ""
+                        _af_last  = ""
+                        _af_comp  = ""
+                        _COMPANY_KW = ("pty", "ltd", "limited", "inc", "llc", "trust", "trustee", "group", "corp")
+                        if any(kw in search_name.lower() for kw in _COMPANY_KW):
+                            _af_comp = search_name.strip()
+                            if cust_full and cust_full != cust_company:
+                                name_parts = cust_full.split()
+                                _af_first = name_parts[0].title() if name_parts else ""
+                                _af_last  = " ".join(name_parts[1:]).title() if len(name_parts) > 1 else ""
+                        else:
+                            name_parts = search_name.split()
+                            _af_first = name_parts[0].title() if name_parts else ""
+                            _af_last  = " ".join(name_parts[1:]).title() if len(name_parts) > 1 else ""
+                        _af_addr = (autofill.get("job_address_full") or "").strip()
+                        _af_dob  = (cust_data.get("dob") or "").strip()
+                        cur.execute("""
+                            INSERT INTO customers (first_name, last_name, company, address, dob, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (_af_first, _af_last, _af_comp, _af_addr, _af_dob, _af_now, _af_now))
+                        _af_cust_id = cur.lastrowid
+                        _af_phone = (cust_data.get("mobile") or "").strip()
+                        if _af_phone:
+                            cur.execute("""
+                                INSERT INTO contact_phone_numbers (entity_type, entity_id, label, phone_number, created_at)
+                                VALUES ('customer', ?, 'Mobile', ?, ?)
+                            """, (_af_cust_id, _af_phone, _af_now))
+                        _af_email = (cust_data.get("email") or "").strip()
+                        if _af_email:
+                            cur.execute("""
+                                INSERT INTO contact_emails (entity_type, entity_id, label, email, created_at)
+                                VALUES ('customer', ?, 'Primary', ?, ?)
+                            """, (_af_cust_id, _af_email, _af_now))
+                        conn.commit()
+                        autofill_customer_id = _af_cust_id
+                        _af_disp = " ".join(p for p in [_af_first, _af_last] if p)
+                        if _af_comp:
+                            _af_disp = f"{_af_disp} ({_af_comp})" if _af_disp else _af_comp
+                        autofill_customer_display = _af_disp
+                        autofill_confidence["customer_name"] = "created"
+                        autofill_customer_is_new = True
+                    except Exception:
+                        logging.exception("Auto-create customer from autofill failed")
 
     if new_customer_id:
         cur.execute("SELECT address FROM customers WHERE id = ?", (new_customer_id,))
@@ -3226,6 +3280,7 @@ def _job_new_render(conn):
                            autofill_client_id=autofill_client_id,
                            autofill_customer_id=autofill_customer_id,
                            autofill_customer_display=autofill_customer_display,
+                           autofill_customer_is_new=autofill_customer_is_new,
                            autofill_confidence=autofill_confidence,
                            autofill_filled_count=autofill_filled_count,
                            known_lenders=known_lenders,
