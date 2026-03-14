@@ -223,6 +223,7 @@
        data-reg="{{ (j.asset_reg or '') | lower }}"
        data-vin="{{ (j.asset_vin or '') | lower }}"
        data-lender="{{ (j.lender_name or '') | lower }}"
+       data-status="{{ j.status or '' }}"
        data-draft="{{ 'true' if has_draft else 'false' }}"
        data-scheduled="{{ j.next_scheduled or '' }}"
        data-phone="{{ phone }}"
@@ -549,6 +550,7 @@ function serverSearch(q){
         const wrap = document.createElement('div');
         wrap.className = 'job-row-wrap server-result-row';
         wrap.dataset.id = j.id;
+        wrap.dataset.status = j.status || '';
         const a = document.createElement('a');
         a.href = '/m/job/'+j.id;
         a.className = 'job-card';
@@ -562,34 +564,38 @@ function serverSearch(q){
         content.className = 'job-inner-content';
         const main = document.createElement('div');
         main.className = 'job-main';
-        const pRow = document.createElement('div');
-        pRow.className = 'job-primary-row';
-        const refSpan = document.createElement('span');
-        refSpan.className = 'job-ref';
-        refSpan.textContent = j.display_ref || j.internal_job_number || '';
-        pRow.appendChild(refSpan);
-        const badge = document.createElement('span');
-        badge.className = 'm-badge m-badge-gray';
-        badge.style.fontSize = '.65rem';
-        badge.textContent = j.status;
-        pRow.appendChild(badge);
-        main.appendChild(pRow);
-        const custDiv = document.createElement('div');
-        custDiv.className = 'job-customer';
-        custDiv.textContent = j.customer_name || '\u2014';
-        main.appendChild(custDiv);
-        if(j.asset_reg){
-          const regDiv = document.createElement('div');
-          regDiv.style.cssText = 'font-size:.76rem;color:#6b7280;margin-top:2px;';
-          regDiv.textContent = j.asset_reg;
-          main.appendChild(regDiv);
-        }
+        const custRow = document.createElement('div');
+        custRow.className = 'job-primary-row';
+        const custSpan = document.createElement('span');
+        custSpan.className = 'job-customer';
+        custSpan.textContent = j.customer_name || 'No customer';
+        custRow.appendChild(custSpan);
+        main.appendChild(custRow);
         if(j.job_address){
           const addrDiv = document.createElement('div');
-          addrDiv.className = 'job-address';
+          addrDiv.className = 'job-addr';
           addrDiv.textContent = j.job_address;
           main.appendChild(addrDiv);
         }
+        const meta = document.createElement('div');
+        meta.className = 'job-meta';
+        const refSpan = document.createElement('span');
+        refSpan.className = 'job-ref';
+        refSpan.textContent = j.display_ref || j.internal_job_number || '';
+        meta.appendChild(refSpan);
+        const stLabel = document.createElement('span');
+        stLabel.className = 'job-status-label';
+        stLabel.style.cssText = 'color:'+barColor+';font-size:.72rem;font-weight:700;text-transform:uppercase;';
+        stLabel.textContent = j.status;
+        meta.appendChild(stLabel);
+        if(j.asset_reg){
+          const regSpan = document.createElement('span');
+          regSpan.className = 'job-date';
+          regSpan.style.cssText = 'font-weight:600;color:#6b7280;';
+          regSpan.textContent = j.asset_reg;
+          meta.appendChild(regSpan);
+        }
+        main.appendChild(meta);
         if(IS_ADMIN && j.assigned_agent_name){
           const agDiv = document.createElement('div');
           agDiv.style.cssText = 'font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:4px;';
@@ -598,6 +604,19 @@ function serverSearch(q){
           main.appendChild(agDiv);
         }
         content.appendChild(main);
+        const rightCol = document.createElement('div');
+        rightCol.className = 'job-right-col';
+        const chev = document.createElementNS('http://www.w3.org/2000/svg','svg');
+        chev.setAttribute('class','job-chev');
+        chev.setAttribute('viewBox','0 0 24 24');
+        chev.setAttribute('width','15');
+        chev.setAttribute('height','15');
+        chev.setAttribute('stroke','#d1d5db');
+        chev.setAttribute('fill','none');
+        chev.setAttribute('stroke-width','2.5');
+        chev.innerHTML = '<polyline points="9 18 15 12 9 6"/>';
+        rightCol.appendChild(chev);
+        content.appendChild(rightCol);
         inner.appendChild(content);
         a.appendChild(inner);
         wrap.appendChild(a);
@@ -657,8 +676,7 @@ function applySortAndFilter(){
 
   if(activeStatuses.size>0){
     visible = visible.filter(c=>{
-      const st = c.querySelector('.m-badge-gray');
-      return st && activeStatuses.has(st.textContent.trim());
+      return activeStatuses.has(c.dataset.status || '');
     });
   }
 
@@ -681,7 +699,7 @@ function applySortAndFilter(){
     if(currentSort==='distance'){
       cmp=(parseFloat(a.dataset.dist)||Infinity)-(parseFloat(b.dataset.dist)||Infinity);
     } else if(currentSort==='status'){
-      cmp=(a.querySelector('.m-badge-gray')?.textContent||'').localeCompare(b.querySelector('.m-badge-gray')?.textContent||'');
+      cmp=(a.dataset.status||'').localeCompare(b.dataset.status||'');
     } else if(currentSort==='created'){
       cmp=0;
     } else {
@@ -691,8 +709,9 @@ function applySortAndFilter(){
     return currentDir==='desc' ? -cmp : cmp;
   });
 
-  cards.forEach(c=>{ c.style.display='none'; c.parentNode.appendChild(c); });
-  visible.forEach(c=>{ c.style.display=''; });
+  const list = document.getElementById('job-list');
+  cards.forEach(c=>{ c.style.display='none'; });
+  visible.forEach(c=>{ c.style.display=''; list.appendChild(c); });
   updateCount(visible.length);
 }
 
