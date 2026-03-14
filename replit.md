@@ -76,6 +76,17 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Quick-action bar removed**: REG/VIN/DIRECTIONS buttons removed from the top of the detail tab. REG and VIN info remain in the Vehicle Details card.
 - **Doc viewer close button**: Enlarged tap target (36×36px min, visible gray background, rounded corners) for reliable iOS touch interaction.
 
+**2c3. Job Pins Map (Mobile):**
+- Route `/m/map` with `m_map()` handler. Accessible from the "Map" tab in the bottom nav bar.
+- Uses **Leaflet.js** with OpenStreetMap tiles (free, no API key required). Replaces prior Google Maps dependency.
+- **Colored pin markers** by job status: green (Active/New/In Progress/Ready), amber (Pending/Hold/Instructed/Awaiting), red (Suspended/Cancelled/Overdue), gray (others). Pins are drop-pin shaped SVGs with white inner circle.
+- **Agent vs Admin scope**: Agents see only their assigned jobs; admins see all jobs. Admin view shows assigned agent name in popup and job list cards.
+- **Date filter pills**: Today (default), Tomorrow, Week, Month, All. Fetches from `/m/api/map/jobs?date_filter=<filter>`.
+- **Job list below map**: Sorted by distance from agent (if GPS available). Each card shows status dot, job ref, customer, address, distance, due date. Action buttons: Open Job, Navigate (Apple Maps directions).
+- **GPS tracking**: Agent location shown as blue circle marker. Auto-updates based on user GPS preferences. My-location button recentres map.
+- **Popup on pin tap**: Shows job ref, customer, lender, address, distance, due date, agent (admin only). Action buttons: Open Job, Navigate.
+- Template: `templates/mobile/map.html`. API: `m_api_map_jobs()` at `/m/api/map/jobs`.
+
 **2d. Add Client Workflow (Import Repair):**
 - Dedicated **Add Client modal** (`#addClientModal`) for linking a missing client to a job — separate from Edit Job.
 - AJAX-based `POST /jobs/<id>/link-client` route: links existing client or creates and links new client in a single transaction with audit logging.

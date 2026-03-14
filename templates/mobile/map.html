@@ -2,11 +2,12 @@
 {% block title %}Map — AxionX{% endblock %}
 
 {% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""/>
 <style>
-/* Override default content padding for full-width map layout */
 .m-content { padding: 0; background: #f7f8fa; }
 
-/* ── Filter bar ── */
 #filter-bar {
   position: sticky; top: 52px; z-index: 50;
   background: #ffffff; border-bottom: 1px solid #e5e7eb;
@@ -23,30 +24,17 @@
 }
 .date-pill.active { background: #2563eb; color: #fff; border-color: #2563eb; }
 
-.map-type-select {
-  flex-shrink: 0; margin-left: auto;
-  border: 1px solid #e5e7eb; border-radius: 8px; padding: 5px 10px;
-  font-size: .78rem; font-weight: 600; cursor: pointer;
-  background: #f7f8fa; color: #374151;
-  -webkit-appearance: none; appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 8px center; padding-right: 22px;
-}
-
-/* ── Location banner ── */
 #loc-denied-banner {
   display: none; background: #fffbeb; border-bottom: 1px solid #fde68a;
   padding: 8px 14px; font-size: .8rem; color: #d97706; text-align: center;
 }
 
-/* ── Map container ── */
 #map-wrap {
-  width: 100%; height: 52vw; min-height: 220px; max-height: 340px;
+  width: 100%; height: 56vw; min-height: 240px; max-height: 400px;
   position: relative;
 }
-#gmap { width: 100%; height: 100%; }
+#leaflet-map { width: 100%; height: 100%; z-index: 1; }
 
-/* ── Job count bar ── */
 #count-bar {
   background: #ffffff; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;
   padding: 7px 14px; font-size: .78rem; color: #6b7280; font-weight: 500;
@@ -54,7 +42,6 @@
 }
 #count-bar strong { color: #111; }
 
-/* ── Job list ── */
 #job-list { background: #f7f8fa; overflow-y: auto; }
 
 .jl-card {
@@ -77,6 +64,7 @@
 .jl-dist { font-size: .72rem; font-weight: 600; color: #2563eb; }
 .jl-date { font-size: .72rem; color: #9ca3af; }
 .jl-draft { font-size: .62rem; font-weight: 700; background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; border-radius: 4px; padding: 1px 6px; letter-spacing: .04em; text-transform: uppercase; }
+.jl-agent { font-size: .72rem; color: #7c3aed; font-weight: 500; }
 .jl-actions {
   display: flex; border-top: 1px solid #e5e7eb;
 }
@@ -87,9 +75,8 @@
 .jl-actions a + a { border-left: 1px solid #e5e7eb; }
 .jl-actions a.navigate { color: #16a34a; }
 
-/* ── My-location button ── */
 #my-loc-btn {
-  position: absolute; bottom: 12px; right: 12px; z-index: 10;
+  position: absolute; bottom: 12px; right: 12px; z-index: 500;
   width: 40px; height: 40px; border-radius: 50%;
   background: #fff; border: none; box-shadow: 0 1px 4px rgba(0,0,0,.3);
   display: flex; align-items: center; justify-content: center;
@@ -98,11 +85,9 @@
 #my-loc-btn:active { background: #eff6ff; }
 #my-loc-btn svg { width: 20px; height: 20px; }
 
-/* ── No maps banner ── */
-#no-maps-banner {
-  background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px;
-  margin: 16px; padding: 14px 16px; font-size: .88rem; color: #dc2626; text-align: center;
-}
+.leaflet-popup-content-wrapper { border-radius: 12px !important; padding: 0 !important; }
+.leaflet-popup-content { margin: 0 !important; }
+.leaflet-popup-close-button { top: 6px !important; right: 8px !important; font-size: 18px !important; }
 </style>
 {% endblock %}
 
@@ -113,49 +98,34 @@
 
 {% block content %}
 
-{# ── Location denied banner ── #}
 <div id="loc-denied-banner">
   Location access is off. Distance sorting and live position are unavailable.
 </div>
 
-{# ── Date filter bar ── #}
 <div id="filter-bar">
   <button class="date-pill active" data-filter="today">Today</button>
   <button class="date-pill"        data-filter="tomorrow">Tomorrow</button>
   <button class="date-pill"        data-filter="week">Week</button>
   <button class="date-pill"        data-filter="month">Month</button>
   <button class="date-pill"        data-filter="all">All</button>
-  <select class="map-type-select" id="map-type-select">
-    <option value="roadmap">Map</option>
-    <option value="satellite">Satellite</option>
-    <option value="hybrid">Hybrid</option>
-  </select>
 </div>
 
-{# ── Map ── #}
 <div id="map-wrap">
-  {% if google_maps_api_key %}
-  <div id="gmap"></div>
+  <div id="leaflet-map"></div>
   <button id="my-loc-btn" title="Centre on my location">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
       <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
     </svg>
   </button>
-  {% else %}
-  <div id="no-maps-banner">
-    Google Maps API key is not configured. Job list is still available below.
-  </div>
-  {% endif %}
 </div>
 
-{# ── Job count ── #}
 <div id="count-bar">
   <span><strong id="job-count">—</strong> jobs</span>
+  <span id="unmapped-count" style="font-size:.72rem;color:#d97706;"></span>
   <span id="loc-status" style="font-size:.72rem;color:#9ca3af;"></span>
 </div>
 
-{# ── Scrollable job list ── #}
 <div id="job-list">
   <div id="job-list-inner" style="padding-bottom:8px;"></div>
 </div>
@@ -163,55 +133,84 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
 <script>
 (function(){
 'use strict';
 
-const MAPS_KEY      = {{ google_maps_api_key | tojson }};
-const DIST_UNIT     = {{ distance_unit | tojson }};
-const GPS_ENABLED   = {{ gps_foreground | tojson }};
-const GPS_INTERVAL  = {{ gps_interval_mins | tojson }} * 60 * 1000;
+var DIST_UNIT    = {{ distance_unit | tojson }};
+var GPS_ENABLED  = {{ gps_foreground | tojson }};
+var GPS_INTERVAL = {{ gps_interval_mins | tojson }} * 60 * 1000;
+var IS_ADMIN     = {{ is_admin | tojson }};
 
-const STATUS_COLORS = {
-  'active':       '#2563eb',
-  'new':          '#2563eb',
-  'in progress':  '#16a34a',
-  'pending':      '#d97706',
-  'instructed':   '#7c3aed',
-  'suspended':    '#dc2626',
+var PIN_COLORS = {
+  green:  '#16a34a',
+  amber:  '#f59e0b',
+  red:    '#dc2626',
+  blue:   '#2563eb',
+  purple: '#7c3aed',
+  gray:   '#9ca3af'
 };
-function colorFor(s){ return STATUS_COLORS[(s||'').toLowerCase()] || '#6b7280'; }
 
-/* ── State ── */
-let map, infoWindow, geocoder;
-let agentMarker = null;
-let jobMarkers  = {};
-let allJobs     = [];
-let agentPos    = null;
-let currentFilter = 'today';
+function statusGroup(s){
+  s = (s||'').toLowerCase();
+  if(['active','new','in progress','ready'].indexOf(s)!==-1) return 'green';
+  if(['pending','hold action','awaiting advice','awaiting info','urgent','instructed'].indexOf(s)!==-1) return 'amber';
+  if(['suspended','cancelled'].indexOf(s)!==-1) return 'red';
+  return 'gray';
+}
+function colorFor(s){ return PIN_COLORS[statusGroup(s)] || PIN_COLORS.gray; }
 
-/* ── Distance (Haversine) ── */
-function haversineKm(lat1, lng1, lat2, lng2){
-  const R = 6371;
-  const dLat = (lat2-lat1)*Math.PI/180;
-  const dLng = (lng2-lng1)*Math.PI/180;
-  const a = Math.sin(dLat/2)**2
-          + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+function esc(s){
+  var d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function pinSvg(color){
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 28 40">'
+    +'<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 26 14 26s14-15.5 14-26C28 6.27 21.73 0 14 0z" fill="'+color+'"/>'
+    +'<circle cx="14" cy="14" r="6" fill="#fff" opacity=".9"/>'
+    +'</svg>';
+}
+
+function makeIcon(color){
+  return L.divIcon({
+    html: pinSvg(color),
+    className: '',
+    iconSize: [28,40],
+    iconAnchor: [14,40],
+    popupAnchor: [0,-36]
+  });
+}
+
+var map, agentMarker = null;
+var jobMarkers = {};
+var allJobs = [];
+var agentPos = null;
+var currentFilter = 'today';
+
+function haversineKm(lat1,lng1,lat2,lng2){
+  var R = 6371;
+  var dLat = (lat2-lat1)*Math.PI/180;
+  var dLng = (lng2-lng1)*Math.PI/180;
+  var a = Math.sin(dLat/2)*Math.sin(dLat/2)
+        + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 function fmtDist(km){
   if(DIST_UNIT==='mi'){
-    const mi = km*0.621371;
+    var mi = km*0.621371;
     return mi < 10 ? mi.toFixed(1)+' mi' : Math.round(mi)+' mi';
   }
   return km < 10 ? km.toFixed(1)+' km' : Math.round(km)+' km';
 }
 
-/* ── Navigate URL ── */
 function navigateUrl(job){
   if(job.lat && job.lng){
-    const coords = job.lat+','+job.lng;
-    // Apple Maps preferred for iOS; falls back gracefully on Android
+    var coords = job.lat+','+job.lng;
     return 'http://maps.apple.com/?daddr='+coords+'&dirflg=d';
   }
   if(job.address){
@@ -220,96 +219,61 @@ function navigateUrl(job){
   return '#';
 }
 
-/* ── Geocode + cache ── */
-function geocodeJob(job, cb){
-  if(!geocoder || !job.address){ cb && cb(); return; }
-  geocoder.geocode({address: job.address+', Australia'}, function(results, status){
-    if(status !== 'OK' || !results.length){ cb && cb(); return; }
-    const loc = results[0].geometry.location;
-    job.lat = loc.lat();
-    job.lng = loc.lng();
-    // Persist coords back to server
-    fetch('/api/jobs/'+job.id+'/geocode', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
-      body: JSON.stringify({lat:job.lat, lng:job.lng})
-    });
-    cb && cb();
-  });
-}
-
-/* ── Build popup content ── */
 function popupHtml(job){
-  const dist = (agentPos && job.lat && job.lng)
+  var dist = (agentPos && job.lat && job.lng)
     ? '<br><span style="font-size:.72rem;font-weight:600;color:#2563eb;">'
       +fmtDist(haversineKm(agentPos.lat,agentPos.lng,job.lat,job.lng))+'</span>'
     : '';
-  const navUrl = navigateUrl(job);
-  return `<div style="max-width:240px;font-family:-apple-system,sans-serif;font-size:.82rem;line-height:1.5;">
-    <div style="font-weight:700;font-size:.9rem;margin-bottom:2px;">${job.ref}</div>
-    ${job.customer ? `<div style="color:#374151;">${job.customer}</div>` : ''}
-    ${job.lender   ? `<div style="color:#6b7280;font-size:.75rem;">${job.lender}</div>` : ''}
-    <div style="color:#6b7280;font-size:.75rem;margin-top:2px;">${job.address||''}${dist}</div>
-    ${job.due_date ? `<div style="color:#9ca3af;font-size:.72rem;margin-top:2px;">${job.due_date}</div>` : ''}
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <a href="/m/job/${job.id}"
-         style="flex:1;text-align:center;background:#2563eb;color:#fff;border-radius:8px;
-                padding:6px 8px;font-size:.75rem;font-weight:600;text-decoration:none;">
-        Open Job
-      </a>
-      <a href="${navUrl}" target="_blank"
-         style="flex:1;text-align:center;background:#16a34a;color:#fff;border-radius:8px;
-                padding:6px 8px;font-size:.75rem;font-weight:600;text-decoration:none;">
-        Navigate
-      </a>
-    </div>
-  </div>`;
+  var agentLine = (IS_ADMIN && job.agent)
+    ? '<div style="color:#7c3aed;font-size:.72rem;font-weight:500;margin-top:2px;">Agent: '+esc(job.agent)+'</div>'
+    : '';
+  var navUrl = navigateUrl(job);
+  return '<div style="max-width:240px;font-family:-apple-system,sans-serif;font-size:.82rem;line-height:1.5;padding:12px 14px;">'
+    +'<div style="font-weight:700;font-size:.9rem;margin-bottom:2px;">'+esc(job.ref)+'</div>'
+    +(job.customer ? '<div style="color:#374151;">'+esc(job.customer)+'</div>' : '')
+    +(job.lender ? '<div style="color:#6b7280;font-size:.75rem;">'+esc(job.lender)+'</div>' : '')
+    +agentLine
+    +'<div style="color:#6b7280;font-size:.75rem;margin-top:2px;">'+esc(job.address)+dist+'</div>'
+    +(job.due_date ? '<div style="color:#9ca3af;font-size:.72rem;margin-top:2px;">'+esc(job.due_date)+'</div>' : '')
+    +'<div style="display:flex;gap:8px;margin-top:8px;">'
+    +'<a href="/m/job/'+job.id+'" style="flex:1;text-align:center;background:#2563eb;color:#fff;border-radius:8px;padding:6px 8px;font-size:.75rem;font-weight:600;text-decoration:none;">Open Job</a>'
+    +'<a href="'+navUrl+'" target="_blank" style="flex:1;text-align:center;background:#16a34a;color:#fff;border-radius:8px;padding:6px 8px;font-size:.75rem;font-weight:600;text-decoration:none;">Navigate</a>'
+    +'</div></div>';
 }
 
-/* ── Place / update job marker ── */
 function placeJobMarker(job){
   if(!map || !job.lat || !job.lng) return;
-  const color = colorFor(job.status);
+  var color = colorFor(job.status);
   if(jobMarkers[job.id]){
-    jobMarkers[job.id].setPosition({lat:job.lat, lng:job.lng});
+    jobMarkers[job.id].setLatLng([job.lat, job.lng]);
     return;
   }
-  const marker = new google.maps.Marker({
-    position:{lat:job.lat, lng:job.lng}, map,
-    icon:{
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 9,
-      fillColor: color, fillOpacity: 1,
-      strokeColor: '#fff', strokeWeight: 2.5
-    },
-    title: job.ref
-  });
-  marker.addListener('click', function(){
-    infoWindow.setContent(popupHtml(job));
-    infoWindow.open(map, marker);
-  });
+  var marker = L.marker([job.lat, job.lng], {icon: makeIcon(color), title: job.ref})
+    .addTo(map)
+    .bindPopup(popupHtml(job), {maxWidth:260, minWidth:200});
   jobMarkers[job.id] = marker;
 }
 
-/* ── Render job list ── */
 function renderList(){
-  const inner = document.getElementById('job-list-inner');
+  var inner = document.getElementById('job-list-inner');
   if(!inner) return;
-  const jobs = [...allJobs];
+  var jobs = allJobs.slice();
 
-  // Sort by distance if we have agent position
   if(agentPos){
-    jobs.sort((a,b)=>{
-      const da = (a.lat && a.lng) ? haversineKm(agentPos.lat,agentPos.lng,a.lat,a.lng) : Infinity;
-      const db = (b.lat && b.lng) ? haversineKm(agentPos.lat,agentPos.lng,b.lat,b.lng) : Infinity;
-      return da-db;
+    jobs.sort(function(a,b){
+      var da = (a.lat && a.lng) ? haversineKm(agentPos.lat,agentPos.lng,a.lat,a.lng) : Infinity;
+      var db_ = (b.lat && b.lng) ? haversineKm(agentPos.lat,agentPos.lng,b.lat,b.lng) : Infinity;
+      return da - db_;
     });
   }
 
-  const countEl = document.getElementById('job-count');
+  var onMap = jobs.filter(function(j){ return j.lat && j.lng; }).length;
+  var countEl = document.getElementById('job-count');
   if(countEl) countEl.textContent = jobs.length;
-  const hdrCount = document.getElementById('hdr-count');
+  var hdrCount = document.getElementById('hdr-count');
   if(hdrCount) hdrCount.textContent = jobs.length + ' jobs';
+  var unmapped = document.getElementById('unmapped-count');
+  if(unmapped) unmapped.textContent = (jobs.length - onMap) > 0 ? (jobs.length - onMap) + ' not on map' : '';
 
   inner.innerHTML = '';
   if(!jobs.length){
@@ -317,103 +281,78 @@ function renderList(){
     return;
   }
 
-  jobs.forEach(job=>{
-    const dist = (agentPos && job.lat && job.lng)
+  jobs.forEach(function(job){
+    var dist = (agentPos && job.lat && job.lng)
       ? fmtDist(haversineKm(agentPos.lat,agentPos.lng,job.lat,job.lng))
       : null;
-    const navUrl = navigateUrl(job);
-    const color = colorFor(job.status);
-    const card = document.createElement('div');
+    var navUrl = navigateUrl(job);
+    var color = colorFor(job.status);
+    var card = document.createElement('div');
     card.className = 'jl-card';
-    card.innerHTML = `
-      <div class="jl-top">
-        <div class="jl-dot" style="background:${color};"></div>
-        <div class="jl-main">
-          <div class="jl-ref">${job.ref}${job.has_draft ? ' <span class="jl-draft">Draft</span>' : ''}</div>
-          ${job.customer ? `<div class="jl-customer">${job.customer}</div>` : ''}
-          ${job.address  ? `<div class="jl-addr">${job.address}</div>` : ''}
-          <div class="jl-meta" style="margin-top:4px;">
-            ${dist ? `<span class="jl-dist">${dist}</span>` : ''}
-            ${job.due_date ? `<span class="jl-date">${job.due_date}</span>` : ''}
-          </div>
-        </div>
-      </div>
-      <div class="jl-actions">
-        <a href="/m/job/${job.id}">
-          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Open Job
-        </a>
-        <a href="${navUrl}" target="_blank" class="navigate">
-          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
-          Navigate
-        </a>
-      </div>`;
+    var agentHtml = (IS_ADMIN && job.agent) ? '<span class="jl-agent">'+esc(job.agent)+'</span>' : '';
+    card.innerHTML = '<div class="jl-top">'
+      +'<div class="jl-dot" style="background:'+color+';"></div>'
+      +'<div class="jl-main">'
+      +'<div class="jl-ref">'+esc(job.ref)+(job.has_draft ? ' <span class="jl-draft">Draft</span>' : '')+'</div>'
+      +(job.customer ? '<div class="jl-customer">'+esc(job.customer)+'</div>' : '')
+      +(job.address ? '<div class="jl-addr">'+esc(job.address)+'</div>' : '')
+      +'<div class="jl-meta" style="margin-top:4px;">'
+      +(dist ? '<span class="jl-dist">'+dist+'</span>' : '')
+      +(job.due_date ? '<span class="jl-date">'+job.due_date+'</span>' : '')
+      +agentHtml
+      +'</div></div></div>'
+      +'<div class="jl-actions">'
+      +'<a href="/m/job/'+job.id+'">'
+      +'<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+      +' Open Job</a>'
+      +'<a href="'+navUrl+'" target="_blank" class="navigate">'
+      +'<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>'
+      +' Navigate</a></div>';
     inner.appendChild(card);
   });
 }
 
-/* ── Load jobs from API ── */
 function loadJobs(filter){
   fetch('/m/api/map/jobs?date_filter='+filter, {
     headers:{'X-Requested-With':'XMLHttpRequest'}
   })
-  .then(r=>r.json())
-  .then(data=>{
-    // Clear old markers
-    Object.values(jobMarkers).forEach(m=>m.setMap(null));
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    Object.keys(jobMarkers).forEach(function(k){ map.removeLayer(jobMarkers[k]); });
     jobMarkers = {};
     allJobs = data.jobs || [];
 
-    // Place markers for jobs with coords; geocode the rest
-    const bounds = new google.maps.LatLngBounds();
-    let hasCoords = false;
-    allJobs.forEach(job=>{
+    var bounds = [];
+    allJobs.forEach(function(job){
       if(job.lat && job.lng){
         placeJobMarker(job);
-        bounds.extend({lat:job.lat, lng:job.lng});
-        hasCoords = true;
-      } else {
-        geocodeJob(job, ()=>{
-          if(job.lat && job.lng){
-            placeJobMarker(job);
-            renderList();
-          }
-        });
+        bounds.push([job.lat, job.lng]);
       }
     });
 
-    if(map && hasCoords){
-      if(agentPos) bounds.extend(agentPos);
-      if(!bounds.isEmpty()) map.fitBounds(bounds, {padding:40});
+    if(map && bounds.length){
+      if(agentPos) bounds.push([agentPos.lat, agentPos.lng]);
+      map.fitBounds(bounds, {padding:[30,30], maxZoom:14});
     }
     renderList();
   })
-  .catch(()=>{ renderList(); });
+  .catch(function(){ renderList(); });
 }
 
-/* ── GPS tracking ── */
-let firstFix = true;
-
+var firstFix = true;
 function sendLocation(pos){
-  const {latitude:lat, longitude:lng, accuracy} = pos.coords;
-  agentPos = {lat, lng};
+  var lat = pos.coords.latitude;
+  var lng = pos.coords.longitude;
+  agentPos = {lat:lat, lng:lng};
 
-  // Update agent marker on map
   if(map){
     if(agentMarker){
-      agentMarker.setPosition({lat, lng});
+      agentMarker.setLatLng([lat,lng]);
     } else {
-      agentMarker = new google.maps.Marker({
-        position:{lat,lng}, map,
-        icon:{
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#2563eb', fillOpacity: 1,
-          strokeColor: '#fff', strokeWeight: 3
-        },
-        title: 'Your location',
-        zIndex: 999
-      });
+      agentMarker = L.circleMarker([lat,lng], {
+        radius: 8, fillColor:'#2563eb', fillOpacity:1,
+        color:'#fff', weight:3, opacity:1
+      }).addTo(map).bindTooltip('Your location');
     }
     if(firstFix){
       firstFix = false;
@@ -421,19 +360,16 @@ function sendLocation(pos){
     }
   }
 
-  // Update distance in list
   renderList();
 
-  // Update location status indicator
-  const locSt = document.getElementById('loc-status');
+  var locSt = document.getElementById('loc-status');
   if(locSt) locSt.textContent = 'Updated ' + new Date().toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'});
 
-  // Post to backend
   if(GPS_ENABLED){
     fetch('/m/api/location/update', {
       method:'POST',
       headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
-      body: JSON.stringify({lat, lng, accuracy, timestamp: new Date().toISOString()})
+      body: JSON.stringify({lat:lat, lng:lng, accuracy:pos.coords.accuracy, timestamp: new Date().toISOString()})
     });
   }
 }
@@ -441,13 +377,11 @@ function sendLocation(pos){
 function centreOnAgent(){
   if(!map || !agentPos) return;
   if(allJobs.length){
-    const bounds = new google.maps.LatLngBounds();
-    bounds.extend(agentPos);
-    allJobs.forEach(j=>{ if(j.lat && j.lng) bounds.extend({lat:j.lat, lng:j.lng}); });
-    map.fitBounds(bounds, {padding:40});
+    var bounds = [[agentPos.lat, agentPos.lng]];
+    allJobs.forEach(function(j){ if(j.lat && j.lng) bounds.push([j.lat, j.lng]); });
+    map.fitBounds(bounds, {padding:[30,30], maxZoom:14});
   } else {
-    map.setCenter(agentPos);
-    map.setZoom(13);
+    map.setView([agentPos.lat, agentPos.lng], 13);
   }
 }
 
@@ -456,18 +390,17 @@ function startGPS(){
     document.getElementById('loc-denied-banner').style.display='block';
     return;
   }
-  navigator.geolocation.getCurrentPosition(sendLocation, ()=>{
+  navigator.geolocation.getCurrentPosition(sendLocation, function(){
     document.getElementById('loc-denied-banner').style.display='block';
   }, {enableHighAccuracy:true, timeout:10000});
 
   if(GPS_ENABLED){
-    setInterval(()=>{
+    setInterval(function(){
       navigator.geolocation.getCurrentPosition(sendLocation, null,
         {enableHighAccuracy:true, timeout:10000});
     }, GPS_INTERVAL);
   }
-  // Refresh when page becomes visible again
-  document.addEventListener('visibilitychange', ()=>{
+  document.addEventListener('visibilitychange', function(){
     if(document.visibilityState==='visible'){
       navigator.geolocation.getCurrentPosition(sendLocation, null,
         {enableHighAccuracy:true, timeout:10000});
@@ -475,91 +408,44 @@ function startGPS(){
   });
 }
 
-/* ── Init Google Maps ── */
-function initGoogleMapsMobile(){
-  const mapEl = document.getElementById('gmap');
-  if(!mapEl) return;
+map = L.map('leaflet-map', {
+  center: [-37.8136, 144.9631],
+  zoom: 11,
+  zoomControl: false
+});
 
-  map = new google.maps.Map(mapEl, {
-    center:{lat:-33.8688, lng:151.2093}, // Sydney default
-    zoom:11,
-    mapTypeId:'roadmap',
-    disableDefaultUI: false,
-    fullscreenControl: false,
-    streetViewControl: false,
-    mapTypeControl: false,
-    zoomControl: true,
-    zoomControlOptions:{position: google.maps.ControlPosition.RIGHT_CENTER}
+L.control.zoom({position:'topright'}).addTo(map);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+document.querySelectorAll('.date-pill').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.date-pill').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    loadJobs(currentFilter);
   });
+});
 
-  infoWindow = new google.maps.InfoWindow();
-  geocoder   = new google.maps.Geocoder();
-
-  // Map type toggle
-  const sel = document.getElementById('map-type-select');
-  if(sel){
-    sel.addEventListener('change', ()=>{ map.setMapTypeId(sel.value); });
-  }
-
-  // Date filter pills
-  document.querySelectorAll('.date-pill').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.date-pill').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter;
-      loadJobs(currentFilter);
-    });
+var locBtn = document.getElementById('my-loc-btn');
+if(locBtn){
+  locBtn.addEventListener('click', function(){
+    if(agentPos){
+      centreOnAgent();
+    } else if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        function(pos){ sendLocation(pos); centreOnAgent(); },
+        null, {enableHighAccuracy:true, timeout:10000}
+      );
+    }
   });
-
-  // My-location button
-  const locBtn = document.getElementById('my-loc-btn');
-  if(locBtn){
-    locBtn.addEventListener('click', ()=>{
-      if(agentPos){
-        centreOnAgent();
-      } else {
-        navigator.geolocation && navigator.geolocation.getCurrentPosition(
-          pos => { sendLocation(pos); centreOnAgent(); },
-          null, {enableHighAccuracy:true, timeout:10000}
-        );
-      }
-    });
-  }
-
-  // Load initial jobs
-  loadJobs(currentFilter);
-
-  // Start GPS
-  startGPS();
 }
 
-/* ── Bootstrap ── */
-if(MAPS_KEY){
-  const s = document.createElement('script');
-  s.src = 'https://maps.googleapis.com/maps/api/js?key='+MAPS_KEY+'&v=weekly&callback=initGoogleMapsMobile&loading=async';
-  s.async = true; s.defer = true;
-  window.initGoogleMapsMobile = initGoogleMapsMobile;
-  document.head.appendChild(s);
-} else {
-  // No maps key — still show filter + list
-  document.querySelectorAll('.date-pill').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.date-pill').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = btn.dataset.filter;
-      // Load jobs without map
-      fetch('/m/api/map/jobs?date_filter='+currentFilter,
-        {headers:{'X-Requested-With':'XMLHttpRequest'}})
-        .then(r=>r.json())
-        .then(d=>{ allJobs = d.jobs||[]; renderList(); });
-    });
-  });
-  fetch('/m/api/map/jobs?date_filter=today',
-    {headers:{'X-Requested-With':'XMLHttpRequest'}})
-    .then(r=>r.json())
-    .then(d=>{ allJobs = d.jobs||[]; renderList(); });
-  startGPS();
-}
+loadJobs(currentFilter);
+startGPS();
 
 })();
 </script>

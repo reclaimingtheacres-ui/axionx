@@ -13427,11 +13427,13 @@ def m_map():
     distance_unit   = prefs["distance_unit"]    if prefs else "km"
     gps_foreground  = prefs["gps_foreground"]   if prefs else 1
     gps_interval    = prefs["gps_interval_mins"] if prefs and prefs["gps_interval_mins"] else 5
+    role = session.get("role", "")
+    is_admin = role in ("admin", "both")
     return render_template("mobile/map.html",
-                           google_maps_api_key=os.getenv("GOOGLE_MAPS_API_KEY", ""),
                            distance_unit=distance_unit,
                            gps_foreground=gps_foreground,
-                           gps_interval_mins=gps_interval)
+                           gps_interval_mins=gps_interval,
+                           is_admin=is_admin)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
