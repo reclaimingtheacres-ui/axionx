@@ -1193,11 +1193,11 @@
                    placeholder="dd/mm/yyyy" maxlength="10" autocomplete="off" required>
           </div>
           <div class="col-md-2">
-            <input type="time" id="sched_time_picker" class="form-control">
+            <input type="time" id="sched_time_picker" class="form-control" value="09:00">
           </div>
           <div class="col-md-2">
             <input type="text" id="sched_time_text" class="form-control"
-                   placeholder="hh:mm am" maxlength="8" autocomplete="off" required>
+                   placeholder="hh:mm am" maxlength="8" autocomplete="off" required value="9:00 am">
           </div>
           <div class="col-md-3">
             <div class="position-relative">
@@ -3414,12 +3414,12 @@ function axCopyVin(btn) {
           <div class="row g-2 mb-2">
             <div class="col-6">
               <label class="form-label small" style="color:var(--muted)">Time</label>
-              <input type="time" id="ap_time_picker" class="form-control">
+              <input type="time" id="ap_time_picker" class="form-control" value="09:00">
             </div>
             <div class="col-6">
               <label class="form-label small" style="color:var(--muted)">Displayed time</label>
               <input type="text" name="schedule_time" id="ap_time_text" class="form-control"
-                     placeholder="hh:mm am" maxlength="8" autocomplete="off">
+                     placeholder="hh:mm am" maxlength="8" autocomplete="off" value="9:00 am">
             </div>
           </div>
           <div class="mb-2">
@@ -3538,12 +3538,12 @@ function axCopyVin(btn) {
           <div class="row g-2 mb-2">
             <div class="col-6">
               <label class="form-label small" style="color:var(--muted)">Time</label>
-              <input type="time" id="pns_time_picker" class="form-control">
+              <input type="time" id="pns_time_picker" class="form-control" value="09:00">
             </div>
             <div class="col-6">
               <label class="form-label small" style="color:var(--muted)">Displayed time</label>
               <input type="text" name="schedule_time" id="pns_time_text" class="form-control"
-                     placeholder="hh:mm am" maxlength="8" autocomplete="off">
+                     placeholder="hh:mm am" maxlength="8" autocomplete="off" value="9:00 am">
             </div>
           </div>
           <div class="mb-2">
@@ -3619,7 +3619,8 @@ function axCopyVin(btn) {
     var s = document.getElementById('pns_bt_search');
     if (s) s.value = '';
     document.getElementById('pns_date_text').value = '';
-    document.getElementById('pns_time_text').value = '';
+    document.getElementById('pns_time_text').value = '9:00 am';
+    document.getElementById('pns_time_picker').value = '09:00';
   });
   if (new URLSearchParams(window.location.search).get('schedule_prompt') === '1') {
     function _pnsWaitAndShow(){
