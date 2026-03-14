@@ -6277,8 +6277,14 @@ def customer_edit(customer_id: int):
         ORDER BY id
     """, (customer_id,))
     phones = cur.fetchall()
+    cur.execute("""
+        SELECT * FROM contact_emails
+        WHERE entity_type = 'customer' AND entity_id = ?
+        ORDER BY id
+    """, (customer_id,))
+    emails = cur.fetchall()
     conn.close()
-    return render_template("customer_edit.html", customer=customer, phones=phones)
+    return render_template("customer_edit.html", customer=customer, phones=phones, emails=emails)
 
 
 @app.post("/customers/<int:customer_id>/edit")
@@ -6289,7 +6295,7 @@ def customer_edit_post(customer_id: int):
     last_name = request.form.get("last_name", "").strip()
     company = request.form.get("company", "").strip()
     role = request.form.get("role", "").strip()
-    email = request.form.get("email", "").strip()
+    email = request.form.get("email_personal", "").strip()
     dob = request.form.get("dob", "").strip()
     address = request.form.get("address", "").strip()
     notes = request.form.get("notes", "").strip()
@@ -6342,6 +6348,21 @@ def customer_edit_post(customer_id: int):
                     (entity_type, entity_id, label, phone_number, created_at)
                 VALUES ('customer', ?, ?, ?, ?)
             """, (customer_id, label, number, ts))
+
+    cur.execute("""
+        DELETE FROM contact_emails
+        WHERE entity_type = 'customer' AND entity_id = ?
+    """, (customer_id,))
+
+    for label, field in [("Personal", "email_personal"), ("Work", "email_work"),
+                         ("Other", "email_other")]:
+        em = request.form.get(field, "").strip()
+        if em:
+            cur.execute("""
+                INSERT INTO contact_emails
+                    (entity_type, entity_id, label, email, created_at)
+                VALUES ('customer', ?, ?, ?, ?)
+            """, (customer_id, label, em, ts))
 
     conn.commit()
     conn.close()
