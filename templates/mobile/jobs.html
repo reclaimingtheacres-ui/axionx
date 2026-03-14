@@ -472,9 +472,27 @@ function applyDistances(){
   if(currentSort==='distance') applySortAndFilter();
 }
 
+let _geocodeAttempts = 0;
+function geocodePending(){
+  if(_geocodeAttempts >= 20) return;
+  const missing = cards.filter(c => !parseFloat(c.dataset.lat) || !parseFloat(c.dataset.lng));
+  if(missing.length === 0) return;
+  _geocodeAttempts++;
+  fetch('/m/api/jobs/geocode-pending', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(r=>r.json())
+    .then(data=>{
+      if(!data.ok) return;
+      (data.updated||[]).forEach(u=>{
+        const card = cards.find(c=>c.dataset.id==String(u.id));
+        if(card){ card.dataset.lat=u.lat; card.dataset.lng=u.lng; }
+      });
+      if(data.updated && data.updated.length > 0) applyDistances();
+      if(data.remaining > 0) setTimeout(geocodePending, 2000);
+    })
+    .catch(()=>{});
+}
+
 if(navigator.geolocation){
-  // Use watchPosition so iOS WKWebView reliably provides coordinates;
-  // cancel after first successful fix to avoid battery drain.
   let _watchId = null;
   _watchId = navigator.geolocation.watchPosition(
     pos=>{
@@ -482,6 +500,7 @@ if(navigator.geolocation){
       if(_watchId !== null){ navigator.geolocation.clearWatch(_watchId); _watchId = null; }
       document.getElementById('dist-warn').style.display = 'none';
       applyDistances();
+      geocodePending();
     },
     ()=>{
       if(currentSort==='distance'){

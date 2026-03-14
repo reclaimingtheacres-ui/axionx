@@ -12093,11 +12093,15 @@ def m_geocode_pending():
         return jsonify({"ok": False}), 401
     import time as _time
     conn = db()
+    _excl = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
+    _ph = ','.join('?' for _ in _excl)
     pending = conn.execute(
-        "SELECT id, job_address FROM jobs"
-        " WHERE job_address IS NOT NULL AND job_address != ''"
-        "   AND (lat IS NULL OR lng IS NULL)"
-        " LIMIT 5"
+        f"SELECT id, job_address FROM jobs"
+        f" WHERE job_address IS NOT NULL AND job_address != ''"
+        f"   AND (lat IS NULL OR lng IS NULL)"
+        f"   AND status NOT IN ({_ph})"
+        f" ORDER BY id LIMIT 5",
+        _excl
     ).fetchall()
     conn.close()
 
@@ -12119,9 +12123,11 @@ def m_geocode_pending():
 
     remaining_conn = db()
     remaining = remaining_conn.execute(
-        "SELECT COUNT(*) FROM jobs"
-        " WHERE job_address IS NOT NULL AND job_address != ''"
-        "   AND (lat IS NULL OR lng IS NULL)"
+        f"SELECT COUNT(*) FROM jobs"
+        f" WHERE job_address IS NOT NULL AND job_address != ''"
+        f"   AND (lat IS NULL OR lng IS NULL)"
+        f"   AND status NOT IN ({_ph})",
+        _excl
     ).fetchone()[0]
     remaining_conn.close()
     return jsonify({"ok": True, "updated": updated, "remaining": remaining})

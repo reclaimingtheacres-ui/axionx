@@ -517,8 +517,33 @@ function loadJobs(filter){
     allJobs = data.jobs || [];
     refreshMapMarkers();
     renderList();
+    geocodePendingMap();
   })
   .catch(function(){ renderList(); });
+}
+
+var _geoAttempts = 0;
+function geocodePendingMap(){
+  if(_geoAttempts >= 20) return;
+  var missing = allJobs.filter(function(j){ return !j.lat || !j.lng; });
+  if(missing.length === 0) return;
+  _geoAttempts++;
+  fetch('/m/api/jobs/geocode-pending', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(!data.ok) return;
+      var updated = data.updated || [];
+      updated.forEach(function(u){
+        var job = allJobs.find(function(j){ return j.id === u.id; });
+        if(job){ job.lat = u.lat; job.lng = u.lng; }
+      });
+      if(updated.length > 0){
+        refreshMapMarkers();
+        renderList();
+      }
+      if(data.remaining > 0) setTimeout(geocodePendingMap, 2000);
+    })
+    .catch(function(){});
 }
 
 /* ── Filter sheet logic ── */
