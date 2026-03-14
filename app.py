@@ -11468,45 +11468,6 @@ def queue_email_agent_queue():
 
 
 # -------- Assignment board --------
-@app.get("/assign")
-@admin_required
-def assign_board():
-    date = request.args.get("date", datetime.now().date().isoformat())
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id, full_name FROM users WHERE role IN ('agent', 'both') AND active=1 ORDER BY full_name")
-    agents = cur.fetchall()
-
-    cur.execute("""
-        SELECT ci.*,
-               j.internal_job_number, j.client_reference,
-               (cu.first_name || ' ' || cu.last_name) customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type = 'vehicle' LIMIT 1) asset_reg,
-               COALESCE(
-                   ci.assigned_user_id,
-                   (SELECT s.assigned_to_user_id
-                    FROM schedules s
-                    WHERE s.job_id = ci.job_id
-                      AND date(s.scheduled_for) = ci.due_date
-                      AND s.status NOT IN ('Cancelled','Completed')
-                    ORDER BY s.scheduled_for
-                    LIMIT 1),
-                   j.assigned_user_id
-               ) AS display_assigned_user_id
-        FROM cue_items ci
-        JOIN jobs j ON j.id = ci.job_id
-        LEFT JOIN customers cu ON cu.id = j.customer_id
-        WHERE ci.due_date = ? AND ci.status IN ('Pending','In Progress')
-          AND j.status NOT IN {ARCHIVED_STATUSES!r}
-        ORDER BY ci.priority DESC, ci.id DESC
-    """, (date,))
-    cues = cur.fetchall()
-
-    conn.close()
-    return render_template("assign.html", date=date, agents=agents, cues=cues)
-
-
 @app.post("/cue/<int:cue_id>/assign")
 @admin_required
 def cue_assign(cue_id: int):
