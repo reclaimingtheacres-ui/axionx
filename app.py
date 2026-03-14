@@ -2995,7 +2995,7 @@ def jobs_list():
 
     filter_unassigned = request.args.get("unassigned", "").strip()
     if filter_unassigned == "1":
-        from_where += " AND j.assigned_user_id IS NULL AND j.status NOT IN ('Completed','Invoiced','Archived - Invoiced','Cold Stored')"
+        from_where += " AND j.assigned_user_id IS NULL AND j.status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')"
 
     if filter_agent and role in ("admin", "both"):
         from_where += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled')))"
@@ -3077,6 +3077,7 @@ def jobs_list():
         per_page=per_page,
         total_jobs=total_jobs,
         total_pages=total_pages,
+        filter_unassigned=filter_unassigned,
     )
 
 

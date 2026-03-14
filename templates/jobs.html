@@ -329,7 +329,7 @@
 
   {% if total_pages > 1 %}
   <nav style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--line);font-size:.82rem;color:var(--muted)">
-    {% set base_params = 'q=' ~ (q|urlencode) ~ '&status=' ~ (status|urlencode) ~ '&sort=' ~ (sort|urlencode) ~ '&per_page=' ~ per_page ~ '&client_id=' ~ (filter_client|urlencode) ~ '&agent_id=' ~ (filter_agent|urlencode) ~ '&booking_type_id=' ~ (filter_btype|urlencode) ~ '&date_from=' ~ (filter_date_from|urlencode) ~ '&date_to=' ~ (filter_date_to|urlencode) %}
+    {% set base_params = 'q=' ~ (q|urlencode) ~ '&status=' ~ (status|urlencode) ~ '&sort=' ~ (sort|urlencode) ~ '&per_page=' ~ per_page ~ '&client_id=' ~ (filter_client|urlencode) ~ '&agent_id=' ~ (filter_agent|urlencode) ~ '&booking_type_id=' ~ (filter_btype|urlencode) ~ '&date_from=' ~ (filter_date_from|urlencode) ~ '&date_to=' ~ (filter_date_to|urlencode) ~ '&unassigned=' ~ (filter_unassigned|urlencode) %}
     <span>Showing {{ ((page - 1) * per_page) + 1 }}–{{ [page * per_page, total_jobs] | min }} of {{ total_jobs }}</span>
     <div style="display:flex;gap:4px;align-items:center">
       {% if page > 1 %}
