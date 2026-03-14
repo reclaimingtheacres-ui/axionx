@@ -6144,7 +6144,8 @@ def customers_bulk_delete():
 @admin_required
 def customer_new():
     next_url = request.args.get("next", "")
-    return render_template("customer_new.html", next_url=next_url)
+    return_job = request.args.get("return_job", "")
+    return render_template("customer_new.html", next_url=next_url, return_job=return_job)
 
 
 @app.post("/customers/new")
@@ -6218,6 +6219,27 @@ def customer_create():
         return redirect(url_for("customer_new"))
 
     flash(f"{created_count} customer(s) created.", "success")
+
+    return_job = request.form.get("return_job", "").strip()
+    if return_job:
+        try:
+            job_id_int = int(return_job)
+            conn2 = db()
+            cur2 = conn2.cursor()
+            cur2.execute("SELECT MAX(sort_order) FROM job_customers WHERE job_id = ?", (job_id_int,))
+            row2 = cur2.fetchone()
+            next_order = (row2[0] or 0) + 1
+            cur2.execute("""
+                INSERT OR IGNORE INTO job_customers (job_id, customer_id, role, sort_order, created_at)
+                VALUES (?, ?, 'Primary', ?, ?)
+            """, (job_id_int, first_new_id, next_order, now_ts()))
+            conn2.commit()
+            conn2.close()
+            flash("Customer linked to job.", "success")
+            return redirect(url_for("job_detail", job_id=job_id_int))
+        except Exception:
+            pass
+
     next_url = request.form.get("next_url", "")
     if next_url:
         return redirect(f"{next_url}?new_customer_id={first_new_id}")

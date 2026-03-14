@@ -5,6 +5,7 @@
 {% block content %}
 <form method="post" enctype="multipart/form-data" id="custNewForm">
   <input type="hidden" name="next_url" value="{{ next_url }}">
+  <input type="hidden" name="return_job" value="{{ return_job }}">
 
   <div class="ax-card mb-3">
     <div class="ax-card-h d-flex justify-content-between align-items-center">
@@ -28,7 +29,7 @@
 
   <div class="d-flex gap-2">
     <button class="btn btn-primary" type="submit">Create Customer(s)</button>
-    <a class="btn btn-outline-secondary" href="{{ next_url or '/customers' }}">Cancel</a>
+    <a class="btn btn-outline-secondary" href="{% if return_job %}/jobs/{{ return_job }}{% elif next_url %}{{ next_url }}{% else %}/customers{% endif %}">Cancel</a>
   </div>
 </form>
 

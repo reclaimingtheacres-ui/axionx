@@ -254,6 +254,12 @@
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">CUSTOMER(S)</div>
             <div class="d-flex gap-2 align-items-center">
+              {% if session.get('role') in ('admin', 'both') %}
+                <button type="button" class="btn btn-primary btn-sm" style="font-size:.68rem;padding:2px 8px"
+                        onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addCustomerToJobModal')).show()">
+                  Add Customer
+                </button>
+              {% endif %}
               {% if job.job_address %}
                 <a class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:2px 8px"
                    target="_blank"
@@ -2504,6 +2510,111 @@ document.addEventListener('click', function(e) {
 {% endblock %}
 {% block modals %}
 {% include 'repo_lock_form.html' %}
+
+<!-- ── Add Customer to Job Modal ──────────────────────────────────────── -->
+{% if session.get('role') in ('admin', 'both') %}
+<div class="modal fade" id="addCustomerToJobModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:14px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title fw-bold">Add Customer to Job</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form method="post" action="/jobs/{{ job.id }}/customers/add" id="addCustJobForm">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Search Customer</label>
+            <div style="position:relative">
+              <input type="text" class="form-control" id="acj_customer_search"
+                     placeholder="Type to search customer…" autocomplete="off" spellcheck="false">
+              <div id="acj_customer_drop" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.15)"></div>
+            </div>
+            <input type="hidden" name="customer_id" id="acj_customer_id_val" value="">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Role</label>
+            <select class="form-select" name="role">
+              <option value="Primary">Primary</option>
+              <option value="Director">Director</option>
+              <option value="Guarantor">Guarantor</option>
+              <option value="Borrower">Borrower</option>
+              <option value="Spouse">Spouse</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <a href="/customers/new?return_job={{ job.id }}" class="btn btn-outline-secondary btn-sm">Create New Customer</a>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="acj_submit_btn" disabled>Add to Job</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var ACJ_DATA = [
+    {% for c in all_customers_for_edit %}{"id":{{ c.id }},"label":{{ ((c.first_name or '') ~ ' ' ~ (c.last_name or '') ~ ((' (' ~ c.company ~ ')') if c.company else ''))|trim|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+  ];
+  var searchEl = document.getElementById('acj_customer_search');
+  var hiddenEl = document.getElementById('acj_customer_id_val');
+  var dropEl   = document.getElementById('acj_customer_drop');
+  var submitBtn = document.getElementById('acj_submit_btn');
+  if(!searchEl) return;
+
+  function selectItem(item){
+    searchEl.value = item.label;
+    hiddenEl.value = item.id;
+    dropEl.style.display = 'none';
+    searchEl.style.borderColor = '#22c55e';
+    searchEl.style.boxShadow = '0 0 0 2px rgba(34,197,94,.25)';
+    submitBtn.disabled = false;
+  }
+  function render(items){
+    dropEl.innerHTML = '';
+    if(!items.length){ dropEl.style.display = 'none'; return; }
+    items.slice(0,12).forEach(function(item){
+      var div = document.createElement('div');
+      div.style.cssText = 'padding:9px 14px;cursor:pointer;font-size:.9rem;border-bottom:1px solid var(--line);color:var(--text)';
+      div.textContent = item.label;
+      div.addEventListener('mousedown', function(e){ e.preventDefault(); selectItem(item); });
+      div.addEventListener('mouseenter', function(){ div.style.background='rgba(96,165,250,.12)'; });
+      div.addEventListener('mouseleave', function(){ div.style.background=''; });
+      dropEl.appendChild(div);
+    });
+    dropEl.style.display = '';
+  }
+  searchEl.addEventListener('input', function(){
+    hiddenEl.value = '';
+    searchEl.style.borderColor = '';
+    searchEl.style.boxShadow = '';
+    submitBtn.disabled = true;
+    var q = searchEl.value.trim().toLowerCase();
+    if(!q){ dropEl.style.display = 'none'; return; }
+    render(ACJ_DATA.filter(function(d){ return d.label.toLowerCase().includes(q); }));
+  });
+  searchEl.addEventListener('focus', function(){
+    var q = searchEl.value.trim().toLowerCase();
+    if(q) render(ACJ_DATA.filter(function(d){ return d.label.toLowerCase().includes(q); }));
+    else render(ACJ_DATA.slice(0,12));
+  });
+  searchEl.addEventListener('blur', function(){
+    setTimeout(function(){ dropEl.style.display = 'none'; }, 300);
+  });
+  document.getElementById('addCustomerToJobModal').addEventListener('show.bs.modal', function(){
+    searchEl.value = '';
+    hiddenEl.value = '';
+    searchEl.style.borderColor = '';
+    searchEl.style.boxShadow = '';
+    submitBtn.disabled = true;
+  });
+})();
+</script>
+{% endif %}
+
 <!-- ── Edit Job Modal ──────────────────────────────────────────────────── -->
 {% if session.get('role') in ('admin', 'both') %}
 <div class="modal fade" id="editJobModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
