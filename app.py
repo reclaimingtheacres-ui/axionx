@@ -18464,20 +18464,35 @@ def message_thread(conv_id):
 @login_required
 def messages_new():
     uid = session.get("user_id")
-    recipient_id = request.form.get("recipient_id", type=int)
+    recipient_ids = request.form.getlist("recipient_ids", type=int)
+    if not recipient_ids:
+        rid = request.form.get("recipient_id", type=int)
+        if rid:
+            recipient_ids = [rid]
     body = (request.form.get("body") or "").strip()
     job_id = request.form.get("job_id", type=int) or None
 
-    if not recipient_id or not body:
+    if not recipient_ids or not body:
         flash("Recipient and message are required.", "warning")
         return redirect(url_for("messages_list"))
 
     conn = db()
     _ensure_msg_tables(conn)
-    conv_id, _ = _get_or_create_direct_conv(conn, uid, recipient_id, job_id=job_id)
-    _post_message(conn, conv_id, uid, body)
+
+    last_conv_id = None
+    for rid in recipient_ids:
+        if rid == uid:
+            continue
+        conv_id, _ = _get_or_create_direct_conv(conn, uid, rid, job_id=job_id)
+        _post_message(conn, conv_id, uid, body)
+        last_conv_id = conv_id
+
     conn.close()
-    return redirect(url_for("message_thread", conv_id=conv_id))
+
+    if last_conv_id and len(recipient_ids) == 1:
+        return redirect(url_for("message_thread", conv_id=last_conv_id))
+    flash(f"Message sent to {len(recipient_ids)} recipient{'s' if len(recipient_ids) != 1 else ''}.", "success")
+    return redirect(url_for("messages_list"))
 
 
 @app.post("/messages/<int:conv_id>/reply")
@@ -18566,19 +18581,30 @@ def m_message_thread(conv_id):
 @mobile_login_required
 def m_messages_new():
     uid = session.get("user_id")
-    recipient_id = request.form.get("recipient_id", type=int)
+    recipient_ids = request.form.getlist("recipient_ids", type=int)
+    if not recipient_ids:
+        rid = request.form.get("recipient_id", type=int)
+        if rid:
+            recipient_ids = [rid]
     body = (request.form.get("body") or "").strip()
     job_id = request.form.get("job_id", type=int) or None
 
-    if not recipient_id or not body:
+    if not recipient_ids or not body:
         return redirect(url_for("m_messages_list"))
 
     conn = db()
     _ensure_msg_tables(conn)
-    conv_id, _ = _get_or_create_direct_conv(conn, uid, recipient_id, job_id=job_id)
-    _post_message(conn, conv_id, uid, body)
+    last_conv_id = None
+    for rid in recipient_ids:
+        if rid == uid:
+            continue
+        conv_id, _ = _get_or_create_direct_conv(conn, uid, rid, job_id=job_id)
+        _post_message(conn, conv_id, uid, body)
+        last_conv_id = conv_id
     conn.close()
-    return redirect(url_for("m_message_thread", conv_id=conv_id))
+    if last_conv_id and len(recipient_ids) == 1:
+        return redirect(url_for("m_message_thread", conv_id=last_conv_id))
+    return redirect(url_for("m_messages_list"))
 
 
 @app.post("/m/messages/<int:conv_id>/reply")

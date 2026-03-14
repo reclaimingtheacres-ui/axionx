@@ -203,14 +203,23 @@
 <div class="msg-modal-overlay" id="newMsgModal" onclick="if(event.target===this)closeNewMsg()">
   <div class="msg-modal">
     <div class="msg-modal-title">New Message</div>
-    <form method="post" action="{{ url_for('messages_new') }}">
-      <label for="nm_recipient">To</label>
-      <select id="nm_recipient" name="recipient_id" required>
-        <option value="">— Select person —</option>
+    <form method="post" action="{{ url_for('messages_new') }}" id="newMsgForm">
+      <label>To</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <label style="font-size:.82rem;cursor:pointer;display:flex;align-items:center;gap:4px;margin:0">
+          <input type="checkbox" id="nm_broadcast" onchange="toggleBroadcast(this.checked)" style="accent-color:var(--accent)">
+          <span style="font-weight:600;color:var(--accent)">Broadcast to All</span>
+        </label>
+      </div>
+      <div id="nm_recipients_wrap" style="border:1px solid var(--line);border-radius:8px;max-height:140px;overflow-y:auto;padding:6px 10px;margin-bottom:4px">
         {% for u in users %}
-          <option value="{{ u.id }}">{{ u.full_name }}</option>
+        <label style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:.85rem;cursor:pointer" class="nm-recip-label">
+          <input type="checkbox" name="recipient_ids" value="{{ u.id }}" class="nm-recip-cb" style="accent-color:var(--accent)">
+          {{ u.full_name }}
+        </label>
         {% endfor %}
-      </select>
+      </div>
+      <div id="nm_recip_count" style="font-size:.72rem;color:var(--muted);margin-bottom:8px"></div>
       <label for="nm_job_display">Link to Job (optional)</label>
       <input type="text" id="nm_job_display" placeholder="Type job number…" autocomplete="off" oninput="filterJobs(this.value)">
       <input type="hidden" id="nm_job_id" name="job_id">
@@ -256,7 +265,35 @@ function openNewMsg() {
 }
 function closeNewMsg() {
   document.getElementById('newMsgModal').classList.remove('open');
+  document.getElementById('nm_broadcast').checked = false;
+  toggleBroadcast(false);
+  document.querySelectorAll('.nm-recip-cb').forEach(function(cb){ cb.checked = false; });
+  updateRecipCount();
 }
+function toggleBroadcast(on) {
+  var wrap = document.getElementById('nm_recipients_wrap');
+  document.querySelectorAll('.nm-recip-cb').forEach(function(cb){
+    cb.checked = on;
+    cb.disabled = on;
+  });
+  wrap.style.opacity = on ? '0.5' : '1';
+  updateRecipCount();
+}
+function updateRecipCount() {
+  var checked = document.querySelectorAll('.nm-recip-cb:checked').length;
+  var el = document.getElementById('nm_recip_count');
+  el.textContent = checked ? checked + ' recipient' + (checked > 1 ? 's' : '') + ' selected' : '';
+}
+document.querySelectorAll('.nm-recip-cb').forEach(function(cb){
+  cb.addEventListener('change', function(){
+    if (!this.checked) document.getElementById('nm_broadcast').checked = false;
+    updateRecipCount();
+  });
+});
+document.getElementById('newMsgForm').addEventListener('submit', function(e){
+  var checked = document.querySelectorAll('.nm-recip-cb:checked').length;
+  if (!checked) { e.preventDefault(); alert('Please select at least one recipient.'); }
+});
 
 var _jobTimer = null;
 function filterJobs(val) {
