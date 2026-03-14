@@ -855,6 +855,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "user_mobile_settings", "mobile_default_view",    "TEXT NOT NULL DEFAULT 'schedule'")
     add_column_if_missing(cur, "user_mobile_settings", "show_status_on_visits",  "INTEGER NOT NULL DEFAULT 1")
     add_column_if_missing(cur, "user_mobile_settings", "job_assignment",         "TEXT NOT NULL DEFAULT 'all'")
+    add_column_if_missing(cur, "jobs",                 "geocode_fail",           "INTEGER DEFAULT 0")
     add_column_if_missing(cur, "job_field_notes",       "note_type",             "TEXT NOT NULL DEFAULT 'text'")
     add_column_if_missing(cur, "job_field_notes",       "audio_filename",        "TEXT")
     add_column_if_missing(cur, "job_field_notes",       "updated_at",            "TEXT")
@@ -12096,14 +12097,36 @@ def m_geocode_pending():
     conn = db()
     _excl = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
     _ph = ','.join('?' for _ in _excl)
-    pending = conn.execute(
-        f"SELECT id, job_address FROM jobs"
-        f" WHERE job_address IS NOT NULL AND job_address != ''"
-        f"   AND (lat IS NULL OR lng IS NULL)"
-        f"   AND status NOT IN ({_ph})"
-        f" ORDER BY id LIMIT 5",
-        _excl
-    ).fetchall()
+    job_ids_param = request.form.get("job_ids", "") or request.args.get("job_ids", "")
+    if job_ids_param:
+        try:
+            target_ids = [int(x) for x in job_ids_param.split(",") if x.strip()][:10]
+        except ValueError:
+            target_ids = []
+        if target_ids:
+            id_ph = ','.join('?' for _ in target_ids)
+            pending = conn.execute(
+                f"SELECT id, job_address FROM jobs"
+                f" WHERE id IN ({id_ph})"
+                f"   AND job_address IS NOT NULL AND job_address != ''"
+                f"   AND (lat IS NULL OR lng IS NULL)"
+                f"   AND status NOT IN ({_ph})"
+                f"   AND (geocode_fail IS NULL OR geocode_fail < 3)"
+                f" LIMIT 10",
+                target_ids + list(_excl)
+            ).fetchall()
+        else:
+            pending = []
+    else:
+        pending = conn.execute(
+            f"SELECT id, job_address FROM jobs"
+            f" WHERE job_address IS NOT NULL AND job_address != ''"
+            f"   AND (lat IS NULL OR lng IS NULL)"
+            f"   AND status NOT IN ({_ph})"
+            f"   AND (geocode_fail IS NULL OR geocode_fail < 3)"
+            f" ORDER BY id DESC LIMIT 5",
+            _excl
+        ).fetchall()
     conn.close()
 
     updated = []
@@ -12120,14 +12143,25 @@ def m_geocode_pending():
                 updated.append({"id": job["id"], "lat": lat, "lng": lng})
             except Exception:
                 pass
-        _time.sleep(1.05)  # Nominatim hard rate limit: 1 req/s
+        else:
+            try:
+                c2 = db()
+                c2.execute(
+                    "UPDATE jobs SET geocode_fail = COALESCE(geocode_fail,0)+1 WHERE id=?",
+                    (job["id"],))
+                c2.commit()
+                c2.close()
+            except Exception:
+                pass
+        _time.sleep(1.05)
 
     remaining_conn = db()
     remaining = remaining_conn.execute(
         f"SELECT COUNT(*) FROM jobs"
         f" WHERE job_address IS NOT NULL AND job_address != ''"
         f"   AND (lat IS NULL OR lng IS NULL)"
-        f"   AND status NOT IN ({_ph})",
+        f"   AND status NOT IN ({_ph})"
+        f"   AND (geocode_fail IS NULL OR geocode_fail < 3)",
         _excl
     ).fetchone()[0]
     remaining_conn.close()

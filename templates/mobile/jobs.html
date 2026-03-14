@@ -482,7 +482,10 @@ function geocodePending(){
   const missing = cards.filter(c => !parseFloat(c.dataset.lat) || !parseFloat(c.dataset.lng));
   if(missing.length === 0) return;
   _geocodeAttempts++;
-  fetch('/m/api/jobs/geocode-pending', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+  const missingIds = missing.slice(0,10).map(c=>c.dataset.id).join(',');
+  const body = new URLSearchParams();
+  body.append('job_ids', missingIds);
+  fetch('/m/api/jobs/geocode-pending', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}, body})
     .then(r=>r.json())
     .then(data=>{
       if(!data.ok) return;
@@ -491,7 +494,7 @@ function geocodePending(){
         if(card){ card.dataset.lat=u.lat; card.dataset.lng=u.lng; }
       });
       if(data.updated && data.updated.length > 0) applyDistances();
-      if(data.remaining > 0) setTimeout(geocodePending, 2000);
+      if((data.updated||[]).length > 0 && missing.length > (data.updated||[]).length) setTimeout(geocodePending, 2000);
     })
     .catch(()=>{});
 }
