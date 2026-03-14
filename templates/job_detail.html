@@ -2341,11 +2341,10 @@ window.addEventListener('load', function () {
   (function autoPopulateNow(){
     const now = new Date();
     const d = pad2(now.getDate()), m = pad2(now.getMonth()+1), y = now.getFullYear();
-    const H = pad2(now.getHours()), M = pad2(now.getMinutes());
     dt.value = d+"/"+m+"/"+y;
     dp.value = y+"-"+m+"-"+d;
-    tp.value = H+":"+M;
-    tt.value = toAmPm(H+":"+M);
+    tp.value = "09:00";
+    tt.value = "9:00 am";
   })();
 })();
 </script>
