@@ -82,7 +82,7 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Colored pin markers** by job status: green (Active/New/In Progress/Ready), amber (Pending/Hold/Instructed/Awaiting), red (Suspended/Cancelled/Overdue), gray (others). Pins are drop-pin shaped SVGs with white inner circle.
 - **Agent vs Admin scope**: Agents see only their assigned jobs; admins see all jobs. Admin view shows assigned agent name in popup and job list cards.
 - **Date filter pills**: Today (default), Tomorrow, Week, Month, All. Fetches from `/m/api/map/jobs?date_filter=<filter>`.
-- **Job list below map**: Sorted by distance from agent (if GPS available). Each card shows status dot, job ref, customer, address, distance, due date. Action buttons: Open Job, Navigate (Apple Maps directions).
+- **Job list below map** (GeoOp-style): Sorted by distance from agent (if GPS available). Each card is a tappable row linking to job detail, with: colored left bar matching status, full status text label in color, customer name + client name as bold title, detail line (job type - customer - client), due date and agent (admin), distance top-right in blue, note count badge bottom-right (blue ≤10, amber 11–20, red 21+), right chevron. No separate action buttons.
 - **GPS tracking**: Agent location shown as blue circle marker. Auto-updates based on user GPS preferences. My-location button recentres map.
 - **Popup on pin tap**: Shows job ref, customer, lender, address, distance, due date, agent (admin only). Action buttons: Open Job, Navigate.
 - Template: `templates/mobile/map.html`. API: `m_api_map_jobs()` at `/m/api/map/jobs`.

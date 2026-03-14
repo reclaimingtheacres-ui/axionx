@@ -13353,6 +13353,12 @@ def m_api_map_jobs():
     base_where = f"j.status NOT IN ('Closed','Cancelled','Completed') {date_sql}"
 
     conn = db()
+    extra_cols = """,
+                   j.job_type,
+                   (SELECT COUNT(*) FROM job_field_notes fn WHERE fn.job_id = j.id) AS note_count,
+                   (SELECT 1 FROM job_updates ju
+                    WHERE ju.job_id = j.id AND ju.status = 'draft'
+                    LIMIT 1) AS has_draft"""
     if is_admin:
         rows = conn.execute(f"""
             SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
@@ -13360,10 +13366,8 @@ def m_api_map_jobs():
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
                    c.name  AS client_name,
                    ag.full_name AS agent_name,
-                   ag.id        AS agent_id,
-                   (SELECT 1 FROM job_updates ju
-                    WHERE ju.job_id = j.id AND ju.status = 'draft'
-                    LIMIT 1) AS has_draft
+                   ag.id        AS agent_id
+                   {extra_cols}
             FROM jobs j
             LEFT JOIN customers cu ON cu.id = j.customer_id
             LEFT JOIN clients   c  ON c.id  = j.client_id
@@ -13379,10 +13383,8 @@ def m_api_map_jobs():
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
                    c.name  AS client_name,
                    ag.full_name AS agent_name,
-                   ag.id        AS agent_id,
-                   (SELECT 1 FROM job_updates ju
-                    WHERE ju.job_id = j.id AND ju.status = 'draft'
-                    LIMIT 1) AS has_draft
+                   ag.id        AS agent_id
+                   {extra_cols}
             FROM jobs j
             LEFT JOIN customers cu ON cu.id = j.customer_id
             LEFT JOIN clients   c  ON c.id  = j.client_id
@@ -13409,6 +13411,8 @@ def m_api_map_jobs():
             "client":       r["client_name"] or "",
             "agent":        r["agent_name"] or "",
             "agent_id":     r["agent_id"],
+            "job_type":     r["job_type"] or "",
+            "note_count":   r["note_count"] or 0,
             "has_draft":    bool(r["has_draft"]),
         })
     return jsonify({"jobs": jobs_out, "filter": date_filter})
