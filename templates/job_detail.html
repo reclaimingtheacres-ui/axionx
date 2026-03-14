@@ -4932,6 +4932,106 @@ function axSaveClient() {
 })();
 </script>
 
+{% if session.get('role') in ('admin', 'both') %}
+<div class="modal fade" id="agentSuggestModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:14px;overflow:hidden">
+      <div class="modal-header" style="background:rgba(37,99,235,.06);border-bottom:1px solid rgba(37,99,235,.15);padding:12px 16px">
+        <h6 class="modal-title fw-bold" style="font-size:.9rem">Agent Recommendation</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="padding:16px" id="agentSuggestBody">
+        <div class="text-center py-3" style="color:var(--muted)">Checking postcode area...</div>
+      </div>
+      <div class="modal-footer" style="padding:8px 16px;border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Skip</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  if (new URLSearchParams(location.search).get('agent_suggest') !== '1') return;
+  if (window.history && window.history.replaceState) {
+    var url = new URL(location);
+    url.searchParams.delete('agent_suggest');
+    window.history.replaceState({}, '', url.toString());
+  }
+  var jobId = {{ job.id }};
+  fetch('/api/agent-recommend/' + jobId, {credentials:'include'})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var body = document.getElementById('agentSuggestBody');
+      if (!data.agents || data.agents.length === 0) {
+        body.innerHTML = '<div class="text-center py-2" style="color:var(--muted)">' +
+          (data.postcode ? 'No agents currently have active jobs in postcode <strong>' + data.postcode + '</strong>.' :
+           'Could not determine postcode from the job address.') + '</div>';
+        new bootstrap.Modal(document.getElementById('agentSuggestModal')).show();
+        return;
+      }
+      function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+      body.textContent = '';
+      var intro = document.createElement('p');
+      intro.className = 'small mb-3';
+      intro.style.color = 'var(--muted)';
+      intro.innerHTML = 'Agents with active jobs in postcode <strong>' + esc(data.postcode) + '</strong>:';
+      body.appendChild(intro);
+      var lg = document.createElement('div');
+      lg.className = 'list-group';
+      data.agents.forEach(function(a){
+        var refs = (a.job_refs || '').split(',').slice(0, 3).join(', ');
+        if ((a.job_refs || '').split(',').length > 3) refs += '...';
+        var item = document.createElement('div');
+        item.className = 'list-group-item d-flex justify-content-between align-items-center';
+        item.style.padding = '10px 14px';
+        var info = document.createElement('div');
+        var nameEl = document.createElement('div');
+        nameEl.className = 'fw-semibold';
+        nameEl.style.fontSize = '.88rem';
+        nameEl.textContent = a.name;
+        var detEl = document.createElement('div');
+        detEl.className = 'small';
+        detEl.style.color = 'var(--muted)';
+        detEl.textContent = a.job_count + ' active job' + (a.job_count > 1 ? 's' : '') + ' in area \u2014 ' + refs;
+        info.appendChild(nameEl);
+        info.appendChild(detEl);
+        var btn = document.createElement('button');
+        btn.className = 'btn btn-sm btn-primary';
+        btn.style.cssText = 'font-size:.78rem;white-space:nowrap';
+        btn.textContent = 'Assign';
+        btn.addEventListener('click', (function(id){ return function(){ assignSuggestedAgent(id); }; })(a.id));
+        item.appendChild(info);
+        item.appendChild(btn);
+        lg.appendChild(item);
+      });
+      body.appendChild(lg);
+      new bootstrap.Modal(document.getElementById('agentSuggestModal')).show();
+    })
+    .catch(function(){});
+
+  window.assignSuggestedAgent = function(agentId) {
+    var fd = new FormData();
+    fd.append('assigned_to_user_id', agentId);
+    fetch('/jobs/' + jobId + '/assign', {method:'POST', body:fd, credentials:'include'})
+      .then(function(r){
+        if (!r.ok && r.status !== 200) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data){
+        if (data.ok) {
+          var m = bootstrap.Modal.getInstance(document.getElementById('agentSuggestModal'));
+          if (m) m.hide();
+          location.reload();
+        } else {
+          alert(data.error || 'Error assigning agent.');
+        }
+      })
+      .catch(function(e){ alert('Network error: ' + (e.message || '')); });
+  };
+})();
+</script>
+{% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('[id^="note-text-"]').forEach(function(el) { axLinkPhones(el); });

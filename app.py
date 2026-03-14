@@ -3709,7 +3709,18 @@ def job_create():
         return redirect(url_for("job_new", **params))
     if _had_autofill_doc:
         return redirect(url_for("job_detail", job_id=job_id) + "?add_note=1#tab-notes")
-    return redirect(url_for("job_detail", job_id=job_id) + "?focus=lender")
+    _redir_params = "?focus=lender"
+    _final_assigned = False
+    try:
+        _chk = db()
+        _fa = _chk.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        _final_assigned = bool(_fa and _fa["assigned_user_id"])
+        _chk.close()
+    except Exception:
+        pass
+    if job_address and not _final_assigned:
+        _redir_params += "&agent_suggest=1"
+    return redirect(url_for("job_detail", job_id=job_id) + _redir_params)
 
 
 @app.get("/jobs/<int:job_id>")
@@ -4936,6 +4947,68 @@ def job_status_update(job_id: int):
     conn.commit()
     conn.close()
     return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.get("/api/agent-recommend/<int:job_id>")
+@login_required
+@admin_required
+def agent_recommend(job_id: int):
+    import re as _re
+    conn = db()
+    cur = conn.cursor()
+    job = cur.execute("SELECT id, job_address, assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not job or not job["job_address"]:
+        conn.close()
+        return jsonify({"agents": [], "postcode": None})
+    addr = job["job_address"]
+    m = _re.search(r'\b(\d{4})\b', addr)
+    if not m:
+        conn.close()
+        return jsonify({"agents": [], "postcode": None})
+    postcode = m.group(1)
+    rows = cur.execute("""
+        SELECT u.id, u.full_name, COUNT(DISTINCT j2.id) AS job_count,
+               GROUP_CONCAT(DISTINCT j2.display_ref) AS job_refs
+        FROM jobs j2
+        JOIN schedules s ON s.job_id = j2.id AND s.status NOT IN ('Cancelled', 'Completed')
+        JOIN users u ON u.id = s.assigned_to_user_id
+        WHERE j2.job_address LIKE ?
+          AND j2.status NOT IN ('Completed', 'Invoiced', 'Cancelled', 'Archived - Invoiced', 'Cold Stored')
+          AND j2.id != ?
+          AND u.active = 1
+        GROUP BY u.id
+        ORDER BY job_count DESC
+    """, (f"%{postcode}%", job_id)).fetchall()
+    conn.close()
+    agents = [{"id": r["id"], "name": r["full_name"], "job_count": r["job_count"],
+               "job_refs": r["job_refs"]} for r in rows]
+    return jsonify({"agents": agents, "postcode": postcode})
+
+
+@app.post("/jobs/<int:job_id>/assign")
+@login_required
+@admin_required
+def job_assign_agent(job_id: int):
+    assigned_to = request.form.get("assigned_to_user_id", "").strip()
+    if not assigned_to or not assigned_to.isdigit():
+        return jsonify({"ok": False, "error": "No valid agent specified."}), 400
+    agent_id = int(assigned_to)
+    conn = db()
+    cur = conn.cursor()
+    job = cur.execute("SELECT id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+    agent = cur.execute("SELECT id FROM users WHERE id = ? AND active = 1", (agent_id,)).fetchone()
+    if not agent:
+        conn.close()
+        return jsonify({"ok": False, "error": "Agent not found or inactive."}), 404
+    now = datetime.now().isoformat(timespec="seconds")
+    cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                (agent_id, now, job_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.post("/jobs/<int:job_id>/archive")
