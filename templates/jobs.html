@@ -265,8 +265,8 @@
         </div>
 
         <div style="text-align:right;min-width:90px;flex-shrink:0">
-          <div style="font-size:.76rem;font-weight:500;color:{% if j.assigned_name %}var(--text){% else %}#dc2626{% endif %};margin-bottom:1px">
-            {{ j.assigned_name or 'Unassigned' }}
+          <div style="font-size:.76rem;font-weight:500;color:{% if j.assigned_name %}var(--text){% elif j.status in ('Cancelled','Completed','Invoiced') %}var(--muted){% else %}#dc2626{% endif %};margin-bottom:1px">
+            {% if j.assigned_name %}{{ j.assigned_name }}{% elif j.status in ('Cancelled','Completed','Invoiced') %}—{% else %}Unassigned{% endif %}
           </div>
           {% if j.next_scheduled %}
             {% set is_overdue = j.next_scheduled < now_iso %}

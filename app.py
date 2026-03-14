@@ -2711,7 +2711,7 @@ def dashboard():
 
     jobs_unassigned = 0
     if role in ("admin", "both"):
-        jobs_unassigned = jcount("assigned_user_id IS NULL AND status NOT IN ('Completed','Invoiced','Archived - Invoiced','Cold Stored')")
+        jobs_unassigned = jcount("assigned_user_id IS NULL AND status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')")
 
     agent_subq = """
         COALESCE(
