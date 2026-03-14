@@ -279,6 +279,12 @@
               {% elif j.job_due_date  %}<span class="job-date">Due {{ j.job_due_date }}</span>{% endif %}
               {% if j.asset_reg %}<span class="job-date" style="font-weight:600;color:#6b7280;">{{ j.asset_reg }}</span>{% endif %}
             </div>
+            {% if is_admin and j.assigned_agent_name %}
+            <div style="font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:4px;">
+              <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              {{ j.assigned_agent_name }}
+            </div>
+            {% endif %}
           </div>
           <svg class="job-chev" viewBox="0 0 24 24" width="15" height="15" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
         </div>
@@ -423,7 +429,8 @@ function haversineKm(lat1,lng1,lat2,lng2){
 }
 function fmtDist(km){
   if(km < 1) return Math.round(km*1000)+' m';
-  if(DIST_UNIT==='mi'){ const mi=km*0.621371; return (mi<10?mi.toFixed(1):Math.round(mi))+' mi'; }
+  const unit = (typeof currentDistUnit !== 'undefined') ? currentDistUnit : DIST_UNIT;
+  if(unit==='mi'){ const mi=km*0.621371; return (mi<10?mi.toFixed(1):Math.round(mi))+' mi'; }
   return (km<10?km.toFixed(1):Math.round(km))+' km';
 }
 
@@ -563,6 +570,13 @@ function serverSearch(q){
           addrDiv.textContent = j.job_address;
           main.appendChild(addrDiv);
         }
+        if(IS_ADMIN && j.assigned_agent_name){
+          const agDiv = document.createElement('div');
+          agDiv.style.cssText = 'font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:4px;';
+          agDiv.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+          agDiv.appendChild(document.createTextNode(j.assigned_agent_name));
+          main.appendChild(agDiv);
+        }
         content.appendChild(main);
         inner.appendChild(content);
         a.appendChild(inner);
@@ -607,7 +621,7 @@ setupSeg('seg-sort',     v=>{
   }
 });
 setupSeg('seg-dir',      v=>{ currentDir=v; });
-setupSeg('seg-distunit', v=>{ currentDistUnit=v; });
+setupSeg('seg-distunit', v=>{ currentDistUnit=v; if(agentPos) applyDistances(); });
 
 document.querySelectorAll('.qs-chip').forEach(chip=>{
   chip.addEventListener('click',()=>{

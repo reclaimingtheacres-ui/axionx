@@ -57,78 +57,7 @@
    ═══════════════════════════════════════════ #}
 <div id="tabpanel-detail">
 
-{# ── Quick action bar: REG · VIN · DIRECTIONS (Contact removed — phone is in customer card) ── #}
-{% set _first_asset = assets[0] if assets else None %}
-{% set _has_reg  = _first_asset and _first_asset.reg %}
-{% set _has_vin  = _first_asset and _first_asset.vin %}
 {% set _has_addr = job.job_address %}
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
-
-  {# Reg #}
-  {% if _has_reg %}
-  <button type="button" id="qaBtnReg"
-          onclick="qaReveal('reg','{{ _first_asset.reg | e }}')"
-          style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-                 padding:10px 4px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;
-                 font-size:.7rem;font-weight:700;color:#1d4ed8;cursor:pointer;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h1m11 0h-1M8 14h8"/></svg>
-    REG
-  </button>
-  {% else %}
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-              padding:10px 4px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;
-              font-size:.7rem;font-weight:700;color:#9ca3af;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h1m11 0h-1M8 14h8"/></svg>
-    REG
-  </div>
-  {% endif %}
-
-  {# VIN #}
-  {% if _has_vin %}
-  <button type="button" id="qaBtnVin"
-          onclick="qaReveal('vin','{{ _first_asset.vin | e }}')"
-          style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-                 padding:10px 4px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;
-                 font-size:.7rem;font-weight:700;color:#1d4ed8;cursor:pointer;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-    VIN
-  </button>
-  {% else %}
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-              padding:10px 4px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;
-              font-size:.7rem;font-weight:700;color:#9ca3af;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-    VIN
-  </div>
-  {% endif %}
-
-  {# Directions #}
-  {% if _has_addr %}
-  <button type="button"
-          onclick="document.getElementById('navChooser').style.display='flex'"
-          style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-                 padding:10px 4px;background:#fff;border:1.5px solid #e5e7eb;border-radius:10px;
-                 font-size:.7rem;font-weight:700;color:#1d4ed8;cursor:pointer;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-    DIRECTIONS
-  </button>
-  {% else %}
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
-              padding:10px 4px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:10px;
-              font-size:.7rem;font-weight:700;color:#9ca3af;">
-    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
-    DIRECTIONS
-  </div>
-  {% endif %}
-
-</div>
-
-{# Inline reveal toast for Reg/VIN copy #}
-<div id="qaToast" style="display:none;position:fixed;bottom:calc(24px + env(safe-area-inset-bottom,0px));
-                          left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;
-                          border-radius:10px;padding:10px 18px;font-size:.85rem;font-weight:600;
-                          z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3);">
-</div>
 
 {# ── 1. Customer card: name · address · phone · email · account ── #}
 <div class="m-card" style="margin-bottom:10px;">
@@ -148,10 +77,27 @@
     </div>
     {% endif %}
 
-    {# Address #}
+    {# Assigned Agent (admin view only) #}
+    {% if is_admin and assigned_agent_name %}
+    <div style="margin-bottom:12px;">
+      <div class="m-label">Assigned Agent</div>
+      <div style="font-weight:600;font-size:.9rem;color:var(--text);">{{ assigned_agent_name }}</div>
+    </div>
+    {% endif %}
+
+    {# Address — tappable for navigation #}
     <div style="margin-bottom:12px;">
       <div class="m-label">Address</div>
-      <div style="font-size:.9rem;line-height:1.5;color:var(--text);">{{ job.job_address or '—' }}</div>
+      {% if _has_addr %}
+      <div onclick="document.getElementById('navChooser').style.display='flex'"
+           style="font-size:.9rem;line-height:1.5;color:var(--accent);cursor:pointer;
+                  display:inline-flex;align-items:flex-start;gap:6px;margin-top:2px;">
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" style="flex-shrink:0;margin-top:3px;"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        {{ job.job_address }}
+      </div>
+      {% else %}
+      <div style="font-size:.9rem;line-height:1.5;color:var(--text);">—</div>
+      {% endif %}
     </div>
 
     {# Phone — tappable action sheet (Call / SMS / WhatsApp / Cancel) #}
@@ -179,18 +125,95 @@
     </div>
     {% endif %}
 
-    {# Account Number #}
-    {% if job.account_number %}
+    {# Account Number + Regulation badge #}
+    {% if job.account_number or job.regulation_type %}
     <div>
+      {% if job.account_number %}
       <div class="m-label">Account Number</div>
-      <div style="font-weight:600;font-size:.93rem;">{{ job.account_number }}</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-weight:600;font-size:.93rem;">{{ job.account_number }}</span>
+        {% if job.regulation_type %}
+        {% if job.regulation_type | upper == 'REGULATED' %}
+        <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border:1.5px solid #fca5a5;
+                     border-radius:6px;padding:2px 10px;font-size:.72rem;font-weight:700;letter-spacing:.04em;">REGULATED</span>
+        {% else %}
+        <span style="display:inline-block;background:#dcfce7;color:#166534;border:1.5px solid #86efac;
+                     border-radius:6px;padding:2px 10px;font-size:.72rem;font-weight:700;letter-spacing:.04em;">UNREGULATED</span>
+        {% endif %}
+        {% endif %}
+      </div>
+      {% elif job.regulation_type %}
+      <div style="margin-top:4px;">
+        {% if job.regulation_type | upper == 'REGULATED' %}
+        <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border:1.5px solid #fca5a5;
+                     border-radius:6px;padding:3px 12px;font-size:.78rem;font-weight:700;letter-spacing:.04em;">REGULATED</span>
+        {% else %}
+        <span style="display:inline-block;background:#dcfce7;color:#166534;border:1.5px solid #86efac;
+                     border-radius:6px;padding:3px 12px;font-size:.78rem;font-weight:700;letter-spacing:.04em;">UNREGULATED</span>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
     {% endif %}
 
   </div>
 </div>
 
-{# ── 2. Financial Details card ── #}
+{# ── 2. Vehicle Details card(s) — moved above Financial ── #}
+{% if assets %}
+{% for asset in assets %}
+<div class="m-card" style="margin-bottom:10px;">
+  <div class="m-card-header">Vehicle Details{% if asset.description %}: {{ asset.description }}{% endif %}</div>
+  <div class="m-card-body">
+
+    {% if asset.year or asset.make or asset.model %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">Description</div>
+      <div style="font-weight:600;font-size:.95rem;">{{ [asset.year, asset.make, asset.model] | select | join(' ') }}</div>
+      {% if asset.notes %}<div style="font-size:.8rem;color:var(--muted);margin-top:3px;">{{ asset.notes }}</div>{% endif %}
+    </div>
+    {% elif asset.notes %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">Notes</div>
+      <div style="font-size:.88rem;color:var(--muted);">{{ asset.notes }}</div>
+    </div>
+    {% endif %}
+
+    {% if asset.reg %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">Reg</div>
+      <div style="font-size:1.05rem;font-weight:700;letter-spacing:.04em;">{{ asset.reg }}</div>
+    </div>
+    {% endif %}
+
+    {% if asset.vin %}
+    <div style="margin-bottom:10px;">
+      <div class="m-label">VIN</div>
+      <div style="font-size:.88rem;word-break:break-all;font-family:monospace;">{{ asset.vin }}</div>
+    </div>
+    {% endif %}
+
+    {% set _deliver = asset.deliver_to or job.deliver_to %}
+    {% if _deliver %}
+    <div style="{% if not (asset.reg or asset.vin) %}margin-top:0;{% endif %}">
+      <div class="m-label">Deliver To</div>
+      <div style="font-size:.9rem;line-height:1.45;">{{ _deliver }}</div>
+    </div>
+    {% endif %}
+
+    {% if asset.engine_number %}
+    <div style="margin-top:10px;">
+      <div class="m-label">Engine No.</div>
+      <div style="font-size:.88rem;">{{ asset.engine_number }}</div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{# ── 3. Financial Details card ── #}
 {% if job.lender_name or job.arrears_cents or job.costs_cents or job.mmp_cents or job.job_due_date %}
 {% set _total_due = (job.arrears_cents or 0) + (job.costs_cents or 0) %}
 <div class="m-card" style="margin-bottom:10px;">
@@ -253,63 +276,8 @@
 </div>
 {% endif %}
 
-
-{# ── 3. Vehicle Details card(s) ── #}
-{% if assets %}
-{% for asset in assets %}
-<div class="m-card" style="margin-bottom:10px;">
-  <div class="m-card-header">Vehicle Details{% if asset.description %}: {{ asset.description }}{% endif %}</div>
-  <div class="m-card-body">
-
-    {% if asset.year or asset.make or asset.model %}
-    <div style="margin-bottom:10px;">
-      <div class="m-label">Description</div>
-      <div style="font-weight:600;font-size:.95rem;">{{ [asset.year, asset.make, asset.model] | select | join(' ') }}</div>
-      {% if asset.notes %}<div style="font-size:.8rem;color:var(--muted);margin-top:3px;">{{ asset.notes }}</div>{% endif %}
-    </div>
-    {% elif asset.notes %}
-    <div style="margin-bottom:10px;">
-      <div class="m-label">Notes</div>
-      <div style="font-size:.88rem;color:var(--muted);">{{ asset.notes }}</div>
-    </div>
-    {% endif %}
-
-    {% if asset.reg %}
-    <div style="margin-bottom:10px;">
-      <div class="m-label">Reg</div>
-      <div style="font-size:1.05rem;font-weight:700;letter-spacing:.04em;">{{ asset.reg }}</div>
-    </div>
-    {% endif %}
-
-    {% if asset.vin %}
-    <div style="margin-bottom:10px;">
-      <div class="m-label">VIN</div>
-      <div style="font-size:.88rem;word-break:break-all;font-family:monospace;">{{ asset.vin }}</div>
-    </div>
-    {% endif %}
-
-    {% set _deliver = asset.deliver_to or job.deliver_to %}
-    {% if _deliver %}
-    <div style="{% if not (asset.reg or asset.vin) %}margin-top:0;{% endif %}">
-      <div class="m-label">Deliver To</div>
-      <div style="font-size:.9rem;line-height:1.45;">{{ _deliver }}</div>
-    </div>
-    {% endif %}
-
-    {% if asset.engine_number %}
-    <div style="margin-top:10px;">
-      <div class="m-label">Engine No.</div>
-      <div style="font-size:.88rem;">{{ asset.engine_number }}</div>
-    </div>
-    {% endif %}
-
-  </div>
-</div>
-{% endfor %}
-{% endif %}
-
-{# ── 4. Client / Regulation card ── #}
-{% if client or job.client_job_number or job.regulation_type %}
+{# ── 4. Client card ── #}
+{% if client or job.client_job_number %}
 <div class="m-card" style="margin-bottom:10px;">
   <div class="m-card-body">
     {% if client %}
@@ -319,20 +287,9 @@
     </div>
     {% endif %}
     {% if job.client_job_number %}
-    <div style="margin-bottom:8px;">
+    <div>
       <div class="m-label">Client Ref</div>
       <div style="font-weight:500;font-size:.95rem;">{{ job.client_job_number }}</div>
-    </div>
-    {% endif %}
-    {% if job.regulation_type %}
-    <div style="margin-top:4px;">
-      {% if job.regulation_type | upper == 'REGULATED' %}
-      <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border:2px solid #fca5a5;
-                   border-radius:8px;padding:5px 16px;font-size:.88rem;font-weight:700;letter-spacing:.04em;">REGULATED</span>
-      {% else %}
-      <span style="display:inline-block;background:#f0f9ff;color:#075985;border:2px solid #bae6fd;
-                   border-radius:8px;padding:5px 16px;font-size:.88rem;font-weight:700;letter-spacing:.04em;">UNREGULATED</span>
-      {% endif %}
     </div>
     {% endif %}
   </div>
@@ -587,25 +544,6 @@ function showTab(name) {
   });
 }
 
-function qaReveal(type, value) {
-  var toast = document.getElementById('qaToast');
-  if (!value) return;
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(value).then(function() {
-      toast.textContent = (type === 'reg' ? 'REG' : 'VIN') + ' copied: ' + value;
-      toast.style.display = 'block';
-      setTimeout(function(){ toast.style.display = 'none'; }, 2500);
-    }).catch(function(){ qaFallbackReveal(type, value); });
-  } else {
-    qaFallbackReveal(type, value);
-  }
-}
-function qaFallbackReveal(type, value) {
-  var toast = document.getElementById('qaToast');
-  toast.textContent = (type === 'reg' ? 'REG' : 'VIN') + ': ' + value;
-  toast.style.display = 'block';
-  setTimeout(function(){ toast.style.display = 'none'; }, 3000);
-}
 </script>
 
 {% endblock %}
@@ -764,7 +702,9 @@ function qaFallbackReveal(type, value) {
             style="font-size:.88rem;font-weight:700;color:#111;
                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:10px;"></span>
       <button type="button" onclick="axMobilePreviewClose()"
-              style="background:none;border:0;padding:4px 6px;font-size:1.3rem;color:#6b7280;cursor:pointer;flex-shrink:0;">&#x2715;</button>
+              style="background:#f3f4f6;border:0;padding:8px 10px;font-size:1.1rem;line-height:1;color:#374151;
+                     cursor:pointer;flex-shrink:0;border-radius:8px;min-width:36px;min-height:36px;
+                     display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">&#x2715;</button>
     </div>
     {# Content area #}
     <div id="mFilePreviewBody"

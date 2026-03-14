@@ -64,8 +64,17 @@ Axion Prototype is a Flask-based field operations management application designe
 **2c. Job List (Mobile — Distance Default + Search):**
 - Mobile app defaults to **Distance – Nearest First** sorting when GPS is available.
 - If GPS permission is denied, falls back to Visit Date sort with a warning banner.
-- Distance calculated client-side using Haversine formula with server-assisted batch geocoding for missing coordinates.
+- Distance calculated client-side using Haversine formula with server-assisted batch geocoding for missing coordinates. Distance unit (km/mi) selection updates labels immediately when changed in filter sheet.
 - **Search**: Search icon positioned right-aligned in input. Client-side filter checks ref (display_ref, internal_job_number, client_reference, account_number), customer, address, reg, vin, lender. When query ≥ 2 chars, a debounced server-side search (`GET /m/api/jobs/search?q=`) fetches additional results beyond the 300-job client-side cap, appended below a "additional results from full search" banner. Server search covers all reference fields plus client_job_number. When a search query (`q`) is active, scope/completed/status filters are bypassed so matching jobs are always found.
+- **Assigned agent** (admin view): Each job card shows the assigned agent name below the metadata row when logged in as admin.
+
+**2c2. Job Detail (Mobile — Panel Order):**
+- **Panel order**: Customer → Vehicle Details → Financial Details → Client → Description & Instructions.
+- **Customer card**: Shows customer name, assigned agent (admin view), clickable address (opens navigation chooser with Waze/Google Maps/Apple Maps), phone (tap for call/SMS/WhatsApp), email, account number with inline REGULATED/UNREGULATED badge.
+- **Regulation badge colors**: REGULATED = red (#fee2e2/#b91c1c), UNREGULATED = green (#dcfce7/#166534).
+- **Address navigation**: Address text is tappable (blue, with map icon) and opens the navigation chooser directly. No separate Directions quick-action button.
+- **Quick-action bar removed**: REG/VIN/DIRECTIONS buttons removed from the top of the detail tab. REG and VIN info remain in the Vehicle Details card.
+- **Doc viewer close button**: Enlarged tap target (36×36px min, visible gray background, rounded corners) for reliable iOS touch interaction.
 
 **2d. Add Client Workflow (Import Repair):**
 - Dedicated **Add Client modal** (`#addClientModal`) for linking a missing client to a job — separate from Edit Job.

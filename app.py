@@ -12476,9 +12476,11 @@ def _mobile_jobs_query(uid, role, params_in):
                 AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
-                ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone
+                ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
+               au.full_name AS assigned_agent_name
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users au ON au.id = j.assigned_user_id
         WHERE {where_sql}
         ORDER BY {order_sql}
         LIMIT 300
@@ -12556,9 +12558,11 @@ def m_api_jobs_search():
                 AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
-                ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone
+                ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
+               au.full_name AS assigned_agent_name
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users au ON au.id = j.assigned_user_id
         WHERE {scope_sql}
           AND (j.display_ref LIKE ? OR j.internal_job_number LIKE ? OR
                j.client_reference LIKE ? OR j.job_address LIKE ? OR
@@ -12589,6 +12593,7 @@ def m_api_jobs_search():
             "asset_vin": r["asset_vin"] or "",
             "next_scheduled": r["next_scheduled"] or "",
             "customer_phone": r["customer_phone"] or "",
+            "assigned_agent_name": r["assigned_agent_name"] or "" if is_admin else "",
         })
     return jsonify({"jobs": results})
 
@@ -12689,13 +12694,20 @@ def m_job_detail(job_id):
         "SELECT item_id, status FROM repo_lock_records WHERE job_id=?", (job_id,)
     ).fetchall()
     repo_lock_map = {r["item_id"]: (r["status"] or "Draft") for r in _rl_rows}
+    assigned_agent_name = None
+    if job["assigned_user_id"]:
+        _ag = conn.execute("SELECT full_name FROM users WHERE id=?", (job["assigned_user_id"],)).fetchone()
+        if _ag:
+            assigned_agent_name = _ag["full_name"]
     conn.close()
 
+    is_admin = role in ("admin", "both")
     return render_template("mobile/job_detail.html",
                            job=job, customer=customer, customer_mobile=customer_mobile,
                            client=client, bill_client=bill_client,
                            assets=assets, notes=notes, note_files_map=_note_files_map,
-                           has_draft=has_draft, repo_lock_map=repo_lock_map)
+                           has_draft=has_draft, repo_lock_map=repo_lock_map,
+                           assigned_agent_name=assigned_agent_name, is_admin=is_admin)
 
 
 @app.get("/m/job/<int:job_id>/note/new")
