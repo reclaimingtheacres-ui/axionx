@@ -147,11 +147,11 @@
 </div>
 
 <div id="filter-bar">
-  <button class="date-pill active" data-filter="today">Today</button>
+  <button class="date-pill" data-filter="today">Today</button>
   <button class="date-pill"        data-filter="tomorrow">Tomorrow</button>
   <button class="date-pill"        data-filter="week">Week</button>
   <button class="date-pill"        data-filter="month">Month</button>
-  <button class="date-pill"        data-filter="all">All</button>
+  <button class="date-pill active" data-filter="all">All</button>
   <button class="filter-open-btn" id="filterOpenBtn" onclick="openFilter()">
     <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
     Filter
@@ -298,7 +298,7 @@ var map, agentMarker = null;
 var jobMarkers = {};
 var allJobs = [];
 var agentPos = null;
-var currentFilter = 'today';
+var currentFilter = 'all';
 
 /* ── Filter state ── */
 var filterState = {

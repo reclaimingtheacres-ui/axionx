@@ -115,6 +115,15 @@
 .job-ref  { font-size: .72rem; color: #9ca3af; font-weight: 500; }
 .job-date { font-size: .72rem; color: #9ca3af; }
 .job-dist { font-size: .72rem; font-weight: 700; color: #2563eb; }
+.job-right-col {
+  display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+  gap: 6px; flex-shrink: 0; margin-left: 8px;
+}
+.job-note-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; border-radius: 11px;
+  color: #fff; font-size: .68rem; font-weight: 700; padding: 0 6px;
+}
 .job-chev { flex-shrink: 0; color: #d1d5db; }
 
 /* Filter bottom sheet */
@@ -258,8 +267,14 @@
     </div>
 
     {# ── Main job row ── #}
+    {% set nc = j.note_count|default(0, true) %}
+    {% if nc >= 21 %}{% set nc_color = '#dc2626' %}
+    {% elif nc >= 11 %}{% set nc_color = '#f59e0b' %}
+    {% else %}{% set nc_color = '#2563eb' %}{% endif %}
+
     <a class="job-card"
-       href="{{ url_for('m_job_detail', job_id=j.id) }}">
+       href="{{ url_for('m_job_detail', job_id=j.id) }}"
+       data-note-count="{{ nc }}">
       <div class="job-card-inner">
         <div class="job-status-bar" style="background:{{ bar_color }};"></div>
         <div class="job-inner-content">
@@ -272,11 +287,10 @@
             </div>
             {% if addr %}<div class="job-addr">{{ addr }}</div>{% endif %}
             <div class="job-meta">
-              <span class="job-ref">{{ j.display_ref or j.internal_job_number }}</span>
-              <span class="m-badge m-badge-gray" style="font-size:.62rem;padding:1px 6px;">{{ j.status }}</span>
-              <span class="job-dist hidden" id="dist-{{ j.id }}"></span>
+              <span class="job-ref">{{ j.display_ref or j.internal_job_number }}{% if j.client_reference and j.client_reference not in (j.display_ref or '') %} ({{ j.client_reference }}){% endif %}</span>
+              <span class="job-status-label" style="color:{{ bar_color }};font-size:.72rem;font-weight:700;text-transform:uppercase;">{{ j.status }}</span>
               {% if j.next_scheduled %}<span class="job-date">{{ j.next_scheduled[:10] }}</span>
-              {% elif j.job_due_date  %}<span class="job-date">Due {{ j.job_due_date }}</span>{% endif %}
+              {% elif j.job_due_date  %}<span class="job-date">{{ j.job_due_date }}</span>{% endif %}
               {% if j.asset_reg %}<span class="job-date" style="font-weight:600;color:#6b7280;">{{ j.asset_reg }}</span>{% endif %}
             </div>
             {% if is_admin and j.assigned_agent_name %}
@@ -286,7 +300,13 @@
             </div>
             {% endif %}
           </div>
-          <svg class="job-chev" viewBox="0 0 24 24" width="15" height="15" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          <div class="job-right-col">
+            <span class="job-dist hidden" id="dist-{{ j.id }}"></span>
+            {% if nc > 0 %}
+            <span class="job-note-badge" style="background:{{ nc_color }};">{{ nc }}</span>
+            {% endif %}
+            <svg class="job-chev" viewBox="0 0 24 24" width="15" height="15" stroke="#d1d5db" fill="none" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
         </div>
       </div>
     </a>

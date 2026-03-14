@@ -12520,6 +12520,7 @@ def _mobile_jobs_query(uid, role, params_in):
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
+               (SELECT COUNT(*) FROM job_field_notes fn WHERE fn.job_id = j.id) AS note_count,
                au.full_name AS assigned_agent_name
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id

@@ -81,12 +81,17 @@ Axion Prototype is a Flask-based field operations management application designe
 - Uses **Leaflet.js** with OpenStreetMap tiles (free, no API key required). Replaces prior Google Maps dependency.
 - **Colored pin markers** by job status: green (Active/New/In Progress/Ready), amber (Pending/Hold/Instructed/Awaiting), red (Suspended/Cancelled/Overdue), gray (others). Pins are drop-pin shaped SVGs with white inner circle.
 - **Agent vs Admin scope**: Agents see only their assigned jobs; admins see all jobs. Admin view shows assigned agent name in popup and job list cards.
-- **Date filter pills**: Today (default), Tomorrow, Week, Month, All. Fetches from `/m/api/map/jobs?date_filter=<filter>`.
+- **Date filter pills**: Today, Tomorrow, Week, Month, All (default). Fetches from `/m/api/map/jobs?date_filter=<filter>`.
 - **Job list below map** (GeoOp-style): Sorted by distance from agent (if GPS available). Each card is a tappable row linking to job detail, with: colored left bar matching status, full status text label in color, customer name + client name as bold title, detail line (job type - customer - client), due date and agent (admin), distance top-right in blue, note count badge bottom-right (blue ≤10, amber 11–20, red 21+), right chevron. No separate action buttons.
 - **GPS tracking**: Agent location shown as blue circle marker. Auto-updates based on user GPS preferences. My-location button recentres map.
 - **Popup on pin tap**: Shows job ref, customer, lender, address, distance, due date, agent (admin only). Action buttons: Open Job, Navigate.
-- **Filter sheet** (iOS-style): Triggered by "Filter" button in date pill bar. Bottom sheet with Cancel/Done header, iOS-style segmented controls for: Job Type (Scheduled/Unscheduled/All), Show Completed Jobs for (Day/Week/Month/All), Display Jobs by (Visit Date/Status/Distance/Creation Date), Sorting Order (Ascending/Descending). Applied client-side to both map pins and job list. Filter button highlights blue when non-default filters are active.
+- **Filter sheet** (iOS-style): Triggered by "Filter" button in date pill bar. Bottom sheet with Cancel/Done header, iOS-style segmented controls for: Job Type (Scheduled/Unscheduled/All), Job Assignment Filter (Mine/Everyone — admin only), Show Completed Jobs for (Day/Week/Month/All), Display Jobs by (Visit Date/Status/Distance/Creation Date), Sorting Order (Ascending/Descending). Applied client-side to both map pins and job list. Filter button highlights blue when non-default filters are active.
 - Template: `templates/mobile/map.html`. API: `m_api_map_jobs()` at `/m/api/map/jobs`.
+
+**2c-ii. Mobile Jobs List (`/m/jobs`):**
+- GeoOp-style job cards with: colored left status bar, customer name (bold), address, job ref with client reference, colored status label (matching bar color), due date, asset reg, distance (blue, GPS-dependent), note count badge (blue ≤10, amber 11–20, red 21+), right chevron, agent name (admin only).
+- Query includes `note_count` from `job_field_notes` table.
+- Template: `templates/mobile/jobs.html`. Query: `_mobile_jobs_query()` shared function.
 
 **2d. Add Client Workflow (Import Repair):**
 - Dedicated **Add Client modal** (`#addClientModal`) for linking a missing client to a job — separate from Edit Job.
