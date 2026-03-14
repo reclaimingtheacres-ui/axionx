@@ -185,7 +185,7 @@
   <span>
     <strong id="sort-label">{{ {'visit_date':'Visit Date','status':'Status','created':'Date Added','distance':'Distance'}.get(prefs.sort,'Visit Date') }}</strong>
     · {{ 'Ascending' if prefs.dir == 'asc' else 'Descending' }}
-    {% if prefs.scope != 'all' %}· {{ prefs.scope | title }}{% endif %}
+    {% if prefs.assignment|default('all') == 'mine' %}· Mine{% endif %}
   </span>
   <span id="results-count" style="color:#9ca3af;"></span>
 </div>
@@ -323,35 +323,42 @@
   <div class="filter-body">
     <div class="filter-handle-row"><div class="filter-handle"></div></div>
 
-    {# Scope #}
-    <div class="filter-section-label">Scope</div>
+    {# Job Type #}
+    <div class="filter-section-label">Job Type</div>
     <div class="seg-btns" id="seg-scope">
-      {% for val, label in [('all','All'),('mine','Mine'),('scheduled','Scheduled'),('unscheduled','Unscheduled')] %}
-      <button type="button" class="seg-btn {{ 'sel' if prefs.scope == val }}" data-val="{{ val }}">{{ label }}</button>
+      {% set eff_scope = prefs.scope if prefs.scope in ('all','scheduled','unscheduled') else 'all' %}
+      {% for val, label in [('all','All'),('scheduled','Scheduled'),('unscheduled','Unscheduled')] %}
+      <button type="button" class="seg-btn {{ 'sel' if eff_scope == val }}" data-val="{{ val }}">{{ label }}</button>
       {% endfor %}
     </div>
-    {% if not is_admin %}
-    <div style="font-size:.72rem;color:#9ca3af;margin-top:5px;">Agents are restricted to their own jobs.</div>
+
+    {# Job Assignment Filter (admin only) #}
+    {% if is_admin %}
+    <div class="filter-section-label">Job Assignment Filter</div>
+    <div class="seg-btns" id="seg-assignment">
+      <button type="button" class="seg-btn {{ 'sel' if prefs.assignment|default('all') == 'mine' }}" data-val="mine">Mine</button>
+      <button type="button" class="seg-btn {{ 'sel' if prefs.assignment|default('all') != 'mine' }}" data-val="all">Everyone</button>
+    </div>
     {% endif %}
 
-    {# Completed window #}
-    <div class="filter-section-label">Show Completed</div>
+    {# Show Completed Jobs for #}
+    <div class="filter-section-label">Show Completed Jobs for</div>
     <div class="seg-btns" id="seg-completed">
       {% for val, label in [('none','None'),('day','Today'),('week','Week'),('month','Month'),('all','All')] %}
       <button type="button" class="seg-btn {{ 'sel' if prefs.show_completed == val }}" data-val="{{ val }}">{{ label }}</button>
       {% endfor %}
     </div>
 
-    {# Sort #}
-    <div class="filter-section-label">Sort By</div>
+    {# Display Jobs by #}
+    <div class="filter-section-label">Display Jobs by</div>
     <div class="seg-btns" id="seg-sort">
       {% for val, label in [('visit_date','Visit Date'),('status','Status'),('distance','Distance'),('created','Date Added')] %}
       <button type="button" class="seg-btn {{ 'sel' if prefs.sort == val }}" data-val="{{ val }}">{{ label }}</button>
       {% endfor %}
     </div>
 
-    {# Direction #}
-    <div class="filter-section-label">Direction</div>
+    {# Sorting Order #}
+    <div class="filter-section-label">Sorting Order</div>
     <div class="seg-btns" id="seg-dir">
       <button type="button" class="seg-btn {{ 'sel' if prefs.dir == 'asc' }}"  data-val="asc">Ascending</button>
       <button type="button" class="seg-btn {{ 'sel' if prefs.dir == 'desc' }}" data-val="desc">Descending</button>
@@ -647,19 +654,19 @@ function serverSearch(q){
 }
 
 // ── Filter state ──
-let currentSort      = SORT_PREF;
-let currentDir       = {{ prefs.dir | tojson }};
-let currentScope     = {{ prefs.scope | tojson }};
-let currentCompleted = {{ prefs.show_completed | tojson }};
-let currentDistUnit  = DIST_UNIT;
-let activeStatuses   = new Set();
+let currentSort       = SORT_PREF;
+let currentDir        = {{ prefs.dir | tojson }};
+let currentScope      = {{ prefs.scope | tojson }};
+let currentAssignment = {{ prefs.assignment | default('all') | tojson }};
+let currentCompleted  = {{ prefs.show_completed | tojson }};
+let currentDistUnit   = DIST_UNIT;
+let activeStatuses    = new Set();
 
 function setupSeg(id, onChange){
   const wrap = document.getElementById(id);
   if(!wrap) return;
   wrap.querySelectorAll('.seg-btn').forEach(btn=>{
     btn.addEventListener('click',()=>{
-      if(id==='seg-scope' && !IS_ADMIN && btn.dataset.val!=='mine') return;
       wrap.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('sel'));
       btn.classList.add('sel');
       onChange(btn.dataset.val);
@@ -667,9 +674,10 @@ function setupSeg(id, onChange){
   });
 }
 
-setupSeg('seg-scope',    v=>{ currentScope=v; });
-setupSeg('seg-completed',v=>{ currentCompleted=v; });
-setupSeg('seg-sort',     v=>{
+setupSeg('seg-scope',      v=>{ currentScope=v; });
+setupSeg('seg-assignment', v=>{ currentAssignment=v; });
+setupSeg('seg-completed',  v=>{ currentCompleted=v; });
+setupSeg('seg-sort',       v=>{
   currentSort=v;
   document.getElementById('sort-label').textContent =
     {visit_date:'Visit Date',status:'Status',created:'Date Added',distance:'Distance'}[v]||v;
@@ -753,24 +761,27 @@ document.getElementById('apply-btn').addEventListener('click',()=>{
     headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'XMLHttpRequest'},
     body: new URLSearchParams({
       sort:currentSort, dir:currentDir, scope:currentScope,
+      assignment:currentAssignment,
       show_completed:currentCompleted, distance_unit:currentDistUnit
     })
   });
 });
 
 document.getElementById('reset-btn').addEventListener('click',()=>{
-  currentSort='distance'; currentDir='asc'; currentScope=IS_ADMIN?'all':'mine';
+  currentSort='distance'; currentDir='asc'; currentScope='all';
+  currentAssignment=IS_ADMIN?'all':'mine';
   currentCompleted='week'; activeStatuses.clear();
-  ['seg-scope','seg-completed','seg-sort','seg-dir','seg-distunit'].forEach(id=>{
+  ['seg-scope','seg-assignment','seg-completed','seg-sort','seg-dir','seg-distunit'].forEach(id=>{
     const wrap=document.getElementById(id);
     if(!wrap) return;
     wrap.querySelectorAll('.seg-btn').forEach(b=>{
       b.classList.toggle('sel',
-        (id==='seg-scope'     && b.dataset.val===(IS_ADMIN?'all':'mine')) ||
-        (id==='seg-completed' && b.dataset.val==='week') ||
-        (id==='seg-sort'      && b.dataset.val==='distance') ||
-        (id==='seg-dir'       && b.dataset.val==='asc') ||
-        (id==='seg-distunit'  && b.dataset.val==='km')
+        (id==='seg-scope'      && b.dataset.val==='all') ||
+        (id==='seg-assignment' && b.dataset.val===(IS_ADMIN?'all':'mine')) ||
+        (id==='seg-completed'  && b.dataset.val==='week') ||
+        (id==='seg-sort'       && b.dataset.val==='distance') ||
+        (id==='seg-dir'        && b.dataset.val==='asc') ||
+        (id==='seg-distunit'   && b.dataset.val==='km')
       );
     });
   });

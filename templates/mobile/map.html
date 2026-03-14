@@ -386,7 +386,7 @@ function getFilteredJobs(){
     jobs = jobs.filter(function(j){ return j.agent_id === CURRENT_USER_ID; });
   }
 
-  var completedStatuses = ['completed','closed'];
+  var completedStatuses = ['completed','closed','invoiced'];
   if(f.completed !== 'all'){
     var now = new Date();
     var cutoff;

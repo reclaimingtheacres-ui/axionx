@@ -854,6 +854,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "user_mobile_settings", "quick_status",           "TEXT NOT NULL DEFAULT ''")
     add_column_if_missing(cur, "user_mobile_settings", "mobile_default_view",    "TEXT NOT NULL DEFAULT 'schedule'")
     add_column_if_missing(cur, "user_mobile_settings", "show_status_on_visits",  "INTEGER NOT NULL DEFAULT 1")
+    add_column_if_missing(cur, "user_mobile_settings", "job_assignment",         "TEXT NOT NULL DEFAULT 'all'")
     add_column_if_missing(cur, "job_field_notes",       "note_type",             "TEXT NOT NULL DEFAULT 'text'")
     add_column_if_missing(cur, "job_field_notes",       "audio_filename",        "TEXT")
     add_column_if_missing(cur, "job_field_notes",       "updated_at",            "TEXT")
@@ -12417,31 +12418,32 @@ def _mobile_jobs_query(uid, role, params_in):
 
     sort           = pref_col("sort",       "list_sort",  "distance")
     direction      = pref_col("dir",        "list_dir",   "asc")
-    scope          = pref_col("scope",     "job_scope",      "all" if is_admin else "mine")
+    scope          = pref_col("scope",     "job_scope",      "all")
+    assignment     = pref_col("assignment", "job_assignment", "all" if is_admin else "mine")
     status_filter  = pref("status_filter", "")
     show_completed = pref_col("show_completed", "show_completed", "week")
     q              = params_in.get("q", "").strip()
     distance_unit  = (prefs["distance_unit"] if prefs else None) or "km"
 
-    # Validate
     if sort not in ("visit_date", "status", "created", "distance"):
         sort = "visit_date"
     if direction not in ("asc", "desc"):
         direction = "asc"
     if show_completed not in ("day", "week", "month", "all", "none"):
         show_completed = "week"
+    if scope not in ("all", "scheduled", "unscheduled"):
+        scope = "all"
+    if assignment not in ("mine", "all"):
+        assignment = "all" if is_admin else "mine"
 
     dir_sql = "ASC" if direction == "asc" else "DESC"
 
-    # ── Ownership scope ──
     where_clauses = [f"j.status NOT IN {ARCHIVED_STATUSES!r}"]
     params = []
 
     has_search = bool(q)
 
-    if is_admin and (scope != "mine" or has_search):
-        pass
-    else:
+    if not is_admin or assignment == "mine":
         where_clauses.append(
             "(j.assigned_user_id = ? OR EXISTS ("
             "  SELECT 1 FROM schedules s"
@@ -12451,7 +12453,6 @@ def _mobile_jobs_query(uid, role, params_in):
         )
         params += [uid, uid]
 
-    # ── Scheduled / Unscheduled scope (skip when searching) ──
     if not has_search:
         if scope == "scheduled":
             where_clauses.append(
@@ -12546,6 +12547,7 @@ def _mobile_jobs_query(uid, role, params_in):
 
     prefs_used = {
         "sort": sort, "dir": direction, "scope": scope,
+        "assignment": assignment,
         "status_filter": status_filter, "show_completed": show_completed,
         "distance_unit": distance_unit, "q": q,
     }
@@ -12562,7 +12564,7 @@ def m_jobs():
     role = session.get("role", "")
     params_in = {
         k: request.args.get(k)
-        for k in ("sort", "dir", "scope", "status_filter", "show_completed", "q")
+        for k in ("sort", "dir", "scope", "assignment", "status_filter", "show_completed", "q")
         if request.args.get(k) is not None
     }
     jobs, draft_job_ids, prefs = _mobile_jobs_query(uid, role, params_in)
@@ -12654,20 +12656,22 @@ def m_jobs_prefs_save():
     uid = session.get("user_id")
     sort           = request.form.get("sort", "visit_date")
     direction      = request.form.get("dir", "asc")
-    scope          = request.form.get("scope", "mine")
+    scope          = request.form.get("scope", "all")
+    assignment     = request.form.get("assignment", "all")
     show_completed = request.form.get("show_completed", "week")
     dist_unit      = request.form.get("distance_unit", "km")
     ts = now_ts()
     conn = db()
     conn.execute("""
         INSERT INTO user_mobile_settings
-            (user_id, list_sort, list_dir, job_scope, show_completed, distance_unit, updated_at)
-        VALUES (?,?,?,?,?,?,?)
+            (user_id, list_sort, list_dir, job_scope, job_assignment, show_completed, distance_unit, updated_at)
+        VALUES (?,?,?,?,?,?,?,?)
         ON CONFLICT(user_id) DO UPDATE SET
             list_sort=excluded.list_sort, list_dir=excluded.list_dir,
-            job_scope=excluded.job_scope, show_completed=excluded.show_completed,
+            job_scope=excluded.job_scope, job_assignment=excluded.job_assignment,
+            show_completed=excluded.show_completed,
             distance_unit=excluded.distance_unit, updated_at=excluded.updated_at
-    """, (uid, sort, direction, scope, show_completed, dist_unit, ts))
+    """, (uid, sort, direction, scope, assignment, show_completed, dist_unit, ts))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -13256,7 +13260,7 @@ def _default_prefs():
     return {
         "list_sort": "visit_date", "list_dir": "asc", "distance_unit": "km",
         "gps_foreground": 1, "gps_bg": 0, "gps_interval_mins": 5,
-        "job_scope": "mine", "show_completed": "week",
+        "job_scope": "all", "job_assignment": "all", "show_completed": "week",
         "mobile_default_view": "schedule", "show_status_on_visits": 1,
     }
 
@@ -13282,13 +13286,14 @@ def m_settings_post():
     conn.execute("""
         INSERT INTO user_mobile_settings
             (user_id, list_sort, list_dir, distance_unit, gps_foreground, gps_bg, gps_interval_mins,
-             job_scope, show_completed, mobile_default_view, show_status_on_visits, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             job_scope, job_assignment, show_completed, mobile_default_view, show_status_on_visits, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(user_id) DO UPDATE SET
             list_sort=excluded.list_sort, list_dir=excluded.list_dir,
             distance_unit=excluded.distance_unit, gps_foreground=excluded.gps_foreground,
             gps_bg=excluded.gps_bg, gps_interval_mins=excluded.gps_interval_mins,
-            job_scope=excluded.job_scope, show_completed=excluded.show_completed,
+            job_scope=excluded.job_scope, job_assignment=excluded.job_assignment,
+            show_completed=excluded.show_completed,
             mobile_default_view=excluded.mobile_default_view,
             show_status_on_visits=excluded.show_status_on_visits,
             updated_at=excluded.updated_at
@@ -13300,7 +13305,8 @@ def m_settings_post():
         1 if f.get("gps_foreground") else 0,
         1 if f.get("gps_bg") else 0,
         int(f.get("gps_interval_mins", 5)),
-        f.get("job_scope", "mine"),
+        f.get("job_scope", "all"),
+        f.get("job_assignment", "all"),
         f.get("show_completed", "week"),
         f.get("mobile_default_view", "schedule"),
         1 if f.get("show_status_on_visits") else 0,
