@@ -197,6 +197,16 @@
       </div>
     </div>
 
+    {% if is_admin %}
+    <div class="flt-section">
+      <div class="flt-label">Job Assignment Filter</div>
+      <div class="flt-seg" id="seg-assignment">
+        <button class="flt-seg-btn" data-val="mine">Mine</button>
+        <button class="flt-seg-btn sel" data-val="everyone">Everyone</button>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="flt-section">
       <div class="flt-label">Show Completed Jobs for</div>
       <div class="flt-seg" id="seg-completed">
@@ -241,6 +251,7 @@ var DIST_UNIT    = {{ distance_unit | tojson }};
 var GPS_ENABLED  = {{ gps_foreground | tojson }};
 var GPS_INTERVAL = {{ gps_interval_mins | tojson }} * 60 * 1000;
 var IS_ADMIN     = {{ is_admin | tojson }};
+var CURRENT_USER_ID = {{ current_user_id | tojson }};
 
 var PIN_COLORS = {
   green:  '#16a34a',
@@ -292,6 +303,7 @@ var currentFilter = 'today';
 /* ── Filter state ── */
 var filterState = {
   jobType: 'all',
+  assignment: 'everyone',
   completed: 'day',
   sortBy: 'visit_date',
   sortDir: 'asc'
@@ -368,6 +380,10 @@ function getFilteredJobs(){
     jobs = jobs.filter(function(j){ return j.due_date && j.due_date !== ''; });
   } else if(f.jobType === 'unscheduled'){
     jobs = jobs.filter(function(j){ return !j.due_date || j.due_date === ''; });
+  }
+
+  if(IS_ADMIN && f.assignment === 'mine'){
+    jobs = jobs.filter(function(j){ return j.agent_id === CURRENT_USER_ID; });
   }
 
   var completedStatuses = ['completed','closed'];
@@ -520,6 +536,7 @@ function initSegments(){
 window.openFilter = function(){
   var sheet = document.getElementById('filterSheet');
   setSegVal('seg-jobtype', filterState.jobType);
+  setSegVal('seg-assignment', filterState.assignment);
   setSegVal('seg-completed', filterState.completed);
   setSegVal('seg-sortby', filterState.sortBy);
   setSegVal('seg-sortdir', filterState.sortDir);
@@ -532,6 +549,7 @@ window.closeFilter = function(){
 
 window.applyFilter = function(){
   filterState.jobType   = getSegVal('seg-jobtype');
+  filterState.assignment = getSegVal('seg-assignment') || 'everyone';
   filterState.completed = getSegVal('seg-completed');
   filterState.sortBy    = getSegVal('seg-sortby');
   filterState.sortDir   = getSegVal('seg-sortdir');
@@ -558,7 +576,8 @@ function getSegVal(segId){
 function updateFilterBtnState(){
   var btn = document.getElementById('filterOpenBtn');
   if(!btn) return;
-  var isDefault = filterState.jobType === 'all' && filterState.completed === 'day'
+  var isDefault = filterState.jobType === 'all' && filterState.assignment === 'everyone'
+    && filterState.completed === 'day'
     && filterState.sortBy === 'visit_date' && filterState.sortDir === 'asc';
   btn.classList.toggle('has-filters', !isDefault);
 }

@@ -13438,7 +13438,8 @@ def m_map():
                            distance_unit=distance_unit,
                            gps_foreground=gps_foreground,
                            gps_interval_mins=gps_interval,
-                           is_admin=is_admin)
+                           is_admin=is_admin,
+                           current_user_id=uid)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
