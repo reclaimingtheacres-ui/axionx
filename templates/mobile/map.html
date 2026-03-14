@@ -24,6 +24,15 @@
 }
 .date-pill.active { background: #2563eb; color: #fff; border-color: #2563eb; }
 
+.filter-open-btn {
+  flex-shrink: 0; margin-left: auto;
+  border: 1px solid #e5e7eb; border-radius: 20px;
+  padding: 5px 12px; font-size: .78rem; font-weight: 600; cursor: pointer;
+  background: #f7f8fa; color: #2563eb; display: flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+.filter-open-btn.has-filters { background: #eff6ff; border-color: #bfdbfe; }
+
 #loc-denied-banner {
   display: none; background: #fffbeb; border-bottom: 1px solid #fde68a;
   padding: 8px 14px; font-size: .8rem; color: #d97706; text-align: center;
@@ -91,6 +100,38 @@
 .leaflet-popup-content-wrapper { border-radius: 12px !important; padding: 0 !important; }
 .leaflet-popup-content { margin: 0 !important; }
 .leaflet-popup-close-button { top: 6px !important; right: 8px !important; font-size: 18px !important; }
+
+/* ── Filter bottom sheet ── */
+.flt-sheet {
+  position: fixed; inset: 0; z-index: 600; display: none;
+  flex-direction: column; justify-content: flex-end;
+}
+.flt-sheet.open { display: flex; }
+.flt-backdrop { flex: 1; background: rgba(0,0,0,.45); }
+.flt-body {
+  background: #fff; border-radius: 20px 20px 0 0;
+  padding: 0 20px calc(env(safe-area-inset-bottom,0px) + 20px);
+  max-height: 85dvh; overflow-y: auto;
+}
+.flt-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 0 6px; position: sticky; top: 0; background: #fff; z-index: 1;
+}
+.flt-cancel { font-size: .9rem; font-weight: 500; color: #2563eb; background: none; border: none; cursor: pointer; padding: 4px 0; }
+.flt-title { font-size: 1rem; font-weight: 700; color: #111; }
+.flt-done { font-size: .9rem; font-weight: 700; color: #2563eb; background: none; border: none; cursor: pointer; padding: 4px 0; }
+
+.flt-section { margin-top: 24px; }
+.flt-label { font-size: .95rem; font-weight: 700; color: #111; margin-bottom: 12px; }
+.flt-seg {
+  display: flex; background: #e5e7eb; border-radius: 10px; padding: 3px; gap: 0;
+}
+.flt-seg-btn {
+  flex: 1; text-align: center; padding: 10px 6px; font-size: .82rem; font-weight: 600;
+  cursor: pointer; color: #6b7280; background: transparent; border: none;
+  border-radius: 8px; transition: all .15s; white-space: nowrap;
+}
+.flt-seg-btn.sel { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 </style>
 {% endblock %}
 
@@ -111,6 +152,10 @@
   <button class="date-pill"        data-filter="week">Week</button>
   <button class="date-pill"        data-filter="month">Month</button>
   <button class="date-pill"        data-filter="all">All</button>
+  <button class="filter-open-btn" id="filterOpenBtn" onclick="openFilter()">
+    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+    Filter
+  </button>
 </div>
 
 <div id="map-wrap">
@@ -131,6 +176,55 @@
 
 <div id="job-list">
   <div id="job-list-inner" style="padding-bottom:8px;"></div>
+</div>
+
+{# ── Filter bottom sheet ── #}
+<div class="flt-sheet" id="filterSheet">
+  <div class="flt-backdrop" onclick="closeFilter()"></div>
+  <div class="flt-body">
+    <div class="flt-header">
+      <button class="flt-cancel" onclick="closeFilter()">Cancel</button>
+      <div class="flt-title">Job Filter</div>
+      <button class="flt-done" onclick="applyFilter()">Done</button>
+    </div>
+
+    <div class="flt-section">
+      <div class="flt-label">Job Type</div>
+      <div class="flt-seg" id="seg-jobtype">
+        <button class="flt-seg-btn" data-val="scheduled">Scheduled</button>
+        <button class="flt-seg-btn" data-val="unscheduled">Unscheduled</button>
+        <button class="flt-seg-btn sel" data-val="all">All</button>
+      </div>
+    </div>
+
+    <div class="flt-section">
+      <div class="flt-label">Show Completed Jobs for</div>
+      <div class="flt-seg" id="seg-completed">
+        <button class="flt-seg-btn sel" data-val="day">Day</button>
+        <button class="flt-seg-btn" data-val="week">Week</button>
+        <button class="flt-seg-btn" data-val="month">Month</button>
+        <button class="flt-seg-btn" data-val="all">All</button>
+      </div>
+    </div>
+
+    <div class="flt-section">
+      <div class="flt-label">Display Jobs by</div>
+      <div class="flt-seg" id="seg-sortby">
+        <button class="flt-seg-btn sel" data-val="visit_date">Visit Date</button>
+        <button class="flt-seg-btn" data-val="status">Status</button>
+        <button class="flt-seg-btn" data-val="distance">Distance</button>
+        <button class="flt-seg-btn" data-val="created">Creation Date</button>
+      </div>
+    </div>
+
+    <div class="flt-section" style="margin-bottom:10px;">
+      <div class="flt-label">Sorting Order</div>
+      <div class="flt-seg" id="seg-sortdir">
+        <button class="flt-seg-btn sel" data-val="asc">Ascending</button>
+        <button class="flt-seg-btn" data-val="desc">Descending</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 {% endblock %}
@@ -195,6 +289,14 @@ var allJobs = [];
 var agentPos = null;
 var currentFilter = 'today';
 
+/* ── Filter state ── */
+var filterState = {
+  jobType: 'all',
+  completed: 'day',
+  sortBy: 'visit_date',
+  sortDir: 'asc'
+};
+
 function haversineKm(lat1,lng1,lat2,lng2){
   var R = 6371;
   var dLat = (lat2-lat1)*Math.PI/180;
@@ -257,18 +359,62 @@ function placeJobMarker(job){
   jobMarkers[job.id] = marker;
 }
 
-function renderList(){
-  var inner = document.getElementById('job-list-inner');
-  if(!inner) return;
+/* ── Filter + sort logic ── */
+function getFilteredJobs(){
   var jobs = allJobs.slice();
+  var f = filterState;
 
-  if(agentPos){
+  if(f.jobType === 'scheduled'){
+    jobs = jobs.filter(function(j){ return j.due_date && j.due_date !== ''; });
+  } else if(f.jobType === 'unscheduled'){
+    jobs = jobs.filter(function(j){ return !j.due_date || j.due_date === ''; });
+  }
+
+  var completedStatuses = ['completed','closed'];
+  if(f.completed !== 'all'){
+    var now = new Date();
+    var cutoff;
+    if(f.completed === 'day') cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    else if(f.completed === 'week') cutoff = new Date(now.getTime() - 7*86400000);
+    else if(f.completed === 'month') cutoff = new Date(now.getTime() - 30*86400000);
+    jobs = jobs.filter(function(j){
+      var sl = (j.status||'').toLowerCase();
+      if(completedStatuses.indexOf(sl) === -1) return true;
+      if(!j.due_date) return false;
+      return new Date(j.due_date) >= cutoff;
+    });
+  }
+
+  var dir = f.sortDir === 'desc' ? -1 : 1;
+  if(f.sortBy === 'distance' && agentPos){
     jobs.sort(function(a,b){
       var da = (a.lat && a.lng) ? haversineKm(agentPos.lat,agentPos.lng,a.lat,a.lng) : Infinity;
       var db_ = (b.lat && b.lng) ? haversineKm(agentPos.lat,agentPos.lng,b.lat,b.lng) : Infinity;
-      return da - db_;
+      return (da - db_) * dir;
+    });
+  } else if(f.sortBy === 'status'){
+    jobs.sort(function(a,b){ return ((a.status||'').localeCompare(b.status||'')) * dir; });
+  } else if(f.sortBy === 'created'){
+    jobs.sort(function(a,b){
+      var va = a.created_at || '';
+      var vb = b.created_at || '';
+      return va.localeCompare(vb) * dir;
+    });
+  } else {
+    jobs.sort(function(a,b){
+      var va = a.due_date || 'ZZZZ';
+      var vb = b.due_date || 'ZZZZ';
+      return va.localeCompare(vb) * dir;
     });
   }
+
+  return jobs;
+}
+
+function renderList(){
+  var inner = document.getElementById('job-list-inner');
+  if(!inner) return;
+  var jobs = getFilteredJobs();
 
   var onMap = jobs.filter(function(j){ return j.lat && j.lng; }).length;
   var countEl = document.getElementById('job-count');
@@ -289,7 +435,6 @@ function renderList(){
       ? fmtDist(haversineKm(agentPos.lat,agentPos.lng,job.lat,job.lng))
       : null;
     var color = colorFor(job.status);
-    var statusColor = color;
 
     var titleParts = [];
     if(job.customer) titleParts.push(esc(job.customer));
@@ -315,7 +460,7 @@ function renderList(){
     card.href = '/m/job/' + job.id;
     card.innerHTML = '<div class="jl-bar" style="background:'+color+';"></div>'
       +'<div class="jl-body"><div class="jl-main">'
-      +'<div class="jl-status" style="color:'+statusColor+';">'+esc(job.status)+'</div>'
+      +'<div class="jl-status" style="color:'+color+';">'+esc(job.status)+'</div>'
       +'<div class="jl-title">'+title+'</div>'
       +(detail ? '<div class="jl-detail">'+detail+'</div>' : '')
       +(sub ? '<div class="jl-sub">'+sub+'</div>' : '')
@@ -330,33 +475,95 @@ function renderList(){
   });
 }
 
+function refreshMapMarkers(){
+  Object.keys(jobMarkers).forEach(function(k){ map.removeLayer(jobMarkers[k]); });
+  jobMarkers = {};
+  var jobs = getFilteredJobs();
+  var bounds = [];
+  jobs.forEach(function(job){
+    if(job.lat && job.lng){
+      placeJobMarker(job);
+      bounds.push([job.lat, job.lng]);
+    }
+  });
+  if(map && bounds.length){
+    if(agentPos) bounds.push([agentPos.lat, agentPos.lng]);
+    map.fitBounds(bounds, {padding:[30,30], maxZoom:14});
+  }
+}
+
 function loadJobs(filter){
   fetch('/m/api/map/jobs?date_filter='+filter, {
     headers:{'X-Requested-With':'XMLHttpRequest'}
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
-    Object.keys(jobMarkers).forEach(function(k){ map.removeLayer(jobMarkers[k]); });
-    jobMarkers = {};
     allJobs = data.jobs || [];
-
-    var bounds = [];
-    allJobs.forEach(function(job){
-      if(job.lat && job.lng){
-        placeJobMarker(job);
-        bounds.push([job.lat, job.lng]);
-      }
-    });
-
-    if(map && bounds.length){
-      if(agentPos) bounds.push([agentPos.lat, agentPos.lng]);
-      map.fitBounds(bounds, {padding:[30,30], maxZoom:14});
-    }
+    refreshMapMarkers();
     renderList();
   })
   .catch(function(){ renderList(); });
 }
 
+/* ── Filter sheet logic ── */
+function initSegments(){
+  document.querySelectorAll('.flt-seg').forEach(function(seg){
+    seg.querySelectorAll('.flt-seg-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        seg.querySelectorAll('.flt-seg-btn').forEach(function(b){ b.classList.remove('sel'); });
+        btn.classList.add('sel');
+      });
+    });
+  });
+}
+
+window.openFilter = function(){
+  var sheet = document.getElementById('filterSheet');
+  setSegVal('seg-jobtype', filterState.jobType);
+  setSegVal('seg-completed', filterState.completed);
+  setSegVal('seg-sortby', filterState.sortBy);
+  setSegVal('seg-sortdir', filterState.sortDir);
+  sheet.classList.add('open');
+};
+
+window.closeFilter = function(){
+  document.getElementById('filterSheet').classList.remove('open');
+};
+
+window.applyFilter = function(){
+  filterState.jobType   = getSegVal('seg-jobtype');
+  filterState.completed = getSegVal('seg-completed');
+  filterState.sortBy    = getSegVal('seg-sortby');
+  filterState.sortDir   = getSegVal('seg-sortdir');
+  closeFilter();
+  refreshMapMarkers();
+  renderList();
+  updateFilterBtnState();
+};
+
+function setSegVal(segId, val){
+  var seg = document.getElementById(segId);
+  if(!seg) return;
+  seg.querySelectorAll('.flt-seg-btn').forEach(function(b){
+    b.classList.toggle('sel', b.dataset.val === val);
+  });
+}
+function getSegVal(segId){
+  var seg = document.getElementById(segId);
+  if(!seg) return '';
+  var sel = seg.querySelector('.flt-seg-btn.sel');
+  return sel ? sel.dataset.val : '';
+}
+
+function updateFilterBtnState(){
+  var btn = document.getElementById('filterOpenBtn');
+  if(!btn) return;
+  var isDefault = filterState.jobType === 'all' && filterState.completed === 'day'
+    && filterState.sortBy === 'visit_date' && filterState.sortDir === 'asc';
+  btn.classList.toggle('has-filters', !isDefault);
+}
+
+/* ── GPS tracking ── */
 var firstFix = true;
 function sendLocation(pos){
   var lat = pos.coords.latitude;
@@ -426,6 +633,7 @@ function startGPS(){
   });
 }
 
+/* ── Init map ── */
 map = L.map('leaflet-map', {
   center: [-37.8136, 144.9631],
   zoom: 11,
@@ -462,6 +670,7 @@ if(locBtn){
   });
 }
 
+initSegments();
 loadJobs(currentFilter);
 startGPS();
 

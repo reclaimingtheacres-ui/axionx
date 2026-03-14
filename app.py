@@ -13350,11 +13350,11 @@ def m_api_map_jobs():
     }
     date_sql = f"AND {date_clauses[date_filter]}" if date_filter in date_clauses else ""
 
-    base_where = f"j.status NOT IN ('Closed','Cancelled','Completed') {date_sql}"
+    base_where = f"j.status NOT IN ('Closed','Cancelled') {date_sql}"
 
     conn = db()
     extra_cols = """,
-                   j.job_type,
+                   j.job_type, j.created_at,
                    (SELECT COUNT(*) FROM job_field_notes fn WHERE fn.job_id = j.id) AS note_count,
                    (SELECT 1 FROM job_updates ju
                     WHERE ju.job_id = j.id AND ju.status = 'draft'
@@ -13413,6 +13413,7 @@ def m_api_map_jobs():
             "agent_id":     r["agent_id"],
             "job_type":     r["job_type"] or "",
             "note_count":   r["note_count"] or 0,
+            "created_at":   r["created_at"] or "",
             "has_draft":    bool(r["has_draft"]),
         })
     return jsonify({"jobs": jobs_out, "filter": date_filter})
