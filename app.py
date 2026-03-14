@@ -10573,7 +10573,7 @@ def admin_api_duplicates():
 
     base_sel = """
         SELECT j.id, j.display_ref, j.internal_job_number, j.account_number,
-               j.client_reference, j.lender_name, j.status,
+               j.client_reference, j.client_job_number, j.lender_name, j.status,
                c.name AS client_name,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name,
                         cu.first_name || ' ' || cu.last_name) AS customer_name
@@ -10593,7 +10593,7 @@ def admin_api_duplicates():
             if q:
                 haystack = " ".join(str(r.get(f) or "") for f in
                     ("display_ref", "internal_job_number", "account_number",
-                     "client_reference", "lender_name", "client_name", "customer_name")).lower()
+                     "client_reference", "client_job_number", "lender_name", "client_name", "customer_name")).lower()
                 if q not in haystack:
                     continue
             out.append(r)
@@ -10637,7 +10637,29 @@ def admin_api_duplicates():
                     {"key": v[0]["account_number"].strip(), "match_type": "account_number", "jobs": v}
                 )
 
-    dup_jobs = dup_jobs_by_num + dup_jobs_by_acct
+    # --- Group 3: same client_job_number ---
+    rows_by_cjn = conn.execute(base_sel + """
+        WHERE j.client_job_number IS NOT NULL AND j.client_job_number != ''
+        ORDER BY LOWER(j.client_job_number), j.id
+    """).fetchall()
+
+    cjn_groups = {}
+    for r in _apply_filters(rows_by_cjn):
+        key = (r["client_job_number"] or "").strip().lower()
+        if key:
+            cjn_groups.setdefault(key, []).append(r)
+
+    covered_ids_2 = covered_ids | {j["id"] for grp in dup_jobs_by_acct for j in grp["jobs"]}
+    dup_jobs_by_cjn = []
+    for k, v in cjn_groups.items():
+        if len(v) > 1:
+            uncovered = [j for j in v if j["id"] not in covered_ids_2]
+            if len(uncovered) > 1:
+                dup_jobs_by_cjn.append(
+                    {"key": v[0]["client_job_number"].strip(), "match_type": "client_job_number", "jobs": v}
+                )
+
+    dup_jobs = dup_jobs_by_num + dup_jobs_by_acct + dup_jobs_by_cjn
 
     # --- Duplicate clients: same name ---
     dup_clients_raw = conn.execute("""

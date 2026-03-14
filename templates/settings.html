@@ -419,7 +419,7 @@
       <div class="d-flex align-items-end gap-3 flex-wrap mb-3">
         <div>
           <label class="form-label mb-1" style="font-size:.75rem;font-weight:600">Search</label>
-          <input type="text" id="dupSearchQ" class="form-control form-control-sm" style="width:220px" placeholder="Name, account #, contract..." onkeydown="if(event.key==='Enter'){event.preventDefault();dupScanDB();}">
+          <input type="text" id="dupSearchQ" class="form-control form-control-sm" style="width:220px" placeholder="Name, account #, contract, client job #..." onkeydown="if(event.key==='Enter'){event.preventDefault();dupScanDB();}">
         </div>
         <div>
           <label class="form-label mb-1" style="font-size:.75rem;font-weight:600">Status</label>
@@ -627,7 +627,7 @@ function dupScanDB() {
           var card = document.createElement('div');
           card.className = 'mb-3';
           card.style.cssText = 'border:1px solid var(--line);border-radius:10px;overflow:hidden';
-          var matchLabel = grp.match_type === 'job_number' ? 'JOB #' : 'ACCOUNT';
+          var matchLabel = grp.match_type === 'job_number' ? 'JOB #' : grp.match_type === 'client_job_number' ? 'CLIENT JOB #' : 'ACCOUNT';
           var acctExtra = '';
           if (grp.match_type === 'job_number' && grp.jobs[0] && grp.jobs[0].account_number) {
             acctExtra = ' &nbsp;<span style="font-weight:400;color:var(--muted)">acct: ' + _esc(grp.jobs[0].account_number) + '</span>';
