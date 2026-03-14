@@ -280,16 +280,13 @@
         <div class="job-status-bar" style="background:{{ bar_color }};"></div>
         <div class="job-inner-content">
           <div class="job-main">
+            <div class="job-status-label" style="color:{{ bar_color }};font-size:.72rem;font-weight:700;text-transform:uppercase;margin-bottom:2px;">{{ j.status }}{% if has_draft %} <span class="m-badge m-badge-red" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">DRAFT</span>{% endif %}{% if j.priority == 'Urgent' %} <span class="m-badge m-badge-red" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">{{ j.priority }}</span>{% elif j.priority == 'High' %} <span class="m-badge m-badge-amber" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">{{ j.priority }}</span>{% endif %}</div>
             <div class="job-primary-row">
               <span class="job-customer">{% if j.customer_name and j.customer_name.strip() %}{{ j.customer_name }}{% else %}No customer{% endif %}</span>
-              {% if has_draft %}<span class="m-badge m-badge-red" style="font-size:.62rem;">DRAFT</span>{% endif %}
-              {% if j.priority == 'Urgent' %}<span class="m-badge m-badge-red" style="font-size:.62rem;">{{ j.priority }}</span>
-              {% elif j.priority == 'High' %}<span class="m-badge m-badge-amber" style="font-size:.62rem;">{{ j.priority }}</span>{% endif %}
             </div>
             {% if addr %}<div class="job-addr">{{ addr }}</div>{% endif %}
             <div class="job-meta">
               <span class="job-ref">{{ j.display_ref or j.internal_job_number }}{% if j.client_reference and j.client_reference not in (j.display_ref or '') %} ({{ j.client_reference }}){% endif %}</span>
-              <span class="job-status-label" style="color:{{ bar_color }};font-size:.72rem;font-weight:700;text-transform:uppercase;">{{ j.status }}</span>
               {% if j.next_scheduled %}<span class="job-date">{{ j.next_scheduled[:10] }}</span>
               {% elif j.job_due_date  %}<span class="job-date">{{ j.job_due_date }}</span>{% endif %}
               {% if j.asset_reg %}<span class="job-date" style="font-weight:600;color:#6b7280;">{{ j.asset_reg }}</span>{% endif %}
@@ -590,6 +587,11 @@ function serverSearch(q){
         content.className = 'job-inner-content';
         const main = document.createElement('div');
         main.className = 'job-main';
+        const stLabel = document.createElement('div');
+        stLabel.className = 'job-status-label';
+        stLabel.style.cssText = 'color:'+barColor+';font-size:.72rem;font-weight:700;text-transform:uppercase;margin-bottom:2px;';
+        stLabel.textContent = j.status;
+        main.appendChild(stLabel);
         const custRow = document.createElement('div');
         custRow.className = 'job-primary-row';
         const custSpan = document.createElement('span');
@@ -609,11 +611,6 @@ function serverSearch(q){
         refSpan.className = 'job-ref';
         refSpan.textContent = j.display_ref || j.internal_job_number || '';
         meta.appendChild(refSpan);
-        const stLabel = document.createElement('span');
-        stLabel.className = 'job-status-label';
-        stLabel.style.cssText = 'color:'+barColor+';font-size:.72rem;font-weight:700;text-transform:uppercase;';
-        stLabel.textContent = j.status;
-        meta.appendChild(stLabel);
         if(j.asset_reg){
           const regSpan = document.createElement('span');
           regSpan.className = 'job-date';
