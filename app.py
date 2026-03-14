@@ -11938,7 +11938,7 @@ def api_map_data():
             LEFT JOIN customers cu ON cu.id = j.customer_id
             LEFT JOIN clients   c  ON c.id  = j.client_id
             LEFT JOIN users     ag ON ag.id = j.assigned_user_id
-            WHERE j.status NOT IN ('Closed','Cancelled','Completed')
+            WHERE j.status NOT IN ('Closed','Cancelled','Completed') AND j.status NOT IN {ARCHIVED_STATUSES!r}
               AND j.job_address IS NOT NULL AND j.job_address != ''
             ORDER BY j.updated_at DESC
         """).fetchall()
@@ -11953,7 +11953,7 @@ def api_map_data():
             LEFT JOIN customers cu ON cu.id = j.customer_id
             LEFT JOIN clients   c  ON c.id  = j.client_id
             LEFT JOIN users     ag ON ag.id = j.assigned_user_id
-            WHERE j.status NOT IN ('Closed','Cancelled','Completed')
+            WHERE j.status NOT IN ('Closed','Cancelled','Completed') AND j.status NOT IN {ARCHIVED_STATUSES!r}
               AND j.job_address IS NOT NULL AND j.job_address != ''
               AND j.assigned_user_id = ?
             ORDER BY j.updated_at DESC
@@ -13394,7 +13394,8 @@ def m_api_map_jobs():
     }
     date_sql = f"AND {date_clauses[date_filter]}" if date_filter in date_clauses else ""
 
-    base_where = f"j.status NOT IN ('Closed','Cancelled') {date_sql}"
+    _excluded = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
+    base_where = f"j.status NOT IN {_excluded!r} {date_sql}"
 
     conn = db()
     extra_cols = """,
