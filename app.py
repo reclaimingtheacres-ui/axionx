@@ -12045,8 +12045,10 @@ def _geocode_address(address: str):
     """Geocode an address via Google Geocoding API. Returns (lat, lng) or None."""
     import urllib.request
     import urllib.parse
+    import logging as _log
     api_key = os.getenv("GOOGLE_MAPS_API_KEY", "")
     if not api_key:
+        _log.warning("Geocode skipped: GOOGLE_MAPS_API_KEY not set")
         return None
     try:
         params = urllib.parse.urlencode({
@@ -12059,11 +12061,15 @@ def _geocode_address(address: str):
         with urllib.request.urlopen(req, timeout=8) as resp:
             import json as _json
             data = _json.loads(resp.read())
-        if data.get("status") == "OK" and data.get("results"):
+        status = data.get("status", "UNKNOWN")
+        if status == "OK" and data.get("results"):
             loc = data["results"][0]["geometry"]["location"]
             return float(loc["lat"]), float(loc["lng"])
-    except Exception:
-        pass
+        if status != "ZERO_RESULTS":
+            _log.warning("Geocode API status=%s for address=%r error=%s",
+                         status, address[:60], data.get("error_message", ""))
+    except Exception as e:
+        _log.warning("Geocode exception for address=%r: %s", address[:60], e)
     return None
 
 
@@ -12196,16 +12202,16 @@ def admin_geocode_all():
         _bulk_geocode_status["done"] = 0
         _bulk_geocode_status["updated"] = 0
         _bulk_geocode_status["failed"] = 0
+        _bulk_geocode_status["last_error"] = ""
         try:
             conn = db()
-            _excl = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
-            _ph = ','.join('?' for _ in _excl)
+            conn.execute("UPDATE jobs SET geocode_fail=0 WHERE geocode_fail IS NOT NULL AND geocode_fail > 0 AND (lat IS NULL OR lng IS NULL)")
+            conn.commit()
             pending = conn.execute(
-                f"SELECT id, job_address FROM jobs"
-                f" WHERE job_address IS NOT NULL AND job_address != ''"
-                f"   AND (lat IS NULL OR lng IS NULL)"
-                f"   AND (geocode_fail IS NULL OR geocode_fail < 3)"
-                f" ORDER BY id DESC",
+                "SELECT id, job_address FROM jobs"
+                " WHERE job_address IS NOT NULL AND job_address != ''"
+                "   AND (lat IS NULL OR lng IS NULL)"
+                " ORDER BY id DESC",
                 ()
             ).fetchall()
             conn.close()
@@ -12214,19 +12220,32 @@ def admin_geocode_all():
             _bulk_geocode_status["remaining"] = len(pending)
             _log.info("Bulk geocode started: %d jobs", len(pending))
 
+            api_key = os.getenv("GOOGLE_MAPS_API_KEY", "")
+            if not api_key:
+                _bulk_geocode_status["last_error"] = "GOOGLE_MAPS_API_KEY not set"
+                _log.error("Bulk geocode aborted: GOOGLE_MAPS_API_KEY not set")
+                _bulk_geocode_status["failed"] = len(pending)
+                _bulk_geocode_status["done"] = len(pending)
+                _bulk_geocode_status["remaining"] = 0
+                return
+
+            first_error_logged = False
             for job in pending:
                 result = _geocode_address(job["job_address"])
                 if result:
                     lat, lng = result
                     try:
                         c2 = db()
-                        c2.execute("UPDATE jobs SET lat=?, lng=? WHERE id=?", (lat, lng, job["id"]))
+                        c2.execute("UPDATE jobs SET lat=?, lng=?, geocode_fail=0 WHERE id=?", (lat, lng, job["id"]))
                         c2.commit()
                         c2.close()
                         _bulk_geocode_status["updated"] += 1
                     except Exception:
                         pass
                 else:
+                    if not first_error_logged:
+                        _log.warning("First geocode failure sample — address: %r", job["job_address"][:100])
+                        first_error_logged = True
                     try:
                         c2 = db()
                         c2.execute("UPDATE jobs SET geocode_fail=COALESCE(geocode_fail,0)+1 WHERE id=?", (job["id"],))
@@ -12238,7 +12257,7 @@ def admin_geocode_all():
                 _bulk_geocode_status["done"] += 1
                 _bulk_geocode_status["remaining"] = _bulk_geocode_status["total"] - _bulk_geocode_status["done"]
                 import time as _t
-                _t.sleep(0.02)
+                _t.sleep(0.05)
 
             _log.info("Bulk geocode done: %d updated, %d failed",
                        _bulk_geocode_status["updated"], _bulk_geocode_status["failed"])

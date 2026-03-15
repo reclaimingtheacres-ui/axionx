@@ -436,13 +436,15 @@
         fetch('/admin/geocode-all/progress')
           .then(r=>r.json())
           .then(d=>{
-            prog.textContent = d.done + '/' + d.total + ' done (' + d.updated + ' geocoded, ' + d.failed + ' failed, ' + d.remaining + ' remaining)';
+            var msg = d.done + '/' + d.total + ' done (' + d.updated + ' geocoded, ' + d.failed + ' failed, ' + d.remaining + ' remaining)';
+            if(d.last_error) msg += ' — Error: ' + d.last_error;
+            prog.textContent = msg;
             if(d.running){
               setTimeout(pollGeocodeProgress, 2000);
             } else {
               btn.disabled = false;
               btn.textContent = 'Geocode All Jobs';
-              prog.textContent += ' — Complete!';
+              if(!d.last_error) prog.textContent += ' — Complete!';
             }
           })
           .catch(()=>{ setTimeout(pollGeocodeProgress, 3000); });
