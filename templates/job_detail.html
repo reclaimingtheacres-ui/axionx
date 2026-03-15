@@ -2180,7 +2180,25 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span style="color:var(--muted)">Priority</span>
       <span class="fw-semibold">{{ job.priority }}</span>
       <span style="color:var(--muted)">Internal #</span>
+      {% if session.get('role') in ('admin', 'both') %}
+      <span class="fw-semibold" id="sidebar-ijn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
+            onclick="document.getElementById('sidebar-ijn-edit').style.display='flex';this.style.display='none';">
+        {{ job.internal_job_number }}
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </span>
+      <span></span>
+      <div id="sidebar-ijn-edit" style="display:none;align-items:center;gap:4px">
+        <input type="text" id="sidebar-ijn-input" class="form-control form-control-sm"
+               value="{{ job.internal_job_number }}" placeholder="Internal #"
+               style="font-size:.8rem;padding:2px 6px;height:26px;max-width:140px">
+        <button type="button" class="btn btn-primary btn-sm" style="font-size:.7rem;padding:1px 8px;height:26px"
+                onclick="saveSidebarIJN()">Save</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:1px 6px;height:26px"
+                onclick="document.getElementById('sidebar-ijn-edit').style.display='none';document.getElementById('sidebar-ijn-display').style.display='flex';">Cancel</button>
+      </div>
+      {% else %}
       <span class="fw-semibold">{{ job.internal_job_number }}</span>
+      {% endif %}
       {% if job.client_reference %}
       <span style="color:var(--muted)">Client Ref</span>
       <span class="fw-semibold">{{ job.client_reference }}</span>
@@ -2288,6 +2306,32 @@ document.getElementById('sidebar-cjn-input').addEventListener('keydown', functio
     document.getElementById('sidebar-cjn-display').style.display='flex';
   }
 });
+function saveSidebarIJN(){
+  var input = document.getElementById('sidebar-ijn-input');
+  var val = input.value.trim();
+  if(!val){ alert('Internal job number cannot be empty.'); return; }
+  fetch('/api/jobs/{{ job.id }}/internal-job-number', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body: JSON.stringify({value: val})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.ok){ location.reload(); }
+    else { alert(data.error || 'Error saving.'); }
+  })
+  .catch(function(){ alert('Network error.'); });
+}
+var ijnInput = document.getElementById('sidebar-ijn-input');
+if(ijnInput){
+  ijnInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); saveSidebarIJN(); }
+    if(e.key === 'Escape'){
+      document.getElementById('sidebar-ijn-edit').style.display='none';
+      document.getElementById('sidebar-ijn-display').style.display='flex';
+    }
+  });
+}
 </script>
 
 <script>

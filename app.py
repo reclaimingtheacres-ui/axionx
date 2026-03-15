@@ -5672,6 +5672,34 @@ def job_edit(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+@app.post("/api/jobs/<int:job_id>/internal-job-number")
+@login_required
+@admin_required
+def api_job_internal_number(job_id: int):
+    data = request.get_json(silent=True) or {}
+    val = (data.get("value") or "").strip()
+    if not val:
+        return jsonify({"ok": False, "error": "Internal job number cannot be empty."}), 400
+    now = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    job = cur.execute("SELECT client_reference FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+    display_ref = val
+    if job["client_reference"]:
+        display_ref = f"{val} ({job['client_reference']})"
+    cur.execute("UPDATE jobs SET internal_job_number=?, display_ref=?, updated_at=? WHERE id=?",
+                (val, display_ref, now, job_id))
+    cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (job_id, "System", f"Internal job number changed to '{val}'.", now, now))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "value": val, "display_ref": display_ref})
+
+
 @app.post("/api/jobs/<int:job_id>/client-job-number")
 @login_required
 @admin_required
