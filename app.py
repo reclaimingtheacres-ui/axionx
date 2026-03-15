@@ -3719,10 +3719,10 @@ def _job_create_inner():
             sched_assigned_int = int(sched_user_id) if sched_user_id else None
             cur.execute("""
                 INSERT INTO schedules
-                (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_at, updated_at)
-                VALUES (?, ?, ?, 'Scheduled', ?, ?, ?, ?)
+                (job_id, booking_type_id, scheduled_for, status, notes, assigned_to_user_id, created_at)
+                VALUES (?, ?, ?, 'Scheduled', ?, ?, ?)
             """, (job_id, resolved_sched_bt, sched_dt, sched_notes,
-                  sched_assigned_int, now, now))
+                  sched_assigned_int, now))
             _write_schedule_history(cur, cur.lastrowid, job_id, "created",
                                     new_scheduled_for=sched_dt, new_status="Scheduled",
                                     changed_by_user_id=session.get("user_id"))
