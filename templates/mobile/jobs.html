@@ -45,10 +45,10 @@
 .job-row-wrap {
   position: relative;
   overflow: hidden;
-  border-bottom: 1px solid #efefef;
+  border-bottom: 1px solid #e2e4e8;
   background: #fff;
 }
-.job-row-wrap:first-child { border-top: 1px solid #efefef; }
+.job-row-wrap:first-child { border-top: 1px solid #e2e4e8; }
 
 /* Action tray — sits behind the row, revealed on left swipe */
 .job-actions {
@@ -91,7 +91,7 @@
 /* Row content area */
 .job-inner-content {
   flex: 1; min-width: 0;
-  padding: 12px 14px 12px 12px;
+  padding: 14px 14px 14px 12px;
   display: flex; align-items: center; gap: 10px;
 }
 .job-main { flex: 1; min-width: 0; }
@@ -99,10 +99,10 @@
 /* Info hierarchy */
 .job-primary-row {
   display: flex; align-items: center; gap: 6px;
-  flex-wrap: wrap; margin-bottom: 2px;
+  flex-wrap: wrap; margin-bottom: 3px;
 }
 .job-customer {
-  font-size: .95rem; font-weight: 700; color: #111; line-height: 1.2;
+  font-size: .95rem; font-weight: 700; color: #111; line-height: 1.25;
 }
 .job-addr {
   font-size: .8rem; color: #374151;
@@ -111,6 +111,7 @@
 }
 .job-meta {
   display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  margin-top: 2px;
 }
 .job-ref  { font-size: .72rem; color: #9ca3af; font-weight: 500; }
 .job-date { font-size: .72rem; color: #9ca3af; }
@@ -280,7 +281,7 @@
         <div class="job-status-bar" style="background:{{ bar_color }};"></div>
         <div class="job-inner-content">
           <div class="job-main">
-            <div class="job-status-label" style="color:{{ bar_color }};font-size:.72rem;font-weight:700;text-transform:uppercase;margin-bottom:2px;">{{ j.status }}{% if has_draft %} <span class="m-badge m-badge-red" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">DRAFT</span>{% endif %}{% if j.priority == 'Urgent' %} <span class="m-badge m-badge-red" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">{{ j.priority }}</span>{% elif j.priority == 'High' %} <span class="m-badge m-badge-amber" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">{{ j.priority }}</span>{% endif %}</div>
+            <div class="job-status-label" style="color:{{ bar_color }};font-size:.73rem;font-weight:700;text-transform:uppercase;margin-bottom:3px;">{{ j.status }}{% if has_draft %} <span class="m-badge m-badge-red" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">DRAFT</span>{% endif %}{% if j.priority == 'Urgent' %} <span class="m-badge m-badge-red" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">{{ j.priority }}</span>{% elif j.priority == 'High' %} <span class="m-badge m-badge-amber" style="font-size:.58rem;vertical-align:middle;margin-left:4px;">{{ j.priority }}</span>{% endif %}</div>
             <div class="job-primary-row">
               <span class="job-customer">{% if j.customer_name and j.customer_name.strip() %}{{ j.customer_name }}{% else %}No customer{% endif %}</span>
             </div>
@@ -598,7 +599,7 @@ function serverSearch(q){
         main.className = 'job-main';
         const stLabel = document.createElement('div');
         stLabel.className = 'job-status-label';
-        stLabel.style.cssText = 'color:'+barColor+';font-size:.72rem;font-weight:700;text-transform:uppercase;margin-bottom:2px;';
+        stLabel.style.cssText = 'color:'+barColor+';font-size:.73rem;font-weight:700;text-transform:uppercase;margin-bottom:3px;';
         stLabel.textContent = j.status;
         main.appendChild(stLabel);
         const custRow = document.createElement('div');
