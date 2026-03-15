@@ -83,14 +83,65 @@
   .ax-add-menu .ax-add-sep{border-top:1px solid var(--line);margin:3px 0}
 </style>
 
+{% if session.get('role') in ('admin', 'both') %}
+<style>
+  .ax-agent-tabs{display:flex;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:2px solid var(--line);margin-bottom:0;padding:0 4px}
+  .ax-agent-tabs::-webkit-scrollbar{display:none}
+  .ax-agent-tab{padding:10px 16px;font-size:.78rem;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-2px;text-decoration:none;transition:color .15s,border-color .15s;display:flex;align-items:center;gap:6px}
+  .ax-agent-tab:hover{color:var(--text);text-decoration:none}
+  .ax-agent-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .ax-agent-badge{font-size:.65rem;background:#e2e8f0;color:#64748b;border-radius:10px;padding:1px 6px;font-weight:700;min-width:18px;text-align:center}
+  .ax-agent-tab.active .ax-agent-badge{background:var(--accent);color:#fff}
+  .ax-status-tabs{display:flex;gap:0;padding:0 8px;background:#f8fafc;border-bottom:1px solid var(--line)}
+  .ax-status-tab{padding:8px 14px;font-size:.74rem;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;text-decoration:none;transition:color .15s,border-color .15s}
+  .ax-status-tab:hover{color:var(--text);text-decoration:none}
+  .ax-status-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+</style>
+<div class="ax-card" style="overflow:clip;margin-bottom:12px">
+  <div style="padding:12px 16px 0;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-weight:650;font-size:.95rem">Jobs</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <a class="btn btn-outline-primary btn-sm" href="/route-planner">Route Planner</a>
+      <a class="btn btn-primary btn-sm" href="/jobs/new">+ New Job</a>
+    </div>
+  </div>
+
+  <div class="ax-agent-tabs" style="margin-top:8px">
+    <a class="ax-agent-tab{% if not filter_agent and filter_unassigned != '1' %} active{% endif %}" href="/jobs?status={{ status|urlencode }}&sort={{ sort|urlencode }}&per_page={{ per_page }}">All Agents {% if agent_counts.get('_all') %}<span class="ax-agent-badge">{{ agent_counts._all }}</span>{% endif %}</a>
+    {% for a in agents_list %}
+      <a class="ax-agent-tab{% if filter_agent == a.id|string %} active{% endif %}" href="/jobs?agent_id={{ a.id }}&status={{ status|urlencode }}&sort={{ sort|urlencode }}&per_page={{ per_page }}">{{ a.full_name }} {% if agent_counts.get(a.id|string) %}<span class="ax-agent-badge">{{ agent_counts[a.id|string] }}</span>{% endif %}</a>
+    {% endfor %}
+    {% if agent_counts.get('_unassigned', 0) > 0 %}
+    <a class="ax-agent-tab{% if filter_unassigned == '1' %} active{% endif %}" href="/jobs?unassigned=1&status={{ status|urlencode }}&sort={{ sort|urlencode }}&per_page={{ per_page }}" style="{% if filter_unassigned != '1' %}color:#dc2626{% endif %}">Unassigned <span class="ax-agent-badge" style="{% if filter_unassigned != '1' %}background:#fef2f2;color:#dc2626{% endif %}">{{ agent_counts._unassigned }}</span></a>
+    {% endif %}
+  </div>
+
+  {% set _status_tabs = [('', 'All'), ('New', 'New'), ('Active', 'Active'), ('Suspended', 'Suspended'), ('Awaiting info from client', 'Awaiting Info'), ('Active - Phone work only', 'Phone Only'), ('Completed', 'Completed'), ('Invoiced', 'Invoiced')] %}
+  <div class="ax-status-tabs">
+    {% for sval, slabel in _status_tabs %}
+      <a class="ax-status-tab{% if status == sval %} active{% endif %}"
+         href="/jobs?{% if filter_agent %}agent_id={{ filter_agent }}&{% endif %}{% if filter_unassigned == '1' %}unassigned=1&{% endif %}status={{ sval|urlencode }}&sort={{ sort|urlencode }}&per_page={{ per_page }}">{{ slabel }}</a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="ax-card" style="overflow:clip">
   <div class="jobs-sticky-header">
     <div style="padding:12px 16px 0;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:650;font-size:.95rem">Jobs</span>
+      <span style="font-weight:650;font-size:.95rem">
+        {% if session.get('role') in ('admin', 'both') %}
+          {% if filter_agent %}
+            {% for a in agents_list %}{% if a.id|string == filter_agent %}{{ a.full_name }}{% endif %}{% endfor %}
+          {% elif filter_unassigned == '1' %}Unassigned{% else %}All Agents{% endif %}
+          — {% if status %}{{ status }}{% else %}All Statuses{% endif %}
+        {% else %}Jobs{% endif %}
+      </span>
+      {% if session.get('role') not in ('admin', 'both') %}
       <div style="display:flex;gap:6px;align-items:center">
         <a class="btn btn-outline-primary btn-sm" href="/route-planner">Route Planner</a>
-        {% if session.get('role') in ('admin', 'both') %}<a class="btn btn-primary btn-sm" href="/jobs/new">+ New Job</a>{% endif %}
       </div>
+      {% endif %}
     </div>
 
     {% set has_advanced = filter_client or filter_agent or filter_btype or filter_date_from or filter_date_to %}

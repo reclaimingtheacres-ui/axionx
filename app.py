@@ -3107,6 +3107,25 @@ def jobs_list():
         "SELECT id, name FROM booking_types ORDER BY name"
     ).fetchall()
 
+    agent_counts = {}
+    if role in ("admin", "both"):
+        _active_statuses = "('New','Active','Active - Phone work only','Suspended','Awaiting info from client','Awaiting Instructions')"
+        for ac_row in cur.execute(f"""
+            SELECT j.assigned_user_id AS aid, COUNT(*) AS cnt
+            FROM jobs j
+            WHERE j.status IN {_active_statuses}
+            AND j.assigned_user_id IS NOT NULL
+            GROUP BY j.assigned_user_id
+        """).fetchall():
+            agent_counts[str(ac_row["aid"])] = ac_row["cnt"]
+        unassigned_count = cur.execute(f"""
+            SELECT COUNT(*) FROM jobs
+            WHERE status IN {_active_statuses}
+            AND assigned_user_id IS NULL
+        """).fetchone()[0]
+        agent_counts["_unassigned"] = unassigned_count
+        agent_counts["_all"] = sum(agent_counts.get(str(a["id"]), 0) for a in agents_list) + unassigned_count
+
     conn.close()
 
     statuses = [
@@ -3141,6 +3160,7 @@ def jobs_list():
         total_jobs=total_jobs,
         total_pages=total_pages,
         filter_unassigned=filter_unassigned,
+        agent_counts=agent_counts,
     )
 
 
