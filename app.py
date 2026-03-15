@@ -3432,26 +3432,54 @@ def _job_new_render(conn):
         autofill_confidence   = autofill.get("_confidence") or {}
         autofill_filled_count = autofill.get("_filled_count") or 0
 
-        # ── Client lookup: try lender_name and from_name, multi-word matching ──
-        lender_for_lookup = (autofill.get("lender_name") or autofill.get("from_name") or "").strip()
-        if lender_for_lookup and not new_client_id:
-            words = [w for w in lender_for_lookup.lower().split() if len(w) > 2]
-            if words:
-                # Try progressively shorter word sets for matching
-                client_match = None
-                for word in words[:4]:
-                    candidate = cur.execute(
-                        "SELECT id, name FROM clients WHERE LOWER(name) LIKE ? ORDER BY name LIMIT 1",
-                        (f"%{word}%",)
-                    ).fetchone()
-                    if candidate:
-                        match_lower = candidate["name"].lower()
-                        if any(w in match_lower for w in words[:3]):
-                            client_match = candidate
-                            break
-                if client_match:
-                    autofill_client_id = client_match["id"]
-                    autofill_confidence["lender_name"] = "matched"
+        # ── Client lookup: try multiple sources, multi-strategy matching ──
+        _client_lookup_names = list(filter(None, [
+            (autofill.get("lender_name") or "").strip(),
+            (autofill.get("from_name") or "").strip(),
+            (autofill.get("wise_case_number") and (autofill.get("from_name") or "").strip()),
+        ]))
+        _STOP_WORDS = {"pty", "ltd", "limited", "inc", "the", "and", "of", "for", "group", "australia", "services"}
+        _norm_client = lambda s: re.sub(r'[^a-z0-9 ]', '', s.lower()).strip()
+        if _client_lookup_names and not new_client_id:
+            all_clients = cur.execute(
+                "SELECT id, name, nickname FROM clients ORDER BY name"
+            ).fetchall()
+            client_match = None
+            best_score = 0
+            for lookup_name in _client_lookup_names:
+                if not lookup_name:
+                    continue
+                lookup_lower = _norm_client(lookup_name)
+                words = [w for w in lookup_lower.split() if w not in _STOP_WORDS]
+                all_words = lookup_lower.split()
+                for c in all_clients:
+                    c_name_lower = _norm_client(c["name"] or "")
+                    c_nick_lower = _norm_client(c["nickname"] or "")
+                    score = 0
+                    if c_name_lower and c_name_lower == lookup_lower:
+                        score = 100
+                    elif c_nick_lower and c_nick_lower == lookup_lower:
+                        score = 100
+                    elif c_name_lower and lookup_lower in c_name_lower:
+                        score = 80
+                    elif c_name_lower and c_name_lower in lookup_lower:
+                        score = 80
+                    elif c_nick_lower and (lookup_lower in c_nick_lower or c_nick_lower in lookup_lower):
+                        score = 75
+                    else:
+                        matched_words = sum(1 for w in all_words if len(w) >= 2 and (w in c_name_lower or w in c_nick_lower))
+                        meaningful = sum(1 for w in words if len(w) >= 3 and (w in c_name_lower or w in c_nick_lower))
+                        if matched_words >= 2 and meaningful >= 1:
+                            score = 40 + meaningful * 10
+                        elif len(all_words) == 1 and len(all_words[0]) >= 3:
+                            if all_words[0] in c_name_lower or all_words[0] in c_nick_lower:
+                                score = 50
+                    if score > best_score:
+                        best_score = score
+                        client_match = c
+            if client_match and best_score >= 40:
+                autofill_client_id = client_match["id"]
+                autofill_confidence["lender_name"] = "matched"
 
         # ── Customer lookup: search by name or company ──────────────────────
         autofill_customer_is_new = False
@@ -3465,18 +3493,51 @@ def _job_new_render(conn):
             if search_name:
                 parts = search_name.lower().split()
                 cust_match = None
-                if len(parts) >= 2:
+                _TITLE_TOKENS = {"mr", "mrs", "ms", "miss", "dr", "prof"}
+                parts_clean = [p for p in parts if p.rstrip(".") not in _TITLE_TOKENS]
+                if not parts_clean:
+                    parts_clean = parts
+
+                _norm = lambda s: re.sub(r'[^a-z0-9 ]', '', s.lower()).strip()
+                parts_norm = [_norm(p) for p in parts_clean if _norm(p)]
+                if not parts_norm:
+                    parts_norm = parts_clean
+
+                if len(parts_norm) >= 2:
+                    first_p = parts_norm[0]
+                    last_p = parts_norm[-1]
                     cust_match = cur.execute("""
                         SELECT id, first_name, last_name, company FROM customers
-                        WHERE LOWER(last_name) = ? OR LOWER(company) LIKE ?
+                        WHERE LOWER(last_name) = ? AND LOWER(first_name) LIKE ?
                         ORDER BY last_name LIMIT 1
-                    """, (parts[-1], f"%{parts[-1]}%")).fetchone()
-                if not cust_match and parts:
+                    """, (last_p, f"{first_p}%")).fetchone()
+                    if not cust_match:
+                        candidates = cur.execute("""
+                            SELECT id, first_name, last_name, company FROM customers
+                            WHERE LOWER(last_name) = ?
+                            ORDER BY last_name
+                        """, (last_p,)).fetchall()
+                        if len(candidates) == 1:
+                            cust_match = candidates[0]
+
+                if not cust_match and cust_company:
+                    comp_norm = _norm(cust_company)
+                    if len(comp_norm) >= 4:
+                        cust_match = cur.execute("""
+                            SELECT id, first_name, last_name, company FROM customers
+                            WHERE LOWER(company) LIKE ?
+                            ORDER BY company LIMIT 1
+                        """, (f"%{comp_norm}%",)).fetchone()
+
+                if not cust_match and len(parts_norm) >= 2:
+                    like_first = f"%{parts_norm[0]}%"
+                    like_last = f"%{parts_norm[-1]}%"
                     cust_match = cur.execute("""
                         SELECT id, first_name, last_name, company FROM customers
-                        WHERE LOWER(last_name) LIKE ? OR LOWER(company) LIKE ? OR LOWER(first_name) LIKE ?
+                        WHERE (LOWER(first_name) LIKE ? AND LOWER(last_name) LIKE ?)
                         ORDER BY last_name LIMIT 1
-                    """, (f"%{parts[0]}%", f"%{parts[0]}%", f"%{parts[0]}%")).fetchone()
+                    """, (like_first, like_last)).fetchone()
+
                 if cust_match:
                     autofill_customer_id = cust_match["id"]
                     disp_parts = [cust_match["first_name"] or "", cust_match["last_name"] or ""]
