@@ -275,13 +275,13 @@
     <div class="card-body">
       <p class="small text-muted mb-3">
         Maps GeoOp source/lender names (e.g. "Allied Finance", "VWFS") to AxionX clients.
-        Step 1: Populate the mapping table (creates clients + mappings from known source names).
-        Step 2: Resolve client IDs on staging rows and backfill live jobs.
+        Step 1: Populate the mapping table (source → canonical name, no clients created — assign manually).
+        Step 2: Resolve client IDs on staging rows and backfill live jobs (only where mapping has a client assigned).
       </p>
       <div class="d-flex gap-2 flex-wrap mb-3">
         <form method="post" action="{{ url_for('geoop_populate_source_map') }}" class="m-0">
           <button type="submit" class="btn btn-warning btn-sm"
-                  onclick="if(!confirm('This will create AxionX clients and build the source mapping. Continue?')){event.preventDefault();return;}this.disabled=true;this.textContent='Populating…';this.form.submit();">
+                  onclick="if(!confirm('This will build the source-to-canonical mapping (no clients created). Continue?')){event.preventDefault();return;}this.disabled=true;this.textContent='Populating…';this.form.submit();">
             1. Populate Source Map
           </button>
         </form>

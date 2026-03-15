@@ -560,24 +560,9 @@ def populate_source_client_map(conn=None):
             source_to_canonical[raw] = canon
             canonical_counts[canon] = canonical_counts.get(canon, 0) + row["c"]
 
-    created_clients = 0
-    mapped_sources = 0
+    new_sources = 0
 
     for canon in sorted(canonical_counts.keys()):
-        existing_client = conn.execute(
-            "SELECT id FROM clients WHERE name = ? COLLATE NOCASE", (canon,)
-        ).fetchone()
-        if existing_client:
-            client_id = existing_client["id"]
-        else:
-            cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO clients (name, nickname, email, phone, address, notes, created_at, updated_at)
-                VALUES (?, ?, '', '', '', ?, ?, ?)
-            """, (canon, canon, f"Auto-created from GeoOp source mapping", ts, ts))
-            client_id = cur.lastrowid
-            created_clients += 1
-
         for raw_name, mapped_canon in source_to_canonical.items():
             if mapped_canon == canon:
                 existing_map = conn.execute(
@@ -586,23 +571,22 @@ def populate_source_client_map(conn=None):
                 if not existing_map:
                     conn.execute("""
                         INSERT INTO geoop_source_client_map (source_name, canonical_name, client_id, created_at)
-                        VALUES (?, ?, ?, ?)
-                    """, (raw_name, canon, client_id, ts))
-                    mapped_sources += 1
+                        VALUES (?, ?, NULL, ?)
+                    """, (raw_name, canon, ts))
+                    new_sources += 1
                 else:
                     conn.execute("""
                         UPDATE geoop_source_client_map
-                        SET canonical_name = ?, client_id = ?, updated_at = ?
+                        SET canonical_name = ?, updated_at = ?
                         WHERE id = ?
-                    """, (canon, client_id, ts, existing_map["id"]))
+                    """, (canon, ts, existing_map["id"]))
 
     conn.commit()
     if close:
         conn.close()
 
     return {
-        "created_clients": created_clients,
-        "mapped_sources": mapped_sources,
+        "new_sources": new_sources,
         "canonical_groups": len(canonical_counts),
     }
 
@@ -1754,10 +1738,6 @@ def import_staged_jobs(mode="insert_only", conn=None):
             parsed_client = sj["parsed_client_name"] or ""
             if parsed_client:
                 client_id = _source_map_cache.get(parsed_client)
-            if not client_id and parsed_client:
-                client_id = _match_client(conn, parsed_client)
-            if not client_id and sj["company"]:
-                client_id = _match_client(conn, sj["company"])
 
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
@@ -2020,10 +2000,6 @@ def import_staged_jobs_range(ref_start, ref_end, conn=None):
             parsed_client = sj["parsed_client_name"] or ""
             if parsed_client:
                 client_id = _source_map_cache.get(parsed_client)
-            if not client_id and parsed_client:
-                client_id = _match_client(conn, parsed_client)
-            if not client_id and sj["company"]:
-                client_id = _match_client(conn, sj["company"])
 
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
@@ -4032,6 +4008,11 @@ def backfill_client_links(run_id=None):
 
             stats["batch_number"] += 1
 
+            if stats["batch_number"] == 1:
+                _scm_rows = conn.execute("SELECT source_name, client_id FROM geoop_source_client_map WHERE client_id IS NOT NULL").fetchall()
+                backfill_client_links._scm = {r["source_name"]: r["client_id"] for r in _scm_rows}
+            _scm = backfill_client_links._scm
+
             for row in batch:
                 stats["jobs_processed"] += 1
                 last_id = row["id"]
@@ -4043,7 +4024,7 @@ def backfill_client_links(run_id=None):
 
                     if row["lender_name"]:
                         source_name = row["lender_name"]
-                        client_id = _match_client(conn, source_name)
+                        client_id = _scm.get(source_name)
 
                     if not client_id:
                         raw_desc = row["geoop_source_description"] or row["description"] or ""
@@ -4052,7 +4033,7 @@ def backfill_client_links(run_id=None):
                             pn = parsed.get("parsed_client_name")
                             if pn:
                                 source_name = pn
-                                client_id = _match_client(conn, pn)
+                                client_id = _scm.get(pn)
 
                     if client_id:
                         conn.execute(

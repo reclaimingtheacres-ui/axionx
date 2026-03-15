@@ -10289,9 +10289,9 @@ def geoop_populate_source_map():
     try:
         result = _geoop.populate_source_client_map(conn)
         flash(
-            f"Source map populated: {result['created_clients']} clients created, "
-            f"{result['mapped_sources']} source names mapped across "
-            f"{result['canonical_groups']} groups.",
+            f"Source map populated: {result['new_sources']} new source names mapped across "
+            f"{result['canonical_groups']} canonical groups. "
+            f"Client IDs remain unassigned until manually mapped.",
             "success"
         )
     except Exception as e:
