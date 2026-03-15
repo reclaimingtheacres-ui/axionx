@@ -98,6 +98,22 @@
     border-radius: 4px; padding: 1px 5px;
     margin-left: 4px;
   }
+  .msg-conv-wrap { position: relative; }
+  .msg-conv-wrap:hover .msg-conv-del { opacity: 1; }
+  .msg-conv-del {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: #fee2e2; color: #dc2626; border: none; border-radius: 6px;
+    width: 24px; height: 24px; font-size: 1.1rem; line-height: 1;
+    cursor: pointer; opacity: 0; transition: opacity .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .msg-conv-del:hover { background: #fca5a5; }
+  .msg-filter-btn {
+    padding: 3px 10px; border-radius: 6px; border: 1px solid var(--line);
+    background: #fff; font-size: .72rem; font-weight: 700; color: var(--muted);
+    cursor: pointer; white-space: nowrap;
+  }
+  .msg-filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .msg-main {
     display: flex; align-items: center; justify-content: center;
     background: var(--panel2);
@@ -138,30 +154,38 @@
   <div class="msg-sidebar">
     <div class="msg-sidebar-head">
       <span class="msg-sidebar-title">Conversations</span>
-      <button class="msg-new-btn" onclick="openNewMsg()">+ New</button>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="msg-filter-btn active" data-filter="all" onclick="msgFilter('all')" title="Show all">All</button>
+        <button class="msg-filter-btn" data-filter="unread" onclick="msgFilter('unread')" title="Unread only">Unread</button>
+        <button class="msg-mark-all-btn" onclick="msgMarkAllRead()" title="Mark all read" style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:.7rem;font-weight:700;cursor:pointer;white-space:nowrap">All Read</button>
+        <button class="msg-new-btn" onclick="openNewMsg()">+ New</button>
+      </div>
     </div>
     <div class="msg-conv-list">
       {% if convs %}
         {% for c in convs %}
           {% set other_name = c.others[0].full_name if c.others else 'Unknown' %}
           {% set initials = (other_name.split()[0][0] + (other_name.split()[-1][0] if other_name.split()|length > 1 else ''))|upper %}
-          <a href="{{ url_for('message_thread', conv_id=c.id) }}" class="msg-conv-item">
-            <div class="msg-avatar">{{ initials }}</div>
-            <div class="msg-conv-body">
-              <div class="msg-conv-name">
-                {{ other_name }}{% if c.type == 'job' and c.job_ref %}<span class="msg-job-tag">{{ c.job_ref }}</span>{% endif %}
+          <div class="msg-conv-wrap" data-conv-id="{{ c.id }}" data-unread="{{ c.unread }}">
+            <a href="{{ url_for('message_thread', conv_id=c.id) }}" class="msg-conv-item">
+              <div class="msg-avatar">{{ initials }}</div>
+              <div class="msg-conv-body">
+                <div class="msg-conv-name">
+                  {{ other_name }}{% if c.type == 'job' and c.job_ref %}<span class="msg-job-tag">{{ c.job_ref }}</span>{% endif %}
+                </div>
+                <div class="msg-conv-preview">
+                  {% if c.last_msg %}{{ c.last_msg.body[:60] }}{% else %}<em>No messages yet</em>{% endif %}
+                </div>
               </div>
-              <div class="msg-conv-preview">
-                {% if c.last_msg %}{{ c.last_msg.body[:60] }}{% else %}<em>No messages yet</em>{% endif %}
+              <div class="msg-conv-meta">
+                <span class="msg-conv-time">
+                  {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
+                </span>
+                {% if c.unread > 0 %}<span class="msg-unread-badge">{{ c.unread }}</span>{% endif %}
               </div>
-            </div>
-            <div class="msg-conv-meta">
-              <span class="msg-conv-time">
-                {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
-              </span>
-              {% if c.unread > 0 %}<span class="msg-unread-badge">{{ c.unread }}</span>{% endif %}
-            </div>
-          </a>
+            </a>
+            <button class="msg-conv-del" onclick="msgDeleteConv({{ c.id }},this)" title="Delete conversation">&times;</button>
+          </div>
         {% endfor %}
       {% else %}
         <div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:.88rem;">
@@ -286,5 +310,43 @@ document.addEventListener('click', function(e) {
   var res = document.getElementById('nm_job_results');
   if (res && !res.contains(e.target)) res.style.display = 'none';
 });
+
+function msgFilter(mode) {
+  document.querySelectorAll('.msg-filter-btn').forEach(function(b){
+    b.classList.toggle('active', b.getAttribute('data-filter') === mode);
+  });
+  document.querySelectorAll('.msg-conv-wrap').forEach(function(row){
+    if (mode === 'unread') {
+      row.style.display = parseInt(row.getAttribute('data-unread')) > 0 ? '' : 'none';
+    } else {
+      row.style.display = '';
+    }
+  });
+}
+
+function msgMarkAllRead() {
+  fetch('/messages/mark-all-read', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(){
+      document.querySelectorAll('.msg-unread-badge').forEach(function(el){ el.remove(); });
+      document.querySelectorAll('.msg-conv-wrap').forEach(function(row){ row.setAttribute('data-unread','0'); });
+    });
+}
+
+function msgDeleteConv(convId, btn) {
+  if (!confirm('Delete this conversation?')) return;
+  fetch('/messages/' + convId, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.ok) {
+        var wrap = btn.closest('.msg-conv-wrap');
+        wrap.style.transition = 'opacity .2s,max-height .2s';
+        wrap.style.opacity = '0';
+        wrap.style.maxHeight = '0';
+        wrap.style.overflow = 'hidden';
+        setTimeout(function(){ wrap.remove(); }, 250);
+      }
+    });
+}
 </script>
 {% endblock %}

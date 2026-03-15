@@ -19444,6 +19444,55 @@ def messages_mark_read(conv_id):
     return jsonify({"ok": True})
 
 
+@app.post("/messages/mark-all-read")
+@login_required
+def messages_mark_all_read():
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    convs = conn.execute(
+        "SELECT conversation_id FROM conversation_participants WHERE user_id=?", (uid,)
+    ).fetchall()
+    for c in convs:
+        _mark_conv_read(conn, c["conversation_id"], uid)
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/messages/<int:conv_id>")
+@login_required
+def messages_delete_conv(conv_id):
+    uid = session.get("user_id")
+    conn = db()
+    _ensure_msg_tables(conn)
+    part = conn.execute(
+        "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+        (conv_id, uid)
+    ).fetchone()
+    if not part:
+        conn.close()
+        return jsonify(error="Not found"), 404
+    conn.execute(
+        "DELETE FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+        (conv_id, uid)
+    )
+    conn.execute(
+        "DELETE FROM message_reads WHERE user_id=? AND message_id IN (SELECT id FROM messages WHERE conversation_id=?)",
+        (uid, conv_id)
+    )
+    remaining = conn.execute(
+        "SELECT COUNT(*) c FROM conversation_participants WHERE conversation_id=?",
+        (conv_id,)
+    ).fetchone()["c"]
+    if remaining == 0:
+        conn.execute("DELETE FROM message_reads WHERE message_id IN (SELECT id FROM messages WHERE conversation_id=?)", (conv_id,))
+        conn.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
+        conn.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True)
+
+
 # ── Mobile messaging routes ────────────────────────────────────────────────────
 
 @app.get("/m/messages")

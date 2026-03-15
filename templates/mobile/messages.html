@@ -28,6 +28,23 @@
   .mc-unread { width:10px;height:10px;background:var(--accent);border-radius:50%;margin-right:2px; }
   .mc-unread-num { background:var(--accent);color:#fff;font-size:.65rem;font-weight:800;border-radius:10px;padding:1px 6px;min-width:18px;text-align:center; }
 
+  .mc-row-wrap {
+    position:relative;overflow:hidden;
+  }
+  .mc-delete-btn {
+    position:absolute;right:0;top:0;bottom:0;width:72px;
+    background:#ef4444;color:#fff;border:none;font-size:.82rem;font-weight:700;
+    cursor:pointer;transform:translateX(100%);transition:transform .2s ease;
+  }
+  .mc-row-wrap.show-delete .mc-delete-btn { transform:translateX(0); }
+  .mc-row-wrap.show-delete .mc-row { transform:translateX(-72px);transition:transform .2s ease; }
+
+  .mc-filter-btn {
+    padding:6px 14px;border-radius:8px;border:1px solid var(--line);
+    background:#fff;font-size:.78rem;font-weight:700;color:var(--muted);cursor:pointer;
+  }
+  .mc-filter-btn.active { background:var(--accent);color:#fff;border-color:var(--accent); }
+
   .mc-empty {
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     padding:60px 24px;color:var(--muted);text-align:center;gap:10px;
@@ -80,46 +97,59 @@
 
 {% block header_title %}Messages{% endblock %}
 {% block header_right %}
-<button class="mc-compose-btn-header" onclick="openCompose()" aria-label="New message">
-  <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.2"
-       stroke-linecap="round" stroke-linejoin="round">
-    <path d="M12 20h9"/>
-    <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-  </svg>
-</button>
+<div style="display:flex;gap:6px;align-items:center">
+  <button class="mc-compose-btn-header" onclick="mcMarkAllRead()" aria-label="Mark all read" style="background:#10b981">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </button>
+  <button class="mc-compose-btn-header" onclick="openCompose()" aria-label="New message">
+    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.2"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+    </svg>
+  </button>
+</div>
 {% endblock %}
 
 {% block content %}
 
+<div style="display:flex;gap:6px;padding:10px 16px 6px;background:#fff;border-bottom:1px solid var(--line)">
+  <button class="mc-filter-btn active" data-filter="all" onclick="mcFilter('all')">All</button>
+  <button class="mc-filter-btn" data-filter="unread" onclick="mcFilter('unread')">Unread</button>
+</div>
+
 {% if convs %}
-  <div class="mc-list">
+  <div class="mc-list" id="mc-conv-list">
     {% for c in convs %}
       {% set other_name = c.others[0].full_name if c.others else 'Unknown' %}
       {% set parts = other_name.split() %}
       {% set initials = (parts[0][0] + (parts[-1][0] if parts|length > 1 else ''))|upper %}
-      <a href="{{ url_for('m_message_thread', conv_id=c.id) }}" class="mc-row">
-        <div class="mc-avatar">{{ initials }}</div>
-        <div class="mc-body">
-          <div class="mc-name">
-            {{ other_name }}{% if c.type == 'job' and c.job_ref %}<span class="mc-job-tag">{{ c.job_ref }}</span>{% endif %}
+      <div class="mc-row-wrap" data-conv-id="{{ c.id }}" data-unread="{{ c.unread }}">
+        <a href="{{ url_for('m_message_thread', conv_id=c.id) }}" class="mc-row">
+          <div class="mc-avatar">{{ initials }}</div>
+          <div class="mc-body">
+            <div class="mc-name">
+              {{ other_name }}{% if c.type == 'job' and c.job_ref %}<span class="mc-job-tag">{{ c.job_ref }}</span>{% endif %}
+            </div>
+            <div class="mc-preview">
+              {% if c.last_msg %}
+                {% if c.last_msg.sender_name %}{{ c.last_msg.sender_name.split()[0] }}: {% endif %}{{ c.last_msg.body[:50] }}
+              {% else %}
+                <em style="color:var(--muted)">No messages yet</em>
+              {% endif %}
+            </div>
           </div>
-          <div class="mc-preview">
-            {% if c.last_msg %}
-              {% if c.last_msg.sender_name %}{{ c.last_msg.sender_name.split()[0] }}: {% endif %}{{ c.last_msg.body[:50] }}
-            {% else %}
-              <em style="color:var(--muted)">No messages yet</em>
+          <div class="mc-meta">
+            <span class="mc-time">
+              {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
+            </span>
+            {% if c.unread > 0 %}
+              <span class="mc-unread-num">{{ c.unread }}</span>
             {% endif %}
           </div>
-        </div>
-        <div class="mc-meta">
-          <span class="mc-time">
-            {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
-          </span>
-          {% if c.unread > 0 %}
-            <span class="mc-unread-num">{{ c.unread }}</span>
-          {% endif %}
-        </div>
-      </a>
+        </a>
+        <button class="mc-delete-btn" onclick="mcDeleteConv({{ c.id }},this)">Delete</button>
+      </div>
     {% endfor %}
   </div>
 {% else %}
@@ -169,6 +199,77 @@ function openCompose() {
 function closeCompose() {
   document.getElementById('composeOverlay').classList.remove('open');
 }
+
+function mcFilter(mode) {
+  document.querySelectorAll('.mc-filter-btn').forEach(function(b){
+    b.classList.toggle('active', b.getAttribute('data-filter') === mode);
+  });
+  document.querySelectorAll('.mc-row-wrap').forEach(function(row){
+    if (mode === 'unread') {
+      row.style.display = parseInt(row.getAttribute('data-unread')) > 0 ? '' : 'none';
+    } else {
+      row.style.display = '';
+    }
+  });
+}
+
+function mcMarkAllRead() {
+  fetch('/messages/mark-all-read', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(){
+      document.querySelectorAll('.mc-unread-num').forEach(function(el){ el.remove(); });
+      document.querySelectorAll('.mc-row-wrap').forEach(function(row){ row.setAttribute('data-unread','0'); });
+    });
+}
+
+function mcDeleteConv(convId, btn) {
+  if (!confirm('Delete this conversation?')) return;
+  fetch('/messages/' + convId, {method:'DELETE', headers:{'X-Requested-With':'XMLHttpRequest'}})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.ok) {
+        var wrap = btn.closest('.mc-row-wrap');
+        wrap.style.transition = 'opacity .2s,max-height .2s';
+        wrap.style.opacity = '0';
+        wrap.style.maxHeight = '0';
+        wrap.style.overflow = 'hidden';
+        setTimeout(function(){ wrap.remove(); }, 250);
+      }
+    });
+}
+
+(function(){
+  var startX = 0, startY = 0, currentWrap = null, locked = null;
+  document.addEventListener('touchstart', function(e){
+    var wrap = e.target.closest('.mc-row-wrap');
+    if (!wrap) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    currentWrap = wrap;
+    locked = null;
+  }, {passive:true});
+  document.addEventListener('touchmove', function(e){
+    if (!currentWrap || locked) return;
+    var dx = Math.abs(e.touches[0].clientX - startX);
+    var dy = Math.abs(e.touches[0].clientY - startY);
+    if (dy > 10 && dy > dx) { currentWrap = null; locked = 'v'; }
+    else if (dx > 10 && dx > dy) { locked = 'h'; }
+  }, {passive:true});
+  document.addEventListener('touchend', function(e){
+    if (!currentWrap || locked !== 'h') { currentWrap = null; return; }
+    var endX = e.changedTouches[0].clientX;
+    var diff = startX - endX;
+    document.querySelectorAll('.mc-row-wrap.show-delete').forEach(function(w){
+      if (w !== currentWrap) w.classList.remove('show-delete');
+    });
+    if (diff > 60) {
+      currentWrap.classList.add('show-delete');
+    } else if (diff < -30) {
+      currentWrap.classList.remove('show-delete');
+    }
+    currentWrap = null;
+  }, {passive:true});
+})();
 
 var _mjTimer = null;
 function mFilterJobs(val) {
