@@ -3592,6 +3592,16 @@ def _job_new_render(conn):
 @login_required
 @admin_required
 def job_create():
+    try:
+        return _job_create_inner()
+    except Exception as exc:
+        import logging as _log, traceback as _tb
+        _log.error("job_create failed: %s\n%s", exc, _tb.format_exc())
+        flash(f"Error creating job: {exc}", "danger")
+        return redirect(request.url)
+
+
+def _job_create_inner():
     internal_job_number = generate_internal_job_number()
     client_reference = request.form.get("client_reference", "").strip()
     client_job_number = request.form.get("client_job_number", "").strip() or None
