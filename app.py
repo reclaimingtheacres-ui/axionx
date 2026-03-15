@@ -3623,6 +3623,7 @@ def _job_create_inner():
     costs_cents = money_to_cents(request.form.get("costs"))
     mmp_cents = money_to_cents(request.form.get("mmp"))
     job_due_date = request.form.get("job_due_date", "").strip() or None
+    payment_frequency = request.form.get("payment_frequency", "").strip() or None
 
     display_ref = internal_job_number
     if client_reference:
@@ -3639,17 +3640,17 @@ def _job_create_inner():
             job_type, visit_type, status, priority,
             job_address, description, deliver_to,
             lender_name, account_number, regulation_type,
-            arrears_cents, costs_cents, mmp_cents, job_due_date,
+            arrears_cents, costs_cents, mmp_cents, job_due_date, payment_frequency,
             created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         internal_job_number, client_reference or None, client_job_number, display_ref,
         client_id, customer_id, bill_to_client_id, assigned_user_id,
         job_type, visit_type, status, priority,
         job_address, description, deliver_to,
         lender_name or None, account_number or None, regulation_type or None,
-        arrears_cents or None, costs_cents or None, mmp_cents or None, job_due_date,
+        arrears_cents or None, costs_cents or None, mmp_cents or None, job_due_date, payment_frequency,
         now, now
     ))
     job_id = cur.lastrowid

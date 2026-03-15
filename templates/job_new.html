@@ -398,6 +398,16 @@
             <label class="nj-lbl">Due Date</label>
             <input class="form-control form-control-sm" type="date" name="job_due_date">
           </div>
+          <div style="flex:1;">
+            <label class="nj-lbl">Payment Frequency</label>
+            {% set pf = (autofill.payment_frequency if autofill else '') or '' %}
+            <select class="form-select form-select-sm" name="payment_frequency" id="payment_frequency">
+              <option value="">—</option>
+              {% for freq in ['Monthly','Fortnightly','Weekly'] %}
+                <option value="{{ freq }}" {% if pf == freq %}selected{% endif %}>{{ freq }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -1091,6 +1101,7 @@ function toggleParsed(btn) {
     setInput('costs', d.costs);
     setInput('mmp', d.mmp);
     setInput('job_due_date', d.job_due_date);
+    setSelect('payment_frequency', d.payment_frequency);
 
     if (d.assets && d.assets.length) {
       var wrap = document.getElementById('assetsWrap');
