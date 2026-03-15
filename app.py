@@ -10282,6 +10282,91 @@ def geoop_unmatched_csv(run_id):
     )
 
 
+@app.post("/admin/geoop-import/populate-source-map")
+@geoop_required
+def geoop_populate_source_map():
+    conn = db()
+    try:
+        result = _geoop.populate_source_client_map(conn)
+        flash(
+            f"Source map populated: {result['created_clients']} clients created, "
+            f"{result['mapped_sources']} source names mapped across "
+            f"{result['canonical_groups']} groups.",
+            "success"
+        )
+    except Exception as e:
+        flash(f"Source map population failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.post("/admin/geoop-import/resolve-client-ids")
+@geoop_required
+def geoop_resolve_client_ids():
+    conn = db()
+    try:
+        resolve_result = _geoop.resolve_staging_client_ids(conn)
+        backfill_result = _geoop.backfill_job_client_ids(conn)
+        flash(
+            f"Client IDs resolved: {resolve_result['updated']} staging rows updated, "
+            f"{backfill_result['backfilled']} live jobs backfilled.",
+            "success"
+        )
+    except Exception as e:
+        flash(f"Client ID resolution failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/source-map")
+@geoop_required
+def geoop_source_map_view():
+    conn = db()
+    _geoop.ensure_staging_tables(conn)
+    mapping = conn.execute("""
+        SELECT m.id, m.source_name, m.canonical_name, m.client_id,
+               c.name AS client_name,
+               (SELECT COUNT(*) FROM geoop_staging_jobs sj WHERE sj.parsed_client_name = m.source_name) AS job_count
+        FROM geoop_source_client_map m
+        LEFT JOIN clients c ON c.id = m.client_id
+        ORDER BY m.canonical_name, m.source_name
+    """).fetchall()
+    clients = conn.execute("SELECT id, name FROM clients ORDER BY name").fetchall()
+    stats = {
+        "total_mapped": len(mapping),
+        "total_clients": len(clients),
+        "unassigned_jobs": conn.execute("""
+            SELECT COUNT(*) c FROM jobs
+            WHERE (client_id IS NULL OR client_id = 0)
+            AND geoop_job_id IS NOT NULL
+        """).fetchone()["c"],
+    }
+    conn.close()
+    return render_template("geoop_source_map.html", mapping=mapping, clients=clients, stats=stats)
+
+
+@app.post("/admin/geoop-import/source-map/update")
+@geoop_required
+def geoop_source_map_update():
+    map_id = request.form.get("map_id", type=int)
+    new_client_id = request.form.get("client_id", type=int)
+    if not map_id:
+        flash("Invalid mapping ID.", "danger")
+        return redirect(url_for("geoop_source_map_view"))
+    conn = db()
+    ts = now_ts()
+    conn.execute(
+        "UPDATE geoop_source_client_map SET client_id = ?, updated_at = ? WHERE id = ?",
+        (new_client_id, ts, map_id)
+    )
+    conn.commit()
+    conn.close()
+    flash("Mapping updated.", "success")
+    return redirect(url_for("geoop_source_map_view"))
+
+
 @app.post("/admin/geoop-import/backfill-descriptions")
 @geoop_required
 def geoop_import_backfill():

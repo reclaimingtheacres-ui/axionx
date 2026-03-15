@@ -268,6 +268,34 @@
     </div>
   </div>
 
+  <div class="card mb-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-10">
+      <strong>Step 4: Source-to-Client Mapping</strong>
+    </div>
+    <div class="card-body">
+      <p class="small text-muted mb-3">
+        Maps GeoOp source/lender names (e.g. "Allied Finance", "VWFS") to AxionX clients.
+        Step 1: Populate the mapping table (creates clients + mappings from known source names).
+        Step 2: Resolve client IDs on staging rows and backfill live jobs.
+      </p>
+      <div class="d-flex gap-2 flex-wrap mb-3">
+        <form method="post" action="{{ url_for('geoop_populate_source_map') }}" class="m-0">
+          <button type="submit" class="btn btn-warning btn-sm"
+                  onclick="if(!confirm('This will create AxionX clients and build the source mapping. Continue?')){event.preventDefault();return;}this.disabled=true;this.textContent='Populating…';this.form.submit();">
+            1. Populate Source Map
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('geoop_resolve_client_ids') }}" class="m-0">
+          <button type="submit" class="btn btn-warning btn-sm"
+                  onclick="if(!confirm('This will resolve client IDs on staging rows and backfill live jobs. Continue?')){event.preventDefault();return;}this.disabled=true;this.textContent='Resolving…';this.form.submit();">
+            2. Resolve &amp; Backfill Client IDs
+          </button>
+        </form>
+        <a href="{{ url_for('geoop_source_map_view') }}" class="btn btn-outline-secondary btn-sm">View/Edit Source Map</a>
+      </div>
+    </div>
+  </div>
+
   <div class="card mb-4 border-info">
     <div class="card-header bg-info bg-opacity-10">
       <strong>Backfill GeoOp Descriptions</strong>

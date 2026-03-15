@@ -293,9 +293,385 @@ def ensure_staging_tables(conn=None):
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS geoop_source_client_map (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_name TEXT NOT NULL UNIQUE,
+        canonical_name TEXT NOT NULL,
+        client_id INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_gscm_canonical ON geoop_source_client_map(canonical_name)")
+
     conn.commit()
     if close:
         conn.close()
+
+
+_SOURCE_CANONICAL_MAP = {
+    "allied": "Allied Finance",
+    "allied finance": "Allied Finance",
+    "allied  finance": "Allied Finance",
+    "allied retail finance": "Allied Finance",
+    "allied credit": "Allied Finance",
+    "allied automotive finance": "Allied Finance",
+    "allied dealer motor finance": "Allied Finance",
+    "allied retail finance trading as dealer motor finance": "Allied Finance",
+    "toyota": "Toyota Finance",
+    "toyota finance": "Toyota Finance",
+    "toyota finance australia": "Toyota Finance",
+    "toyota loss recoveries": "Toyota Finance",
+    "toyota austwide job.": "Toyota Finance",
+    "pepper money": "Pepper Money",
+    "pepper money limited": "Pepper Money",
+    "pepper money limited:": "Pepper Money",
+    "pepper auto finance": "Pepper Money",
+    "pepper money:": "Pepper Money",
+    "peppern": "Pepper Money",
+    "vwfs": "VWFS",
+    "volkswagen financial": "VWFS",
+    "volkswagen financial service": "VWFS",
+    "volkswagen financial service australia": "VWFS",
+    "vw": "VWFS",
+    "vw.": "VWFS",
+    "vw finance.": "VWFS",
+    "vw recoveries": "VWFS",
+    "turo": "TURO",
+    "turo reservation id": "TURO",
+    "turo repo request": "TURO",
+    "turo repo": "TURO",
+    "trust & safety turo": "TURO",
+    "urdrive": "TURO",
+    "angle finance": "Angle Finance",
+    "angle  finance": "Angle Finance",
+    "angle": "Angle Finance",
+    "capital finance": "Capital Finance",
+    "capital  finance": "Capital Finance",
+    "capital  finance": "Capital Finance",
+    "capital": "Capital Finance",
+    "macquarie leasing pty ltd": "Macquarie Leasing",
+    "macquarie leasing": "Macquarie Leasing",
+    "macquarie": "Macquarie Leasing",
+    "macquarie leasing pty ltd: 001": "Macquarie Leasing",
+    "macquarie leasing pty ltd 001": "Macquarie Leasing",
+    "cba": "CBA",
+    "commonwealth bank of australia": "CBA",
+    "pickles": "Pickles",
+    "pickles account": "Pickles",
+    "pickles  account": "Pickles",
+    "pickles auctions": "Pickles",
+    "pickles auctions pty limited on behalf of capital finance on behalf of capital finance": "Pickles",
+    "pickles auctions pty limited on behalf of westpac": "Pickles",
+    "pickall": "Pickles",
+    "boq": "BOQ",
+    "boq equipment finance": "BOQ",
+    "ncml": "NCML",
+    "flexicommercial": "FlexiCommercial",
+    "flexicommerical": "FlexiCommercial",
+    "flexi commercial": "FlexiCommercial",
+    "flexigroup": "FlexiCommercial",
+    "moneyme": "MoneyMe",
+    "money me": "MoneyMe",
+    "harmoney": "Harmoney",
+    "westpac": "Westpac",
+    "westpac account": "Westpac",
+    "st george": "St George",
+    "st  george": "St George",
+    "st george.": "St George",
+    "stg": "St George",
+    "collection house on behalf of st george": "St George",
+    "collection house on behalf of st george bank limited": "St George",
+    "bank of melbourne": "Bank of Melbourne",
+    "bom": "Bank of Melbourne",
+    "bankwest": "Bankwest",
+    "bankwestsechl - bankwest - home loans": "Bankwest",
+    "pioneer credit solutions pty ltd": "Pioneer Credit",
+    "pioneer credit solutions": "Pioneer Credit",
+    "pioneer credit": "Pioneer Credit",
+    "mercedes": "Mercedes-Benz Finance",
+    "mbfs": "Mercedes-Benz Finance",
+    "swoosh": "Swoosh Finance",
+    "swoosh finance": "Swoosh Finance",
+    "nab": "NAB",
+    "rapid loans": "Rapid Loans",
+    "firstmac": "Firstmac",
+    "powertorque finance": "PowerTorque Finance",
+    "powertorque": "PowerTorque Finance",
+    "power torque finance": "PowerTorque Finance",
+    "bmw": "BMW Finance",
+    "bmw chattel mortgage:": "BMW Finance",
+    "bmw chattel mortgage": "BMW Finance",
+    "bmw australia finance ltd": "BMW Finance",
+    "yamaha motor finance": "Yamaha Motor Finance",
+    "liberty": "Liberty Financial",
+    "liberty file": "Liberty Financial",
+    "liberty file 3886770 repo on sight": "Liberty Financial",
+    "acm": "ACM",
+    "now finance": "Now Finance",
+    "now finance": "Now Finance",
+    "credit corp group": "Credit Corp",
+    "credit corp": "Credit Corp",
+    "credit collection services group pty ltd": "Credit Corp",
+    "latitude": "Latitude Financial",
+    "ch ual": "Collection House",
+    "collection house ual": "Collection House",
+    "collection house on behalf of resimac": "Resimac",
+    "resimac": "Resimac",
+    "slattery auctions": "Slattery Auctions",
+    "slatterys": "Slattery Auctions",
+    "slatterys account": "Slattery Auctions",
+    "slaterys": "Slattery Auctions",
+    "slattery's": "Slattery Auctions",
+    "slatmoney - slattery auctions - moneyme": "Slattery Auctions",
+    "gla": "GLA",
+    "australian motorcycle marine finance": "AMMF",
+    "ammf": "AMMF",
+    "jacaranda finance": "Jacaranda Finance",
+    "jacaranda": "Jacaranda Finance",
+    "shift": "Shift Finance",
+    "shift financial": "Shift Finance",
+    "shift finance australia": "Shift Finance",
+    "difrent rental": "Difrent Rental",
+    "finance one": "Finance One",
+    "finance one commercial pty ltd": "Finance One",
+    "finance  one": "Finance One",
+    "finone": "Finance One",
+    "finonecom": "Finance One",
+    "1800 346 663 finance one commercial": "Finance One",
+    "1800 346 663 finonecom": "Finance One",
+    "1800 346 663  finance one commercial": "Finance One",
+    "right road finance": "Right Road Finance",
+    "automotive finance": "Automotive Finance",
+    "moneytech": "Moneytech",
+    "wise": "WISE Group",
+    "wise group": "WISE Group",
+    "polygon": "Polygon",
+    "polygon group": "Polygon",
+    "ausrn": "AUSRN",
+    "aami": "AAMI",
+    "raa": "RAA Insurance",
+    "raa insurance": "RAA Insurance",
+    "racv": "RACV",
+    "flexfleet": "FlexFleet",
+    "dealer motor finance australia": "Dealer Motor Finance",
+    "scotpac": "ScotPac",
+    "scottish pacific": "ScotPac",
+    "scot pac": "ScotPac",
+    "orix": "ORIX",
+    "selfco": "Selfco Leasing",
+    "selfco leasing": "Selfco Leasing",
+    "plenti": "Plenti",
+    "paccar financial": "Paccar Financial",
+    "arg": "ARG",
+    "scania finance": "Scania Finance",
+    "scania finance australia pty ltd": "Scania Finance",
+    "scania": "Scania Finance",
+    "green light auto finance": "Greenlight Auto",
+    "greenlight auto": "Greenlight Auto",
+    "dll": "DLL",
+    "azora": "Azora",
+    "silverchef": "SilverChef",
+    "silver chef": "SilverChef",
+    "silver chef collections": "SilverChef",
+    "multipli": "Multipli",
+    "harley heaven finance": "Harley Heaven Finance",
+    "smart selection rentals pty ltd": "Smart Selection Rentals",
+    "truepillars": "TruePillars",
+    "pfm mortgage": "PFM Mortgage",
+    "metro finance": "Metro Finance",
+    "leasewise": "Leasewise",
+    "lease wise": "Leasewise",
+    "c1 finance": "C1 Finance",
+    "agl": "AGL",
+    "sixt": "SIXT Rentals",
+    "sixt rentals": "SIXT Rentals",
+    "process serve": "Process Serve",
+    "process serve": "Process Serve",
+    "process serve": "Process Serve",
+    "nci commercial collection": "NCI Commercial",
+    "iron capital": "Iron Capital",
+    "power alliance finance": "Power Alliance Finance",
+    "fines victoria": "Fines Victoria",
+    "kia finance": "Kia Finance",
+    "mazda": "Mazda Finance",
+    "legastream": "Legastream",
+    "tg legal + technology on behalf of plenti finance": "Plenti",
+    "axsesstoday": "Axsesstoday",
+    "axsess": "Axsesstoday",
+    "credit corp field calls": "Credit Corp",
+    "bdo": "BDO",
+}
+
+
+def _normalise_source_name(raw):
+    if not raw or not raw.strip():
+        return None
+    s = raw.strip()
+    key = s.lower().rstrip(".,;: ")
+    key = re.sub(r'\s+', ' ', key)
+    canonical = _SOURCE_CANONICAL_MAP.get(key)
+    if canonical:
+        return canonical
+    for prefix, canon in sorted(_SOURCE_CANONICAL_MAP.items(), key=lambda x: -len(x[0])):
+        if key.startswith(prefix + " ") or key.startswith(prefix + "/"):
+            return canon
+    _NOISE_PATTERNS = [
+        r'^\d', r'^see ', r'^repo', r'^field', r'^collect', r'^audit',
+        r'^upgraded', r'^upgrade', r'^complaint', r'^surveillance',
+        r'^subpoena', r'^lockout', r'^investigation', r'^vacant',
+        r'^serve ', r'^urgent', r'^sofp', r'^soc$', r'^no info',
+        r'^ignore', r'^full debt', r'^\*', r'^#', r'^\+', r'^"',
+        r'^co$', r'^\(', r'^2 of', r'^3 of', r'^1 of', r'^gtor',
+    ]
+    for pat in _NOISE_PATTERNS:
+        if re.match(pat, key):
+            return None
+    if len(s) <= 3 and s.upper() not in ('CBA', 'NAB', 'BOQ', 'GLA', 'ACM', 'RAA', 'DLL', 'ARG', 'BDO', 'AGL'):
+        return None
+    return None
+
+
+def populate_source_client_map(conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    ensure_staging_tables(conn)
+    ts = _now()
+
+    names = conn.execute("""
+        SELECT parsed_client_name, COUNT(*) c
+        FROM geoop_staging_jobs
+        WHERE parsed_client_name IS NOT NULL AND parsed_client_name != ''
+        GROUP BY parsed_client_name
+        ORDER BY c DESC
+    """).fetchall()
+
+    canonical_counts = {}
+    source_to_canonical = {}
+
+    for row in names:
+        raw = row["parsed_client_name"]
+        canon = _normalise_source_name(raw)
+        if canon:
+            source_to_canonical[raw] = canon
+            canonical_counts[canon] = canonical_counts.get(canon, 0) + row["c"]
+
+    created_clients = 0
+    mapped_sources = 0
+
+    for canon in sorted(canonical_counts.keys()):
+        existing_client = conn.execute(
+            "SELECT id FROM clients WHERE name = ? COLLATE NOCASE", (canon,)
+        ).fetchone()
+        if existing_client:
+            client_id = existing_client["id"]
+        else:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO clients (name, nickname, email, phone, address, notes, created_at, updated_at)
+                VALUES (?, ?, '', '', '', ?, ?, ?)
+            """, (canon, canon, f"Auto-created from GeoOp source mapping", ts, ts))
+            client_id = cur.lastrowid
+            created_clients += 1
+
+        for raw_name, mapped_canon in source_to_canonical.items():
+            if mapped_canon == canon:
+                existing_map = conn.execute(
+                    "SELECT id FROM geoop_source_client_map WHERE source_name = ?", (raw_name,)
+                ).fetchone()
+                if not existing_map:
+                    conn.execute("""
+                        INSERT INTO geoop_source_client_map (source_name, canonical_name, client_id, created_at)
+                        VALUES (?, ?, ?, ?)
+                    """, (raw_name, canon, client_id, ts))
+                    mapped_sources += 1
+                else:
+                    conn.execute("""
+                        UPDATE geoop_source_client_map
+                        SET canonical_name = ?, client_id = ?, updated_at = ?
+                        WHERE id = ?
+                    """, (canon, client_id, ts, existing_map["id"]))
+
+    conn.commit()
+    if close:
+        conn.close()
+
+    return {
+        "created_clients": created_clients,
+        "mapped_sources": mapped_sources,
+        "canonical_groups": len(canonical_counts),
+    }
+
+
+def resolve_staging_client_ids(conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    ts = _now()
+
+    source_map = {}
+    rows = conn.execute("SELECT source_name, client_id FROM geoop_source_client_map WHERE client_id IS NOT NULL").fetchall()
+    for r in rows:
+        source_map[r["source_name"]] = r["client_id"]
+
+    staged = conn.execute("""
+        SELECT id, parsed_client_name FROM geoop_staging_jobs
+        WHERE (axion_client_id IS NULL OR axion_client_id = 0)
+        AND parsed_client_name IS NOT NULL AND parsed_client_name != ''
+    """).fetchall()
+
+    updated = 0
+    for sj in staged:
+        client_id = source_map.get(sj["parsed_client_name"])
+        if client_id:
+            conn.execute(
+                "UPDATE geoop_staging_jobs SET axion_client_id = ? WHERE id = ?",
+                (client_id, sj["id"])
+            )
+            updated += 1
+
+    conn.commit()
+    if close:
+        conn.close()
+
+    return {"updated": updated, "total_checked": len(staged)}
+
+
+def backfill_job_client_ids(conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    ts = _now()
+
+    updated = 0
+    rows = conn.execute("""
+        SELECT j.id AS job_id, sj.axion_client_id
+        FROM jobs j
+        JOIN geoop_staging_jobs sj ON CAST(sj.geoop_job_id AS TEXT) = j.geoop_job_id
+        WHERE (j.client_id IS NULL OR j.client_id = 0)
+        AND sj.axion_client_id IS NOT NULL AND sj.axion_client_id > 0
+    """).fetchall()
+
+    for r in rows:
+        conn.execute(
+            "UPDATE jobs SET client_id = ?, updated_at = ? WHERE id = ?",
+            (r["axion_client_id"], ts, r["job_id"])
+        )
+        updated += 1
+
+    conn.commit()
+    if close:
+        conn.close()
+
+    return {"backfilled": updated}
 
 
 def _parse_money(s):
@@ -1278,6 +1654,11 @@ def import_staged_jobs(mode="insert_only", conn=None):
         SELECT * FROM geoop_staging_jobs WHERE import_status='pending' ORDER BY id
     """).fetchall()
 
+    _source_map_cache = {}
+    _scm_rows = conn.execute("SELECT source_name, client_id FROM geoop_source_client_map WHERE client_id IS NOT NULL").fetchall()
+    for _scr in _scm_rows:
+        _source_map_cache[_scr["source_name"]] = _scr["client_id"]
+
     existing_rows = conn.execute(
         "SELECT id, internal_job_number, display_ref, client_job_number, geoop_job_id FROM jobs"
     ).fetchall()
@@ -1368,12 +1749,15 @@ def import_staged_jobs(mode="insert_only", conn=None):
                         VALUES ('customer', ?, 'Primary', ?, ?)
                     """, (cust_id, sj["email"], ts))
 
-        client_id = None
-        parsed_client = sj["parsed_client_name"] or ""
-        if parsed_client:
-            client_id = _match_client(conn, parsed_client)
-        if not client_id and sj["company"]:
-            client_id = _match_client(conn, sj["company"])
+        client_id = sj["axion_client_id"]
+        if not client_id:
+            parsed_client = sj["parsed_client_name"] or ""
+            if parsed_client:
+                client_id = _source_map_cache.get(parsed_client)
+            if not client_id and parsed_client:
+                client_id = _match_client(conn, parsed_client)
+            if not client_id and sj["company"]:
+                client_id = _match_client(conn, sj["company"])
 
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
