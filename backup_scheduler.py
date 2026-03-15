@@ -12,9 +12,10 @@ from backup_to_azure import backup
 DB_PATH = os.path.abspath(os.environ.get("DB_PATH", "axion.db"))
 ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
 EXCLUDED_STATUSES = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
+BACKUP_HOUR = 2
 
 print(f"Backup scheduler started — DB: {DB_PATH} (exists={os.path.exists(DB_PATH)})", flush=True)
-print("  backup daily at 02:00, geocode every 10 min", flush=True)
+print(f"  backup daily at {BACKUP_HOUR:02d}:00, geocode every 2 min", flush=True)
 
 last_run_date = None
 last_geocode_time = 0
@@ -106,7 +107,7 @@ while True:
     now = datetime.datetime.now()
     today = now.date()
 
-    if now.hour == 2 and now.minute == 0 and last_run_date != today:
+    if now.hour == BACKUP_HOUR and now.minute == 0 and last_run_date != today:
         print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Running daily backup...", flush=True)
         try:
             backup()
