@@ -1139,14 +1139,20 @@ def _build_agent_resolver(conn):
 def seed_agent_aliases(conn):
     ts = _now()
     seeds = [
-        ("GrantC",  "Grant Cook",    1, 0, "GeoOp login"),
-        ("ChrisW",  "Chris W",       4, 0, "GeoOp login"),
-        ("CraigW",  "Craig Wright",  8, 0, "GeoOp login"),
-        ("BPS",     "Craig Wright",  8, 0, "GeoOp initials"),
-        ("JamesW",  "James W",       5, 0, "GeoOp login"),
-        ("DanielC", "Daniel C",      3, 0, "GeoOp login"),
-        ("Daniel C","Daniel C",      3, 0, "GeoOp login variant"),
-        ("CW",      "ambiguous",     None, 1, "Could be Chris W or Craig Wright — requires manual review"),
+        ("GrantC",       "Grant Cook",    1, 0, "GeoOp login"),
+        ("Grant Cook",   "Grant Cook",    1, 0, "GeoOp visits full name"),
+        ("ChrisW",       "Chris Wintle",  4, 0, "GeoOp login"),
+        ("Chris Wintle", "Chris Wintle",  4, 0, "GeoOp visits full name"),
+        ("Chris W",      "Chris Wintle",  4, 0, "GeoOp login variant"),
+        ("CraigW",       "Craig Wright",  8, 0, "GeoOp login"),
+        ("Craig Wright", "Craig Wright",  8, 0, "GeoOp visits full name"),
+        ("BPS",          "Craig Wright",  8, 0, "GeoOp initials"),
+        ("JamesW",       "James Wintle",  5, 0, "GeoOp login"),
+        ("James Wintle", "James Wintle",  5, 0, "GeoOp visits full name"),
+        ("James W",      "James Wintle",  5, 0, "GeoOp login variant"),
+        ("DanielC",      "Daniel C",      3, 0, "GeoOp login"),
+        ("Daniel C",     "Daniel C",      3, 0, "GeoOp login variant"),
+        ("CW",           "ambiguous",     None, 1, "Could be Chris Wintle or Craig Wright — requires manual review"),
     ]
     for alias, canon, uid, ambig, note in seeds:
         existing = conn.execute("SELECT id FROM agent_aliases WHERE alias = ? COLLATE NOCASE", (alias,)).fetchone()
@@ -1182,6 +1188,124 @@ def resolve_agent_for_import(conn, sj, resolver=None):
 
     user_id, status = resolver(raw_agent)
     return user_id, raw_agent, status
+
+
+def stage_visits_csv(csv_path, conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    ts = _now()
+    resolver = _build_agent_resolver(conn)
+
+    visit_map = {}
+    total_rows = 0
+    skipped_admin = 0
+
+    with open(csv_path, 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            total_rows += 1
+            staff = (row.get("Staff Member") or "").strip()
+            if not staff:
+                continue
+            if staff.lower() in _ADMIN_AGENT_IGNORE:
+                skipped_admin += 1
+                continue
+
+            link = (row.get("Job Link") or "").strip()
+            geoop_id = ""
+            if "/jobs/" in link:
+                geoop_id = link.rsplit("/jobs/", 1)[-1].strip().rstrip("/")
+            ref_no = (row.get("Job Reference") or "").strip()
+
+            booking_end = (row.get("Booking End Date") or row.get("Job End Date") or "").strip()
+
+            key = geoop_id or ref_no
+            if not key:
+                continue
+
+            existing = visit_map.get(key)
+            if existing is None or booking_end > existing["date"]:
+                visit_map[key] = {
+                    "geoop_id": geoop_id,
+                    "ref_no": ref_no,
+                    "staff": staff,
+                    "date": booking_end,
+                }
+
+    assigned = 0
+    ambiguous_count = 0
+    unmatched_job = 0
+    unmatched_agent = 0
+
+    for key, info in visit_map.items():
+        geoop_id = info["geoop_id"]
+        ref_no = info["ref_no"]
+        staff = info["staff"]
+
+        job = None
+        if geoop_id:
+            job = conn.execute(
+                "SELECT id, assigned_user_id, status FROM jobs WHERE geoop_job_id = ?",
+                (geoop_id,)
+            ).fetchone()
+        if not job and ref_no:
+            job = conn.execute(
+                "SELECT id, assigned_user_id, status FROM jobs WHERE display_ref = ? OR internal_job_number = ?",
+                (ref_no, ref_no)
+            ).fetchone()
+
+        if not job:
+            unmatched_job += 1
+            continue
+
+        if job["status"] in ("Completed", "Cancelled", "Invoiced", "Archived - Invoiced", "Cold Stored"):
+            continue
+
+        user_id, status = resolver(staff)
+        if user_id:
+            conn.execute(
+                "UPDATE jobs SET assigned_user_id = ?, geoop_assigned_agent = ?, updated_at = ? WHERE id = ?",
+                (user_id, staff, ts, job["id"])
+            )
+            assigned += 1
+        elif status == "ambiguous":
+            conn.execute(
+                "UPDATE jobs SET geoop_assigned_agent = ?, assigned_user_id = NULL, updated_at = ? WHERE id = ?",
+                (staff, ts, job["id"])
+            )
+            ambiguous_count += 1
+        else:
+            conn.execute(
+                "UPDATE jobs SET geoop_assigned_agent = ?, updated_at = ? WHERE id = ?",
+                (staff, ts, job["id"])
+            )
+            unmatched_agent += 1
+
+    conn.commit()
+
+    for key, info in visit_map.items():
+        if info["geoop_id"]:
+            conn.execute(
+                "UPDATE geoop_staging_jobs SET assigned_resource_raw = ? WHERE geoop_job_id = ? AND (assigned_resource_raw IS NULL OR assigned_resource_raw = '')",
+                (info["staff"], info["geoop_id"])
+            )
+    conn.commit()
+
+    if close:
+        conn.close()
+
+    return {
+        "total_visit_rows": total_rows,
+        "unique_jobs_in_csv": len(visit_map),
+        "assigned": assigned,
+        "ambiguous": ambiguous_count,
+        "unmatched_job": unmatched_job,
+        "unmatched_agent": unmatched_agent,
+        "skipped_admin": skipped_admin,
+    }
 
 
 def backfill_agent_assignments(conn=None):

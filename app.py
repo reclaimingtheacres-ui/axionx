@@ -10533,6 +10533,42 @@ def geoop_agent_alias_delete():
     return redirect(url_for("geoop_agent_aliases"))
 
 
+@app.post("/admin/geoop-import/visits-csv")
+@geoop_required
+def geoop_visits_csv_upload():
+    if 'visits_csv' not in request.files:
+        flash("No visits CSV file selected.", "danger")
+        return redirect(url_for("geoop_import_page"))
+    f = request.files['visits_csv']
+    if not f.filename:
+        flash("No visits CSV file selected.", "danger")
+        return redirect(url_for("geoop_import_page"))
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+    f.save(tmp.name)
+    tmp.close()
+    conn = db()
+    try:
+        _geoop.seed_agent_aliases(conn)
+        result = _geoop.stage_visits_csv(tmp.name, conn)
+        flash(
+            f"Visits CSV processed: {result['total_visit_rows']} visit rows, "
+            f"{result['unique_jobs_in_csv']} unique jobs. "
+            f"{result['assigned']} assigned, {result['ambiguous']} ambiguous, "
+            f"{result['unmatched_agent']} unmatched agent, "
+            f"{result['unmatched_job']} not in AxionX, "
+            f"{result['skipped_admin']} admin-ignored.",
+            "success"
+        )
+    except Exception as e:
+        flash(f"Visits CSV processing failed: {e}", "danger")
+    finally:
+        conn.close()
+        import os
+        os.unlink(tmp.name)
+    return redirect(url_for("geoop_import_page"))
+
+
 @app.post("/admin/geoop-import/agent-backfill")
 @geoop_required
 def geoop_agent_backfill():

@@ -331,7 +331,19 @@
     </div>
     <div class="card-body">
       <p class="small text-muted mb-2">
-        Maps GeoOp agent initials/names to AxionX users. Backfill writes agent assignments to all imported jobs.
+        Upload a GeoOp <strong>Visits CSV</strong> to assign agents from the "Staff Member" column.
+        Uses the most recent visit per job. Admin accounts (Dom Powell, Admin Office) are ignored.
+      </p>
+      <form method="post" action="{{ url_for('geoop_visits_csv_upload') }}" enctype="multipart/form-data" class="mb-3">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <input type="file" name="visits_csv" accept=".csv" class="form-control form-control-sm" style="max-width:350px" required>
+          <button type="submit" class="btn btn-warning btn-sm"
+                  onclick="this.disabled=true;this.textContent='Processing…';this.form.submit();">Upload Visits CSV</button>
+        </div>
+      </form>
+      <hr class="my-2">
+      <p class="small text-muted mb-2">
+        Or run a backfill from staging data, manage alias mappings, or review unmatched assignments.
       </p>
       <div class="d-flex gap-2 flex-wrap">
         <a href="{{ url_for('geoop_agent_aliases') }}" class="btn btn-outline-warning btn-sm">Manage Agent Aliases</a>
