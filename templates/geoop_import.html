@@ -409,10 +409,45 @@
               onsubmit="this.querySelector('button[type=submit]').disabled=true; return confirm('This will backfill geoop_job_id on all previously imported jobs using staging data. This must be run before attachment ZIP recovery to enable direct job ID matching. Continue?');">
           <button type="submit" class="btn btn-outline-success btn-sm" id="backfillJobIdsBtn">Backfill GeoOp Job IDs</button>
         </form>
+        <button type="button" class="btn btn-outline-dark btn-sm" id="bulkGeocodeBtn" onclick="startBulkGeocode()">Geocode All Jobs</button>
+        <span id="geocodeProgress" class="small text-muted ms-2"></span>
         <span id="repairDatesStatus" class="small text-muted"></span>
         <span id="repairRegsStatus" class="small text-muted ms-2"></span>
         <span id="repairDueDatesStatus" class="small text-muted ms-2"></span>
       </div>
+      <script>
+      function startBulkGeocode(){
+        var btn = document.getElementById('bulkGeocodeBtn');
+        var prog = document.getElementById('geocodeProgress');
+        btn.disabled = true;
+        btn.textContent = 'Starting...';
+        fetch('/admin/geocode-all', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+          .then(r=>r.json())
+          .then(d=>{
+            if(!d.ok){ prog.textContent = d.error || 'Error'; btn.disabled=false; btn.textContent='Geocode All Jobs'; return; }
+            btn.textContent = 'Running...';
+            pollGeocodeProgress();
+          })
+          .catch(()=>{ prog.textContent='Request failed'; btn.disabled=false; btn.textContent='Geocode All Jobs'; });
+      }
+      function pollGeocodeProgress(){
+        var btn = document.getElementById('bulkGeocodeBtn');
+        var prog = document.getElementById('geocodeProgress');
+        fetch('/admin/geocode-all/progress')
+          .then(r=>r.json())
+          .then(d=>{
+            prog.textContent = d.done + '/' + d.total + ' done (' + d.updated + ' geocoded, ' + d.failed + ' failed, ' + d.remaining + ' remaining)';
+            if(d.running){
+              setTimeout(pollGeocodeProgress, 2000);
+            } else {
+              btn.disabled = false;
+              btn.textContent = 'Geocode All Jobs';
+              prog.textContent += ' — Complete!';
+            }
+          })
+          .catch(()=>{ setTimeout(pollGeocodeProgress, 3000); });
+      }
+      </script>
       <hr class="my-2">
       <p class="small text-muted mb-2">
         <strong>File Recovery</strong> — Restore physical attachment files from GeoOp ZIP archives. Matches ZIP entries to existing database mappings and extracts missing files into the uploads directory. Idempotent — skips files already present.

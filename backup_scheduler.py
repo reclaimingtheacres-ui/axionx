@@ -55,7 +55,7 @@ def geocode_batch():
         f"   AND (lat IS NULL OR lng IS NULL)"
         f"   AND status NOT IN ({ph})"
         f"   AND (geocode_fail IS NULL OR geocode_fail < 3)"
-        f" ORDER BY id DESC LIMIT 100",
+        f" ORDER BY id DESC LIMIT 250",
         EXCLUDED_STATUSES
     ).fetchall()
 
@@ -117,7 +117,7 @@ while True:
             traceback.print_exc()
 
     elapsed = time.time() - last_geocode_time
-    if elapsed >= 600:
+    if elapsed >= 120:
         try:
             geocode_batch()
         except Exception:

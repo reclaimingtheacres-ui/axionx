@@ -12181,6 +12181,84 @@ def m_geocode_pending():
     return jsonify({"ok": True, "updated": updated, "remaining": remaining})
 
 
+_bulk_geocode_status = {"running": False, "total": 0, "done": 0, "updated": 0, "failed": 0, "remaining": 0}
+
+@app.post("/admin/geocode-all")
+@login_required
+@admin_required
+def admin_geocode_all():
+    if _bulk_geocode_status["running"]:
+        return jsonify({"ok": False, "error": "Bulk geocode already running"}), 409
+
+    def _worker():
+        import logging as _log
+        _bulk_geocode_status["running"] = True
+        _bulk_geocode_status["done"] = 0
+        _bulk_geocode_status["updated"] = 0
+        _bulk_geocode_status["failed"] = 0
+        try:
+            conn = db()
+            _excl = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
+            _ph = ','.join('?' for _ in _excl)
+            pending = conn.execute(
+                f"SELECT id, job_address FROM jobs"
+                f" WHERE job_address IS NOT NULL AND job_address != ''"
+                f"   AND (lat IS NULL OR lng IS NULL)"
+                f"   AND (geocode_fail IS NULL OR geocode_fail < 3)"
+                f" ORDER BY id DESC",
+                ()
+            ).fetchall()
+            conn.close()
+
+            _bulk_geocode_status["total"] = len(pending)
+            _bulk_geocode_status["remaining"] = len(pending)
+            _log.info("Bulk geocode started: %d jobs", len(pending))
+
+            for job in pending:
+                result = _geocode_address(job["job_address"])
+                if result:
+                    lat, lng = result
+                    try:
+                        c2 = db()
+                        c2.execute("UPDATE jobs SET lat=?, lng=? WHERE id=?", (lat, lng, job["id"]))
+                        c2.commit()
+                        c2.close()
+                        _bulk_geocode_status["updated"] += 1
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        c2 = db()
+                        c2.execute("UPDATE jobs SET geocode_fail=COALESCE(geocode_fail,0)+1 WHERE id=?", (job["id"],))
+                        c2.commit()
+                        c2.close()
+                        _bulk_geocode_status["failed"] += 1
+                    except Exception:
+                        pass
+                _bulk_geocode_status["done"] += 1
+                _bulk_geocode_status["remaining"] = _bulk_geocode_status["total"] - _bulk_geocode_status["done"]
+                import time as _t
+                _t.sleep(0.02)
+
+            _log.info("Bulk geocode done: %d updated, %d failed",
+                       _bulk_geocode_status["updated"], _bulk_geocode_status["failed"])
+        except Exception as e:
+            import logging as _log
+            _log.error("Bulk geocode error: %s", e)
+        finally:
+            _bulk_geocode_status["running"] = False
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return jsonify({"ok": True, "message": "Bulk geocode started"})
+
+
+@app.get("/admin/geocode-all/progress")
+@login_required
+@admin_required
+def admin_geocode_progress():
+    return jsonify(_bulk_geocode_status)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MOBILE ROUTES  (/m)
 # ─────────────────────────────────────────────────────────────────────────────
