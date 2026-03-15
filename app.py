@@ -14928,8 +14928,11 @@ def _notify_user(user_id: int, title: str, body: str, notif_type: str,
             "SELECT token FROM lpr_device_tokens WHERE user_id=?", (user_id,)
         ).fetchall()
         conn.close()
+        push_data = dict(data) if data else {}
+        if "type" not in push_data:
+            push_data["type"] = "lpr"
         for tok in tokens:
-            _apns_send(tok["token"], title, body, data)
+            _apns_send(tok["token"], title, body, push_data)
     except Exception:
         pass
 
@@ -18577,10 +18580,29 @@ def _post_message(conn, conv_id, sender_id, body):
     )
     msg_id = cur.lastrowid
     conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (ts, conv_id))
-    # Mark as read for sender
     conn.execute("INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at) VALUES (?,?,?)",
                  (msg_id, sender_id, ts))
     conn.commit()
+
+    try:
+        _lpr_device_tokens_ensure(conn)
+        sender = conn.execute("SELECT full_name FROM users WHERE id=?", (sender_id,)).fetchone()
+        sender_name = sender["full_name"] if sender else "Someone"
+        recipients = conn.execute(
+            "SELECT user_id FROM conversation_participants WHERE conversation_id=? AND user_id!=?",
+            (conv_id, sender_id)
+        ).fetchall()
+        preview = body.strip()[:80]
+        for r in recipients:
+            tokens = conn.execute(
+                "SELECT token FROM lpr_device_tokens WHERE user_id=?", (r["user_id"],)
+            ).fetchall()
+            for tok in tokens:
+                _apns_send(tok["token"], sender_name, preview,
+                           {"type": "message", "conv_id": conv_id})
+    except Exception:
+        pass
+
     return msg_id
 
 

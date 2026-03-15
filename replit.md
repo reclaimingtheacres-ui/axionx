@@ -244,7 +244,8 @@ Axion Prototype is a Flask-based field operations management application designe
 - Desktop: Two-panel layout at `/messages` and `/messages/<conv_id>`. Left sidebar = conversation list; right = chat bubbles. Reply with Enter key or Send button.
 - Mobile: Full-screen conversation list at `/m/messages`; chat interface at `/m/messages/<conv_id>` with pinned reply bar.
 - New message modal (desktop) + compose sheet (mobile): multi-recipient checkboxes with "Broadcast to All" toggle, optional job link, first message body. Broadcast sends the same message as separate conversations to each selected recipient. Single recipient opens the conversation thread directly; multi-recipient redirects to the messages list with a confirmation flash.
-- Unread badge: blue count badge in desktop sidebar nav + dot indicator on mobile "Msgs" tab. Both poll `/api/messages/unread-count` every 30 seconds. Desktop shows a toast notification when new messages arrive.
+- Unread badge: blue count badge in desktop sidebar nav + dot indicator on mobile "Msgs" tab. Both poll `/api/messages/unread-count` every 30s (mobile 15s). Desktop shows a toast notification when new messages arrive. Mobile shows a slide-down toast banner that navigates to `/m/messages` when tapped.
+- Push notifications: `_post_message()` sends APNs push to all conversation recipients (sender's `full_name` as title, message preview as body). Payload includes `{type: "message", conv_id: <id>}`. iOS app routes message notifications to `/m/messages/<conv_id>` and LPR notifications (type "lpr") to `/m/lpr/notifications`.
 - Job-linked conversations show a yellow banner with clickable link to the job.
 - Shared API: `GET /api/messages/unread-count`, `POST /messages/<conv_id>/read`
 

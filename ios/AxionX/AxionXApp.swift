@@ -116,7 +116,12 @@ extension AxionAppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        NotificationCenter.default.post(name: .axionOpenNotifications, object: nil)
+        let payload = response.notification.request.content.userInfo
+        var info: [String: Any] = [:]
+        if let t = payload["type"] as? String { info["type"] = t }
+        if let c = payload["conv_id"] as? Int { info["conv_id"] = c }
+        else if let cs = payload["conv_id"] as? String, let ci = Int(cs) { info["conv_id"] = ci }
+        NotificationCenter.default.post(name: .axionOpenNotifications, object: nil, userInfo: info)
         completionHandler()
     }
 }

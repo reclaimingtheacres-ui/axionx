@@ -801,9 +801,26 @@ window.lprContactOffice = function() {
 
 {% block extra_scripts %}{% endblock %}
 {% if session.get('user_id') %}
+<div id="mMsgToast" onclick="window.location.href='{{ url_for('m_messages_list') }}'" style="
+  display:none;position:fixed;top:0;left:0;right:0;z-index:99999;
+  background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);
+  color:#fff;padding:14px 18px;cursor:pointer;
+  box-shadow:0 4px 24px rgba(0,0,0,.3);
+  animation:mToastSlide .35s ease;
+  font-size:.9rem;font-weight:600;
+  display:none;align-items:center;gap:10px;
+">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+  <span id="mMsgToastText">New message received</span>
+  <span style="margin-left:auto;font-size:.75rem;opacity:.7">Tap to view</span>
+</div>
+<style>
+@keyframes mToastSlide{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+</style>
 <script>
 (function(){
-  var _mlast = 0;
+  var _mlast = -1;
+  var _toastTimer = null;
   function pollMobileMsgs(){
     fetch('/api/messages/unread-count', {credentials:'same-origin'})
       .then(function(r){ return r.json(); })
@@ -811,11 +828,23 @@ window.lprContactOffice = function() {
         var count = d.count || 0;
         var dot = document.getElementById('mMsgDot');
         if(dot) dot.style.display = count > 0 ? 'block' : 'none';
+        if(_mlast >= 0 && count > _mlast){
+          showMsgToast(count);
+        }
         _mlast = count;
       }).catch(function(){});
   }
+  function showMsgToast(count){
+    var toast = document.getElementById('mMsgToast');
+    var text = document.getElementById('mMsgToastText');
+    if(!toast) return;
+    text.textContent = count === 1 ? 'New message received' : count + ' unread messages';
+    toast.style.display = 'flex';
+    if(_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function(){ toast.style.display = 'none'; }, 6000);
+  }
   pollMobileMsgs();
-  setInterval(pollMobileMsgs, 30000);
+  setInterval(pollMobileMsgs, 15000);
 })();
 </script>
 {% endif %}

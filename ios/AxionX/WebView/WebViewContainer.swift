@@ -289,11 +289,21 @@ struct WebViewContainer: View {
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .axionOpenNotifications)
-        ) { _ in
+        ) { notif in
+            let notifType = notif.userInfo?["type"] as? String ?? "lpr"
             var comps    = URLComponents()
             comps.scheme = AppConfig.entryURL.scheme
             comps.host   = AppConfig.entryURL.host
-            comps.path   = "/m/lpr/notifications"
+            switch notifType {
+            case "message":
+                if let convId = notif.userInfo?["conv_id"] as? Int {
+                    comps.path = "/m/messages/\(convId)"
+                } else {
+                    comps.path = "/m/messages"
+                }
+            default:
+                comps.path = "/m/lpr/notifications"
+            }
             if let url = comps.url {
                 store.webView.load(URLRequest(url: url))
             }
