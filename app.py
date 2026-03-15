@@ -12087,6 +12087,36 @@ def route_planner_page():
                            google_maps_api_key=os.getenv("GOOGLE_MAPS_API_KEY", ""))
 
 
+@app.post("/api/route-planner/save-address")
+@login_required
+def route_planner_save_address():
+    data = request.get_json(force=True)
+    addr_type = data.get("type", "").strip()
+    address = data.get("address", "").strip()
+    if addr_type not in ("home", "office"):
+        return jsonify(error="Invalid address type"), 400
+    if not address:
+        return jsonify(error="Address is required"), 400
+    if addr_type == "office":
+        role = session.get("role")
+        if role not in ("admin", "both"):
+            return jsonify(error="Only admins can set the office address"), 403
+    result = _geocode_address(address)
+    if not result:
+        return jsonify(error="Could not geocode that address. Try a more specific address."), 404
+    lat, lng = result
+    conn = db()
+    if addr_type == "home":
+        conn.execute("UPDATE users SET home_address=?, home_lat=?, home_lng=? WHERE id=?",
+                     (address, lat, lng, session["user_id"]))
+    else:
+        conn.execute("UPDATE system_settings SET office_address=?, office_lat=?, office_lng=?",
+                     (address, lat, lng))
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True, address=address, lat=lat, lng=lng)
+
+
 @app.get("/api/route-planner/jobs")
 @login_required
 def route_planner_jobs_api():

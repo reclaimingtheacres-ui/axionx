@@ -104,13 +104,48 @@
     </div>
 
     <div class="rp-card">
-      <h6>Route Settings</h6>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h6 style="margin:0">Route Settings</h6>
+        <button type="button" class="rp-addr-toggle" onclick="rpToggleAddrSettings()" title="Set Home / Office addresses" style="background:none;border:none;cursor:pointer;font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:4px;padding:2px 6px;border-radius:6px;transition:color .15s">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          Addresses
+        </button>
+      </div>
+
+      <div id="rp-addr-settings" style="display:none;margin-bottom:10px;padding:10px 12px;background:#f8fafc;border:1px solid var(--line);border-radius:8px">
+        <div style="font-size:.76rem;font-weight:600;color:var(--text);margin-bottom:8px">Set your addresses for quick route start/end points</div>
+        <div class="rp-row" style="gap:10px">
+          <div style="flex:1">
+            <div class="rp-lbl">My Home Address</div>
+            <div style="display:flex;gap:4px">
+              <input id="rp-home-addr-input" class="rp-input" placeholder="Enter your home address..." value="{{ user_home.get('home_address','') }}" style="flex:1">
+              <button type="button" onclick="rpSaveAddress('home')" class="rp-btn-sm" style="padding:4px 12px;font-size:.74rem;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;white-space:nowrap">Save</button>
+            </div>
+            <div id="rp-home-addr-status" style="font-size:.68rem;margin-top:2px;min-height:14px">
+              {% if user_home.get('home_address') %}<span style="color:#16a34a">{{ user_home.home_address }}</span>{% else %}<span style="color:var(--muted)">Not set</span>{% endif %}
+            </div>
+          </div>
+          {% if session.get('role') in ('admin', 'both') %}
+          <div style="flex:1">
+            <div class="rp-lbl">Office Address <span style="font-weight:400;text-transform:none">(shared)</span></div>
+            <div style="display:flex;gap:4px">
+              <input id="rp-office-addr-input" class="rp-input" placeholder="Enter office address..." value="{{ office.get('office_address','') }}" style="flex:1">
+              <button type="button" onclick="rpSaveAddress('office')" class="rp-btn-sm" style="padding:4px 12px;font-size:.74rem;font-weight:600;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;white-space:nowrap">Save</button>
+            </div>
+            <div id="rp-office-addr-status" style="font-size:.68rem;margin-top:2px;min-height:14px">
+              {% if office.get('office_address') %}<span style="color:#16a34a">{{ office.office_address }}</span>{% else %}<span style="color:var(--muted)">Not set</span>{% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
       <div class="rp-row">
         <div>
           <div class="rp-lbl">Start From</div>
           <select id="rp-start-type" class="rp-sel">
-            <option value="office">Office</option>
-            <option value="home">Home</option>
+            <option value="office">Office{% if office.get('office_address') %} — {{ office.office_address[:40] }}{% if office.office_address|length > 40 %}…{% endif %}{% endif %}</option>
+            <option value="home">Home{% if user_home.get('home_address') %} — {{ user_home.home_address[:40] }}{% if user_home.home_address|length > 40 %}…{% endif %}{% endif %}</option>
             <option value="current">Current Location</option>
             <option value="custom">Custom Address</option>
           </select>
@@ -120,8 +155,8 @@
           <div class="rp-lbl">End At</div>
           <select id="rp-end-type" class="rp-sel">
             <option value="">No fixed end</option>
-            <option value="office">Office</option>
-            <option value="home">Home</option>
+            <option value="office">Office{% if office.get('office_address') %} — {{ office.office_address[:40] }}{% if office.office_address|length > 40 %}…{% endif %}{% endif %}</option>
+            <option value="home">Home{% if user_home.get('home_address') %} — {{ user_home.home_address[:40] }}{% if user_home.home_address|length > 40 %}…{% endif %}{% endif %}</option>
             <option value="current">Current Location</option>
             <option value="custom">Custom Address</option>
           </select>
@@ -388,6 +423,58 @@ function _rpGeocodeCustom(inputEl, target) {
         }
       }).catch(function() { inputEl.style.borderColor = '#dc2626'; });
   }, 600);
+}
+
+function rpToggleAddrSettings() {
+  var el = document.getElementById('rp-addr-settings');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function rpSaveAddress(type) {
+  var inputId = type === 'home' ? 'rp-home-addr-input' : 'rp-office-addr-input';
+  var statusId = type === 'home' ? 'rp-home-addr-status' : 'rp-office-addr-status';
+  var input = document.getElementById(inputId);
+  var statusEl = document.getElementById(statusId);
+  var address = input.value.trim();
+  if (!address) { statusEl.innerHTML = '<span style="color:#dc2626">Please enter an address</span>'; return; }
+  statusEl.innerHTML = '<span style="color:#d97706">Geocoding...</span>';
+  try {
+    var resp = await fetch('/api/route-planner/save-address', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({type: type, address: address})
+    });
+    var data = await resp.json();
+    if (data.ok) {
+      statusEl.innerHTML = '<span style="color:#16a34a">' + data.address + '</span>';
+      if (type === 'home') {
+        RP.userHome = {home_address: data.address, home_lat: data.lat, home_lng: data.lng};
+      } else {
+        RP.office = {office_address: data.address, office_lat: data.lat, office_lng: data.lng};
+      }
+      rpUpdateAddrLabels();
+    } else {
+      statusEl.innerHTML = '<span style="color:#dc2626">' + (data.error || 'Failed to save') + '</span>';
+    }
+  } catch(e) {
+    statusEl.innerHTML = '<span style="color:#dc2626">Error saving address</span>';
+  }
+}
+
+function rpUpdateAddrLabels() {
+  var startSel = document.getElementById('rp-start-type');
+  var endSel = document.getElementById('rp-end-type');
+  [startSel, endSel].forEach(function(sel) {
+    Array.from(sel.options).forEach(function(opt) {
+      if (opt.value === 'office') {
+        var oa = RP.office.office_address || '';
+        opt.textContent = 'Office' + (oa ? ' \u2014 ' + (oa.length > 40 ? oa.substring(0,40) + '\u2026' : oa) : '');
+      }
+      if (opt.value === 'home') {
+        var ha = RP.userHome.home_address || '';
+        opt.textContent = 'Home' + (ha ? ' \u2014 ' + (ha.length > 40 ? ha.substring(0,40) + '\u2026' : ha) : '');
+      }
+    });
+  });
 }
 
 function rpInitStartEnd() {

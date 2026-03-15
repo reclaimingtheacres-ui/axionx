@@ -94,19 +94,49 @@
       <div id="mrp-suburb-selected" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>
     </div>
     <div class="mrp-card">
-      <div class="mrp-lbl">Start From</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div class="mrp-lbl" style="margin-bottom:0">Start From</div>
+        <button type="button" onclick="mrpToggleAddrSettings()" style="background:none;border:none;cursor:pointer;font-size:.72rem;color:var(--accent);font-weight:600;padding:2px 6px">Set Addresses</button>
+      </div>
       <select id="mrp-start" class="mrp-sel">
         <option value="current">Current Location</option>
-        <option value="office">Office</option>
-        <option value="home">Home</option>
+        <option value="office">Office{% if office.get('office_address') %} — {{ office.office_address[:30] }}{% if office.office_address|length > 30 %}…{% endif %}{% endif %}</option>
+        <option value="home">Home{% if user_home.get('home_address') %} — {{ user_home.home_address[:30] }}{% if user_home.home_address|length > 30 %}…{% endif %}{% endif %}</option>
       </select>
     </div>
+
+    <div id="mrp-addr-settings" style="display:none" class="mrp-card">
+      <div style="font-size:.78rem;font-weight:600;color:var(--text);margin-bottom:10px">Set Your Addresses</div>
+      <div style="margin-bottom:10px">
+        <div class="mrp-lbl">Home Address</div>
+        <input id="mrp-home-addr-input" class="mrp-input" placeholder="Enter your home address..." value="{{ user_home.get('home_address','') }}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <div id="mrp-home-addr-status" style="font-size:.7rem;min-height:16px">
+            {% if user_home.get('home_address') %}<span style="color:#16a34a">Saved</span>{% else %}<span style="color:var(--muted)">Not set</span>{% endif %}
+          </div>
+          <button type="button" onclick="mrpSaveAddress('home')" class="mrp-btn" style="width:auto;padding:6px 16px;font-size:.76rem;margin:0">Save</button>
+        </div>
+      </div>
+      {% if session.get('role') in ('admin', 'both') %}
+      <div>
+        <div class="mrp-lbl">Office Address <span style="font-weight:400;text-transform:none">(shared)</span></div>
+        <input id="mrp-office-addr-input" class="mrp-input" placeholder="Enter office address..." value="{{ office.get('office_address','') }}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <div id="mrp-office-addr-status" style="font-size:.7rem;min-height:16px">
+            {% if office.get('office_address') %}<span style="color:#16a34a">Saved</span>{% else %}<span style="color:var(--muted)">Not set</span>{% endif %}
+          </div>
+          <button type="button" onclick="mrpSaveAddress('office')" class="mrp-btn" style="width:auto;padding:6px 16px;font-size:.76rem;margin:0">Save</button>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
     <div class="mrp-card">
       <div class="mrp-lbl">End At</div>
       <select id="mrp-end" class="mrp-sel">
         <option value="">No fixed end</option>
-        <option value="office">Office</option>
-        <option value="home">Home</option>
+        <option value="office">Office{% if office.get('office_address') %} — {{ office.office_address[:30] }}{% if office.office_address|length > 30 %}…{% endif %}{% endif %}</option>
+        <option value="home">Home{% if user_home.get('home_address') %} — {{ user_home.home_address[:30] }}{% if user_home.home_address|length > 30 %}…{% endif %}{% endif %}</option>
         <option value="current">Current Location</option>
       </select>
     </div>
@@ -203,6 +233,57 @@ function mrpRenderSuburbTags() {
   document.getElementById('mrp-suburb-selected').innerHTML = MRP.selectedSuburbs.map(s =>
     `<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;color:var(--accent);border:1px solid #bfdbfe;border-radius:12px;padding:3px 10px;font-size:.76rem;font-weight:500">${s} <span onclick="MRP.selectedSuburbs=MRP.selectedSuburbs.filter(x=>x!=='${s.replace(/'/g,"\\'")}');mrpRenderSuburbTags()" style="cursor:pointer;font-weight:700">&times;</span></span>`
   ).join('');
+}
+
+function mrpToggleAddrSettings() {
+  var el = document.getElementById('mrp-addr-settings');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+async function mrpSaveAddress(type) {
+  var inputId = type === 'home' ? 'mrp-home-addr-input' : 'mrp-office-addr-input';
+  var statusId = type === 'home' ? 'mrp-home-addr-status' : 'mrp-office-addr-status';
+  var input = document.getElementById(inputId);
+  var statusEl = document.getElementById(statusId);
+  var address = input.value.trim();
+  if (!address) { statusEl.innerHTML = '<span style="color:#dc2626">Please enter an address</span>'; return; }
+  statusEl.innerHTML = '<span style="color:#d97706">Geocoding...</span>';
+  try {
+    var resp = await fetch('/api/route-planner/save-address', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({type: type, address: address})
+    });
+    var data = await resp.json();
+    if (data.ok) {
+      statusEl.innerHTML = '<span style="color:#16a34a">Saved</span>';
+      if (type === 'home') {
+        MRP.userHome = {home_address: data.address, home_lat: data.lat, home_lng: data.lng};
+      } else {
+        MRP.office = {office_address: data.address, office_lat: data.lat, office_lng: data.lng};
+      }
+      mrpUpdateAddrLabels();
+    } else {
+      statusEl.innerHTML = '<span style="color:#dc2626">' + (data.error || 'Failed') + '</span>';
+    }
+  } catch(e) {
+    statusEl.innerHTML = '<span style="color:#dc2626">Error saving address</span>';
+  }
+}
+
+function mrpUpdateAddrLabels() {
+  ['mrp-start','mrp-end'].forEach(function(selId) {
+    var sel = document.getElementById(selId);
+    Array.from(sel.options).forEach(function(opt) {
+      if (opt.value === 'office') {
+        var oa = MRP.office.office_address || '';
+        opt.textContent = 'Office' + (oa ? ' \u2014 ' + (oa.length > 30 ? oa.substring(0,30) + '\u2026' : oa) : '');
+      }
+      if (opt.value === 'home') {
+        var ha = MRP.userHome.home_address || '';
+        opt.textContent = 'Home' + (ha ? ' \u2014 ' + (ha.length > 30 ? ha.substring(0,30) + '\u2026' : ha) : '');
+      }
+    });
+  });
 }
 
 function mrpGetStart() {
