@@ -1278,18 +1278,52 @@ def import_staged_jobs(mode="insert_only", conn=None):
         SELECT * FROM geoop_staging_jobs WHERE import_status='pending' ORDER BY id
     """).fetchall()
 
+    existing_rows = conn.execute(
+        "SELECT id, internal_job_number, display_ref, client_job_number, geoop_job_id FROM jobs"
+    ).fetchall()
+    _existing_by_ijn = {}
+    _existing_by_dr = {}
+    _existing_by_dr_prefix = {}
+    _existing_by_cjn = {}
+    _existing_by_gid = {}
+    for er in existing_rows:
+        eid = er["id"]
+        if er["internal_job_number"]:
+            _existing_by_ijn[er["internal_job_number"]] = eid
+        if er["display_ref"]:
+            _existing_by_dr[er["display_ref"]] = eid
+            base = er["display_ref"].split(" (")[0]
+            _existing_by_dr_prefix[base] = eid
+        if er["client_job_number"]:
+            _existing_by_cjn[er["client_job_number"]] = eid
+        if er["geoop_job_id"]:
+            _existing_by_gid[er["geoop_job_id"].strip()] = eid
+
+    def _find_existing(ref_no, geoop_id_str):
+        if ref_no:
+            eid = (_existing_by_ijn.get(ref_no)
+                   or _existing_by_dr.get(ref_no)
+                   or _existing_by_dr_prefix.get(ref_no))
+            if eid:
+                return eid
+        if geoop_id_str:
+            eid = (_existing_by_cjn.get(geoop_id_str)
+                   or _existing_by_gid.get(geoop_id_str))
+            if eid:
+                return eid
+        return None
+
     for sj in staged:
         geoop_id = sj["geoop_job_id"]
 
-        existing = conn.execute(
-            "SELECT id FROM jobs WHERE internal_job_number=? OR client_job_number=? OR geoop_job_id=?",
-            (sj["reference_no"], geoop_id, str(geoop_id).strip())
-        ).fetchone()
+        ref_no = sj["reference_no"] or ""
+        geoop_id_str = str(geoop_id).strip()
+        existing_id = _find_existing(ref_no, geoop_id_str)
 
-        if existing and mode == "insert_only":
+        if existing_id and mode == "insert_only":
             conn.execute(
                 "UPDATE geoop_staging_jobs SET import_status='skipped_exists', axion_job_id=?, imported_at=? WHERE id=?",
-                (existing["id"], ts, sj["id"])
+                (existing_id, ts, sj["id"])
             )
             skipped += 1
             continue
@@ -1347,7 +1381,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
         _nmpd_date = sj["parsed_nmpd_date"] or ""
         _pmt_freq = "Monthly" if _nmpd_date else ""
 
-        if existing and mode == "update":
+        if existing_id and mode == "update":
             conn.execute("""
                 UPDATE jobs SET
                     status=?, job_address=?, description=?,
@@ -1369,26 +1403,26 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 _pmt_freq,
                 sj["parsed_deliver_to"] or "", client_id,
                 str(geoop_id).strip(), ts,
-                existing["id"]
+                existing_id
             ))
             legacy_exists = conn.execute(
                 "SELECT id FROM job_field_notes WHERE job_id=? AND note_type='geoop_import'",
-                (existing["id"],)
+                (existing_id,)
             ).fetchone()
             if not legacy_exists and sj["raw_description"]:
                 conn.execute("""
                     INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, note_type, created_at)
                     VALUES (?, 1, ?, 'geoop_import', ?)
-                """, (existing["id"], "[GeoOp Import] " + sj["raw_description"], ts))
+                """, (existing_id, "[GeoOp Import] " + sj["raw_description"], ts))
             conn.execute(
                 "UPDATE geoop_staging_jobs SET import_status='updated', axion_job_id=?, axion_client_id=?, imported_at=? WHERE id=?",
-                (existing["id"], client_id, ts, sj["id"])
+                (existing_id, client_id, ts, sj["id"])
             )
             updated += 1
             continue
 
         try:
-            ref_no = sj["reference_no"] or geoop_id
+            insert_ref = ref_no or str(geoop_id)
             cur = conn.cursor()
             cur.execute("""
                 INSERT INTO jobs (
@@ -1401,7 +1435,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     created_at, updated_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
-                ref_no, ref_no, sj["parsed_account_number"] or "",
+                insert_ref, insert_ref, sj["parsed_account_number"] or "",
                 cust_id, client_id, job_type, "New Visit", status, "Normal",
                 full_address, sj["raw_description"], sj["raw_description"],
                 sj["parsed_client_name"] or "", sj["parsed_account_number"] or "",
@@ -1447,6 +1481,11 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 "UPDATE geoop_staging_jobs SET import_status='imported', axion_job_id=?, axion_customer_id=?, axion_client_id=?, imported_at=? WHERE id=?",
                 (axion_job_id, cust_id, client_id, ts, sj["id"])
             )
+            _existing_by_ijn[insert_ref] = axion_job_id
+            _existing_by_dr[insert_ref] = axion_job_id
+            _existing_by_dr_prefix[insert_ref.split(" (")[0]] = axion_job_id
+            _existing_by_cjn[str(geoop_id)] = axion_job_id
+            _existing_by_gid[geoop_id_str] = axion_job_id
             imported += 1
         except Exception as e:
             conn.execute(
