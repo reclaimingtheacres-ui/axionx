@@ -135,6 +135,25 @@
 
 </form>
 
+{# ── Push Notifications (native wrapper only) ── #}
+<div id="pushSection" style="display:none;">
+  <div style="padding: 4px 12px 6px;">
+    <div class="set-card-title">Notifications</div>
+  </div>
+  <div class="set-card">
+    <div class="set-row">
+      <div>
+        <div class="set-label">Push Notifications</div>
+        <div class="set-sub" id="pushStatusSub">Receive alerts for new jobs even when the app is closed</div>
+      </div>
+      <button type="button" id="pushEnableBtn" onclick="enablePushNotifications()"
+        style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:.82rem;font-weight:600;cursor:pointer;">
+        Enable
+      </button>
+    </div>
+  </div>
+</div>
+
 {# ── Biometric Login (native wrapper only) ── #}
 <div id="biometricSection" style="display:none;">
   <div style="padding: 4px 12px 6px;">
@@ -268,6 +287,55 @@ function resetBiometricSession() {
 }
 
 if (_isWrapper) { loadBiometricStatus(); }
+
+function setupPushSection() {
+  if (!_isWrapper) return;
+  document.getElementById('pushSection').style.display = 'block';
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pushNotifications) {
+    var cbId = 'push_' + (++_cbCounter);
+    _cbMap[cbId] = function(s) {
+      var btn = document.getElementById('pushEnableBtn');
+      var sub = document.getElementById('pushStatusSub');
+      if (s && s.enabled) {
+        btn.textContent = 'Enabled';
+        btn.style.background = '#10b981';
+        btn.disabled = true;
+        sub.textContent = 'You will receive alerts for new jobs';
+      }
+    };
+    window.webkit.messageHandlers.pushNotifications.postMessage({action:'getStatus', callbackId: cbId});
+  }
+}
+
+window._pushCallback = function(id, data) {
+  if (_cbMap[id]) { _cbMap[id](data); delete _cbMap[id]; }
+};
+
+function enablePushNotifications() {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pushNotifications) {
+    var cbId = 'push_' + (++_cbCounter);
+    _cbMap[cbId] = function(result) {
+      if (result && result.token) {
+        fetch('/m/api/device/register', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+          body: JSON.stringify({token: result.token, platform: 'ios'})
+        }).then(function(){ setupPushSection(); });
+      } else if (result && result.denied) {
+        document.getElementById('pushStatusSub').textContent = 'Notifications blocked — enable in iOS Settings > AxionX';
+        var btn = document.getElementById('pushEnableBtn');
+        btn.textContent = 'Blocked';
+        btn.style.background = '#ef4444';
+        btn.disabled = true;
+      }
+    };
+    window.webkit.messageHandlers.pushNotifications.postMessage({action:'requestPermission', callbackId: cbId});
+  } else {
+    document.getElementById('pushStatusSub').textContent = 'Push notifications require the AxionX app';
+  }
+}
+
+if (_isWrapper) { setupPushSection(); }
 </script>
 
 {% endblock %}

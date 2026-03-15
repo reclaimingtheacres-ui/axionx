@@ -3760,7 +3760,17 @@ def job_create():
             cur.execute("DELETE FROM document_extractions WHERE id = ?", (int(autofill_id),))
 
     conn.commit()
+
+    _final_agent = None
+    try:
+        _fa_row = conn.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        _final_agent = _fa_row["assigned_user_id"] if _fa_row else None
+    except Exception:
+        pass
     conn.close()
+
+    if _final_agent:
+        _notify_agent_job_assigned(_final_agent, job_id, display_ref, job_address)
 
     if job_address:
         _geocode_job_async(job_id, job_address)
@@ -5090,10 +5100,15 @@ def job_assign_agent(job_id: int):
         conn.close()
         return jsonify({"ok": False, "error": "Agent not found or inactive."}), 404
     now = datetime.now().isoformat(timespec="seconds")
+    prev = cur.execute("SELECT assigned_user_id, display_ref, job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
     cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                 (agent_id, now, job_id))
     conn.commit()
     conn.close()
+    if not prev or prev["assigned_user_id"] != agent_id:
+        _notify_agent_job_assigned(agent_id, job_id,
+                                   prev["display_ref"] if prev else str(job_id),
+                                   prev["job_address"] if prev else "")
     return jsonify({"ok": True})
 
 
@@ -5467,6 +5482,7 @@ def job_update(job_id: int):
 
     conn = db()
     cur = conn.cursor()
+    _prev_job = cur.execute("SELECT assigned_user_id, display_ref, job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
     cur.execute("UPDATE jobs SET status = ?, visit_type = ?, assigned_user_id = ?, updated_at = ? WHERE id = ?",
                 (status, visit_type, assigned_user_id, now, job_id))
 
@@ -5505,6 +5521,11 @@ def job_update(job_id: int):
 
     conn.commit()
     conn.close()
+    if (assigned_user_id and status not in ("Completed", "Invoiced", "Cancelled")
+            and (not _prev_job or str(_prev_job["assigned_user_id"]) != str(assigned_user_id))):
+        _notify_agent_job_assigned(int(assigned_user_id), job_id,
+                                   _prev_job["display_ref"] if _prev_job else str(job_id),
+                                   _prev_job["job_address"] if _prev_job else "")
     flash("Job updated.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
 
@@ -15645,6 +15666,54 @@ def _notify_admins(title: str, body: str, notif_type: str, data: dict = None,
         conn.close()
         for admin in admins:
             _notify_user(admin["id"], title, body, notif_type, data)
+    except Exception:
+        pass
+
+
+def _extract_suburb(job_address):
+    if not job_address:
+        return ""
+    import re as _re
+    parts = [p.strip() for p in job_address.split(",")]
+    for part in reversed(parts):
+        cleaned = _re.sub(r'\b(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)\b', '', part).strip()
+        cleaned = _re.sub(r'\b\d{4}\b', '', cleaned).strip()
+        cleaned = _re.sub(r'\s+', ' ', cleaned).strip()
+        if not cleaned:
+            continue
+        if _re.match(r'^\d', cleaned) or _re.search(r'\b(St|Rd|Ave|Dr|Ct|Cr|Pl|Hwy|Blvd|Lane|Way|Tce|Pde)\b', cleaned, _re.IGNORECASE):
+            continue
+        if _re.match(r'^(Unit|Lot|Level|Suite|Shop)\b', cleaned, _re.IGNORECASE):
+            continue
+        return cleaned
+    return parts[-1].strip() if parts else ""
+
+
+def _notify_agent_job_assigned(agent_id, job_id, job_ref, job_address):
+    try:
+        suburb = _extract_suburb(job_address) or "an unspecified location"
+        msg_body = f"You have a new job to attend to in {suburb}."
+        conn = db()
+        _ensure_msg_tables(conn)
+        admins = conn.execute(
+            "SELECT id FROM users WHERE role IN ('admin','both') AND active=1 ORDER BY id LIMIT 1"
+        ).fetchone()
+        sender_id = admins["id"] if admins else agent_id
+        conv_id, _ = _get_or_create_direct_conv(conn, sender_id, agent_id, job_id=job_id)
+        ts = now_ts()
+        conn.execute(
+            "INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?,?,?,?)",
+            (conv_id, sender_id, msg_body, ts)
+        )
+        conn.execute(
+            "UPDATE conversations SET updated_at=? WHERE id=?", (ts, conv_id)
+        )
+        conn.commit()
+        conn.close()
+        _notify_user(agent_id, "New Job Assigned",
+                     f"{job_ref} — {suburb}",
+                     "job_assigned",
+                     {"type": "job_assigned", "job_id": job_id})
     except Exception:
         pass
 
