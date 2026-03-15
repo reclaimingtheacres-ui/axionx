@@ -91,6 +91,24 @@ def _parse_note_text_date(text):
 
     return None
 
+_ADMIN_AGENT_IGNORE = frozenset(s.lower() for s in (
+    "Dom Powell", "Admin Office",
+))
+
+_ASSIGNED_RESOURCE_HEADERS = (
+    "Assigned To", "Assigned Resource", "Resource", "Staff",
+    "Assigned Staff", "Assigned User", "Technician",
+)
+
+
+def _detect_assigned_resource(csv_row):
+    for h in _ASSIGNED_RESOURCE_HEADERS:
+        val = (csv_row.get(h) or "").strip()
+        if val:
+            return val
+    return ""
+
+
 def _preserve_phone_text(val):
     """Restore leading zero on Australian phone numbers stripped by Excel/CSV numeric coercion.
 
@@ -169,6 +187,7 @@ def ensure_staging_tables(conn=None):
         mobile TEXT,
         created_by TEXT,
         modified_by TEXT,
+        assigned_resource_raw TEXT,
         date_created TEXT,
         date_modified TEXT,
         file_locations TEXT,
@@ -1120,22 +1139,27 @@ def _build_agent_resolver(conn):
 def seed_agent_aliases(conn):
     ts = _now()
     seeds = [
-        ("GrantC",  "Grant Cook",    0, "GeoOp username"),
-        ("ChrisW",  "Chris W",       0, "GeoOp username"),
-        ("CraigW",  "Craig Wright",  0, "GeoOp username"),
-        ("BPS",     "Craig Wright",  0, "GeoOp initials"),
-        ("CW",      "ambiguous",     1, "Could be Chris W or Craig Wright — requires manual review"),
-        ("Dom Powell", "Dom Powell", 0, "GeoOp full name"),
-        ("Admin Office", "Admin Office", 0, "GeoOp admin account"),
-        ("Daniel C", "Daniel C",     0, "GeoOp username"),
+        ("GrantC",  "Grant Cook",    1, 0, "GeoOp login"),
+        ("ChrisW",  "Chris W",       4, 0, "GeoOp login"),
+        ("CraigW",  "Craig Wright",  8, 0, "GeoOp login"),
+        ("BPS",     "Craig Wright",  8, 0, "GeoOp initials"),
+        ("JamesW",  "James W",       5, 0, "GeoOp login"),
+        ("DanielC", "Daniel C",      3, 0, "GeoOp login"),
+        ("Daniel C","Daniel C",      3, 0, "GeoOp login variant"),
+        ("CW",      "ambiguous",     None, 1, "Could be Chris W or Craig Wright — requires manual review"),
     ]
-    for alias, canon, ambig, note in seeds:
+    for alias, canon, uid, ambig, note in seeds:
         existing = conn.execute("SELECT id FROM agent_aliases WHERE alias = ? COLLATE NOCASE", (alias,)).fetchone()
         if not existing:
             conn.execute("""
                 INSERT INTO agent_aliases (alias, canonical_name, user_id, active, ambiguous, notes, created_at, updated_at)
-                VALUES (?, ?, NULL, 1, ?, ?, ?, ?)
-            """, (alias, canon, ambig, note, ts, ts))
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+            """, (alias, canon, uid, ambig, note, ts, ts))
+        elif uid is not None:
+            conn.execute(
+                "UPDATE agent_aliases SET user_id = ?, updated_at = ? WHERE id = ? AND user_id IS NULL",
+                (uid, ts, existing["id"])
+            )
     conn.commit()
 
 
@@ -1143,9 +1167,18 @@ def resolve_agent_for_import(conn, sj, resolver=None):
     if resolver is None:
         resolver = _build_agent_resolver(conn)
 
-    raw_agent = (sj["modified_by"] or sj["created_by"] or "").strip()
+    raw_agent = ""
+    try:
+        raw_agent = (sj["assigned_resource_raw"] or "").strip()
+    except (KeyError, IndexError):
+        pass
+    if not raw_agent:
+        raw_agent = (sj["modified_by"] or sj["created_by"] or "").strip()
     if not raw_agent:
         return None, raw_agent, None
+
+    if raw_agent.lower() in _ADMIN_AGENT_IGNORE:
+        return None, None, "admin_ignored"
 
     user_id, status = resolver(raw_agent)
     return user_id, raw_agent, status
@@ -1160,34 +1193,46 @@ def backfill_agent_assignments(conn=None):
     ts = _now()
     resolver = _build_agent_resolver(conn)
 
+    conn.execute("""
+        UPDATE jobs SET assigned_user_id = NULL, geoop_assigned_agent = NULL, updated_at = ?
+        WHERE geoop_job_id IS NOT NULL
+          AND geoop_assigned_agent IS NOT NULL
+          AND LOWER(geoop_assigned_agent) IN ('dom powell', 'admin office')
+          AND status NOT IN ('Completed', 'Cancelled', 'Invoiced', 'Archived - Invoiced', 'Cold Stored')
+    """, (ts,))
+    conn.commit()
+
     rows = conn.execute("""
         SELECT j.id, j.geoop_job_id, j.geoop_assigned_agent,
-               sj.created_by, sj.modified_by
+               sj.assigned_resource_raw, sj.created_by, sj.modified_by
         FROM jobs j
         JOIN geoop_staging_jobs sj ON CAST(sj.geoop_job_id AS TEXT) = j.geoop_job_id
         WHERE j.geoop_job_id IS NOT NULL
-          AND (j.assigned_user_id IS NULL)
           AND j.status NOT IN ('Completed', 'Cancelled', 'Invoiced', 'Archived - Invoiced', 'Cold Stored')
-          AND (sj.modified_by IS NOT NULL AND sj.modified_by != ''
-               OR sj.created_by IS NOT NULL AND sj.created_by != '')
     """).fetchall()
 
     assigned = 0
     ambiguous = 0
     unmatched = 0
-    raw_saved = 0
+    admin_ignored = 0
+    skipped_empty = 0
 
     for r in rows:
-        raw_agent = (r["modified_by"] or r["created_by"] or "").strip()
+        raw_agent = (r["assigned_resource_raw"] or "").strip()
         if not raw_agent:
+            raw_agent = (r["modified_by"] or r["created_by"] or "").strip()
+        if not raw_agent:
+            skipped_empty += 1
             continue
 
-        if not r["geoop_assigned_agent"]:
-            conn.execute(
-                "UPDATE jobs SET geoop_assigned_agent = ? WHERE id = ?",
-                (raw_agent, r["id"])
-            )
-            raw_saved += 1
+        if raw_agent.lower() in _ADMIN_AGENT_IGNORE:
+            if r["geoop_assigned_agent"] or False:
+                conn.execute(
+                    "UPDATE jobs SET geoop_assigned_agent = NULL, assigned_user_id = NULL, updated_at = ? WHERE id = ?",
+                    (ts, r["id"])
+                )
+            admin_ignored += 1
+            continue
 
         user_id, status = resolver(raw_agent)
         if user_id:
@@ -1198,18 +1243,18 @@ def backfill_agent_assignments(conn=None):
             assigned += 1
         elif status == "ambiguous":
             conn.execute(
-                "UPDATE jobs SET geoop_assigned_agent = ? WHERE id = ? AND (geoop_assigned_agent IS NULL OR geoop_assigned_agent = '')",
-                (raw_agent, r["id"])
+                "UPDATE jobs SET geoop_assigned_agent = ?, assigned_user_id = NULL, updated_at = ? WHERE id = ?",
+                (raw_agent, ts, r["id"])
             )
             ambiguous += 1
         else:
             conn.execute(
-                "UPDATE jobs SET geoop_assigned_agent = ? WHERE id = ? AND (geoop_assigned_agent IS NULL OR geoop_assigned_agent = '')",
-                (raw_agent, r["id"])
+                "UPDATE jobs SET geoop_assigned_agent = ?, updated_at = ? WHERE id = ?",
+                (raw_agent, ts, r["id"])
             )
             unmatched += 1
 
-        if (assigned + ambiguous + unmatched) % 500 == 0:
+        if (assigned + ambiguous + unmatched + admin_ignored) % 500 == 0:
             conn.commit()
 
     conn.commit()
@@ -1221,7 +1266,8 @@ def backfill_agent_assignments(conn=None):
         "assigned": assigned,
         "ambiguous": ambiguous,
         "unmatched": unmatched,
-        "raw_saved": raw_saved,
+        "admin_ignored": admin_ignored,
+        "skipped_empty": skipped_empty,
     }
 
 
@@ -1303,6 +1349,7 @@ def stage_jobs_csv(csv_path, conn=None):
                 _preserve_phone_text(row.get("Mobile", "")),
                 row.get("Created By", ""),
                 row.get("Modified By", ""),
+                _detect_assigned_resource(row),
                 row.get("Date Created", ""),
                 row.get("Date Modified", ""),
                 row.get("File Locations", ""),
@@ -1352,7 +1399,8 @@ def _insert_job_batch(conn, batch):
                     geoop_job_id, geoop_account_id, reference_no, job_title, raw_description,
                     status_label, address, suburb, city, postcode,
                     company, firstname, lastname, email, phone, mobile,
-                    created_by, modified_by, date_created, date_modified, file_locations,
+                    created_by, modified_by, assigned_resource_raw,
+                    date_created, date_modified, file_locations,
                     parsed_client_name, parsed_account_number, parsed_regulation_type,
                     parsed_amount_type, parsed_amount_cents, parsed_costs_cents,
                     parsed_nmpd_amount_cents, parsed_nmpd_date,
@@ -1360,7 +1408,7 @@ def _insert_job_batch(conn, batch):
                     parsed_security_year, parsed_security_make, parsed_security_model,
                     parsed_reg, parsed_vin, parsed_deliver_to, parsed_notes,
                     created_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, row)
             if conn.total_changes:
                 inserted += 1

@@ -1048,6 +1048,9 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "job_updates", "agent_notes", "TEXT DEFAULT ''")
 
     add_column_if_missing(cur, "jobs", "geoop_assigned_agent", "TEXT")
+    _staging_exists = cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='geoop_staging_jobs'").fetchone()
+    if _staging_exists:
+        add_column_if_missing(cur, "geoop_staging_jobs", "assigned_resource_raw", "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS agent_aliases (
@@ -10540,7 +10543,8 @@ def geoop_agent_backfill():
         flash(
             f"Agent backfill complete: {result['assigned']} assigned, "
             f"{result['ambiguous']} ambiguous, {result['unmatched']} unmatched, "
-            f"{result['raw_saved']} raw values saved.",
+            f"{result['admin_ignored']} admin-ignored, "
+            f"{result['skipped_empty']} empty.",
             "success"
         )
     except Exception as e:
