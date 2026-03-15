@@ -3408,7 +3408,7 @@ def _job_new_render(conn):
             prefill_client_reference = autofill.get("client_reference") or autofill.get("contract_number") or ""
         if not prefill_lender_name:
             prefill_lender_name = autofill.get("lender_name") or ""
-        if not prefill_account_number:
+        if not prefill_account_number and not prefill_client_reference:
             prefill_account_number = autofill.get("account_number") or ""
         if not prefill_customer_address:
             prefill_customer_address = autofill.get("job_address_full") or ""

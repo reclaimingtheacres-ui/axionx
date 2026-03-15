@@ -362,8 +362,8 @@
           </div>
           <div style="flex:1;min-width:120px;">
             <label class="nj-lbl">Account # {{ conf_badge('account_number') }}</label>
-            <input class="form-control form-control-sm" name="account_number" placeholder="1234567"
-                   value="{{ prefill_account_number or (autofill.account_number if autofill else '') }}">
+            <input class="form-control form-control-sm" name="account_number" id="account_number" placeholder="1234567"
+                   value="{{ prefill_account_number or '' }}">
           </div>
         </div>
         <div class="nj-row">
@@ -1095,7 +1095,6 @@ function toggleParsed(btn) {
       if (el && val) el.value = val;
     }
     setInput('lender_name', d.lender_name);
-    setInput('account_number', d.account_number);
     setSelect('regulation_type', d.regulation_type);
     setInput('arrears', d.arrears);
     setInput('costs', d.costs);
@@ -1223,13 +1222,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
   var params = new URLSearchParams(window.location.search);
   var prefillLender  = params.get('lender_name')    || '{{ prefill_lender_name|e }}';
-  var prefillAccount = params.get('account_number') || '{{ prefill_account_number|e }}';
-  if (prefillLender || prefillAccount) {
+  if (prefillLender) {
     var lnEl  = document.getElementById('lender_name');
-    var accEl2 = document.querySelector('[name="account_number"]');
-    if (lnEl  && prefillLender)  lnEl.value  = prefillLender;
-    if (accEl2 && prefillAccount) { accEl2.value = prefillAccount; accEl2._userEdited = true; }
+    if (lnEl) lnEl.value = prefillLender;
   }
+
+  var prefillAccount = '{{ prefill_account_number|e }}';
+  if (prefillAccount && accEl) { accEl._userEdited = true; }
+
+  syncContractToAccount();
 });
 
 /* ── Submit "Add Job" (save & add another) ──────────────────────────── */
