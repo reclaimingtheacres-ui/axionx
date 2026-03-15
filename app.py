@@ -12042,27 +12042,26 @@ def api_agent_location():
 
 
 def _geocode_address(address: str):
-    """Geocode an address via Nominatim. Returns (lat, lng) or None.
-    Rate-limit compliant: caller must sleep ≥1 s between calls."""
+    """Geocode an address via Google Geocoding API. Returns (lat, lng) or None."""
     import urllib.request
     import urllib.parse
+    api_key = os.getenv("GOOGLE_MAPS_API_KEY", "")
+    if not api_key:
+        return None
     try:
         params = urllib.parse.urlencode({
-            "q": address,
-            "format": "json",
-            "limit": 1,
-            "countrycodes": "au",
+            "address": address,
+            "key": api_key,
+            "region": "au",
         })
-        url = f"https://nominatim.openstreetmap.org/search?{params}"
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "AxionX/1.0 field-ops (contact@swpirecoveries.com.au)"}
-        )
+        url = f"https://maps.googleapis.com/maps/api/geocode/json?{params}"
+        req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=8) as resp:
             import json as _json
             data = _json.loads(resp.read())
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
+        if data.get("status") == "OK" and data.get("results"):
+            loc = data["results"][0]["geometry"]["location"]
+            return float(loc["lat"]), float(loc["lng"])
     except Exception:
         pass
     return None
@@ -12167,7 +12166,7 @@ def m_geocode_pending():
                 c2.close()
             except Exception:
                 pass
-        _time.sleep(1.05)
+        _time.sleep(0.05)
 
     remaining_conn = db()
     remaining = remaining_conn.execute(

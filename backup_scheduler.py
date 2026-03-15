@@ -20,23 +20,24 @@ last_run_date = None
 last_geocode_time = 0
 
 
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+
 def _geocode_address(address):
+    if not GOOGLE_MAPS_API_KEY:
+        return None
     try:
         params = urllib.parse.urlencode({
-            "q": address,
-            "format": "json",
-            "limit": 1,
-            "countrycodes": "au",
+            "address": address,
+            "key": GOOGLE_MAPS_API_KEY,
+            "region": "au",
         })
-        url = f"https://nominatim.openstreetmap.org/search?{params}"
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "AxionX/1.0 field-ops (contact@swpirecoveries.com.au)"}
-        )
+        url = f"https://maps.googleapis.com/maps/api/geocode/json?{params}"
+        req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = json.loads(resp.read())
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
+        if data.get("status") == "OK" and data.get("results"):
+            loc = data["results"][0]["geometry"]["location"]
+            return float(loc["lat"]), float(loc["lng"])
     except Exception:
         pass
     return None
@@ -54,7 +55,7 @@ def geocode_batch():
         f"   AND (lat IS NULL OR lng IS NULL)"
         f"   AND status NOT IN ({ph})"
         f"   AND (geocode_fail IS NULL OR geocode_fail < 3)"
-        f" ORDER BY id DESC LIMIT 30",
+        f" ORDER BY id DESC LIMIT 100",
         EXCLUDED_STATUSES
     ).fetchall()
 
@@ -86,7 +87,7 @@ def geocode_batch():
                 failed += 1
             except Exception:
                 pass
-        time.sleep(1.1)
+        time.sleep(0.05)
 
     remaining = conn.execute(
         f"SELECT COUNT(*) FROM jobs"
