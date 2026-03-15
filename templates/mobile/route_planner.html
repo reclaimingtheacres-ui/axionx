@@ -1,0 +1,327 @@
+{% extends "mobile/base.html" %}
+{% block title %}Route Planner{% endblock %}
+
+{% block content %}
+<style>
+.mrp-page{padding:12px 14px;padding-bottom:calc(80px + var(--safe-bot))}
+.mrp-tabs{display:flex;gap:0;background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--line);margin-bottom:14px}
+.mrp-tab{flex:1;text-align:center;padding:10px 8px;font-size:.78rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:transparent;transition:all .15s}
+.mrp-tab.active{background:var(--accent);color:#fff}
+.mrp-section{display:none}
+.mrp-section.active{display:block}
+.mrp-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.mrp-lbl{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px}
+.mrp-sel,.mrp-input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-size:.88rem;background:var(--card);appearance:none;-webkit-appearance:none}
+.mrp-btn{width:100%;padding:14px;border-radius:10px;font-size:.9rem;font-weight:700;border:none;cursor:pointer;text-align:center;margin-bottom:8px}
+.mrp-btn-primary{background:var(--accent);color:#fff}
+.mrp-btn-outline{background:var(--card);color:var(--text);border:1px solid var(--line)}
+.mrp-check{width:20px;height:20px;accent-color:var(--accent)}
+.mrp-job-card{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:6px}
+.mrp-job-card.selected{border-color:var(--accent);background:#eff6ff}
+.mrp-job-info{flex:1;min-width:0}
+.mrp-job-ref{font-weight:700;font-size:.84rem;color:var(--accent)}
+.mrp-job-cust{font-size:.82rem;font-weight:500}
+.mrp-job-addr{font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrp-job-sub{font-size:.72rem;color:var(--muted);background:var(--card2);padding:1px 8px;border-radius:8px;display:inline-block;margin-top:2px}
+.mrp-suburb-group{margin-bottom:10px}
+.mrp-suburb-hdr{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--card2);border-radius:8px;margin-bottom:6px;font-size:.82rem;font-weight:600}
+.mrp-suburb-hdr button{font-size:.72rem;color:var(--accent);background:none;border:none;font-weight:600;cursor:pointer}
+.mrp-stop-card{display:flex;gap:10px;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;margin-bottom:6px;align-items:flex-start}
+.mrp-stop-num{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-size:.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.mrp-stop-num.pinned{background:#f59e0b}
+.mrp-stop-info{flex:1;min-width:0}
+.mrp-stop-ref{font-weight:700;font-size:.84rem;color:var(--accent)}
+.mrp-stop-addr{font-size:.76rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrp-stop-meta{font-size:.72rem;color:var(--muted);margin-top:2px}
+.mrp-nav-btn{padding:8px 14px;border-radius:8px;background:var(--accent);color:#fff;font-size:.78rem;font-weight:600;border:none;text-decoration:none;display:inline-block}
+.mrp-summary{display:flex;gap:0;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
+.mrp-summary>div{flex:1;text-align:center;padding:10px 6px;border-right:1px solid var(--line)}
+.mrp-summary>div:last-child{border-right:none}
+.mrp-summary .val{font-size:1.2rem;font-weight:700;color:var(--accent)}
+.mrp-summary .unit{font-size:.68rem;color:var(--muted)}
+.mrp-sel[multiple]{min-height:80px}
+.mrp-count{background:var(--accent);color:#fff;border-radius:12px;padding:1px 8px;font-size:.72rem;font-weight:700}
+.mrp-warn{background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:.8rem;color:#92400e;margin-bottom:8px}
+</style>
+
+<div class="mrp-page">
+  <div class="mrp-tabs">
+    <div class="mrp-tab active" onclick="mrpTab('filters')">Filters</div>
+    <div class="mrp-tab" onclick="mrpTab('select')">Select <span id="mrp-sel-badge" class="mrp-count" style="display:none">0</span></div>
+    <div class="mrp-tab" onclick="mrpTab('route')">Route</div>
+  </div>
+
+  <div id="mrp-filters" class="mrp-section active">
+    <div class="mrp-card">
+      <div class="mrp-lbl">Status</div>
+      <select id="mrp-status" class="mrp-sel" multiple size="3">
+        <option value="New" selected>New</option>
+        <option value="Active" selected>Active</option>
+        <option value="Pending">Pending</option>
+        <option value="Suspended">Suspended</option>
+      </select>
+    </div>
+    <div class="mrp-card">
+      <div class="mrp-lbl">Search Suburb</div>
+      <input id="mrp-suburb-search" class="mrp-input" placeholder="Type suburb name...">
+      <div id="mrp-suburb-results" style="margin-top:6px"></div>
+      <div id="mrp-suburb-selected" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>
+    </div>
+    <div class="mrp-card">
+      <div class="mrp-lbl">Start From</div>
+      <select id="mrp-start" class="mrp-sel">
+        <option value="current">Current Location</option>
+        <option value="office">Office</option>
+        <option value="home">Home</option>
+      </select>
+    </div>
+    <div class="mrp-card">
+      <div class="mrp-lbl">End At</div>
+      <select id="mrp-end" class="mrp-sel">
+        <option value="">No fixed end</option>
+        <option value="office">Office</option>
+        <option value="home">Home</option>
+        <option value="current">Current Location</option>
+      </select>
+    </div>
+    <div class="mrp-card">
+      <div class="mrp-lbl">Route Mode</div>
+      <select id="mrp-mode" class="mrp-sel">
+        <option value="full_optimise">Full Optimise</option>
+        <option value="strict_corridor">Strict Suburb Corridor</option>
+      </select>
+    </div>
+    <div class="mrp-card">
+      <div class="mrp-lbl">Direction</div>
+      <select id="mrp-direction" class="mrp-sel">
+        <option value="forward">Forward</option>
+        <option value="reverse">Reverse</option>
+      </select>
+    </div>
+    <button class="mrp-btn mrp-btn-primary" onclick="mrpLoadJobs()">Load Jobs</button>
+  </div>
+
+  <div id="mrp-select" class="mrp-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span id="mrp-job-count" style="font-size:.84rem;font-weight:600"></span>
+      <div style="display:flex;gap:6px">
+        <button class="mrp-btn-outline" style="padding:6px 12px;border-radius:8px;font-size:.76rem;font-weight:600;border:1px solid var(--line);background:var(--card)" onclick="mrpSelectAllJobs()">All</button>
+        <button class="mrp-btn-outline" style="padding:6px 12px;border-radius:8px;font-size:.76rem;font-weight:600;border:1px solid var(--line);background:var(--card)" onclick="mrpClearAllJobs()">Clear</button>
+      </div>
+    </div>
+    <div id="mrp-warnings-mob" style="display:none"></div>
+    <div id="mrp-job-list-mob"></div>
+    <button class="mrp-btn mrp-btn-primary" style="margin-top:12px" onclick="mrpGenerate()">Generate Route</button>
+  </div>
+
+  <div id="mrp-route" class="mrp-section">
+    <div id="mrp-route-summary" class="mrp-summary" style="display:none">
+      <div><div class="val" id="mrp-total-stops">0</div><div class="unit">stops</div></div>
+      <div><div class="val" id="mrp-total-km">0</div><div class="unit">km</div></div>
+      <div><div class="val" id="mrp-total-min">0</div><div class="unit">min</div></div>
+    </div>
+    <div id="mrp-route-warnings" style="display:none"></div>
+    <div id="mrp-stops-list-mob" style="min-height:100px">
+      <div style="padding:30px;text-align:center;color:var(--muted);font-size:.84rem">
+        Select jobs and generate a route first.
+      </div>
+    </div>
+    <button class="mrp-btn mrp-btn-primary" style="margin-top:12px" id="mrp-regen" onclick="mrpGenerate()" style="display:none">Regenerate Route</button>
+  </div>
+</div>
+
+<script>
+const MRP = {
+  jobs: [],
+  selected: new Set(),
+  suburbs: {{ suburbs|tojson }},
+  selectedSuburbs: [],
+  stops: [],
+  userHome: {{ user_home|tojson }},
+  office: {{ office|tojson }},
+  currentLat: null,
+  currentLng: null,
+};
+
+function mrpTab(name) {
+  document.querySelectorAll('.mrp-tab').forEach((t,i) => {
+    t.classList.toggle('active', ['filters','select','route'][i] === name);
+  });
+  document.querySelectorAll('.mrp-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('mrp-'+name).classList.add('active');
+}
+
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(p => {
+    MRP.currentLat = p.coords.latitude;
+    MRP.currentLng = p.coords.longitude;
+  }, () => {});
+}
+
+document.getElementById('mrp-suburb-search').addEventListener('input', function() {
+  const q = this.value.toLowerCase().trim();
+  if (!q) { document.getElementById('mrp-suburb-results').innerHTML = ''; return; }
+  const matches = MRP.suburbs.filter(s => s.toLowerCase().includes(q) && !MRP.selectedSuburbs.includes(s)).slice(0, 8);
+  document.getElementById('mrp-suburb-results').innerHTML = matches.map(s =>
+    `<button style="display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:var(--card2);border-radius:6px;margin:2px 0;font-size:.82rem" onclick="mrpAddSuburb('${s.replace(/'/g,"\\'")}');this.parentNode.innerHTML=''">${s}</button>`
+  ).join('');
+});
+
+function mrpAddSuburb(s) {
+  if (!MRP.selectedSuburbs.includes(s)) MRP.selectedSuburbs.push(s);
+  document.getElementById('mrp-suburb-search').value = '';
+  mrpRenderSuburbTags();
+}
+
+function mrpRenderSuburbTags() {
+  document.getElementById('mrp-suburb-selected').innerHTML = MRP.selectedSuburbs.map(s =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;background:#eff6ff;color:var(--accent);border:1px solid #bfdbfe;border-radius:12px;padding:3px 10px;font-size:.76rem;font-weight:500">${s} <span onclick="MRP.selectedSuburbs=MRP.selectedSuburbs.filter(x=>x!=='${s.replace(/'/g,"\\'")}');mrpRenderSuburbTags()" style="cursor:pointer;font-weight:700">&times;</span></span>`
+  ).join('');
+}
+
+function mrpGetStart() {
+  const t = document.getElementById('mrp-start').value;
+  if (t === 'home' && MRP.userHome.home_lat) return {lat: MRP.userHome.home_lat, lng: MRP.userHome.home_lng};
+  if (t === 'office' && MRP.office.office_lat) return {lat: MRP.office.office_lat, lng: MRP.office.office_lng};
+  if (t === 'current' && MRP.currentLat) return {lat: MRP.currentLat, lng: MRP.currentLng};
+  return null;
+}
+
+function mrpGetEnd() {
+  const t = document.getElementById('mrp-end').value;
+  if (!t) return null;
+  if (t === 'home' && MRP.userHome.home_lat) return {lat: MRP.userHome.home_lat, lng: MRP.userHome.home_lng};
+  if (t === 'office' && MRP.office.office_lat) return {lat: MRP.office.office_lat, lng: MRP.office.office_lng};
+  if (t === 'current' && MRP.currentLat) return {lat: MRP.currentLat, lng: MRP.currentLng};
+  return null;
+}
+
+async function mrpLoadJobs() {
+  const params = new URLSearchParams();
+  document.querySelectorAll('#mrp-status option:checked').forEach(o => params.append('status', o.value));
+  MRP.selectedSuburbs.forEach(s => params.append('suburb', s));
+  try {
+    const resp = await fetch('/api/route-planner/jobs?' + params);
+    const data = await resp.json();
+    MRP.jobs = data.jobs;
+    mrpRenderJobs();
+    mrpTab('select');
+  } catch(e) { alert('Failed to load jobs.'); }
+}
+
+function mrpRenderJobs() {
+  const container = document.getElementById('mrp-job-list-mob');
+  if (!MRP.jobs.length) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">No jobs found.</div>';
+    document.getElementById('mrp-job-count').textContent = '0 jobs';
+    return;
+  }
+  const bySuburb = {};
+  MRP.jobs.forEach(j => {
+    const s = j.suburb || 'Unknown';
+    if (!bySuburb[s]) bySuburb[s] = [];
+    bySuburb[s].push(j);
+  });
+  let html = '';
+  for (const [suburb, jobs] of Object.entries(bySuburb).sort((a,b) => a[0].localeCompare(b[0]))) {
+    const allSel = jobs.every(j => MRP.selected.has(j.id));
+    html += `<div class="mrp-suburb-group">
+      <div class="mrp-suburb-hdr"><span>${suburb} (${jobs.length})</span>
+        <button onclick="mrpToggleSuburb('${suburb.replace(/'/g,"\\'")}', ${!allSel})">${allSel ? 'Clear' : 'Select All'}</button>
+      </div>`;
+    jobs.forEach(j => {
+      const sel = MRP.selected.has(j.id);
+      const noGeo = (!j.lat || !j.lng) ? '<span style="color:var(--red);font-size:.7rem;font-style:italic">No coords</span>' : '';
+      html += `<div class="mrp-job-card ${sel?'selected':''}" onclick="mrpToggleJob(${j.id})">
+        <input type="checkbox" class="mrp-check" ${sel?'checked':''} onclick="event.stopPropagation();mrpToggleJob(${j.id})">
+        <div class="mrp-job-info">
+          <div class="mrp-job-ref">${j.display_ref}</div>
+          <div class="mrp-job-cust">${j.customer_name} ${noGeo}</div>
+          <div class="mrp-job-addr">${j.address}</div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  container.innerHTML = html;
+  document.getElementById('mrp-job-count').textContent = `${MRP.jobs.length} jobs`;
+  mrpUpdateBadge();
+}
+
+function mrpToggleJob(id) {
+  if (MRP.selected.has(id)) MRP.selected.delete(id); else MRP.selected.add(id);
+  mrpRenderJobs();
+}
+
+function mrpToggleSuburb(suburb, select) {
+  MRP.jobs.filter(j => (j.suburb || 'Unknown') === suburb).forEach(j => {
+    if (select) MRP.selected.add(j.id); else MRP.selected.delete(j.id);
+  });
+  mrpRenderJobs();
+}
+
+function mrpSelectAllJobs() { MRP.jobs.forEach(j => MRP.selected.add(j.id)); mrpRenderJobs(); }
+function mrpClearAllJobs() { MRP.selected.clear(); mrpRenderJobs(); }
+
+function mrpUpdateBadge() {
+  const badge = document.getElementById('mrp-sel-badge');
+  if (MRP.selected.size > 0) { badge.textContent = MRP.selected.size; badge.style.display = 'inline'; }
+  else badge.style.display = 'none';
+}
+
+async function mrpGenerate() {
+  const ids = Array.from(MRP.selected);
+  if (!ids.length) { alert('Please select at least one job.'); return; }
+  const start = mrpGetStart();
+  const end = mrpGetEnd();
+  const body = {
+    job_ids: ids,
+    start_lat: start ? start.lat : null,
+    start_lng: start ? start.lng : null,
+    end_lat: end ? end.lat : null,
+    end_lng: end ? end.lng : null,
+    route_mode: document.getElementById('mrp-mode').value,
+    direction_mode: document.getElementById('mrp-direction').value,
+    suburb_sequence: MRP.selectedSuburbs,
+  };
+  try {
+    const resp = await fetch('/api/route-planner/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    MRP.stops = data.stops;
+    mrpRenderRoute(data);
+    mrpTab('route');
+  } catch(e) { alert('Route generation failed.'); }
+}
+
+function mrpRenderRoute(data) {
+  document.getElementById('mrp-route-summary').style.display = 'flex';
+  document.getElementById('mrp-total-stops').textContent = data.stops.length;
+  document.getElementById('mrp-total-km').textContent = data.total_distance_km;
+  document.getElementById('mrp-total-min').textContent = data.total_duration_min;
+
+  if (data.warnings && data.warnings.length) {
+    const wEl = document.getElementById('mrp-route-warnings');
+    wEl.style.display = 'block';
+    wEl.innerHTML = data.warnings.map(w => `<div class="mrp-warn">${w}</div>`).join('');
+  }
+
+  document.getElementById('mrp-stops-list-mob').innerHTML = data.stops.map(s => {
+    const pinCls = (s.is_pinned_start || s.is_pinned_end) ? 'pinned' : '';
+    const dist = s.distance_m > 0 ? `${(s.distance_m/1000).toFixed(1)} km` : '';
+    const dur = s.duration_s > 0 ? `${Math.round(s.duration_s/60)} min` : '';
+    const navUrl = `http://maps.apple.com/?daddr=${encodeURIComponent(s.address)}`;
+    return `<div class="mrp-stop-card">
+      <div class="mrp-stop-num ${pinCls}">${s.order}</div>
+      <div class="mrp-stop-info">
+        <a href="/m/job/${s.job_id}" class="mrp-stop-ref">${s.display_ref}</a>
+        <div style="font-size:.8rem;font-weight:500">${s.customer_name}</div>
+        <div class="mrp-stop-addr">${s.address}</div>
+        <div class="mrp-stop-meta">${s.suburb} &middot; ${dist} ${dur ? '&middot; '+dur : ''} &middot; ${s.cumulative_km} km total</div>
+        <a href="${navUrl}" class="mrp-nav-btn" style="margin-top:6px;display:inline-block">Navigate</a>
+      </div>
+    </div>`;
+  }).join('');
+}
+</script>
+{% endblock %}

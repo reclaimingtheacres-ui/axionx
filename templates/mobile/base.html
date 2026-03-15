@@ -344,6 +344,13 @@ a { color: var(--accent); text-decoration: none; }
     Map
   </a>
 
+  <a href="{{ url_for('m_route_planner') }}"
+     class="{{ 'active' if request.endpoint == 'm_route_planner' }}"
+     aria-label="Route" role="tab">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="14"/><circle cx="12" cy="19" r="3"/><path d="M5 12h14"/></svg>
+    Route
+  </a>
+
   <a href="{{ url_for('m_messages_list') }}"
      class="{{ 'active' if request.endpoint in ('m_messages_list','m_message_thread') }}"
      aria-label="Messages" role="tab">

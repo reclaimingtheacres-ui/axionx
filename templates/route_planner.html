@@ -1,0 +1,722 @@
+{% extends "layout.html" %}
+{% block title %}Axion | Route Planner{% endblock %}
+{% block page_title %}Route Planner{% endblock %}
+
+{% block content %}
+<style>
+.rp-wrap{display:flex;gap:16px;height:calc(100vh - 140px);min-height:500px}
+.rp-left{width:420px;min-width:340px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding-right:4px}
+.rp-center{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;overflow-y:auto}
+.rp-right{width:380px;min-width:300px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+.rp-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.rp-card h6{font-size:.82rem;font-weight:700;color:var(--fg);margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px}
+.rp-lbl{font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:3px}
+.rp-sel,.rp-input{width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;background:#fff}
+.rp-sel:focus,.rp-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.12)}
+.rp-row{display:flex;gap:8px;margin-bottom:8px}
+.rp-row>div{flex:1}
+.rp-btn{padding:8px 16px;border-radius:7px;font-size:.82rem;font-weight:600;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.rp-btn-primary{background:var(--accent);color:#fff}.rp-btn-primary:hover{background:#2563eb}
+.rp-btn-outline{background:#fff;color:var(--fg);border:1px solid #d1d5db}.rp-btn-outline:hover{background:#f8fafc}
+.rp-btn-danger{background:#fff;color:#dc2626;border:1px solid #fecaca}.rp-btn-danger:hover{background:#fef2f2}
+.rp-btn-sm{padding:5px 10px;font-size:.75rem}
+.rp-check{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+.rp-job-grid{border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:1;overflow-y:auto}
+.rp-job-hdr{display:grid;grid-template-columns:32px 1fr 1fr 90px 80px;gap:4px;padding:6px 10px;background:#f8fafc;border-bottom:1px solid var(--line);font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;position:sticky;top:0;z-index:1}
+.rp-job-row{display:grid;grid-template-columns:32px 1fr 1fr 90px 80px;gap:4px;padding:7px 10px;border-bottom:1px solid #f1f5f9;font-size:.8rem;align-items:center;cursor:pointer;transition:background .15s}
+.rp-job-row:hover{background:#f0f7ff}
+.rp-job-row.selected{background:#eff6ff}
+.rp-job-row .ref{color:var(--accent);font-weight:600;font-size:.78rem}
+.rp-job-row .addr{color:#475569;font-size:.74rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-job-row .sub{color:#64748b;font-size:.74rem}
+.rp-job-row .cust{font-weight:500;font-size:.78rem}
+.rp-status-pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:.68rem;font-weight:600}
+.rp-no-geo{color:#dc2626;font-size:.68rem;font-style:italic}
+.rp-stop{display:flex;gap:10px;padding:10px 12px;border-bottom:1px solid #f1f5f9;align-items:flex-start}
+.rp-stop:last-child{border-bottom:none}
+.rp-stop-num{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.rp-stop-num.pinned{background:#f59e0b}
+.rp-stop-info{flex:1;min-width:0}
+.rp-stop-ref{font-weight:600;font-size:.8rem;color:var(--accent)}
+.rp-stop-addr{font-size:.74rem;color:#475569;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rp-stop-meta{font-size:.7rem;color:#94a3b8;margin-top:2px}
+.rp-stop-nav{flex-shrink:0}
+.rp-summary{display:flex;gap:16px;padding:10px 14px;background:#f0f7ff;border-radius:8px;font-size:.82rem;font-weight:600}
+.rp-summary div{display:flex;flex-direction:column;align-items:center}
+.rp-summary .val{font-size:1.1rem;color:var(--accent)}
+.rp-summary .unit{font-size:.68rem;color:#64748b;font-weight:400}
+.rp-suburb-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.rp-suburb-tag{display:inline-flex;align-items:center;gap:4px;background:#eff6ff;color:var(--accent);border:1px solid #bfdbfe;border-radius:12px;padding:2px 10px;font-size:.72rem;font-weight:500;cursor:pointer}
+.rp-suburb-tag .x{cursor:pointer;font-weight:700;color:#93c5fd}
+.rp-suburb-tag .x:hover{color:#dc2626}
+.rp-warn{background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:.78rem;color:#92400e}
+#rp-map{width:100%;height:100%;min-height:200px;border-radius:8px;background:#f1f5f9}
+.rp-sel[multiple]{height:auto;min-height:80px}
+.rp-suburb-search{position:relative}
+.rp-suburb-dropdown{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto;z-index:20;display:none}
+.rp-suburb-dropdown.show{display:block}
+.rp-suburb-opt{padding:6px 12px;font-size:.8rem;cursor:pointer}
+.rp-suburb-opt:hover{background:#eff6ff}
+.rp-selected-count{background:var(--accent);color:#fff;border-radius:12px;padding:1px 8px;font-size:.72rem;font-weight:700;margin-left:6px}
+.rp-saved-item{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:.78rem;cursor:pointer}
+.rp-saved-item:hover{background:#f0f7ff}
+.rp-saved-item:last-child{border-bottom:none}
+@media(max-width:1200px){.rp-wrap{flex-direction:column;height:auto}.rp-left,.rp-right{width:100%}}
+</style>
+
+<div class="rp-wrap">
+  <div class="rp-left">
+    <div class="rp-card">
+      <h6>Filters</h6>
+      <div class="rp-row">
+        <div>
+          <div class="rp-lbl">Status</div>
+          <select id="rp-status" class="rp-sel" multiple size="3">
+            <option value="New" selected>New</option>
+            <option value="Active" selected>Active</option>
+            <option value="Pending">Pending</option>
+            <option value="Suspended">Suspended</option>
+            <option value="Awaiting Information">Awaiting Information</option>
+          </select>
+        </div>
+        {% if is_admin %}
+        <div>
+          <div class="rp-lbl">Agent</div>
+          <select id="rp-agent" class="rp-sel">
+            <option value="">All Agents</option>
+            {% for a in agents %}
+            <option value="{{ a.id }}">{{ a.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+      </div>
+      <div class="rp-lbl">Suburbs</div>
+      <div class="rp-suburb-search">
+        <input id="rp-suburb-input" class="rp-input" placeholder="Type to search suburbs..." autocomplete="off">
+        <div id="rp-suburb-dropdown" class="rp-suburb-dropdown"></div>
+      </div>
+      <div id="rp-suburb-tags" class="rp-suburb-tags"></div>
+      <div style="margin-top:8px">
+        <div class="rp-lbl">Search</div>
+        <input id="rp-search" class="rp-input" placeholder="Customer, address, reference...">
+      </div>
+    </div>
+
+    <div class="rp-card">
+      <h6>Route Settings</h6>
+      <div class="rp-row">
+        <div>
+          <div class="rp-lbl">Start From</div>
+          <select id="rp-start-type" class="rp-sel">
+            <option value="office">Office</option>
+            <option value="home">Home</option>
+            <option value="current">Current Location</option>
+            <option value="custom">Custom Address</option>
+          </select>
+          <input id="rp-start-custom" class="rp-input mt-1" placeholder="Enter start address..." style="display:none">
+        </div>
+        <div>
+          <div class="rp-lbl">End At</div>
+          <select id="rp-end-type" class="rp-sel">
+            <option value="">No fixed end</option>
+            <option value="office">Office</option>
+            <option value="home">Home</option>
+            <option value="current">Current Location</option>
+            <option value="custom">Custom Address</option>
+          </select>
+          <input id="rp-end-custom" class="rp-input mt-1" placeholder="Enter end address..." style="display:none">
+        </div>
+      </div>
+      <div class="rp-row">
+        <div>
+          <div class="rp-lbl">Route Mode</div>
+          <select id="rp-mode" class="rp-sel">
+            <option value="full_optimise">Full Optimise</option>
+            <option value="strict_corridor">Strict Suburb Corridor</option>
+            <option value="manual_pins">Manual With Pins</option>
+          </select>
+        </div>
+        <div>
+          <div class="rp-lbl">Direction</div>
+          <select id="rp-direction" class="rp-sel">
+            <option value="forward">Forward</option>
+            <option value="reverse">Reverse</option>
+          </select>
+        </div>
+      </div>
+      <div class="rp-row">
+        <div>
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="rp-pin-first" class="rp-check"> Pin First Stop
+          </label>
+          <select id="rp-pin-first-job" class="rp-sel rp-btn-sm mt-1" style="display:none">
+            <option value="">Select job...</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:.78rem;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="rp-pin-last" class="rp-check"> Pin Last Stop
+          </label>
+          <select id="rp-pin-last-job" class="rp-sel rp-btn-sm mt-1" style="display:none">
+            <option value="">Select job...</option>
+          </select>
+        </div>
+      </div>
+      <div id="rp-corridor-seq" style="display:none;margin-top:6px">
+        <div class="rp-lbl">Suburb Sequence (drag to reorder)</div>
+        <div id="rp-corridor-list" style="border:1px solid var(--line);border-radius:6px;min-height:30px;padding:4px"></div>
+      </div>
+    </div>
+
+    <div class="rp-card">
+      <h6>Saved Routes</h6>
+      <div id="rp-saved-list" style="max-height:160px;overflow-y:auto">
+        {% for r in saved_routes %}
+        <div class="rp-saved-item" data-id="{{ r.id }}">
+          <div>
+            <strong>{{ r.name or 'Untitled' }}</strong>
+            <div style="font-size:.68rem;color:#94a3b8">{{ r.route_mode }} &middot; {{ r.created_at[:10] }}
+              {% if r.total_distance_meters %} &middot; {{ (r.total_distance_meters / 1000)|round(1) }} km{% endif %}
+            </div>
+          </div>
+          <div style="display:flex;gap:4px">
+            <button class="rp-btn rp-btn-sm rp-btn-outline rp-load-route" data-id="{{ r.id }}">Load</button>
+            <button class="rp-btn rp-btn-sm rp-btn-danger rp-del-route" data-id="{{ r.id }}">Del</button>
+          </div>
+        </div>
+        {% else %}
+        <div style="font-size:.78rem;color:#94a3b8;padding:8px;text-align:center">No saved routes yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="rp-center">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button id="rp-load-btn" class="rp-btn rp-btn-outline" onclick="rpLoadJobs()">Load Jobs</button>
+        <span id="rp-job-count" style="font-size:.78rem;color:#64748b"></span>
+        <span id="rp-selected-count" style="display:none" class="rp-selected-count">0 selected</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="rp-btn rp-btn-outline rp-btn-sm" onclick="rpSelectAll()">Select All</button>
+        <button class="rp-btn rp-btn-outline rp-btn-sm" onclick="rpClearAll()">Clear All</button>
+        <button id="rp-gen-btn" class="rp-btn rp-btn-primary" onclick="rpGenerate()">Generate Route</button>
+      </div>
+    </div>
+    <div id="rp-warnings" style="display:none"></div>
+    <div class="rp-job-grid" id="rp-job-grid">
+      <div class="rp-job-hdr">
+        <div><input type="checkbox" class="rp-check" id="rp-check-all" onchange="rpToggleAll(this.checked)"></div>
+        <div>Job / Customer</div>
+        <div>Address</div>
+        <div>Status</div>
+        <div>Suburb</div>
+      </div>
+      <div id="rp-job-list" style="padding:20px;text-align:center;color:#94a3b8;font-size:.84rem">
+        Click "Load Jobs" to populate the job list.
+      </div>
+    </div>
+  </div>
+
+  <div class="rp-right">
+    <div id="rp-route-summary" class="rp-summary" style="display:none">
+      <div><span class="val" id="rp-total-stops">0</span><span class="unit">stops</span></div>
+      <div><span class="val" id="rp-total-km">0</span><span class="unit">km</span></div>
+      <div><span class="val" id="rp-total-time">0</span><span class="unit">min</span></div>
+    </div>
+    <div class="rp-card" style="flex:1;overflow-y:auto;padding:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 6px">
+        <h6 style="margin:0">Route Stops</h6>
+        <div style="display:flex;gap:4px">
+          <button class="rp-btn rp-btn-outline rp-btn-sm" id="rp-save-btn" onclick="rpSave()" style="display:none">Save Route</button>
+          <button class="rp-btn rp-btn-danger rp-btn-sm" id="rp-clear-route" onclick="rpClearRoute()" style="display:none">Clear</button>
+        </div>
+      </div>
+      <div id="rp-stops-list" style="font-size:.82rem;color:#94a3b8;text-align:center;padding:20px">
+        Generate a route to see stops here.
+      </div>
+    </div>
+    <div class="rp-card" style="flex:1;min-height:250px;padding:4px">
+      <div id="rp-map"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&libraries=places"></script>
+<script>
+const RP = {
+  jobs: [],
+  selected: new Set(),
+  suburbs: {{ suburbs|tojson }},
+  selectedSuburbs: [],
+  stops: [],
+  map: null,
+  markers: [],
+  polyline: null,
+  userHome: {{ user_home|tojson }},
+  office: {{ office|tojson }},
+  currentLat: null,
+  currentLng: null,
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  rpInitMap();
+  rpInitSuburbSearch();
+  rpInitStartEnd();
+  rpLoadJobs();
+});
+
+function rpInitMap() {
+  RP.map = new google.maps.Map(document.getElementById('rp-map'), {
+    center: {lat: -37.8136, lng: 144.9631},
+    zoom: 10,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
+    styles: [{featureType:'poi',stylers:[{visibility:'off'}]}]
+  });
+}
+
+function rpInitSuburbSearch() {
+  const input = document.getElementById('rp-suburb-input');
+  const dd = document.getElementById('rp-suburb-dropdown');
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase().trim();
+    if (!q) { dd.classList.remove('show'); return; }
+    const matches = RP.suburbs.filter(s => s.toLowerCase().includes(q) && !RP.selectedSuburbs.includes(s)).slice(0, 15);
+    dd.innerHTML = matches.map(s => `<div class="rp-suburb-opt" onclick="rpAddSuburb('${s.replace(/'/g,"\\'")}')">${s}</div>`).join('');
+    dd.classList.toggle('show', matches.length > 0);
+  });
+  input.addEventListener('blur', () => setTimeout(() => dd.classList.remove('show'), 200));
+}
+
+function rpAddSuburb(s) {
+  if (!RP.selectedSuburbs.includes(s)) RP.selectedSuburbs.push(s);
+  document.getElementById('rp-suburb-input').value = '';
+  document.getElementById('rp-suburb-dropdown').classList.remove('show');
+  rpRenderSuburbTags();
+  rpUpdateCorridorSeq();
+}
+
+function rpRemoveSuburb(s) {
+  RP.selectedSuburbs = RP.selectedSuburbs.filter(x => x !== s);
+  rpRenderSuburbTags();
+  rpUpdateCorridorSeq();
+}
+
+function rpRenderSuburbTags() {
+  document.getElementById('rp-suburb-tags').innerHTML = RP.selectedSuburbs.map(s =>
+    `<span class="rp-suburb-tag">${s} <span class="x" onclick="rpRemoveSuburb('${s.replace(/'/g,"\\'")}')">&times;</span></span>`
+  ).join('');
+}
+
+function rpUpdateCorridorSeq() {
+  const mode = document.getElementById('rp-mode').value;
+  const el = document.getElementById('rp-corridor-seq');
+  el.style.display = mode === 'strict_corridor' ? 'block' : 'none';
+  if (mode === 'strict_corridor') {
+    document.getElementById('rp-corridor-list').innerHTML = RP.selectedSuburbs.map((s, i) =>
+      `<div style="padding:4px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;margin:2px 0;font-size:.78rem;cursor:grab;display:flex;align-items:center;gap:6px" draggable="true" data-idx="${i}">
+        <span style="color:#94a3b8;font-size:.7rem">${i+1}</span> ${s}
+      </div>`
+    ).join('');
+    rpInitDragSort();
+  }
+}
+
+function rpInitDragSort() {
+  const list = document.getElementById('rp-corridor-list');
+  let dragIdx = null;
+  list.querySelectorAll('[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => { dragIdx = +el.dataset.idx; e.dataTransfer.effectAllowed = 'move'; });
+    el.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      const dropIdx = +el.dataset.idx;
+      if (dragIdx !== null && dragIdx !== dropIdx) {
+        const item = RP.selectedSuburbs.splice(dragIdx, 1)[0];
+        RP.selectedSuburbs.splice(dropIdx, 0, item);
+        rpRenderSuburbTags();
+        rpUpdateCorridorSeq();
+      }
+    });
+  });
+}
+
+function rpInitStartEnd() {
+  document.getElementById('rp-start-type').addEventListener('change', function() {
+    document.getElementById('rp-start-custom').style.display = this.value === 'custom' ? 'block' : 'none';
+    if (this.value === 'current') rpGetCurrentLocation('start');
+  });
+  document.getElementById('rp-end-type').addEventListener('change', function() {
+    document.getElementById('rp-end-custom').style.display = this.value === 'custom' ? 'block' : 'none';
+    if (this.value === 'current') rpGetCurrentLocation('end');
+  });
+  document.getElementById('rp-mode').addEventListener('change', rpUpdateCorridorSeq);
+  document.getElementById('rp-pin-first').addEventListener('change', function() {
+    document.getElementById('rp-pin-first-job').style.display = this.checked ? 'block' : 'none';
+    rpPopulatePinSelects();
+  });
+  document.getElementById('rp-pin-last').addEventListener('change', function() {
+    document.getElementById('rp-pin-last-job').style.display = this.checked ? 'block' : 'none';
+    rpPopulatePinSelects();
+  });
+}
+
+function rpGetCurrentLocation(target) {
+  if (!navigator.geolocation) { alert('Geolocation not supported'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    if (target === 'start') { RP.currentLat = pos.coords.latitude; RP.currentLng = pos.coords.longitude; }
+    else { RP.currentLat = pos.coords.latitude; RP.currentLng = pos.coords.longitude; }
+  }, () => alert('Unable to get current location. Please use Home or Office instead.'));
+}
+
+function rpGetStartPoint() {
+  const type = document.getElementById('rp-start-type').value;
+  if (type === 'home' && RP.userHome.home_lat) return {lat: RP.userHome.home_lat, lng: RP.userHome.home_lng};
+  if (type === 'office' && RP.office.office_lat) return {lat: RP.office.office_lat, lng: RP.office.office_lng};
+  if (type === 'current' && RP.currentLat) return {lat: RP.currentLat, lng: RP.currentLng};
+  return null;
+}
+
+function rpGetEndPoint() {
+  const type = document.getElementById('rp-end-type').value;
+  if (!type) return null;
+  if (type === 'home' && RP.userHome.home_lat) return {lat: RP.userHome.home_lat, lng: RP.userHome.home_lng};
+  if (type === 'office' && RP.office.office_lat) return {lat: RP.office.office_lat, lng: RP.office.office_lng};
+  if (type === 'current' && RP.currentLat) return {lat: RP.currentLat, lng: RP.currentLng};
+  return null;
+}
+
+async function rpLoadJobs() {
+  const params = new URLSearchParams();
+  document.querySelectorAll('#rp-status option:checked').forEach(o => params.append('status', o.value));
+  RP.selectedSuburbs.forEach(s => params.append('suburb', s));
+  const agent = document.getElementById('rp-agent');
+  if (agent) params.set('agent_id', agent.value);
+  const q = document.getElementById('rp-search').value.trim();
+  if (q) params.set('q', q);
+
+  document.getElementById('rp-job-list').innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8">Loading...</div>';
+  try {
+    const resp = await fetch('/api/route-planner/jobs?' + params);
+    const data = await resp.json();
+    RP.jobs = data.jobs;
+    rpRenderJobList();
+  } catch(e) {
+    document.getElementById('rp-job-list').innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626">Failed to load jobs.</div>';
+  }
+}
+
+function rpRenderJobList() {
+  const container = document.getElementById('rp-job-list');
+  if (!RP.jobs.length) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8">No jobs match the current filters.</div>';
+    document.getElementById('rp-job-count').textContent = '0 jobs';
+    return;
+  }
+  const statusColors = {
+    'New':'#2563eb','Active':'#16a34a','Pending':'#d97706',
+    'Suspended':'#dc2626','Awaiting Information':'#7c3aed'
+  };
+  container.innerHTML = RP.jobs.map(j => {
+    const sc = statusColors[j.status] || '#6b7280';
+    const checked = RP.selected.has(j.id) ? 'checked' : '';
+    const selCls = RP.selected.has(j.id) ? 'selected' : '';
+    const noGeo = (!j.lat || !j.lng) ? '<span class="rp-no-geo">No coords</span>' : '';
+    return `<div class="rp-job-row ${selCls}" data-id="${j.id}" onclick="rpToggleJob(${j.id}, event)">
+      <div><input type="checkbox" class="rp-check" ${checked} onclick="event.stopPropagation();rpToggleJob(${j.id}, event)"></div>
+      <div><span class="ref">${j.display_ref}</span><br><span class="cust">${j.customer_name}</span> ${noGeo}</div>
+      <div><span class="addr" title="${j.address}">${j.address}</span></div>
+      <div><span class="rp-status-pill" style="color:${sc};background:${sc}15;border:1px solid ${sc}33">${j.status}</span></div>
+      <div class="sub">${j.suburb}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('rp-job-count').textContent = `${RP.jobs.length} jobs`;
+  rpUpdateSelectedCount();
+}
+
+function rpToggleJob(id, e) {
+  if (RP.selected.has(id)) RP.selected.delete(id); else RP.selected.add(id);
+  rpRenderJobList();
+  rpPopulatePinSelects();
+}
+
+function rpToggleAll(checked) {
+  RP.jobs.forEach(j => { if (checked) RP.selected.add(j.id); else RP.selected.delete(j.id); });
+  rpRenderJobList();
+  rpPopulatePinSelects();
+}
+
+function rpSelectAll() { rpToggleAll(true); document.getElementById('rp-check-all').checked = true; }
+function rpClearAll() { rpToggleAll(false); document.getElementById('rp-check-all').checked = false; }
+
+function rpUpdateSelectedCount() {
+  const el = document.getElementById('rp-selected-count');
+  if (RP.selected.size > 0) { el.textContent = `${RP.selected.size} selected`; el.style.display = 'inline'; }
+  else el.style.display = 'none';
+}
+
+function rpPopulatePinSelects() {
+  const selJobs = RP.jobs.filter(j => RP.selected.has(j.id));
+  ['rp-pin-first-job', 'rp-pin-last-job'].forEach(selId => {
+    const sel = document.getElementById(selId);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Select job...</option>' +
+      selJobs.map(j => `<option value="${j.id}" ${j.id == cur ? 'selected':''}>${j.display_ref} - ${j.suburb || j.customer_name}</option>`).join('');
+  });
+}
+
+async function rpGenerate() {
+  const ids = Array.from(RP.selected);
+  if (ids.length < 1) { alert('Please select at least one job.'); return; }
+
+  const start = rpGetStartPoint();
+  const end = rpGetEndPoint();
+
+  const body = {
+    job_ids: ids,
+    start_lat: start ? start.lat : null,
+    start_lng: start ? start.lng : null,
+    end_lat: end ? end.lat : null,
+    end_lng: end ? end.lng : null,
+    pinned_first_id: document.getElementById('rp-pin-first').checked ? +document.getElementById('rp-pin-first-job').value || null : null,
+    pinned_last_id: document.getElementById('rp-pin-last').checked ? +document.getElementById('rp-pin-last-job').value || null : null,
+    route_mode: document.getElementById('rp-mode').value,
+    direction_mode: document.getElementById('rp-direction').value,
+    suburb_sequence: RP.selectedSuburbs,
+  };
+
+  document.getElementById('rp-gen-btn').disabled = true;
+  document.getElementById('rp-gen-btn').textContent = 'Generating...';
+  try {
+    const resp = await fetch('/api/route-planner/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    RP.stops = data.stops;
+    rpRenderStops(data);
+    rpRenderMap(data);
+    if (data.warnings && data.warnings.length) {
+      document.getElementById('rp-warnings').style.display = 'block';
+      document.getElementById('rp-warnings').innerHTML = data.warnings.map(w => `<div class="rp-warn">${w}</div>`).join('');
+    } else {
+      document.getElementById('rp-warnings').style.display = 'none';
+    }
+  } catch(e) {
+    alert('Route generation failed.');
+  } finally {
+    document.getElementById('rp-gen-btn').disabled = false;
+    document.getElementById('rp-gen-btn').textContent = 'Generate Route';
+  }
+}
+
+function rpRenderStops(data) {
+  document.getElementById('rp-route-summary').style.display = 'flex';
+  document.getElementById('rp-total-stops').textContent = data.stops.length;
+  document.getElementById('rp-total-km').textContent = data.total_distance_km;
+  document.getElementById('rp-total-time').textContent = data.total_duration_min;
+  document.getElementById('rp-save-btn').style.display = 'inline-flex';
+  document.getElementById('rp-clear-route').style.display = 'inline-flex';
+
+  document.getElementById('rp-stops-list').innerHTML = data.stops.map(s => {
+    const pinCls = (s.is_pinned_start || s.is_pinned_end) ? 'pinned' : '';
+    const distTxt = s.distance_m > 0 ? `${(s.distance_m/1000).toFixed(1)} km` : '';
+    const durTxt = s.duration_s > 0 ? `${Math.round(s.duration_s/60)} min` : '';
+    const navUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.address)}`;
+    return `<div class="rp-stop">
+      <div class="rp-stop-num ${pinCls}">${s.order}</div>
+      <div class="rp-stop-info">
+        <a href="/jobs/${s.job_id}" class="rp-stop-ref" target="_blank">${s.display_ref}</a>
+        <div style="font-size:.76rem;font-weight:500">${s.customer_name}</div>
+        <div class="rp-stop-addr" title="${s.address}">${s.address}</div>
+        <div class="rp-stop-meta">${s.suburb} &middot; ${distTxt} ${durTxt ? '&middot; '+durTxt : ''} &middot; ${s.cumulative_km} km total</div>
+      </div>
+      <div class="rp-stop-nav">
+        <a href="${navUrl}" target="_blank" class="rp-btn rp-btn-outline rp-btn-sm" title="Navigate">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z" fill="var(--accent)"/></svg>
+        </a>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function rpRenderMap(data) {
+  RP.markers.forEach(m => m.setMap(null));
+  RP.markers = [];
+  if (RP.polyline) RP.polyline.setMap(null);
+
+  const bounds = new google.maps.LatLngBounds();
+  const path = [];
+
+  if (data.start) {
+    const sp = new google.maps.Marker({
+      position: {lat: data.start.lat, lng: data.start.lng},
+      map: RP.map,
+      icon: {path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#16a34a', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2},
+      title: 'Start',
+      zIndex: 100
+    });
+    RP.markers.push(sp);
+    bounds.extend(sp.getPosition());
+    path.push(sp.getPosition());
+  }
+
+  data.stops.forEach((s, i) => {
+    const pos = {lat: s.lat, lng: s.lng};
+    const isPinned = s.is_pinned_start || s.is_pinned_end;
+    const m = new google.maps.Marker({
+      position: pos,
+      map: RP.map,
+      label: {text: String(s.order), color: '#fff', fontSize: '11px', fontWeight: '700'},
+      icon: {
+        path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
+        fillColor: isPinned ? '#f59e0b' : '#3b82f6',
+        fillOpacity: 1,
+        strokeColor: '#fff',
+        strokeWeight: 1.5,
+        scale: 1.6,
+        anchor: new google.maps.Point(12, 22),
+        labelOrigin: new google.maps.Point(12, 9)
+      },
+      title: `${s.order}. ${s.display_ref} - ${s.address}`,
+      zIndex: 50 + i
+    });
+    const iw = new google.maps.InfoWindow({
+      content: `<div style="font-size:13px;max-width:220px">
+        <strong>${s.display_ref}</strong><br>${s.customer_name}<br>
+        <span style="color:#64748b">${s.address}</span><br>
+        <a href="/jobs/${s.job_id}" target="_blank">View Job</a>
+      </div>`
+    });
+    m.addListener('click', () => iw.open(RP.map, m));
+    RP.markers.push(m);
+    bounds.extend(pos);
+    path.push(pos);
+  });
+
+  if (data.end) {
+    const ep = new google.maps.Marker({
+      position: {lat: data.end.lat, lng: data.end.lng},
+      map: RP.map,
+      icon: {path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#dc2626', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2},
+      title: 'End',
+      zIndex: 100
+    });
+    RP.markers.push(ep);
+    bounds.extend(ep.getPosition());
+    path.push(ep.getPosition());
+  }
+
+  RP.polyline = new google.maps.Polyline({
+    path: path,
+    geodesic: true,
+    strokeColor: '#3b82f6',
+    strokeOpacity: 0.8,
+    strokeWeight: 3,
+    map: RP.map
+  });
+
+  if (path.length > 0) RP.map.fitBounds(bounds, 40);
+}
+
+function rpClearRoute() {
+  RP.stops = [];
+  document.getElementById('rp-stops-list').innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8">Generate a route to see stops here.</div>';
+  document.getElementById('rp-route-summary').style.display = 'none';
+  document.getElementById('rp-save-btn').style.display = 'none';
+  document.getElementById('rp-clear-route').style.display = 'none';
+  document.getElementById('rp-warnings').style.display = 'none';
+  RP.markers.forEach(m => m.setMap(null));
+  RP.markers = [];
+  if (RP.polyline) { RP.polyline.setMap(null); RP.polyline = null; }
+}
+
+async function rpSave() {
+  if (!RP.stops.length) return;
+  const name = prompt('Route name:', `Route ${new Date().toLocaleDateString()}`);
+  if (name === null) return;
+  const body = {
+    name: name,
+    route_mode: document.getElementById('rp-mode').value,
+    direction_mode: document.getElementById('rp-direction').value,
+    start_type: document.getElementById('rp-start-type').value,
+    stops: RP.stops,
+    total_distance_km: +document.getElementById('rp-total-km').textContent,
+    total_duration_min: +document.getElementById('rp-total-time').textContent,
+    suburb_sequence: RP.selectedSuburbs,
+    start_lat: rpGetStartPoint()?.lat,
+    start_lng: rpGetStartPoint()?.lng,
+    end_lat: rpGetEndPoint()?.lat,
+    end_lng: rpGetEndPoint()?.lng,
+    pinned_first_id: document.getElementById('rp-pin-first').checked ? +document.getElementById('rp-pin-first-job').value || null : null,
+    pinned_last_id: document.getElementById('rp-pin-last').checked ? +document.getElementById('rp-pin-last-job').value || null : null,
+  };
+  try {
+    const resp = await fetch('/api/route-planner/save', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const data = await resp.json();
+    if (data.success) { alert('Route saved!'); location.reload(); }
+  } catch(e) { alert('Failed to save route.'); }
+}
+
+async function rpLoadRoute(routeId) {
+  try {
+    const resp = await fetch(`/api/route-planner/${routeId}`);
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    RP.stops = data.stops.map((s, i) => ({
+      order: i + 1,
+      job_id: s.job_id,
+      display_ref: s.display_ref || s.job_id,
+      customer_name: s.customer_name || '',
+      client_name: s.client_name || '',
+      address: s.address || '',
+      suburb: s.suburb || '',
+      lat: s.lat,
+      lng: s.lng,
+      status: s.status || '',
+      priority: s.priority || 'Normal',
+      distance_m: s.distance_from_previous_meters || 0,
+      duration_s: s.duration_from_previous_seconds || 0,
+      cumulative_km: 0,
+      is_pinned_start: !!s.is_pinned_start,
+      is_pinned_end: !!s.is_pinned_end,
+    }));
+    let cum = 0;
+    RP.stops.forEach(s => { cum += (s.distance_m || 0) / 1000; s.cumulative_km = Math.round(cum * 10) / 10; });
+    const totalKm = Math.round(cum * 10) / 10;
+    const totalMin = Math.round(cum * 1000 / 13.89 / 60);
+    rpRenderStops({
+      stops: RP.stops,
+      total_distance_km: totalKm,
+      total_duration_min: totalMin,
+      start: data.plan.start_lat ? {lat: data.plan.start_lat, lng: data.plan.start_lng} : null,
+      end: data.plan.end_lat ? {lat: data.plan.end_lat, lng: data.plan.end_lng} : null,
+    });
+    rpRenderMap({
+      stops: RP.stops,
+      start: data.plan.start_lat ? {lat: data.plan.start_lat, lng: data.plan.start_lng} : null,
+      end: data.plan.end_lat ? {lat: data.plan.end_lat, lng: data.plan.end_lng} : null,
+    });
+  } catch(e) { alert('Failed to load route.'); }
+}
+
+async function rpDeleteRoute(routeId) {
+  if (!confirm('Delete this saved route?')) return;
+  try {
+    await fetch(`/api/route-planner/${routeId}`, {method:'DELETE'});
+    location.reload();
+  } catch(e) { alert('Failed to delete route.'); }
+}
+
+document.addEventListener('click', e => {
+  const loadBtn = e.target.closest('.rp-load-route');
+  if (loadBtn) { rpLoadRoute(+loadBtn.dataset.id); return; }
+  const delBtn = e.target.closest('.rp-del-route');
+  if (delBtn) { rpDeleteRoute(+delBtn.dataset.id); return; }
+});
+
+document.getElementById('rp-search').addEventListener('keydown', e => { if (e.key === 'Enter') rpLoadJobs(); });
+</script>
+{% endblock %}

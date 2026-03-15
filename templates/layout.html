@@ -345,6 +345,7 @@
         {% if session.get('role') in ('admin', 'both') %}
         <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
         <a href="/map" class="{% if request.path.startswith('/map') %}active{% endif %}">Map</a>
+        <a href="/route-planner" class="{% if request.path.startswith('/route-planner') %}active{% endif %}">Route Planner</a>
         {% endif %}
 
         {% if session.get('role') in ('admin', 'both') %}

@@ -87,7 +87,10 @@
   <div class="jobs-sticky-header">
     <div style="padding:12px 16px 0;display:flex;justify-content:space-between;align-items:center">
       <span style="font-weight:650;font-size:.95rem">Jobs</span>
-      {% if session.get('role') in ('admin', 'both') %}<a class="btn btn-primary btn-sm" href="/jobs/new">+ New Job</a>{% endif %}
+      <div style="display:flex;gap:6px;align-items:center">
+        <a class="btn btn-outline-primary btn-sm" href="/route-planner">Route Planner</a>
+        {% if session.get('role') in ('admin', 'both') %}<a class="btn btn-primary btn-sm" href="/jobs/new">+ New Job</a>{% endif %}
+      </div>
     </div>
 
     {% set has_advanced = filter_client or filter_agent or filter_btype or filter_date_from or filter_date_to %}

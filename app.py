@@ -772,6 +772,67 @@ def init_db():
     ]:
         add_column_if_missing(cur, "system_settings", col, coltype)
 
+    for col, coltype in [
+        ("home_address", "TEXT"),
+        ("home_lat",     "REAL"),
+        ("home_lng",     "REAL"),
+    ]:
+        add_column_if_missing(cur, "users", col, coltype)
+
+    add_column_if_missing(cur, "system_settings", "office_address", "TEXT")
+    add_column_if_missing(cur, "system_settings", "office_lat", "REAL")
+    add_column_if_missing(cur, "system_settings", "office_lng", "REAL")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS route_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_by_user_id INTEGER NOT NULL,
+        assigned_agent_id INTEGER,
+        name TEXT,
+        route_mode TEXT NOT NULL DEFAULT 'full_optimise',
+        direction_mode TEXT NOT NULL DEFAULT 'forward',
+        start_type TEXT NOT NULL DEFAULT 'office',
+        start_address TEXT,
+        start_lat REAL,
+        start_lng REAL,
+        end_type TEXT,
+        end_address TEXT,
+        end_lat REAL,
+        end_lng REAL,
+        pinned_first_job_id INTEGER,
+        pinned_last_job_id INTEGER,
+        total_distance_meters REAL,
+        total_duration_seconds REAL,
+        suburb_sequence_json TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS route_plan_stops (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        route_plan_id INTEGER NOT NULL,
+        job_id INTEGER,
+        stop_order INTEGER NOT NULL,
+        suburb TEXT,
+        address TEXT,
+        lat REAL,
+        lng REAL,
+        distance_from_previous_meters REAL,
+        duration_from_previous_seconds REAL,
+        eta TEXT,
+        is_pinned_start INTEGER NOT NULL DEFAULT 0,
+        is_pinned_end INTEGER NOT NULL DEFAULT 0,
+        navigation_url TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(route_plan_id) REFERENCES route_plans(id),
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -11942,6 +12003,476 @@ def contacts_hub():
         yard_count=yard_count)
 
 
+# ──────────────────── Route Planner ─────────────────────────────────
+
+@app.get("/route-planner")
+@login_required
+def route_planner_page():
+    conn = db()
+    cur = conn.cursor()
+    role = session.get("role")
+    is_admin = role in ("admin", "both")
+    agents = []
+    if is_admin:
+        agents = cur.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
+    suburbs = cur.execute("""
+        SELECT DISTINCT TRIM(
+            CASE
+                WHEN INSTR(j.job_address, ',') > 0 THEN
+                    CASE
+                        WHEN INSTR(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1), ',') > 0
+                        THEN TRIM(SUBSTR(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1), 1,
+                             INSTR(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1), ',')-1))
+                        ELSE TRIM(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1))
+                    END
+                ELSE ''
+            END
+        ) AS suburb
+        FROM jobs j
+        WHERE j.status NOT IN ('Archived - Invoiced', 'Cold Stored', 'Cancelled')
+          AND j.job_address IS NOT NULL AND j.job_address != ''
+        ORDER BY suburb
+    """).fetchall()
+    suburb_list = sorted(set(s["suburb"] for s in suburbs if s["suburb"] and len(s["suburb"]) > 1))
+    saved_routes = cur.execute("""
+        SELECT id, name, route_mode, direction_mode, status, created_at, total_distance_meters, total_duration_seconds
+        FROM route_plans WHERE created_by_user_id = ? ORDER BY updated_at DESC LIMIT 20
+    """, (session["user_id"],)).fetchall()
+    user = cur.execute("SELECT home_address, home_lat, home_lng FROM users WHERE id=?",
+                       (session["user_id"],)).fetchone()
+    settings = cur.execute("SELECT office_address, office_lat, office_lng FROM system_settings LIMIT 1").fetchone()
+    conn.close()
+    return render_template("route_planner.html",
+                           is_admin=is_admin,
+                           agents=agents,
+                           suburbs=suburb_list,
+                           saved_routes=saved_routes,
+                           user_home=dict(user) if user else {},
+                           office=dict(settings) if settings else {},
+                           google_maps_api_key=os.getenv("GOOGLE_MAPS_API_KEY", ""))
+
+
+@app.get("/api/route-planner/jobs")
+@login_required
+def route_planner_jobs_api():
+    conn = db()
+    cur = conn.cursor()
+    role = session.get("role")
+    user_id = session.get("user_id")
+
+    statuses = request.args.getlist("status") or ["New", "Active"]
+    suburbs = request.args.getlist("suburb")
+    agent_id = request.args.get("agent_id", "").strip()
+    q = request.args.get("q", "").strip()
+
+    conditions = []
+    params = []
+
+    status_ph = ",".join("?" for _ in statuses)
+    conditions.append(f"j.status IN ({status_ph})")
+    params.extend(statuses)
+
+    if suburbs:
+        suburb_clauses = " OR ".join("j.job_address LIKE ?" for _ in suburbs)
+        conditions.append(f"({suburb_clauses})")
+        params.extend(f"%{s}%" for s in suburbs)
+
+    if agent_id:
+        conditions.append("j.assigned_user_id = ?")
+        params.append(int(agent_id))
+    elif role == "agent":
+        conditions.append("""(j.assigned_user_id = ? OR EXISTS (
+            SELECT 1 FROM schedules s WHERE s.job_id = j.id
+            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')))""")
+        params.extend([user_id, user_id])
+
+    if q:
+        conditions.append("""(j.display_ref LIKE ? OR j.job_address LIKE ?
+            OR cu.last_name LIKE ? OR cu.company LIKE ?
+            OR cl.name LIKE ? OR j.client_reference LIKE ?)""")
+        params.extend([f"%{q}%"] * 6)
+
+    where = " AND ".join(conditions) if conditions else "1=1"
+
+    rows = cur.execute(f"""
+        SELECT j.id, j.display_ref, j.job_address, j.status, j.priority, j.lat, j.lng,
+               j.assigned_user_id, j.geocode_fail,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name, '') AS customer_name,
+               COALESCE(cl.name, '') AS client_name,
+               u.full_name AS agent_name,
+               (SELECT MIN(sx.scheduled_for) FROM schedules sx
+                WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled','Completed')
+                AND date(sx.scheduled_for) >= date('now','localtime')) AS next_scheduled
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients cl ON cl.id = j.client_id
+        LEFT JOIN users u ON u.id = j.assigned_user_id
+        WHERE {where}
+        ORDER BY j.job_address ASC
+        LIMIT 500
+    """, params).fetchall()
+    conn.close()
+
+    jobs = []
+    for r in rows:
+        addr = r["job_address"] or ""
+        suburb = ""
+        parts = [p.strip() for p in addr.split(",")]
+        if len(parts) >= 2:
+            suburb = parts[-2] if len(parts) >= 3 else parts[-1]
+            import re as _re
+            suburb = _re.sub(r'\b(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)\b', '', suburb).strip()
+            suburb = _re.sub(r'\b\d{4}\b', '', suburb).strip()
+        jobs.append({
+            "id": r["id"],
+            "display_ref": r["display_ref"],
+            "address": addr,
+            "suburb": suburb,
+            "status": r["status"],
+            "priority": r["priority"] or "Normal",
+            "lat": r["lat"],
+            "lng": r["lng"],
+            "geocode_fail": bool(r["geocode_fail"]),
+            "customer_name": r["customer_name"],
+            "client_name": r["client_name"],
+            "agent_name": r["agent_name"] or "",
+            "next_scheduled": r["next_scheduled"] or "",
+        })
+    return jsonify(jobs=jobs)
+
+
+@app.post("/api/route-planner/generate")
+@login_required
+def route_planner_generate():
+    import math
+    data = request.get_json(force=True)
+    job_ids = data.get("job_ids", [])
+    start_lat = data.get("start_lat")
+    start_lng = data.get("start_lng")
+    end_lat = data.get("end_lat")
+    end_lng = data.get("end_lng")
+    pinned_first_id = data.get("pinned_first_id")
+    pinned_last_id = data.get("pinned_last_id")
+    route_mode = data.get("route_mode", "full_optimise")
+    direction_mode = data.get("direction_mode", "forward")
+    suburb_sequence = data.get("suburb_sequence", [])
+
+    if not job_ids:
+        return jsonify(error="No jobs selected"), 400
+
+    conn = db()
+    cur = conn.cursor()
+    ph = ",".join("?" for _ in job_ids)
+    rows = cur.execute(f"""
+        SELECT j.id, j.display_ref, j.job_address, j.lat, j.lng, j.status, j.priority,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name, '') AS customer_name,
+               COALESCE(cl.name, '') AS client_name
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients cl ON cl.id = j.client_id
+        WHERE j.id IN ({ph})
+    """, job_ids).fetchall()
+    conn.close()
+
+    jobs_map = {}
+    warnings = []
+    for r in rows:
+        if not r["lat"] or not r["lng"]:
+            warnings.append(f"{r['display_ref']}: No coordinates — excluded from route")
+            continue
+        addr = r["job_address"] or ""
+        suburb = ""
+        parts = [p.strip() for p in addr.split(",")]
+        if len(parts) >= 2:
+            import re as _re
+            suburb_raw = parts[-2] if len(parts) >= 3 else parts[-1]
+            suburb = _re.sub(r'\b(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)\b', '', suburb_raw).strip()
+            suburb = _re.sub(r'\b\d{4}\b', '', suburb).strip()
+        jobs_map[r["id"]] = {
+            "id": r["id"],
+            "display_ref": r["display_ref"],
+            "address": addr,
+            "suburb": suburb,
+            "lat": r["lat"],
+            "lng": r["lng"],
+            "customer_name": r["customer_name"],
+            "client_name": r["client_name"],
+            "status": r["status"],
+            "priority": r["priority"] or "Normal",
+        }
+
+    if len(jobs_map) < 1:
+        return jsonify(error="No geocoded jobs available for routing"), 400
+
+    def _haversine(lat1, lng1, lat2, lng2):
+        R = 6371000
+        p = math.pi / 180
+        a = (math.sin((lat2-lat1)*p/2)**2 +
+             math.cos(lat1*p)*math.cos(lat2*p)*math.sin((lng2-lng1)*p/2)**2)
+        return R * 2 * math.asin(math.sqrt(a))
+
+    def _nearest_neighbor(points, start_lat, start_lng):
+        remaining = list(points)
+        ordered = []
+        clat, clng = start_lat, start_lng
+        while remaining:
+            best_idx = 0
+            best_dist = float("inf")
+            for i, p in enumerate(remaining):
+                d = _haversine(clat, clng, p["lat"], p["lng"])
+                if d < best_dist:
+                    best_dist = d
+                    best_idx = i
+            chosen = remaining.pop(best_idx)
+            chosen["_dist_from_prev"] = best_dist
+            ordered.append(chosen)
+            clat, clng = chosen["lat"], chosen["lng"]
+        return ordered
+
+    all_jobs = list(jobs_map.values())
+
+    pinned_first = None
+    pinned_last = None
+    middle_jobs = []
+
+    if pinned_first_id and pinned_first_id in jobs_map:
+        pinned_first = jobs_map[pinned_first_id]
+        all_jobs = [j for j in all_jobs if j["id"] != pinned_first_id]
+    if pinned_last_id and pinned_last_id in jobs_map and pinned_last_id != pinned_first_id:
+        pinned_last = jobs_map[pinned_last_id]
+        all_jobs = [j for j in all_jobs if j["id"] != pinned_last_id]
+
+    middle_jobs = all_jobs
+
+    origin_lat = start_lat or (pinned_first["lat"] if pinned_first else -37.8136)
+    origin_lng = start_lng or (pinned_first["lng"] if pinned_first else 144.9631)
+
+    if route_mode == "strict_corridor" and suburb_sequence:
+        suburb_groups = {}
+        unassigned = []
+        for j in middle_jobs:
+            placed = False
+            for s in suburb_sequence:
+                if j["suburb"].lower() == s.lower():
+                    suburb_groups.setdefault(s, []).append(j)
+                    placed = True
+                    break
+            if not placed:
+                unassigned.append(j)
+
+        ordered = []
+        cur_lat, cur_lng = origin_lat, origin_lng
+        if pinned_first:
+            pinned_first["_dist_from_prev"] = _haversine(cur_lat, cur_lng, pinned_first["lat"], pinned_first["lng"])
+            ordered.append(pinned_first)
+            cur_lat, cur_lng = pinned_first["lat"], pinned_first["lng"]
+
+        for s in suburb_sequence:
+            group = suburb_groups.get(s, [])
+            if group:
+                nn = _nearest_neighbor(group, cur_lat, cur_lng)
+                ordered.extend(nn)
+                if nn:
+                    cur_lat, cur_lng = nn[-1]["lat"], nn[-1]["lng"]
+
+        if unassigned:
+            nn = _nearest_neighbor(unassigned, cur_lat, cur_lng)
+            ordered.extend(nn)
+            if nn:
+                cur_lat, cur_lng = nn[-1]["lat"], nn[-1]["lng"]
+
+        if pinned_last:
+            pinned_last["_dist_from_prev"] = _haversine(cur_lat, cur_lng, pinned_last["lat"], pinned_last["lng"])
+            ordered.append(pinned_last)
+    else:
+        nn_start_lat = origin_lat
+        nn_start_lng = origin_lng
+        if pinned_first:
+            nn_start_lat = pinned_first["lat"]
+            nn_start_lng = pinned_first["lng"]
+
+        ordered_middle = _nearest_neighbor(middle_jobs, nn_start_lat, nn_start_lng)
+
+        ordered = []
+        cur_lat, cur_lng = origin_lat, origin_lng
+        if pinned_first:
+            pinned_first["_dist_from_prev"] = _haversine(cur_lat, cur_lng, pinned_first["lat"], pinned_first["lng"])
+            ordered.append(pinned_first)
+            cur_lat, cur_lng = pinned_first["lat"], pinned_first["lng"]
+        ordered.extend(ordered_middle)
+        if pinned_last:
+            last_lat = ordered[-1]["lat"] if ordered else cur_lat
+            last_lng = ordered[-1]["lng"] if ordered else cur_lng
+            pinned_last["_dist_from_prev"] = _haversine(last_lat, last_lng, pinned_last["lat"], pinned_last["lng"])
+            ordered.append(pinned_last)
+
+    if direction_mode == "reverse":
+        first_pin = ordered[0] if ordered and ordered[0].get("id") == (pinned_first["id"] if pinned_first else None) else None
+        last_pin = ordered[-1] if ordered and ordered[-1].get("id") == (pinned_last["id"] if pinned_last else None) else None
+        middle = ordered[1 if first_pin else 0 : -1 if last_pin else len(ordered)]
+        middle.reverse()
+        rebuilt = []
+        if first_pin:
+            rebuilt.append(first_pin)
+        rebuilt.extend(middle)
+        if last_pin:
+            rebuilt.append(last_pin)
+        ordered = rebuilt if (first_pin or last_pin) else list(reversed(ordered))
+        cur_lat, cur_lng = origin_lat, origin_lng
+        for j in ordered:
+            j["_dist_from_prev"] = _haversine(cur_lat, cur_lng, j["lat"], j["lng"])
+            cur_lat, cur_lng = j["lat"], j["lng"]
+
+    stops = []
+    total_dist = 0
+    prev_lat, prev_lng = origin_lat, origin_lng
+    for idx, j in enumerate(ordered):
+        dist = _haversine(prev_lat, prev_lng, j["lat"], j["lng"])
+        total_dist += dist
+        speed_mps = 13.89
+        dur = dist / speed_mps
+        stops.append({
+            "order": idx + 1,
+            "job_id": j["id"],
+            "display_ref": j["display_ref"],
+            "customer_name": j["customer_name"],
+            "client_name": j["client_name"],
+            "address": j["address"],
+            "suburb": j["suburb"],
+            "lat": j["lat"],
+            "lng": j["lng"],
+            "status": j["status"],
+            "priority": j["priority"],
+            "distance_m": round(dist),
+            "duration_s": round(dur),
+            "cumulative_km": round(total_dist / 1000, 1),
+            "is_pinned_start": j["id"] == (pinned_first["id"] if pinned_first else None),
+            "is_pinned_end": j["id"] == (pinned_last["id"] if pinned_last else None),
+        })
+        prev_lat, prev_lng = j["lat"], j["lng"]
+
+    end_dist = 0
+    if end_lat and end_lng and stops:
+        end_dist = _haversine(stops[-1]["lat"], stops[-1]["lng"], end_lat, end_lng)
+        total_dist += end_dist
+
+    return jsonify(
+        stops=stops,
+        total_distance_km=round(total_dist / 1000, 1),
+        total_duration_min=round(total_dist / 13.89 / 60),
+        end_distance_km=round(end_dist / 1000, 1) if end_dist else 0,
+        warnings=warnings,
+        start={"lat": origin_lat, "lng": origin_lng},
+        end={"lat": end_lat, "lng": end_lng} if end_lat and end_lng else None,
+    )
+
+
+@app.post("/api/route-planner/save")
+@login_required
+def route_planner_save():
+    data = request.get_json(force=True)
+    name = data.get("name", "").strip() or "Untitled Route"
+    route_mode = data.get("route_mode", "full_optimise")
+    direction_mode = data.get("direction_mode", "forward")
+    start_type = data.get("start_type", "office")
+    stops = data.get("stops", [])
+    total_dist = data.get("total_distance_km", 0)
+    total_dur = data.get("total_duration_min", 0)
+    suburb_sequence = data.get("suburb_sequence", [])
+
+    now = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO route_plans (created_by_user_id, name, route_mode, direction_mode,
+            start_type, start_address, start_lat, start_lng,
+            end_type, end_address, end_lat, end_lng,
+            pinned_first_job_id, pinned_last_job_id,
+            total_distance_meters, total_duration_seconds,
+            suburb_sequence_json, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saved', ?, ?)
+    """, (
+        session["user_id"], name, route_mode, direction_mode,
+        start_type, data.get("start_address"), data.get("start_lat"), data.get("start_lng"),
+        data.get("end_type"), data.get("end_address"), data.get("end_lat"), data.get("end_lng"),
+        data.get("pinned_first_id"), data.get("pinned_last_id"),
+        total_dist * 1000, total_dur * 60,
+        json.dumps(suburb_sequence) if suburb_sequence else None,
+        now, now
+    ))
+    plan_id = cur.lastrowid
+
+    for s in stops:
+        cur.execute("""
+            INSERT INTO route_plan_stops (route_plan_id, job_id, stop_order, suburb, address,
+                lat, lng, distance_from_previous_meters, duration_from_previous_seconds,
+                is_pinned_start, is_pinned_end, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            plan_id, s.get("job_id"), s.get("order", 0), s.get("suburb", ""),
+            s.get("address", ""), s.get("lat"), s.get("lng"),
+            s.get("distance_m"), s.get("duration_s"),
+            1 if s.get("is_pinned_start") else 0,
+            1 if s.get("is_pinned_end") else 0,
+            now
+        ))
+    conn.commit()
+    conn.close()
+    return jsonify(success=True, route_id=plan_id)
+
+
+@app.get("/api/route-planner/<int:route_id>")
+@login_required
+def route_planner_load(route_id):
+    conn = db()
+    cur = conn.cursor()
+    uid = session["user_id"]
+    role = session.get("role")
+    is_admin = role in ("admin", "both")
+    plan = cur.execute("SELECT * FROM route_plans WHERE id = ?", (route_id,)).fetchone()
+    if not plan:
+        conn.close()
+        return jsonify(error="Route not found"), 404
+    if plan["created_by_user_id"] != uid and not is_admin:
+        conn.close()
+        return jsonify(error="Access denied"), 403
+    stops = cur.execute("""
+        SELECT rs.*, j.display_ref, j.status, j.priority,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name, '') AS customer_name,
+               COALESCE(cl.name, '') AS client_name
+        FROM route_plan_stops rs
+        LEFT JOIN jobs j ON j.id = rs.job_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients cl ON cl.id = j.client_id
+        WHERE rs.route_plan_id = ?
+        ORDER BY rs.stop_order
+    """, (route_id,)).fetchall()
+    conn.close()
+    import json as _json
+    return jsonify(
+        plan=dict(plan),
+        stops=[dict(s) for s in stops],
+        suburb_sequence=_json.loads(plan["suburb_sequence_json"]) if plan["suburb_sequence_json"] else []
+    )
+
+
+@app.delete("/api/route-planner/<int:route_id>")
+@login_required
+def route_planner_delete(route_id):
+    conn = db()
+    cur = conn.cursor()
+    plan = cur.execute("SELECT id FROM route_plans WHERE id = ? AND created_by_user_id = ?",
+                       (route_id, session["user_id"])).fetchone()
+    if not plan:
+        conn.close()
+        return jsonify(error="Route not found or access denied"), 404
+    cur.execute("DELETE FROM route_plan_stops WHERE route_plan_id = ?", (route_id,))
+    cur.execute("DELETE FROM route_plans WHERE id = ?", (route_id,))
+    conn.commit()
+    conn.close()
+    return jsonify(success=True)
+
+
 # ──────────────────── Geomap ────────────────────────────────────────
 
 @app.get("/map")
@@ -13687,6 +14218,42 @@ def m_api_map_jobs():
             "has_draft":    bool(r["has_draft"]),
         })
     return jsonify({"jobs": jobs_out, "filter": date_filter})
+
+
+@app.get("/m/route-planner")
+@mobile_login_required
+def m_route_planner():
+    conn = db()
+    cur = conn.cursor()
+    role = session.get("role")
+    is_admin = role in ("admin", "both")
+    suburbs_raw = cur.execute("""
+        SELECT DISTINCT TRIM(
+            CASE
+                WHEN INSTR(j.job_address, ',') > 0 THEN
+                    CASE
+                        WHEN INSTR(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1), ',') > 0
+                        THEN TRIM(SUBSTR(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1), 1,
+                             INSTR(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1), ',')-1))
+                        ELSE TRIM(SUBSTR(j.job_address, INSTR(j.job_address, ',')+1))
+                    END
+                ELSE ''
+            END
+        ) AS suburb
+        FROM jobs j
+        WHERE j.status NOT IN ('Archived - Invoiced', 'Cold Stored', 'Cancelled')
+          AND j.job_address IS NOT NULL AND j.job_address != ''
+    """).fetchall()
+    suburb_list = sorted(set(s["suburb"] for s in suburbs_raw if s["suburb"] and len(s["suburb"]) > 1))
+    user = cur.execute("SELECT home_address, home_lat, home_lng FROM users WHERE id=?",
+                       (session["user_id"],)).fetchone()
+    settings = cur.execute("SELECT office_address, office_lat, office_lng FROM system_settings LIMIT 1").fetchone()
+    conn.close()
+    return render_template("mobile/route_planner.html",
+                           is_admin=is_admin,
+                           suburbs=suburb_list,
+                           user_home=dict(user) if user else {},
+                           office=dict(settings) if settings else {})
 
 
 @app.get("/m/map")

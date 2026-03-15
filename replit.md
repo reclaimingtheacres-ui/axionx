@@ -279,6 +279,15 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Scan/Backfill sample verification**: Admin UI displays 10 sample unmatched entries and 5 sample matched attachments after an Azure scan completes, plus 5 sample backfilled jobs with GeoOp Description → structured field mapping after a backfill completes. All samples are run-scoped via `scan_ts`/`backfill_ts` stored in `diagnostics_json`. Unmatched CSV download available via `/admin/geoop-import/unmatched-report/<run_id>/csv`.
 - **Unmatched attachment tracking**: `geoop_unmatched_attachments` table stores every unmatched ZIP entry with `run_id`, `zip_name`, `entry_path`, `reason`. Flushed in batches during scan. `get_unmatched_report()` aggregates by reason.
 
+**Route Planner Module:**
+- **Web page**: `/route-planner` — full-featured route planning with filters (status, suburb, agent, search), start/end point selection (home/office/current/custom), route modes (full optimise, strict suburb corridor, manual with pins), direction (forward/reverse), pinned first/last stops, job selection grid with checkboxes, route results panel with ordered stops, Google Maps display with polyline and numbered markers.
+- **Mobile page**: `/m/route-planner` — three-tab mobile flow (Filters → Select Jobs → Route Results) with suburb grouping, tap-friendly job cards, navigate buttons launching Apple Maps.
+- **API endpoints**: `GET /api/route-planner/jobs` (filtered job list), `POST /api/route-planner/generate` (generate route), `POST /api/route-planner/save` (save route), `GET /api/route-planner/<id>` (load saved route), `DELETE /api/route-planner/<id>` (delete route).
+- **Database tables**: `route_plans` (route metadata, start/end points, mode, distance, duration), `route_plan_stops` (ordered stops with distance/duration/coordinates).
+- **User fields**: `home_address`, `home_lat`, `home_lng` on users table. `office_address`, `office_lat`, `office_lng` on system_settings.
+- **Routing logic**: Nearest-neighbor algorithm with haversine distance. Strict corridor mode groups jobs by suburb sequence and optimises within each group. Supports pinned first/last stops with middle optimisation. Estimated speed: 50 km/h (13.89 m/s).
+- **Entry points**: "Route Planner" link in left nav (admin/both), "Route Planner" button on job board, "Route" tab in mobile bottom nav.
+
 ## External Dependencies
 
 - **Database**: SQLite
