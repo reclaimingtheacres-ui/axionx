@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}Axion | {{ job.display_ref }}{% endblock %}
-{% block page_title %}{{ job.display_ref }}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} — {{ cx }}{% endif %}{% endblock %}
+{% block page_title %}{{ job.display_ref }}{% if job.client_job_number %} <span style="font-weight:400;font-size:.75em;color:#64748b">(Client Job# {{ job.client_job_number }})</span>{% endif %}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} — {{ cx }}{% endif %}{% endblock %}
 
 {% block content %}
 <style>
@@ -2277,12 +2277,7 @@ function saveSidebarCJN(){
   .then(function(r){ return r.json(); })
   .then(function(data){
     if(data.ok){
-      var display = document.getElementById('sidebar-cjn-display');
-      display.childNodes[0].textContent = data.value || '\u2014';
-      display.style.display = 'flex';
-      document.getElementById('sidebar-cjn-edit').style.display = 'none';
-      var settingsInput = document.querySelector('input[name="client_job_number"]');
-      if(settingsInput) settingsInput.value = data.value;
+      location.reload();
     }
   });
 }
