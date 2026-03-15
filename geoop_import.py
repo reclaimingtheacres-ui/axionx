@@ -32,7 +32,11 @@ def _utc_to_melb(iso_str):
 
 
 _NOTE_DATE_RE = re.compile(
-    r"^(\d{1,2})([A-Za-z]{3})(\d{2,4})\s+(\d{1,2}:\d{2})\b"
+    r"^(\d{1,2})([A-Za-z]{3})(\d{2,4})\s+(\d{1,2})[:\.](\d{2})\s*([AaPp][Mm])?(?:\s|$)"
+)
+_SLASH_DATE_RE = re.compile(
+    r"^(\d{1,2})/(\d{1,2})/(\d{2,4})\s+at\s+(\d{1,2})[:\.](\d{2})\s*([AaPp][Mm])?(?:\s|$)",
+    re.IGNORECASE,
 )
 _MONTH_MAP = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -40,25 +44,52 @@ _MONTH_MAP = {
 }
 
 
+def _apply_ampm(hour, minute, ampm):
+    h = int(hour)
+    mi = int(minute)
+    if ampm:
+        ap = ampm.lower()
+        if ap == "am" and h == 12:
+            h = 0
+        elif ap == "pm" and h != 12:
+            h += 12
+    return h, mi
+
+
 def _parse_note_text_date(text):
     if not text:
         return None
-    m = _NOTE_DATE_RE.match(text.strip())
-    if not m:
-        return None
-    day, mon_str, year_str, time_str = m.groups()
-    mon = _MONTH_MAP.get(mon_str.lower())
-    if not mon:
-        return None
-    year = int(year_str)
-    if year < 100:
-        year += 2000
-    try:
-        h, mi = time_str.split(":")
-        dt = datetime(year, mon, int(day), int(h), int(mi))
-        return dt.strftime("%Y-%m-%dT%H:%M:%S")
-    except (ValueError, TypeError):
-        return None
+    s = text.strip()
+    m = _NOTE_DATE_RE.match(s)
+    if m:
+        day, mon_str, year_str, hour, minute, ampm = m.groups()
+        mon = _MONTH_MAP.get(mon_str.lower())
+        if not mon:
+            return None
+        year = int(year_str)
+        if year < 100:
+            year += 2000
+        try:
+            h, mi = _apply_ampm(hour, minute, ampm)
+            dt = datetime(year, mon, int(day), h, mi)
+            return dt.strftime("%Y-%m-%dT%H:%M:%S")
+        except (ValueError, TypeError):
+            return None
+
+    m2 = _SLASH_DATE_RE.match(s)
+    if m2:
+        day, month, year_str, hour, minute, ampm = m2.groups()
+        year = int(year_str)
+        if year < 100:
+            year += 2000
+        try:
+            h, mi = _apply_ampm(hour, minute, ampm)
+            dt = datetime(year, int(month), int(day), h, mi)
+            return dt.strftime("%Y-%m-%dT%H:%M:%S")
+        except (ValueError, TypeError):
+            return None
+
+    return None
 
 def _preserve_phone_text(val):
     """Restore leading zero on Australian phone numbers stripped by Excel/CSV numeric coercion.
