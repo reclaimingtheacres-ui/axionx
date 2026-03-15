@@ -105,7 +105,7 @@
       font-size: .85rem;
       color: var(--muted);
     }
-    .ax-contacts-btn {
+    .ax-menu-btn {
       display: flex;
       align-items: center;
       width: 100%;
@@ -119,10 +119,10 @@
       gap: 10px;
       text-align: left;
     }
-    .ax-contacts-btn:hover { background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.07); }
-    .ax-contacts-btn.active { background: rgba(37,99,235,.10); border-color: rgba(37,99,235,.20); color: #2563eb; }
-    .ax-contacts-btn .ax-contacts-arrow { margin-left: auto; opacity: .45; }
-    #ax-contacts-popup {
+    .ax-menu-btn:hover { background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.07); }
+    .ax-menu-btn.active { background: rgba(37,99,235,.10); border-color: rgba(37,99,235,.20); color: #2563eb; }
+    .ax-menu-btn .ax-menu-arrow { margin-left: auto; opacity: .45; }
+    .ax-popup-menu {
       position: fixed;
       z-index: 9999;
       background: #fff;
@@ -133,7 +133,7 @@
       padding: 5px 0;
       display: none;
     }
-    #ax-contacts-popup a {
+    .ax-popup-menu a {
       display: block;
       padding: 9px 18px;
       font-size: .87rem;
@@ -141,8 +141,9 @@
       text-decoration: none;
       transition: background .1s;
     }
-    #ax-contacts-popup a:hover { background: #f0f0f6; }
-    #ax-contacts-popup a.active { color: #2563eb; font-weight: 600; }
+    .ax-popup-menu a:hover { background: #f0f0f6; }
+    .ax-popup-menu a.active { color: #2563eb; font-weight: 600; }
+    .ax-popup-menu .ax-popup-divider { height: 1px; background: var(--line); margin: 4px 0; }
     .ax-main{
       padding: 18px 18px 28px;
       min-width: 0;
@@ -335,7 +336,9 @@
         <div class="hint">Workspace</div>
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
-        <a href="/forms" class="{% if request.path.startswith('/forms') %}active{% endif %}">Forms</a>
+        {% if session.get('role') in ('admin', 'both') %}
+        <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
+        {% endif %}
         {% if session.get('user_id') %}
         <a href="/messages" class="{% if request.path.startswith('/messages') %}active{% endif %}" style="position:relative">
           Messages
@@ -343,21 +346,18 @@
         </a>
         {% endif %}
         {% if session.get('role') in ('admin', 'both') %}
-        <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
-        <a href="/map" class="{% if request.path.startswith('/map') %}active{% endif %}">Map</a>
-        <a href="/route-planner" class="{% if request.path.startswith('/route-planner') %}active{% endif %}">Route Planner</a>
+        <button type="button" class="ax-menu-btn{% if request.path.startswith('/schedule') or request.path.startswith('/map') or request.path.startswith('/route-planner') %} active{% endif %}" data-popup="ax-planning-popup">
+          Planning
+          <svg class="ax-menu-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         {% endif %}
 
         {% if session.get('role') in ('admin', 'both') %}
           <div class="hint">Admin</div>
-          <a href="/admin" class="{% if request.path == '/admin' %}active{% endif %}">Dashboard</a>
-          <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
-          <button type="button" class="ax-contacts-btn{% if request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') %} active{% endif %}" id="ax-contacts-btn">
-            Contacts
-            <svg class="ax-contacts-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <button type="button" class="ax-menu-btn{% if request.path == '/admin' or request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/reports') or request.path.startswith('/forms') or request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} active{% endif %}" data-popup="ax-admin-popup">
+            Admin
+            <svg class="ax-menu-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <a href="/reports/monthly" class="{% if request.path.startswith('/reports') %}active{% endif %}">Reports</a>
-          <a href="/admin/settings" class="{% if request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %}active{% endif %}">Settings & Resources</a>
         {% endif %}
 
         {% if session.get('role') in ('agent', 'both') %}
@@ -516,39 +516,54 @@
   });
   ariaObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["aria-hidden"] });
   </script>
-  <div id="ax-contacts-popup" role="menu">
+  {% if session.get('role') in ('admin', 'both') %}
+  <div id="ax-planning-popup" class="ax-popup-menu" role="menu">
+    <a href="/schedule"{% if request.path.startswith('/schedule') %} class="active"{% endif %}>Schedule</a>
+    <a href="/map"{% if request.path.startswith('/map') %} class="active"{% endif %}>Map</a>
+    <a href="/route-planner"{% if request.path.startswith('/route-planner') %} class="active"{% endif %}>Route Planner</a>
+  </div>
+  <div id="ax-admin-popup" class="ax-popup-menu" role="menu">
+    <a href="/admin"{% if request.path == '/admin' %} class="active"{% endif %}>Dashboard</a>
+    <div class="ax-popup-divider"></div>
     <a href="/clients"{% if request.path.startswith('/clients') %} class="active"{% endif %}>Clients</a>
     <a href="/customers"{% if request.path.startswith('/customers') %} class="active"{% endif %}>Customers</a>
     <a href="/users"{% if request.path.startswith('/users') %} class="active"{% endif %}>Staff</a>
-    <a href="/admin/settings#tow-operators">Tow Operators</a>
-    <a href="/admin/settings#auction-yards">Auction Yards</a>
+    <div class="ax-popup-divider"></div>
+    <a href="/forms"{% if request.path.startswith('/forms') %} class="active"{% endif %}>Forms</a>
+    <a href="/reports/monthly"{% if request.path.startswith('/reports') %} class="active"{% endif %}>Reports</a>
+    <div class="ax-popup-divider"></div>
+    <a href="/admin/settings"{% if request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} class="active"{% endif %}>Settings & Resources</a>
   </div>
+  {% endif %}
   <script>
   (function() {
-    var btn = document.getElementById('ax-contacts-btn');
-    var popup = document.getElementById('ax-contacts-popup');
-    if (!btn || !popup) return;
+    var allBtns = document.querySelectorAll('.ax-menu-btn[data-popup]');
+    allBtns.forEach(function(btn) {
+      var popup = document.getElementById(btn.getAttribute('data-popup'));
+      if (!popup) return;
 
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      if (popup.style.display === 'block') {
-        popup.style.display = 'none';
-        return;
-      }
-      var rect = btn.getBoundingClientRect();
-      popup.style.top  = rect.top + 'px';
-      popup.style.left = (rect.right + 6) + 'px';
-      popup.style.display = 'block';
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var wasOpen = popup.style.display === 'block';
+        document.querySelectorAll('.ax-popup-menu').forEach(function(p) { p.style.display = 'none'; });
+        if (wasOpen) return;
+        var rect = btn.getBoundingClientRect();
+        popup.style.top  = rect.top + 'px';
+        popup.style.left = (rect.right + 6) + 'px';
+        popup.style.display = 'block';
+      });
     });
 
     document.addEventListener('click', function(e) {
-      if (!btn.contains(e.target) && !popup.contains(e.target)) {
-        popup.style.display = 'none';
+      if (!e.target.closest('.ax-menu-btn[data-popup]') && !e.target.closest('.ax-popup-menu')) {
+        document.querySelectorAll('.ax-popup-menu').forEach(function(p) { p.style.display = 'none'; });
       }
     });
 
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') popup.style.display = 'none';
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.ax-popup-menu').forEach(function(p) { p.style.display = 'none'; });
+      }
     });
   })();
   </script>
