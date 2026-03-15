@@ -3228,7 +3228,8 @@ document.addEventListener('click', function(e) {
       fetch(form.action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(function() {
           anClear();
-          setTimeout(function(){ document.getElementById('an_text').focus(); }, 100);
+          location.hash = 'tab-notes';
+          location.reload();
         })
         .catch(function() {});
     });
@@ -3421,17 +3422,9 @@ document.addEventListener('click', function(e) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.ok) {
-        var textEl = document.getElementById('note-text-' + noteId);
-        if (textEl) textEl.textContent = data.note_text;
-        if (data.created_at) {
-          var dateDiv = document.getElementById('note-date-' + noteId);
-          if (dateDiv) {
-            var ca = data.created_at;
-            dateDiv.innerHTML = ca.substring(8,10)+'/'+ca.substring(5,7)+'/'+ca.substring(0,4)+'<br>'+ca.substring(11,16);
-          }
-        }
-        renderFiles(data.files || []);
         enModal.hide();
+        location.hash = 'tab-notes';
+        location.reload();
       } else {
         alert(data.error || 'Save failed.');
       }
@@ -4382,13 +4375,8 @@ function doSendMsg() {
         setTimeout(function(){ errEl.style.display = 'none'; errEl.className = 'alert alert-danger mb-3'; }, 2500);
       } else {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).hide();
-        var pageSuccess = document.getElementById('inlineBookingSuccess');
-        if (pageSuccess) {
-          pageSuccess.textContent = data.count + ' booking(s) saved successfully.';
-          pageSuccess.style.display = '';
-          setTimeout(function(){ pageSuccess.style.display = 'none'; }, 3000);
-        }
-        if (typeof refreshScheduleTable === 'function') refreshScheduleTable();
+        location.hash = 'tab-schedule';
+        location.reload();
       }
     })
     .catch(function() {
@@ -4648,52 +4636,8 @@ function doSendMsg() {
         alertBox.style.display = '';
         return;
       }
-      var c = data.client;
-      var card = document.getElementById('clientCardBody');
-      card.innerHTML = '';
-      var nameDiv = document.createElement('div');
-      nameDiv.className = 'fw-semibold small';
-      var nameSpan = document.createElement('span');
-      nameSpan.className = 'client-name-display';
-      nameSpan.textContent = c.name;
-      nameDiv.appendChild(nameSpan);
-      if(c.nickname){
-        var nick = document.createElement('span');
-        nick.className = 'badge ms-1 py-0 px-1';
-        nick.style.cssText = 'font-size:.68rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;';
-        nick.textContent = c.nickname;
-        nameDiv.appendChild(nick);
-      }
-      card.appendChild(nameDiv);
-      if(c.phone){
-        var phoneDiv = document.createElement('div');
-        phoneDiv.className = 'small mt-1';
-        phoneDiv.textContent = c.phone;
-        card.appendChild(phoneDiv);
-      }
-      if(c.email){
-        var emailDiv = document.createElement('div');
-        emailDiv.className = 'small';
-        emailDiv.textContent = c.email;
-        card.appendChild(emailDiv);
-      }
-      var successDiv = document.createElement('div');
-      successDiv.className = 'small mt-1';
-      successDiv.style.cssText = 'color:#16a34a;font-weight:600;';
-      successDiv.textContent = data.message;
-      card.appendChild(successDiv);
-
-      var headerBtns = card.closest('.col-12').querySelector('.d-flex.justify-content-between .d-flex.gap-1, .d-flex.justify-content-between .btn-primary');
-      if(headerBtns){
-        var parent = headerBtns.parentNode;
-        var newBtns = document.createElement('div');
-        newBtns.className = 'd-flex gap-1';
-        newBtns.innerHTML = '<button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axEditClient('+c.id+')">Edit</button>'
-          + '<button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenAddClient()">Change</button>';
-        parent.replaceChild(newBtns, headerBtns);
-      }
-
-      bootstrap.Modal.getInstance(document.getElementById('addClientModal')).hide();
+      location.hash = 'tab-job';
+      location.reload();
     })
     .catch(function(){
       btn.disabled = false;
@@ -4822,12 +4766,8 @@ function axSaveClient() {
       return;
     }
     bootstrap.Modal.getInstance(document.getElementById('editClientModal')).hide();
-    var nameEl = document.querySelector('.client-name-display');
-    if (nameEl) {
-      nameEl.textContent = data.name || '';
-    } else {
-      location.reload();
-    }
+    location.hash = 'tab-job';
+    location.reload();
   })
   .catch(function() {
     btn.disabled = false;
@@ -5042,8 +4982,8 @@ function axSaveClient() {
       document.getElementById('bt_search').value = '';
       document.getElementById('bt_id_hidden').value = '';
       document.getElementById('sched_notes').value = '';
-      setTimeout(function() { successEl.style.display = 'none'; }, 3000);
-      refreshScheduleTable();
+      location.hash = 'tab-schedule';
+      location.reload();
     })
     .catch(function() {
       btn.disabled = false;
@@ -5120,7 +5060,7 @@ function axSaveClient() {
           return;
         }
         if (msg) { msg.textContent = 'Saved.'; msg.style.display = ''; msg.style.color = '#16a34a'; }
-        setTimeout(function(){ closeSchedEdit(sid); refreshScheduleTable(); }, 600);
+        setTimeout(function(){ location.hash = 'tab-schedule'; location.reload(); }, 600);
       })
       .catch(function(){
         if (msg) { msg.textContent = 'Network error.'; msg.style.display = ''; msg.style.color = '#dc2626'; }
