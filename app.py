@@ -2952,6 +2952,16 @@ def dashboard_jobs_api():
 @app.get("/jobs")
 @login_required
 def jobs_list():
+    try:
+        return _jobs_list_inner()
+    except Exception as exc:
+        import logging as _log, traceback as _tb
+        _log.error("jobs_list failed: %s\n%s", exc, _tb.format_exc())
+        flash(f"Error loading jobs: {exc}", "danger")
+        return redirect(url_for("home"))
+
+
+def _jobs_list_inner():
     lockout = _check_agent_lockout()
     if lockout:
         return lockout
