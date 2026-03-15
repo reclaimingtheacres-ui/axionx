@@ -235,6 +235,13 @@
         <button id="rp-load-btn" class="rp-btn rp-btn-outline" onclick="rpLoadJobs()">Load Jobs</button>
         <span id="rp-job-count" style="font-size:.78rem;color:#64748b"></span>
         <span id="rp-selected-count" style="display:none" class="rp-selected-count">0 selected</span>
+        <select id="rp-sort" class="rp-sel" style="width:auto;padding:4px 8px;font-size:.74rem" onchange="rpSortAndRender()">
+          <option value="suburb">Sort: Suburb</option>
+          <option value="postcode">Sort: Postcode</option>
+          <option value="address">Sort: Address</option>
+          <option value="status">Sort: Status</option>
+          <option value="ref">Sort: Job Ref</option>
+        </select>
       </div>
       <div style="display:flex;gap:6px">
         <button class="rp-btn rp-btn-outline rp-btn-sm" onclick="rpSelectAll()">Select All</button>
@@ -544,10 +551,30 @@ async function rpLoadJobs() {
     const resp = await fetch('/api/route-planner/jobs?' + params);
     const data = await resp.json();
     RP.jobs = data.jobs;
+    rpSortJobs();
     rpRenderJobList();
   } catch(e) {
     document.getElementById('rp-job-list').innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626">Failed to load jobs.</div>';
   }
+}
+
+function rpSortJobs() {
+  var sortBy = document.getElementById('rp-sort').value;
+  RP.jobs.sort(function(a, b) {
+    var va, vb;
+    if (sortBy === 'suburb') { va = (a.suburb || '').toLowerCase(); vb = (b.suburb || '').toLowerCase(); }
+    else if (sortBy === 'postcode') { va = a.postcode || '9999'; vb = b.postcode || '9999'; }
+    else if (sortBy === 'address') { va = (a.address || '').toLowerCase(); vb = (b.address || '').toLowerCase(); }
+    else if (sortBy === 'status') { va = (a.status || '').toLowerCase(); vb = (b.status || '').toLowerCase(); }
+    else if (sortBy === 'ref') { va = a.display_ref || ''; vb = b.display_ref || ''; }
+    else { va = ''; vb = ''; }
+    return va < vb ? -1 : va > vb ? 1 : 0;
+  });
+}
+
+function rpSortAndRender() {
+  rpSortJobs();
+  rpRenderJobList();
 }
 
 function rpRenderJobList() {
@@ -566,12 +593,13 @@ function rpRenderJobList() {
     const checked = RP.selected.has(j.id) ? 'checked' : '';
     const selCls = RP.selected.has(j.id) ? 'selected' : '';
     const noGeo = (!j.lat || !j.lng) ? '<span class="rp-no-geo">No coords</span>' : '';
+    const pcLabel = j.postcode ? '<span style="color:#64748b;font-size:.7rem;margin-left:4px">' + j.postcode + '</span>' : '';
     return `<div class="rp-job-row ${selCls}" data-id="${j.id}" onclick="rpToggleJob(${j.id}, event)">
       <div><input type="checkbox" class="rp-check" ${checked} onclick="event.stopPropagation();rpToggleJob(${j.id}, event)"></div>
       <div><span class="ref">${j.display_ref}</span><br><span class="cust">${j.customer_name}</span> ${noGeo}</div>
       <div><span class="addr" title="${j.address}">${j.address}</span></div>
       <div><span class="rp-status-pill" style="color:${sc};background:${sc}15;border:1px solid ${sc}33">${j.status}</span></div>
-      <div class="sub">${j.suburb}</div>
+      <div class="sub">${j.suburb}${pcLabel}</div>
     </div>`;
   }).join('');
   document.getElementById('rp-job-count').textContent = `${RP.jobs.length} jobs`;

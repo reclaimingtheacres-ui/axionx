@@ -158,12 +158,20 @@
   </div>
 
   <div id="mrp-select" class="mrp-section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
       <span id="mrp-job-count" style="font-size:.84rem;font-weight:600"></span>
       <div style="display:flex;gap:6px">
         <button class="mrp-btn-outline" style="padding:6px 12px;border-radius:8px;font-size:.76rem;font-weight:600;border:1px solid var(--line);background:var(--card)" onclick="mrpSelectAllJobs()">All</button>
         <button class="mrp-btn-outline" style="padding:6px 12px;border-radius:8px;font-size:.76rem;font-weight:600;border:1px solid var(--line);background:var(--card)" onclick="mrpClearAllJobs()">Clear</button>
       </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <select id="mrp-sort" class="mrp-sel" style="padding:8px 12px;font-size:.8rem" onchange="mrpSortAndRender()">
+        <option value="suburb">Sort: Suburb</option>
+        <option value="postcode">Sort: Postcode</option>
+        <option value="address">Sort: Address</option>
+        <option value="ref">Sort: Job Ref</option>
+      </select>
     </div>
     <div id="mrp-warnings-mob" style="display:none"></div>
     <div id="mrp-job-list-mob"></div>
@@ -311,9 +319,28 @@ async function mrpLoadJobs() {
     const resp = await fetch('/api/route-planner/jobs?' + params);
     const data = await resp.json();
     MRP.jobs = data.jobs;
+    mrpSortJobs();
     mrpRenderJobs();
     mrpTab('select');
   } catch(e) { alert('Failed to load jobs.'); }
+}
+
+function mrpSortJobs() {
+  var sortBy = document.getElementById('mrp-sort').value;
+  MRP.jobs.sort(function(a, b) {
+    var va, vb;
+    if (sortBy === 'suburb') { va = (a.suburb || '').toLowerCase(); vb = (b.suburb || '').toLowerCase(); }
+    else if (sortBy === 'postcode') { va = a.postcode || '9999'; vb = b.postcode || '9999'; }
+    else if (sortBy === 'address') { va = (a.address || '').toLowerCase(); vb = (b.address || '').toLowerCase(); }
+    else if (sortBy === 'ref') { va = a.display_ref || ''; vb = b.display_ref || ''; }
+    else { va = ''; vb = ''; }
+    return va < vb ? -1 : va > vb ? 1 : 0;
+  });
+}
+
+function mrpSortAndRender() {
+  mrpSortJobs();
+  mrpRenderJobs();
 }
 
 function mrpRenderJobs() {
@@ -323,28 +350,36 @@ function mrpRenderJobs() {
     document.getElementById('mrp-job-count').textContent = '0 jobs';
     return;
   }
-  const bySuburb = {};
+  var sortBy = document.getElementById('mrp-sort').value;
+  var groupKey = (sortBy === 'postcode') ? 'postcode' : 'suburb';
+  const byGroup = {};
   MRP.jobs.forEach(j => {
-    const s = j.suburb || 'Unknown';
-    if (!bySuburb[s]) bySuburb[s] = [];
-    bySuburb[s].push(j);
+    var g = (groupKey === 'postcode') ? (j.postcode || 'No postcode') : (j.suburb || 'Unknown');
+    if (!byGroup[g]) byGroup[g] = [];
+    byGroup[g].push(j);
   });
   let html = '';
-  for (const [suburb, jobs] of Object.entries(bySuburb).sort((a,b) => a[0].localeCompare(b[0]))) {
+  for (const [group, jobs] of Object.entries(byGroup).sort((a,b) => a[0].localeCompare(b[0]))) {
     const allSel = jobs.every(j => MRP.selected.has(j.id));
+    var groupLabel = group;
+    if (groupKey === 'postcode' && jobs.length > 0 && jobs[0].suburb) {
+      groupLabel = group + ' — ' + jobs[0].suburb;
+    }
     html += `<div class="mrp-suburb-group">
-      <div class="mrp-suburb-hdr"><span>${suburb} (${jobs.length})</span>
-        <button onclick="mrpToggleSuburb('${suburb.replace(/'/g,"\\'")}', ${!allSel})">${allSel ? 'Clear' : 'Select All'}</button>
+      <div class="mrp-suburb-hdr"><span>${groupLabel} (${jobs.length})</span>
+        <button onclick="mrpToggleGroup('${group.replace(/'/g,"\\'")}', '${groupKey}', ${!allSel})">${allSel ? 'Clear' : 'Select All'}</button>
       </div>`;
     jobs.forEach(j => {
       const sel = MRP.selected.has(j.id);
       const noGeo = (!j.lat || !j.lng) ? '<span style="color:var(--red);font-size:.7rem;font-style:italic">No coords</span>' : '';
+      const pcTag = j.postcode ? '<span style="color:var(--muted);font-size:.68rem;margin-left:4px">' + j.postcode + '</span>' : '';
       html += `<div class="mrp-job-card ${sel?'selected':''}" onclick="mrpToggleJob(${j.id})">
         <input type="checkbox" class="mrp-check" ${sel?'checked':''} onclick="event.stopPropagation();mrpToggleJob(${j.id})">
         <div class="mrp-job-info">
           <div class="mrp-job-ref">${j.display_ref}</div>
           <div class="mrp-job-cust">${j.customer_name} ${noGeo}</div>
           <div class="mrp-job-addr">${j.address}</div>
+          <div class="mrp-job-sub">${j.suburb}${pcTag}</div>
         </div>
       </div>`;
     });
@@ -360,8 +395,11 @@ function mrpToggleJob(id) {
   mrpRenderJobs();
 }
 
-function mrpToggleSuburb(suburb, select) {
-  MRP.jobs.filter(j => (j.suburb || 'Unknown') === suburb).forEach(j => {
+function mrpToggleGroup(group, groupKey, select) {
+  MRP.jobs.filter(j => {
+    var g = (groupKey === 'postcode') ? (j.postcode || 'No postcode') : (j.suburb || 'Unknown');
+    return g === group;
+  }).forEach(j => {
     if (select) MRP.selected.add(j.id); else MRP.selected.delete(j.id);
   });
   mrpRenderJobs();

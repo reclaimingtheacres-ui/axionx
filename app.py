@@ -12178,21 +12178,31 @@ def route_planner_jobs_api():
     """, params).fetchall()
     conn.close()
 
+    import re as _re
+    _postcode_re = _re.compile(r'\b(\d{4})\b')
     jobs = []
     for r in rows:
         addr = r["job_address"] or ""
         suburb = ""
+        postcode = ""
         parts = [p.strip() for p in addr.split(",")]
         if len(parts) >= 2:
             suburb = parts[-2] if len(parts) >= 3 else parts[-1]
-            import re as _re
             suburb = _re.sub(r'\b(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)\b', '', suburb).strip()
+            pm = _postcode_re.search(suburb)
+            if pm:
+                postcode = pm.group(1)
             suburb = _re.sub(r'\b\d{4}\b', '', suburb).strip()
+        if not postcode:
+            pm2 = _postcode_re.search(addr)
+            if pm2:
+                postcode = pm2.group(1)
         jobs.append({
             "id": r["id"],
             "display_ref": r["display_ref"],
             "address": addr,
             "suburb": suburb,
+            "postcode": postcode,
             "status": r["status"],
             "priority": r["priority"] or "Normal",
             "lat": r["lat"],
