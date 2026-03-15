@@ -5497,6 +5497,20 @@ def job_edit(job_id: int):
     return redirect(url_for("job_detail", job_id=job_id))
 
 
+@app.post("/api/jobs/<int:job_id>/client-job-number")
+@login_required
+@admin_required
+def api_job_client_job_number(job_id: int):
+    data = request.get_json(silent=True) or {}
+    val = (data.get("value") or "").strip() or None
+    now = now_ts()
+    conn = db()
+    conn.execute("UPDATE jobs SET client_job_number=?, updated_at=? WHERE id=?", (val, now, job_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "value": val or ""})
+
+
 @app.post("/jobs/<int:job_id>/link-client")
 @login_required
 @admin_required

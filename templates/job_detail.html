@@ -2185,6 +2185,22 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span style="color:var(--muted)">Client Ref</span>
       <span class="fw-semibold">{{ job.client_reference }}</span>
       {% endif %}
+      <span style="color:var(--muted)">Client Job #</span>
+      <span class="fw-semibold" id="sidebar-cjn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
+            onclick="document.getElementById('sidebar-cjn-edit').style.display='flex';this.style.display='none';">
+        {{ job.client_job_number or '—' }}
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </span>
+      <span></span>
+      <div id="sidebar-cjn-edit" style="display:none;align-items:center;gap:4px">
+        <input type="text" id="sidebar-cjn-input" class="form-control form-control-sm"
+               value="{{ job.client_job_number or '' }}" placeholder="Enter job #"
+               style="font-size:.8rem;padding:2px 6px;height:26px;max-width:140px">
+        <button type="button" class="btn btn-primary btn-sm" style="font-size:.7rem;padding:1px 8px;height:26px"
+                onclick="saveSidebarCJN()">Save</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:1px 6px;height:26px"
+                onclick="document.getElementById('sidebar-cjn-edit').style.display='none';document.getElementById('sidebar-cjn-display').style.display='flex';">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -2248,6 +2264,36 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 </div><!-- /ax-sidebar-right -->
 
 </div><!-- /tab-content + sidebar flex container -->
+
+<script>
+function saveSidebarCJN(){
+  var input = document.getElementById('sidebar-cjn-input');
+  var val = input.value.trim();
+  fetch('/api/jobs/{{ job.id }}/client-job-number', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body: JSON.stringify({value: val})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.ok){
+      var display = document.getElementById('sidebar-cjn-display');
+      display.childNodes[0].textContent = data.value || '\u2014';
+      display.style.display = 'flex';
+      document.getElementById('sidebar-cjn-edit').style.display = 'none';
+      var settingsInput = document.querySelector('input[name="client_job_number"]');
+      if(settingsInput) settingsInput.value = data.value;
+    }
+  });
+}
+document.getElementById('sidebar-cjn-input').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); saveSidebarCJN(); }
+  if(e.key === 'Escape'){
+    document.getElementById('sidebar-cjn-edit').style.display='none';
+    document.getElementById('sidebar-cjn-display').style.display='flex';
+  }
+});
+</script>
 
 <script>
 window.addEventListener('load', function () {
