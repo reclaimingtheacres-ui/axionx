@@ -1,0 +1,127 @@
+{% extends "layout.html" %}
+{% block title %}Agent Aliases — AxionX{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width:1100px;">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h4 class="mb-1" style="font-weight:700;">Agent Alias Mapping</h4>
+      <p class="text-muted small mb-0">Maps GeoOp agent names/initials to AxionX users</p>
+    </div>
+    <div class="d-flex gap-2">
+      <form method="post" action="{{ url_for('geoop_agent_aliases_seed') }}" class="m-0">
+        <button type="submit" class="btn btn-outline-warning btn-sm"
+                onclick="this.disabled=true;this.textContent='Seeding…';this.form.submit();">Seed Known Aliases</button>
+      </form>
+      <a href="{{ url_for('geoop_import_page') }}" class="btn btn-outline-secondary btn-sm">Back to Import</a>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {% for cat, msg in messages %}
+  <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
+    {{ msg }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% endwith %}
+
+  <div class="card mb-4">
+    <div class="card-header"><strong>Existing Aliases</strong></div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Alias</th>
+              <th>Canonical Name</th>
+              <th>Ambiguous?</th>
+              <th>Mapped User</th>
+              <th>Notes</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in aliases %}
+            <tr>
+              <td class="fw-semibold">{{ a.alias }}</td>
+              <td>{{ a.canonical_name }}</td>
+              <td>
+                {% if a.ambiguous %}
+                <span class="badge bg-warning text-dark">Ambiguous</span>
+                {% else %}
+                <span class="badge bg-success">Clear</span>
+                {% endif %}
+              </td>
+              <td>
+                <form method="post" action="{{ url_for('geoop_agent_alias_save') }}" class="d-flex gap-1 align-items-center">
+                  <input type="hidden" name="alias_id" value="{{ a.id }}">
+                  <select name="user_id" class="form-select form-select-sm" style="font-size:.8rem;max-width:200px">
+                    <option value="">— Not Mapped —</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}" {% if u.id == a.user_id %}selected{% endif %}>{{ u.full_name }}</option>
+                    {% endfor %}
+                  </select>
+              </td>
+              <td class="small text-muted">{{ a.notes or '' }}</td>
+              <td class="d-flex gap-1">
+                  <button type="submit" class="btn btn-outline-primary btn-sm" style="font-size:.7rem;padding:2px 8px">Save</button>
+                </form>
+                <form method="post" action="{{ url_for('geoop_agent_alias_delete') }}" class="m-0"
+                      onsubmit="return confirm('Delete alias \'{{ a.alias }}\'?')">
+                  <input type="hidden" name="alias_id" value="{{ a.id }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.7rem;padding:2px 8px">Del</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">No aliases yet. Click "Seed Known Aliases" to populate.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><strong>Add New Alias</strong></div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('geoop_agent_alias_save') }}" class="row g-2 align-items-end">
+        <div class="col-auto">
+          <label class="form-label small mb-1">Alias</label>
+          <input type="text" name="alias" class="form-control form-control-sm" placeholder="e.g. GrantC" required>
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Canonical Name</label>
+          <input type="text" name="canonical_name" class="form-control form-control-sm" placeholder="e.g. Grant Cook" required>
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Map to User</label>
+          <select name="user_id" class="form-select form-select-sm">
+            <option value="">— Not Mapped —</option>
+            {% for u in users %}
+            <option value="{{ u.id }}">{{ u.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <div class="form-check">
+            <input type="checkbox" name="ambiguous" value="1" class="form-check-input" id="newAmbig">
+            <label class="form-check-label small" for="newAmbig">Ambiguous</label>
+          </div>
+        </div>
+        <div class="col-auto">
+          <label class="form-label small mb-1">Notes</label>
+          <input type="text" name="notes" class="form-control form-control-sm" placeholder="Optional">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary btn-sm">Add Alias</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

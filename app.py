@@ -1047,6 +1047,23 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "job_updates", "photos_count", "INTEGER NOT NULL DEFAULT 0")
     add_column_if_missing(cur, "job_updates", "agent_notes", "TEXT DEFAULT ''")
 
+    add_column_if_missing(cur, "jobs", "geoop_assigned_agent", "TEXT")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS agent_aliases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        alias TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        canonical_name TEXT NOT NULL,
+        user_id INTEGER,
+        active INTEGER NOT NULL DEFAULT 1,
+        ambiguous INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -10446,6 +10463,112 @@ def geoop_client_review():
         })
     conn.close()
     return render_template("geoop_client_review.html", clients=clients)
+
+
+@app.get("/admin/geoop-import/agent-aliases")
+@geoop_required
+def geoop_agent_aliases():
+    conn = db()
+    aliases = conn.execute("SELECT * FROM agent_aliases ORDER BY canonical_name, alias").fetchall()
+    users = conn.execute("SELECT id, full_name FROM users ORDER BY full_name").fetchall()
+    conn.close()
+    return render_template("geoop_agent_aliases.html", aliases=aliases, users=users)
+
+
+@app.post("/admin/geoop-import/agent-aliases/seed")
+@geoop_required
+def geoop_agent_aliases_seed():
+    conn = db()
+    try:
+        _geoop.seed_agent_aliases(conn)
+        flash("Agent alias seeds applied.", "success")
+    except Exception as e:
+        flash(f"Seed failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_agent_aliases"))
+
+
+@app.post("/admin/geoop-import/agent-aliases/save")
+@geoop_required
+def geoop_agent_alias_save():
+    alias_id = request.form.get("alias_id", type=int)
+    new_user_id = request.form.get("user_id", type=int)
+    conn = db()
+    ts = now_ts()
+    if alias_id:
+        conn.execute(
+            "UPDATE agent_aliases SET user_id = ?, updated_at = ? WHERE id = ?",
+            (new_user_id if new_user_id else None, ts, alias_id)
+        )
+    else:
+        alias_text = (request.form.get("alias", "") or "").strip()
+        canon_text = (request.form.get("canonical_name", "") or "").strip()
+        ambig = 1 if request.form.get("ambiguous") == "1" else 0
+        notes_text = (request.form.get("notes", "") or "").strip()
+        if alias_text and canon_text:
+            conn.execute("""
+                INSERT OR IGNORE INTO agent_aliases (alias, canonical_name, user_id, active, ambiguous, notes, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+            """, (alias_text, canon_text, new_user_id if new_user_id else None, ambig, notes_text, ts, ts))
+    conn.commit()
+    conn.close()
+    flash("Alias saved.", "success")
+    return redirect(url_for("geoop_agent_aliases"))
+
+
+@app.post("/admin/geoop-import/agent-aliases/delete")
+@geoop_required
+def geoop_agent_alias_delete():
+    alias_id = request.form.get("alias_id", type=int)
+    if alias_id:
+        conn = db()
+        conn.execute("DELETE FROM agent_aliases WHERE id = ?", (alias_id,))
+        conn.commit()
+        conn.close()
+        flash("Alias deleted.", "success")
+    return redirect(url_for("geoop_agent_aliases"))
+
+
+@app.post("/admin/geoop-import/agent-backfill")
+@geoop_required
+def geoop_agent_backfill():
+    conn = db()
+    try:
+        _geoop.seed_agent_aliases(conn)
+        result = _geoop.backfill_agent_assignments(conn)
+        flash(
+            f"Agent backfill complete: {result['assigned']} assigned, "
+            f"{result['ambiguous']} ambiguous, {result['unmatched']} unmatched, "
+            f"{result['raw_saved']} raw values saved.",
+            "success"
+        )
+    except Exception as e:
+        flash(f"Agent backfill failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/agent-review")
+@geoop_required
+def geoop_agent_review():
+    conn = db()
+    unmatched = conn.execute("""
+        SELECT j.id, j.display_ref, j.geoop_assigned_agent, j.status,
+               COALESCE(cu.last_name || ' ' || COALESCE(cu.first_name, ''), cu.company, '') AS customer_name
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE j.geoop_assigned_agent IS NOT NULL AND j.geoop_assigned_agent != ''
+          AND (j.assigned_user_id IS NULL)
+        ORDER BY j.geoop_assigned_agent, j.display_ref
+    """).fetchall()
+    summary = {}
+    for r in unmatched:
+        agent = r["geoop_assigned_agent"]
+        summary[agent] = summary.get(agent, 0) + 1
+    conn.close()
+    return render_template("geoop_agent_review.html", unmatched=unmatched, summary=summary)
 
 
 @app.post("/admin/geoop-import/backfill-descriptions")

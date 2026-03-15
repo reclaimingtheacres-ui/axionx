@@ -325,6 +325,25 @@
     </div>
   </div>
 
+  <div class="card mb-4 border-warning">
+    <div class="card-header bg-warning bg-opacity-10">
+      <strong>Step 6: Agent Assignment</strong>
+    </div>
+    <div class="card-body">
+      <p class="small text-muted mb-2">
+        Maps GeoOp agent initials/names to AxionX users. Backfill writes agent assignments to all imported jobs.
+      </p>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('geoop_agent_aliases') }}" class="btn btn-outline-warning btn-sm">Manage Agent Aliases</a>
+        <form method="post" action="{{ url_for('geoop_agent_backfill') }}" class="m-0">
+          <button type="submit" class="btn btn-warning btn-sm"
+                  onclick="this.disabled=true;this.textContent='Running…';this.form.submit();">Run Agent Backfill</button>
+        </form>
+        <a href="{{ url_for('geoop_agent_review') }}" class="btn btn-outline-danger btn-sm">Review Unmatched Agents</a>
+      </div>
+    </div>
+  </div>
+
   <div class="card mb-4 border-info">
     <div class="card-header bg-info bg-opacity-10">
       <strong>Backfill GeoOp Descriptions</strong>

@@ -1052,6 +1052,178 @@ def _get_client_list(conn):
     return cache
 
 
+def _build_agent_resolver(conn):
+    users = conn.execute("SELECT id, full_name FROM users").fetchall()
+    user_by_name = {}
+    user_by_lower = {}
+    for u in users:
+        fn = (u["full_name"] or "").strip()
+        if fn:
+            user_by_name[fn] = u["id"]
+            user_by_lower[fn.lower()] = u["id"]
+
+    aliases = conn.execute(
+        "SELECT alias, canonical_name, user_id, ambiguous FROM agent_aliases WHERE active = 1"
+    ).fetchall()
+    alias_map = {}
+    ambiguous_set = set()
+    for a in aliases:
+        key = (a["alias"] or "").strip().lower()
+        if not key:
+            continue
+        if a["ambiguous"]:
+            ambiguous_set.add(key)
+        else:
+            uid = a["user_id"]
+            if not uid:
+                canon = (a["canonical_name"] or "").strip()
+                uid = user_by_lower.get(canon.lower())
+            if uid:
+                alias_map[key] = uid
+
+    def resolve(raw_name):
+        if not raw_name or not raw_name.strip():
+            return None, None
+        name = raw_name.strip()
+        name_lower = name.lower()
+
+        uid = user_by_lower.get(name_lower)
+        if uid:
+            return uid, None
+
+        if name_lower in ambiguous_set:
+            return None, "ambiguous"
+
+        uid = alias_map.get(name_lower)
+        if uid:
+            return uid, None
+
+        parts = name_lower.split()
+        candidates = []
+        for fn_lower, uid in user_by_lower.items():
+            fn_parts = fn_lower.split()
+            if len(parts) >= 1 and len(fn_parts) >= 1 and parts[0] == fn_parts[0]:
+                if len(parts) == 1 and len(fn_parts) >= 2:
+                    candidates.append(uid)
+                elif len(parts) >= 2 and len(fn_parts) >= 2 and parts == fn_parts:
+                    return uid, None
+        if len(candidates) == 1:
+            return candidates[0], None
+        elif len(candidates) > 1:
+            return None, "ambiguous"
+
+        return None, "unmatched"
+
+    return resolve
+
+
+def seed_agent_aliases(conn):
+    ts = _now()
+    seeds = [
+        ("GrantC",  "Grant Cook",    0, "GeoOp username"),
+        ("ChrisW",  "Chris W",       0, "GeoOp username"),
+        ("CraigW",  "Craig Wright",  0, "GeoOp username"),
+        ("BPS",     "Craig Wright",  0, "GeoOp initials"),
+        ("CW",      "ambiguous",     1, "Could be Chris W or Craig Wright — requires manual review"),
+        ("Dom Powell", "Dom Powell", 0, "GeoOp full name"),
+        ("Admin Office", "Admin Office", 0, "GeoOp admin account"),
+        ("Daniel C", "Daniel C",     0, "GeoOp username"),
+    ]
+    for alias, canon, ambig, note in seeds:
+        existing = conn.execute("SELECT id FROM agent_aliases WHERE alias = ? COLLATE NOCASE", (alias,)).fetchone()
+        if not existing:
+            conn.execute("""
+                INSERT INTO agent_aliases (alias, canonical_name, user_id, active, ambiguous, notes, created_at, updated_at)
+                VALUES (?, ?, NULL, 1, ?, ?, ?, ?)
+            """, (alias, canon, ambig, note, ts, ts))
+    conn.commit()
+
+
+def resolve_agent_for_import(conn, sj, resolver=None):
+    if resolver is None:
+        resolver = _build_agent_resolver(conn)
+
+    raw_agent = (sj["modified_by"] or sj["created_by"] or "").strip()
+    if not raw_agent:
+        return None, raw_agent, None
+
+    user_id, status = resolver(raw_agent)
+    return user_id, raw_agent, status
+
+
+def backfill_agent_assignments(conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    ts = _now()
+    resolver = _build_agent_resolver(conn)
+
+    rows = conn.execute("""
+        SELECT j.id, j.geoop_job_id, j.geoop_assigned_agent,
+               sj.created_by, sj.modified_by
+        FROM jobs j
+        JOIN geoop_staging_jobs sj ON CAST(sj.geoop_job_id AS TEXT) = j.geoop_job_id
+        WHERE j.geoop_job_id IS NOT NULL
+          AND (j.assigned_user_id IS NULL)
+          AND (sj.modified_by IS NOT NULL AND sj.modified_by != ''
+               OR sj.created_by IS NOT NULL AND sj.created_by != '')
+    """).fetchall()
+
+    assigned = 0
+    ambiguous = 0
+    unmatched = 0
+    raw_saved = 0
+
+    for r in rows:
+        raw_agent = (r["modified_by"] or r["created_by"] or "").strip()
+        if not raw_agent:
+            continue
+
+        if not r["geoop_assigned_agent"]:
+            conn.execute(
+                "UPDATE jobs SET geoop_assigned_agent = ? WHERE id = ?",
+                (raw_agent, r["id"])
+            )
+            raw_saved += 1
+
+        user_id, status = resolver(raw_agent)
+        if user_id:
+            conn.execute(
+                "UPDATE jobs SET assigned_user_id = ?, geoop_assigned_agent = ?, updated_at = ? WHERE id = ?",
+                (user_id, raw_agent, ts, r["id"])
+            )
+            assigned += 1
+        elif status == "ambiguous":
+            conn.execute(
+                "UPDATE jobs SET geoop_assigned_agent = ? WHERE id = ? AND (geoop_assigned_agent IS NULL OR geoop_assigned_agent = '')",
+                (raw_agent, r["id"])
+            )
+            ambiguous += 1
+        else:
+            conn.execute(
+                "UPDATE jobs SET geoop_assigned_agent = ? WHERE id = ? AND (geoop_assigned_agent IS NULL OR geoop_assigned_agent = '')",
+                (raw_agent, r["id"])
+            )
+            unmatched += 1
+
+        if (assigned + ambiguous + unmatched) % 500 == 0:
+            conn.commit()
+
+    conn.commit()
+    if close:
+        conn.close()
+
+    return {
+        "total_checked": len(rows),
+        "assigned": assigned,
+        "ambiguous": ambiguous,
+        "unmatched": unmatched,
+        "raw_saved": raw_saved,
+    }
+
+
 def _match_client(conn, name):
     if not name or not name.strip():
         return None
@@ -1643,6 +1815,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
     for _scr in _scm_rows:
         _source_map_cache[_scr["source_name"]] = _scr["client_id"]
 
+    _agent_resolver = _build_agent_resolver(conn)
+
     existing_rows = conn.execute(
         "SELECT id, internal_job_number, display_ref, client_job_number, geoop_job_id FROM jobs"
     ).fetchall()
@@ -1739,6 +1913,8 @@ def import_staged_jobs(mode="insert_only", conn=None):
             if parsed_client:
                 client_id = _source_map_cache.get(parsed_client)
 
+        agent_user_id, raw_agent, _agent_status = resolve_agent_for_import(conn, sj, _agent_resolver)
+
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
 
@@ -1755,7 +1931,10 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     mmp_cents=?, job_due_date=?,
                     payment_frequency=COALESCE(NULLIF(payment_frequency,''), ?),
                     deliver_to=?, client_id=COALESCE(?, client_id),
-                    geoop_job_id=COALESCE(geoop_job_id, ?), updated_at=?
+                    geoop_job_id=COALESCE(geoop_job_id, ?),
+                    assigned_user_id=COALESCE(?, assigned_user_id),
+                    geoop_assigned_agent=COALESCE(?, geoop_assigned_agent),
+                    updated_at=?
                 WHERE id=?
             """, (
                 status, full_address, sj["raw_description"],
@@ -1766,7 +1945,9 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 sj["parsed_nmpd_amount_cents"] or 0, _nmpd_date,
                 _pmt_freq,
                 sj["parsed_deliver_to"] or "", client_id,
-                str(geoop_id).strip(), ts,
+                str(geoop_id).strip(),
+                agent_user_id, raw_agent or None,
+                ts,
                 existing_id
             ))
             legacy_exists = conn.execute(
@@ -1796,8 +1977,9 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     lender_name, account_number, regulation_type,
                     arrears_cents, costs_cents, mmp_cents, job_due_date,
                     payment_frequency, deliver_to, client_job_number, geoop_job_id,
+                    assigned_user_id, geoop_assigned_agent,
                     created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 insert_ref, insert_ref, sj["parsed_account_number"] or "",
                 cust_id, client_id, job_type, "New Visit", status, "Normal",
@@ -1807,6 +1989,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
                 sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
                 sj["parsed_nmpd_amount_cents"] or 0, _nmpd_date,
                 _pmt_freq, sj["parsed_deliver_to"] or "", geoop_id, str(geoop_id).strip(),
+                agent_user_id, raw_agent or None,
                 ts, ts
             ))
             axion_job_id = cur.lastrowid
@@ -1908,6 +2091,8 @@ def import_staged_jobs_range(ref_start, ref_end, conn=None):
     for _scr in _scm_rows:
         _source_map_cache[_scr["source_name"]] = _scr["client_id"]
 
+    _agent_resolver = _build_agent_resolver(conn)
+
     existing_rows = conn.execute(
         "SELECT id, internal_job_number, display_ref, client_job_number, geoop_job_id FROM jobs"
     ).fetchall()
@@ -2001,6 +2186,8 @@ def import_staged_jobs_range(ref_start, ref_end, conn=None):
             if parsed_client:
                 client_id = _source_map_cache.get(parsed_client)
 
+        agent_user_id, raw_agent, _agent_status = resolve_agent_for_import(conn, sj, _agent_resolver)
+
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
         _nmpd_date = sj["parsed_nmpd_date"] or ""
@@ -2017,8 +2204,9 @@ def import_staged_jobs_range(ref_start, ref_end, conn=None):
                     lender_name, account_number, regulation_type,
                     arrears_cents, costs_cents, mmp_cents, job_due_date,
                     payment_frequency, deliver_to, client_job_number, geoop_job_id,
+                    assigned_user_id, geoop_assigned_agent,
                     created_at, updated_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 insert_ref, insert_ref, sj["parsed_account_number"] or "",
                 cust_id, client_id, job_type, "New Visit", status, "Normal",
@@ -2028,6 +2216,7 @@ def import_staged_jobs_range(ref_start, ref_end, conn=None):
                 sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
                 sj["parsed_nmpd_amount_cents"] or 0, _nmpd_date,
                 _pmt_freq, sj["parsed_deliver_to"] or "", geoop_id, str(geoop_id).strip(),
+                agent_user_id, raw_agent or None,
                 ts, ts
             ))
             axion_job_id = cur.lastrowid
