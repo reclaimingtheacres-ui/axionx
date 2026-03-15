@@ -10367,6 +10367,87 @@ def geoop_source_map_update():
     return redirect(url_for("geoop_source_map_view"))
 
 
+@app.post("/admin/geoop-import/import-range")
+@geoop_required
+def geoop_import_range():
+    ref_start = request.form.get("ref_start", type=int)
+    ref_end = request.form.get("ref_end", type=int)
+    if ref_start is None or ref_end is None or ref_start < 1 or ref_end < 1 or ref_start > ref_end:
+        flash("Invalid reference range.", "danger")
+        return redirect(url_for("geoop_import_page"))
+    conn = db()
+    run_id = None
+    try:
+        _geoop.ensure_staging_tables(conn)
+        ts = _geoop._now()
+        uid = session.get("user_id")
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO geoop_import_runs (run_type, status, started_at, run_by_user_id)
+            VALUES ('import_range', 'running', ?, ?)
+        """, (ts, uid))
+        run_id = cur.lastrowid
+        conn.commit()
+
+        result = _geoop.import_staged_jobs_range(ref_start, ref_end, conn=conn)
+
+        conn.execute("""
+            UPDATE geoop_import_runs SET status='completed',
+            jobs_imported=?, jobs_skipped=?, errors=?, completed_at=?
+            WHERE id=?
+        """, (result["imported"], result["skipped"], result["errors"], _geoop._now(), run_id))
+        conn.commit()
+
+        msg = (
+            f"Range import {ref_start}–{ref_end}: "
+            f"{result['imported']} inserted, {result['skipped']} skipped (existing), "
+            f"{result['errors']} errors."
+        )
+        if result.get("message"):
+            msg += f" {result['message']}"
+        flash(msg, "success" if result["errors"] == 0 else "warning")
+    except Exception as e:
+        try:
+            if run_id:
+                conn.execute(
+                    "UPDATE geoop_import_runs SET status='failed', completed_at=? WHERE id=? AND status='running'",
+                    (_geoop._now(), run_id)
+                )
+                conn.commit()
+        except Exception:
+            pass
+        flash(f"Range import failed: {e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("geoop_import_page"))
+
+
+@app.get("/admin/geoop-import/client-review")
+@geoop_required
+def geoop_client_review():
+    conn = db()
+    _geoop.ensure_staging_tables(conn)
+    raw_clients = conn.execute("""
+        SELECT c.id, c.name, c.created_at,
+            (SELECT COUNT(*) FROM jobs j WHERE j.client_id = c.id) AS job_count
+        FROM clients c
+        WHERE c.id IN (SELECT DISTINCT client_id FROM geoop_source_client_map WHERE client_id IS NOT NULL)
+        ORDER BY c.name
+    """).fetchall()
+    source_map = {}
+    for row in conn.execute("SELECT client_id, source_name FROM geoop_source_client_map WHERE client_id IS NOT NULL ORDER BY source_name"):
+        source_map.setdefault(row["client_id"], []).append(row["source_name"])
+    clients = []
+    for c in raw_clients:
+        clients.append({
+            "id": c["id"], "name": c["name"], "created_at": c["created_at"],
+            "job_count": c["job_count"],
+            "source_variants": " | ".join(source_map.get(c["id"], [])),
+        })
+    conn.close()
+    return render_template("geoop_client_review.html", clients=clients)
+
+
 @app.post("/admin/geoop-import/backfill-descriptions")
 @geoop_required
 def geoop_import_backfill():

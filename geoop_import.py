@@ -1895,6 +1895,227 @@ def import_staged_jobs(mode="insert_only", conn=None):
     }
 
 
+def import_staged_jobs_range(ref_start, ref_end, conn=None):
+    close = False
+    if conn is None:
+        conn = _db()
+        close = True
+
+    ts = _now()
+    imported = 0
+    skipped = 0
+    errors = 0
+    error_list = []
+
+    staged = conn.execute("""
+        SELECT * FROM geoop_staging_jobs
+        WHERE import_status = 'pending'
+          AND CAST(reference_no AS INTEGER) BETWEEN ? AND ?
+        ORDER BY CAST(reference_no AS INTEGER)
+    """, (ref_start, ref_end)).fetchall()
+
+    if not staged:
+        if close:
+            conn.close()
+        return {
+            "imported": 0, "skipped": 0, "errors": 0,
+            "error_details": [],
+            "message": f"No pending staging rows found for references {ref_start}-{ref_end}",
+        }
+
+    _source_map_cache = {}
+    _scm_rows = conn.execute("SELECT source_name, client_id FROM geoop_source_client_map WHERE client_id IS NOT NULL").fetchall()
+    for _scr in _scm_rows:
+        _source_map_cache[_scr["source_name"]] = _scr["client_id"]
+
+    existing_rows = conn.execute(
+        "SELECT id, internal_job_number, display_ref, client_job_number, geoop_job_id FROM jobs"
+    ).fetchall()
+    _existing_by_ijn = {}
+    _existing_by_dr = {}
+    _existing_by_dr_prefix = {}
+    _existing_by_cjn = {}
+    _existing_by_gid = {}
+    for er in existing_rows:
+        eid = er["id"]
+        if er["internal_job_number"]:
+            _existing_by_ijn[er["internal_job_number"]] = eid
+        if er["display_ref"]:
+            _existing_by_dr[er["display_ref"]] = eid
+            base = er["display_ref"].split(" (")[0]
+            _existing_by_dr_prefix[base] = eid
+        if er["client_job_number"]:
+            _existing_by_cjn[er["client_job_number"]] = eid
+        if er["geoop_job_id"]:
+            _existing_by_gid[er["geoop_job_id"].strip()] = eid
+
+    def _find_existing(ref_no, geoop_id_str):
+        if ref_no:
+            eid = (_existing_by_ijn.get(ref_no)
+                   or _existing_by_dr.get(ref_no)
+                   or _existing_by_dr_prefix.get(ref_no))
+            if eid:
+                return eid
+        if geoop_id_str:
+            eid = (_existing_by_cjn.get(geoop_id_str)
+                   or _existing_by_gid.get(geoop_id_str))
+            if eid:
+                return eid
+        return None
+
+    for sj in staged:
+        geoop_id = sj["geoop_job_id"]
+        ref_no = sj["reference_no"] or ""
+        geoop_id_str = str(geoop_id).strip()
+        existing_id = _find_existing(ref_no, geoop_id_str)
+
+        if existing_id:
+            conn.execute(
+                "UPDATE geoop_staging_jobs SET import_status='skipped_exists', axion_job_id=?, imported_at=? WHERE id=?",
+                (existing_id, ts, sj["id"])
+            )
+            skipped += 1
+            continue
+
+        address_parts = [p for p in [sj["address"], sj["suburb"], sj["city"], sj["postcode"]] if p]
+        full_address = ", ".join(address_parts)
+
+        cust_id = None
+        if sj["firstname"] or sj["lastname"]:
+            fname = (sj["firstname"] or "").strip()
+            lname = (sj["lastname"] or "").strip()
+            cust = conn.execute(
+                "SELECT id FROM customers WHERE first_name=? AND last_name=?",
+                (fname, lname)
+            ).fetchone()
+            if cust:
+                cust_id = cust["id"]
+            else:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO customers (first_name, last_name, company, email, address, created_at, updated_at)
+                    VALUES (?,?,?,?,?,?,?)
+                """, (fname, lname, sj["company"] or "", sj["email"] or "", full_address, ts, ts))
+                cust_id = cur.lastrowid
+                mobile = _preserve_phone_text((sj["mobile"] or "").strip())
+                phone = _preserve_phone_text((sj["phone"] or "").strip())
+                if mobile:
+                    conn.execute("""
+                        INSERT INTO contact_phone_numbers (entity_type, entity_id, label, phone_number, created_at)
+                        VALUES ('customer', ?, 'Mobile', ?, ?)
+                    """, (cust_id, mobile, ts))
+                if phone:
+                    conn.execute("""
+                        INSERT INTO contact_phone_numbers (entity_type, entity_id, label, phone_number, created_at)
+                        VALUES ('customer', ?, 'Phone', ?, ?)
+                    """, (cust_id, phone, ts))
+                if sj["email"]:
+                    conn.execute("""
+                        INSERT INTO contact_emails (entity_type, entity_id, label, email, created_at)
+                        VALUES ('customer', ?, 'Primary', ?, ?)
+                    """, (cust_id, sj["email"], ts))
+
+        client_id = sj["axion_client_id"]
+        if not client_id:
+            parsed_client = sj["parsed_client_name"] or ""
+            if parsed_client:
+                client_id = _source_map_cache.get(parsed_client)
+            if not client_id and parsed_client:
+                client_id = _match_client(conn, parsed_client)
+            if not client_id and sj["company"]:
+                client_id = _match_client(conn, sj["company"])
+
+        status = STATUS_MAP.get(sj["status_label"], "New")
+        job_type = _determine_job_type(sj["job_title"])
+        _nmpd_date = sj["parsed_nmpd_date"] or ""
+        _pmt_freq = "Monthly" if _nmpd_date else ""
+
+        try:
+            insert_ref = ref_no or str(geoop_id)
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO jobs (
+                    internal_job_number, display_ref, client_reference,
+                    customer_id, client_id, job_type, visit_type, status, priority,
+                    job_address, description, geoop_source_description,
+                    lender_name, account_number, regulation_type,
+                    arrears_cents, costs_cents, mmp_cents, job_due_date,
+                    payment_frequency, deliver_to, client_job_number, geoop_job_id,
+                    created_at, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                insert_ref, insert_ref, sj["parsed_account_number"] or "",
+                cust_id, client_id, job_type, "New Visit", status, "Normal",
+                full_address, sj["raw_description"], sj["raw_description"],
+                sj["parsed_client_name"] or "", sj["parsed_account_number"] or "",
+                sj["parsed_regulation_type"] or "",
+                sj["parsed_amount_cents"] or 0, sj["parsed_costs_cents"] or 0,
+                sj["parsed_nmpd_amount_cents"] or 0, _nmpd_date,
+                _pmt_freq, sj["parsed_deliver_to"] or "", geoop_id, str(geoop_id).strip(),
+                ts, ts
+            ))
+            axion_job_id = cur.lastrowid
+
+            if sj["raw_description"]:
+                conn.execute("""
+                    INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, note_type, created_at)
+                    VALUES (?, 1, ?, 'geoop_import', ?)
+                """, (axion_job_id, "[GeoOp Import] " + sj["raw_description"], ts))
+
+            if sj["parsed_reg"] or sj["parsed_vin"] or sj["parsed_security_make"]:
+                conn.execute("""
+                    INSERT INTO job_items (
+                        job_id, item_type, description, reg, vin,
+                        make, model, year, colour, deliver_to,
+                        lender_name, account_number, regulation_type,
+                        created_at
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    axion_job_id, "vehicle",
+                    sj["parsed_security_description"] or "",
+                    sj["parsed_reg"] or "",
+                    sj["parsed_vin"] or "",
+                    sj["parsed_security_make"] or "",
+                    sj["parsed_security_model"] or "",
+                    sj["parsed_security_year"] or "",
+                    sj["parsed_security_colour"] or "",
+                    sj["parsed_deliver_to"] or "",
+                    sj["parsed_client_name"] or "",
+                    sj["parsed_account_number"] or "",
+                    sj["parsed_regulation_type"] or "",
+                    ts
+                ))
+
+            conn.execute(
+                "UPDATE geoop_staging_jobs SET import_status='imported', axion_job_id=?, axion_customer_id=?, axion_client_id=?, imported_at=? WHERE id=?",
+                (axion_job_id, cust_id, client_id, ts, sj["id"])
+            )
+            _existing_by_ijn[insert_ref] = axion_job_id
+            _existing_by_dr[insert_ref] = axion_job_id
+            _existing_by_dr_prefix[insert_ref.split(" (")[0]] = axion_job_id
+            _existing_by_cjn[str(geoop_id)] = axion_job_id
+            _existing_by_gid[geoop_id_str] = axion_job_id
+            imported += 1
+        except Exception as e:
+            conn.execute(
+                "UPDATE geoop_staging_jobs SET import_status='error', error_message=?, imported_at=? WHERE id=?",
+                (str(e)[:500], ts, sj["id"])
+            )
+            errors += 1
+            error_list.append({"geoop_id": geoop_id, "ref": ref_no, "error": str(e)[:200]})
+
+    conn.commit()
+    if close:
+        conn.close()
+
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors,
+        "error_details": error_list[:50],
+    }
+
+
 _BACKFILL_BATCH_SIZE = 250
 
 

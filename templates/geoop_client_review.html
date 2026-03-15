@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+{% block title %}Client Review — AxionX{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width:1200px;">
+
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h4 class="mb-1" style="font-weight:700;">Client Record Review</h4>
+      <p class="text-muted small mb-0">Verify these auto-created client records (from GeoOp source mapping) are true AxionX client entities — not lenders or noise</p>
+    </div>
+    <a href="{{ url_for('geoop_import_page') }}" class="btn btn-outline-secondary btn-sm">Back to Import</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-sm-4">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#2563eb;">{{ clients|length }}</div>
+        <div class="text-muted small">Total Clients</div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#16a34a;">{{ clients|selectattr('job_count', 'gt', 0)|list|length }}</div>
+        <div class="text-muted small">With Jobs Assigned</div>
+      </div>
+    </div>
+    <div class="col-sm-4">
+      <div class="card text-center p-3">
+        <div style="font-size:2rem;font-weight:700;color:#dc2626;">{{ clients|selectattr('job_count', 'eq', 0)|list|length }}</div>
+        <div class="text-muted small">No Jobs (check if valid)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>All Client Records</strong>
+      <input type="text" id="clientSearch" class="form-control form-control-sm" style="max-width:300px"
+             placeholder="Search client name..." oninput="filterClients()">
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0" id="clientTable">
+          <thead>
+            <tr>
+              <th style="width:5%">#</th>
+              <th style="width:20%">Client Name</th>
+              <th style="width:8%">Jobs</th>
+              <th style="width:52%">Source Name Variants (from GeoOp)</th>
+              <th style="width:15%">Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in clients %}
+            <tr class="client-row" data-search="{{ c.name|lower }} {{ (c.source_variants or '')|lower }}">
+              <td class="small text-muted">{{ c.id }}</td>
+              <td class="fw-semibold">{{ c.name }}</td>
+              <td class="text-center">
+                {% if c.job_count > 0 %}
+                <span class="badge bg-success">{{ c.job_count }}</span>
+                {% else %}
+                <span class="badge bg-secondary">0</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted" style="word-break:break-word;">{{ c.source_variants or '—' }}</td>
+              <td class="small text-muted">{{ c.created_at[:10] if c.created_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function filterClients() {
+  var q = document.getElementById('clientSearch').value.toLowerCase();
+  document.querySelectorAll('.client-row').forEach(function(row) {
+    row.style.display = row.dataset.search.indexOf(q) >= 0 ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

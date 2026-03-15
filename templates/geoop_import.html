@@ -292,7 +292,36 @@
           </button>
         </form>
         <a href="{{ url_for('geoop_source_map_view') }}" class="btn btn-outline-secondary btn-sm">View/Edit Source Map</a>
+        <a href="{{ url_for('geoop_client_review') }}" class="btn btn-outline-secondary btn-sm">Review Client Records</a>
       </div>
+    </div>
+  </div>
+
+  <div class="card mb-4 border-success">
+    <div class="card-header bg-success bg-opacity-10">
+      <strong>Step 5: Targeted Range Import</strong>
+    </div>
+    <div class="card-body">
+      <p class="small text-muted mb-3">
+        Import only a specific reference number range from staging. Insert-only — skips any record
+        already present by geoop_job_id, display_ref, internal_job_number, or client_job_number.
+        Stage the fresh CSV first, then enter the range below.
+      </p>
+      <form method="post" action="{{ url_for('geoop_import_range') }}" class="d-flex gap-2 align-items-end flex-wrap"
+            onsubmit="return confirm('Import references ' + this.ref_start.value + '–' + this.ref_end.value + ' (insert-only, existing jobs skipped). Continue?');">
+        <div>
+          <label class="form-label small mb-1">From Ref</label>
+          <input type="number" name="ref_start" class="form-control form-control-sm" style="width:130px" value="2603044" required>
+        </div>
+        <div>
+          <label class="form-label small mb-1">To Ref</label>
+          <input type="number" name="ref_end" class="form-control form-control-sm" style="width:130px" value="2603078" required>
+        </div>
+        <button type="submit" class="btn btn-success btn-sm"
+                onclick="this.disabled=true;this.textContent='Importing…';this.form.submit();">
+          Import Range
+        </button>
+      </form>
     </div>
   </div>
 
