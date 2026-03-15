@@ -1618,7 +1618,7 @@ def _parse_instruction_text(text):
             wise_make = parts[0].title()
             wise_model = parts[1].title() if len(parts) > 1 else None
 
-        wise_lender = wise_financier or wise_client
+        wise_lender = wise_financier
         wise_reg_type = None
         if wise_loan_type:
             lt = wise_loan_type.lower().strip()
@@ -1676,11 +1676,13 @@ def _parse_instruction_text(text):
             "_source": "wise_group",
         }
 
-    # ── Sender / client (FROM: line at top of document) ─────────────────
+    # ── Sender / billing client (FROM: line at top of document) ─────────
     from_name = find_after([
         r"^FROM[:\s]+([^\n]{3,60})",
         r"\nFROM[:\s]+([^\n]{3,60})",
         r"(?:Sent\s*(?:by|from)|Instructing\s*(?:Party|Client))[:\s]+([^\n]{3,60})",
+        r"(?:^|\n)\s*Client\s*:?\s+([A-Za-z][A-Za-z0-9 ,.'&\-]{2,60}?)(?:\s*\n|\s{3,}|$)",
+        r"Introducing\s*(?:Broker|Agent|Party)[:\s]+([^\n]{3,60})",
     ])
     if from_name:
         from_name = from_name.strip().rstrip(".,")
@@ -1706,14 +1708,11 @@ def _parse_instruction_text(text):
         r"(?:Job|File)\s*(?:No\.?|Number)[:\s#]*([A-Za-z0-9\-\/]+)",
     ])
 
-    # ── Lender / sender name for client lookup ────────────────────────────
+    # ── Lender (finance company, NOT the billing client) ────────────────
     lender_raw = find_after([
         r"(?:Lender|Finance\s*Company|Financier|Credit\s*Provider|Secured\s*Party)[:\s]+"
         r"([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|\s{3,}|,\s*ABN|$)",
     ])
-    # Prefer from_name if no explicit lender label
-    if not lender_raw and from_name:
-        lender_raw = from_name
 
     deliver_to = None
     lender     = None
@@ -3432,11 +3431,9 @@ def _job_new_render(conn):
         autofill_confidence   = autofill.get("_confidence") or {}
         autofill_filled_count = autofill.get("_filled_count") or 0
 
-        # ── Client lookup: try multiple sources, multi-strategy matching ──
+        # ── Client lookup: use from_name (billing/instructing client), NOT lender ──
         _client_lookup_names = list(filter(None, [
-            (autofill.get("lender_name") or "").strip(),
             (autofill.get("from_name") or "").strip(),
-            (autofill.get("wise_case_number") and (autofill.get("from_name") or "").strip()),
         ]))
         _STOP_WORDS = {"pty", "ltd", "limited", "inc", "the", "and", "of", "for", "group", "australia", "services"}
         _norm_client = lambda s: re.sub(r'[^a-z0-9 ]', '', s.lower()).strip()
