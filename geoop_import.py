@@ -1167,6 +1167,7 @@ def backfill_agent_assignments(conn=None):
         JOIN geoop_staging_jobs sj ON CAST(sj.geoop_job_id AS TEXT) = j.geoop_job_id
         WHERE j.geoop_job_id IS NOT NULL
           AND (j.assigned_user_id IS NULL)
+          AND j.status NOT IN ('Completed', 'Cancelled', 'Invoiced', 'Archived - Invoiced', 'Cold Stored')
           AND (sj.modified_by IS NOT NULL AND sj.modified_by != ''
                OR sj.created_by IS NOT NULL AND sj.created_by != '')
     """).fetchall()
