@@ -3584,6 +3584,8 @@ function axCopyVin(btn) {
             Add a booking now (optional — click Skip to update status only).
           </p>
           <input type="hidden" name="new_status" id="activateNewStatus">
+          <input type="hidden" name="schedule_date_iso" id="ap_date_iso">
+          <input type="hidden" name="schedule_time_24" id="ap_time_24">
           <div class="row g-2 mb-2">
             <div class="col-6">
               <label class="form-label small" style="color:var(--muted)">Date</label>
@@ -3677,21 +3679,40 @@ function axCopyVin(btn) {
 
   var apDatePicker = document.getElementById('ap_date_picker');
   var apDateText   = document.getElementById('ap_date_text');
-  if (apDatePicker && apDateText) {
-    apDatePicker.addEventListener('change', function() {
-      var d = new Date(this.value + 'T00:00:00');
-      if (!isNaN(d)) apDateText.value = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
-    });
+  var apDateIso    = document.getElementById('ap_date_iso');
+  function syncDatePicker() {
+    if (!apDatePicker || !apDatePicker.value) return;
+    var d = new Date(apDatePicker.value + 'T00:00:00');
+    if (isNaN(d)) return;
+    if (apDateText) apDateText.value = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+    if (apDateIso) apDateIso.value = apDatePicker.value;
+  }
+  if (apDatePicker) {
+    apDatePicker.addEventListener('change', syncDatePicker);
+    apDatePicker.addEventListener('input', syncDatePicker);
   }
   var apTimePicker = document.getElementById('ap_time_picker');
   var apTimeText   = document.getElementById('ap_time_text');
-  if (apTimePicker && apTimeText) {
-    apTimePicker.addEventListener('change', function() {
-      var parts = this.value.split(':');
-      if (parts.length < 2) return;
-      var h = parseInt(parts[0]), m = parts[1], ampm = h >= 12 ? 'pm' : 'am';
-      h = h % 12 || 12;
-      apTimeText.value = h + ':' + m + ' ' + ampm;
+  var apTime24     = document.getElementById('ap_time_24');
+  function syncTimePicker() {
+    if (!apTimePicker || !apTimePicker.value) return;
+    var parts = apTimePicker.value.split(':');
+    if (parts.length < 2) return;
+    var h = parseInt(parts[0]), m = parts[1], ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    if (apTimeText) apTimeText.value = h + ':' + m + ' ' + ampm;
+    if (apTime24) apTime24.value = apTimePicker.value;
+  }
+  if (apTimePicker) {
+    apTimePicker.addEventListener('change', syncTimePicker);
+    apTimePicker.addEventListener('input', syncTimePicker);
+  }
+
+  var activateForm = document.getElementById('activateForm');
+  if (activateForm) {
+    activateForm.addEventListener('submit', function() {
+      syncDatePicker();
+      syncTimePicker();
     });
   }
 })();
@@ -3708,6 +3729,8 @@ function axCopyVin(btn) {
       <form method="post" action="/jobs/{{ job.id }}/schedule" id="postNoteSchedForm">
         <div class="modal-body">
           <p class="small mb-3" style="color:var(--muted)">Note saved. Would you like to add a schedule entry for this job?</p>
+          <input type="hidden" name="schedule_date_iso" id="pns_date_iso">
+          <input type="hidden" name="schedule_time_24" id="pns_time_24">
           <div class="row g-2 mb-2">
             <div class="col-6">
               <label class="form-label small" style="color:var(--muted)">Date</label>
@@ -3766,21 +3789,39 @@ function axCopyVin(btn) {
 (function(){
   var pnsDatePicker = document.getElementById('pns_date_picker');
   var pnsDateText = document.getElementById('pns_date_text');
-  if (pnsDatePicker && pnsDateText) {
-    pnsDatePicker.addEventListener('change', function(){
-      var d = new Date(this.value + 'T00:00:00');
-      if (!isNaN(d)) pnsDateText.value = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
-    });
+  var pnsDateIso = document.getElementById('pns_date_iso');
+  function syncPnsDate() {
+    if (!pnsDatePicker || !pnsDatePicker.value) return;
+    var d = new Date(pnsDatePicker.value + 'T00:00:00');
+    if (isNaN(d)) return;
+    if (pnsDateText) pnsDateText.value = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+    if (pnsDateIso) pnsDateIso.value = pnsDatePicker.value;
+  }
+  if (pnsDatePicker) {
+    pnsDatePicker.addEventListener('change', syncPnsDate);
+    pnsDatePicker.addEventListener('input', syncPnsDate);
   }
   var pnsTimePicker = document.getElementById('pns_time_picker');
   var pnsTimeText = document.getElementById('pns_time_text');
-  if (pnsTimePicker && pnsTimeText) {
-    pnsTimePicker.addEventListener('change', function(){
-      var parts = this.value.split(':');
-      if (parts.length < 2) return;
-      var h = parseInt(parts[0],10), m = parts[1], ap = h >= 12 ? 'pm' : 'am';
-      h = h % 12 || 12;
-      pnsTimeText.value = h + ':' + m + ' ' + ap;
+  var pnsTime24 = document.getElementById('pns_time_24');
+  function syncPnsTime() {
+    if (!pnsTimePicker || !pnsTimePicker.value) return;
+    var parts = pnsTimePicker.value.split(':');
+    if (parts.length < 2) return;
+    var h = parseInt(parts[0],10), m = parts[1], ap = h >= 12 ? 'pm' : 'am';
+    h = h % 12 || 12;
+    if (pnsTimeText) pnsTimeText.value = h + ':' + m + ' ' + ap;
+    if (pnsTime24) pnsTime24.value = pnsTimePicker.value;
+  }
+  if (pnsTimePicker) {
+    pnsTimePicker.addEventListener('change', syncPnsTime);
+    pnsTimePicker.addEventListener('input', syncPnsTime);
+  }
+  var pnsForm = document.getElementById('postNoteSchedForm');
+  if (pnsForm) {
+    pnsForm.addEventListener('submit', function() {
+      syncPnsDate();
+      syncPnsTime();
     });
   }
   var _pnsBtInited = false;
@@ -4934,6 +4975,8 @@ function axSaveClient() {
   }
 
   window.inlineSaveBooking = function() {
+    var datePicker = document.getElementById('sched_date_picker');
+    var timePicker = document.getElementById('sched_time_picker');
     var dateText = document.getElementById('sched_date_text').value.trim();
     var timeText = document.getElementById('sched_time_text').value.trim();
     var btId = document.getElementById('bt_id_hidden').value;
@@ -4942,6 +4985,19 @@ function axSaveClient() {
     var assign = document.getElementById('sched_assign').value;
     var btn = document.getElementById('inlineBookingSaveBtn');
     var successEl = document.getElementById('inlineBookingSuccess');
+
+    if (!dateText && datePicker && datePicker.value) {
+      var d = new Date(datePicker.value + 'T00:00:00');
+      if (!isNaN(d)) dateText = ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+    }
+    if (!timeText && timePicker && timePicker.value) {
+      var pts = timePicker.value.split(':');
+      if (pts.length >= 2) {
+        var hh = parseInt(pts[0],10), mm = pts[1], ap = hh >= 12 ? 'pm' : 'am';
+        hh = hh % 12 || 12;
+        timeText = hh + ':' + mm + ' ' + ap;
+      }
+    }
 
     if (!dateText) { alert('Please enter a date.'); return; }
     if (!timeText) { alert('Please enter a time.'); return; }
@@ -4953,6 +5009,8 @@ function axSaveClient() {
     var fd = new FormData();
     fd.append('schedule_date', dateText);
     fd.append('schedule_time', timeText);
+    if (datePicker && datePicker.value) fd.append('schedule_date_iso', datePicker.value);
+    if (timePicker && timePicker.value) fd.append('schedule_time_24', timePicker.value);
     if (btId) fd.append('booking_type_id', btId);
     fd.append('booking_type_name', btName);
     if (notes) fd.append('notes', notes);

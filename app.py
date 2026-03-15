@@ -4163,6 +4163,23 @@ def _resolve_booking_type(cur, bt_id: str, bt_name: str):
 def add_schedule(job_id: int):
     date_str    = request.form.get("schedule_date", "").strip()
     time_str    = request.form.get("schedule_time", "").strip()
+    date_iso    = request.form.get("schedule_date_iso", "").strip()
+    time_24     = request.form.get("schedule_time_24", "").strip()
+    if not date_str and date_iso:
+        try:
+            d = datetime.strptime(date_iso, "%Y-%m-%d")
+            date_str = d.strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    if not time_str and time_24:
+        try:
+            parts = time_24.split(":")
+            h, m = int(parts[0]), parts[1]
+            ampm = "pm" if h >= 12 else "am"
+            h12 = h % 12 or 12
+            time_str = f"{h12}:{m} {ampm}"
+        except (ValueError, IndexError):
+            pass
     bt_id       = request.form.get("booking_type_id", "").strip()
     bt_name     = request.form.get("booking_type_name", "").strip()
     notes       = request.form.get("notes", "").strip() or None
@@ -4368,11 +4385,28 @@ def job_activate(job_id):
     new_status  = request.form.get("new_status", "").strip()
     date_str    = request.form.get("schedule_date", "").strip()
     time_str    = request.form.get("schedule_time", "").strip()
+    date_iso    = request.form.get("schedule_date_iso", "").strip()
+    time_24     = request.form.get("schedule_time_24", "").strip()
+    if not date_str and date_iso:
+        try:
+            d = datetime.strptime(date_iso, "%Y-%m-%d")
+            date_str = d.strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+    if not time_str and time_24:
+        try:
+            parts = time_24.split(":")
+            h, m = int(parts[0]), parts[1]
+            ampm = "pm" if h >= 12 else "am"
+            h12 = h % 12 or 12
+            time_str = f"{h12}:{m} {ampm}"
+        except (ValueError, IndexError):
+            pass
     bt_id       = request.form.get("booking_type_id", "").strip()
     notes       = request.form.get("notes", "").strip() or None
     assigned_to = request.form.get("assigned_to_user_id", "").strip() or None
     caller_id   = session.get("user_id")
-    now         = datetime.now().isoformat(timespec="seconds")
+    now         = datetime.now(_melbourne).isoformat(timespec="seconds")
 
     allowed = ["Active", "Active - Phone work only", "Suspended", "Awaiting info from client"]
     if new_status not in allowed:
@@ -4409,8 +4443,10 @@ def job_activate(job_id):
                 if assigned_int:
                     cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                                 (assigned_int, now_ts(), job_id))
-        except Exception:
-            flash("Schedule date/time invalid — status updated but no schedule created.", "warning")
+        except Exception as exc:
+            import logging as _log
+            _log.exception("job_activate schedule creation failed for job_id=%s: %s", job_id, exc)
+            flash(f"Schedule error: {exc} — status updated but no schedule created.", "warning")
 
     conn.commit()
     conn.close()
