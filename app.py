@@ -12041,6 +12041,31 @@ def api_agent_location():
     return jsonify({"ok": True})
 
 
+def _geocode_clean_address(raw: str) -> list:
+    """Return a list of address variants to try, from most specific to least."""
+    import re
+    addr = raw.strip()
+    addr = re.sub(r'\s+', ' ', addr)
+    addr = re.sub(r'(?i)\b(unit|lot|suite|ste|apt|apartment|flat)\s*\.?\s*', '', addr).strip()
+    addr = re.sub(r'^[,\s]+', '', addr)
+
+    variants = [addr]
+
+    parts = [p.strip() for p in addr.split(',') if p.strip()]
+    if len(parts) >= 2:
+        simplified = ', '.join(parts[-2:])
+        if simplified != addr:
+            variants.append(simplified)
+
+    suburb_match = re.search(r',\s*([A-Za-z\s]+(?:VIC|NSW|QLD|SA|WA|TAS|NT|ACT)\s*\d{4})', addr, re.IGNORECASE)
+    if suburb_match:
+        suburb_state = suburb_match.group(1).strip()
+        if suburb_state != addr and suburb_state not in variants:
+            variants.append(suburb_state)
+
+    return variants
+
+
 def _geocode_address(address: str):
     """Geocode an address via Google Geocoding API. Returns (lat, lng) or None."""
     import urllib.request
@@ -12050,26 +12075,32 @@ def _geocode_address(address: str):
     if not api_key:
         _log.warning("Geocode skipped: GOOGLE_MAPS_API_KEY not set")
         return None
-    try:
-        params = urllib.parse.urlencode({
-            "address": address,
-            "key": api_key,
-            "region": "au",
-        })
-        url = f"https://maps.googleapis.com/maps/api/geocode/json?{params}"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            import json as _json
-            data = _json.loads(resp.read())
-        status = data.get("status", "UNKNOWN")
-        if status == "OK" and data.get("results"):
-            loc = data["results"][0]["geometry"]["location"]
-            return float(loc["lat"]), float(loc["lng"])
-        if status != "ZERO_RESULTS":
-            _log.warning("Geocode API status=%s for address=%r error=%s",
-                         status, address[:60], data.get("error_message", ""))
-    except Exception as e:
-        _log.warning("Geocode exception for address=%r: %s", address[:60], e)
+
+    variants = _geocode_clean_address(address)
+
+    for variant in variants:
+        try:
+            params = urllib.parse.urlencode({
+                "address": variant,
+                "key": api_key,
+                "region": "au",
+            })
+            url = f"https://maps.googleapis.com/maps/api/geocode/json?{params}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                import json as _json
+                data = _json.loads(resp.read())
+            status = data.get("status", "UNKNOWN")
+            if status == "OK" and data.get("results"):
+                loc = data["results"][0]["geometry"]["location"]
+                return float(loc["lat"]), float(loc["lng"])
+            if status not in ("ZERO_RESULTS", "OK"):
+                _log.warning("Geocode API status=%s for address=%r error=%s",
+                             status, variant[:60], data.get("error_message", ""))
+                return None
+        except Exception as e:
+            _log.warning("Geocode exception for address=%r: %s", variant[:60], e)
+            return None
     return None
 
 
@@ -12276,6 +12307,22 @@ def admin_geocode_all():
 @admin_required
 def admin_geocode_progress():
     return jsonify(_bulk_geocode_status)
+
+
+@app.get("/admin/geocode-all/failures")
+@login_required
+@admin_required
+def admin_geocode_failures():
+    conn = db()
+    rows = conn.execute(
+        "SELECT id, job_address, geocode_fail FROM jobs"
+        " WHERE (lat IS NULL OR lng IS NULL)"
+        "   AND job_address IS NOT NULL AND job_address != ''"
+        "   AND geocode_fail > 0"
+        " ORDER BY geocode_fail DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return jsonify([{"id": r["id"], "address": r["job_address"], "fails": r["geocode_fail"]} for r in rows])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
