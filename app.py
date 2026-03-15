@@ -12034,10 +12034,24 @@ def route_planner_page():
         ORDER BY suburb
     """).fetchall()
     suburb_list = sorted(set(s["suburb"] for s in suburbs if s["suburb"] and len(s["suburb"]) > 1))
-    saved_routes = cur.execute("""
-        SELECT id, name, route_mode, direction_mode, status, created_at, total_distance_meters, total_duration_seconds
-        FROM route_plans WHERE created_by_user_id = ? ORDER BY updated_at DESC LIMIT 20
-    """, (session["user_id"],)).fetchall()
+    if is_admin:
+        saved_routes = cur.execute("""
+            SELECT rp.id, rp.name, rp.route_mode, rp.direction_mode, rp.status,
+                   rp.created_at, rp.total_distance_meters, rp.total_duration_seconds,
+                   rp.assigned_agent_id, u.full_name AS assigned_agent_name
+            FROM route_plans rp
+            LEFT JOIN users u ON u.id = rp.assigned_agent_id
+            ORDER BY rp.updated_at DESC LIMIT 30
+        """).fetchall()
+    else:
+        saved_routes = cur.execute("""
+            SELECT rp.id, rp.name, rp.route_mode, rp.direction_mode, rp.status,
+                   rp.created_at, rp.total_distance_meters, rp.total_duration_seconds,
+                   rp.assigned_agent_id, '' AS assigned_agent_name
+            FROM route_plans rp
+            WHERE rp.created_by_user_id = ? OR rp.assigned_agent_id = ?
+            ORDER BY rp.updated_at DESC LIMIT 20
+        """, (session["user_id"], session["user_id"])).fetchall()
     user = cur.execute("SELECT home_address, home_lat, home_lng FROM users WHERE id=?",
                        (session["user_id"],)).fetchone()
     settings = cur.execute("SELECT office_address, office_lat, office_lng FROM system_settings LIMIT 1").fetchone()
@@ -12379,20 +12393,35 @@ def route_planner_save():
     total_dist = data.get("total_distance_km", 0)
     total_dur = data.get("total_duration_min", 0)
     suburb_sequence = data.get("suburb_sequence", [])
+    assigned_agent_id = data.get("assigned_agent_id") or None
+    if assigned_agent_id:
+        try:
+            assigned_agent_id = int(assigned_agent_id)
+        except (ValueError, TypeError):
+            assigned_agent_id = None
+    role = session.get("role", "agent")
+    if assigned_agent_id and role not in ("admin", "both"):
+        assigned_agent_id = None
+    if assigned_agent_id:
+        conn2 = db()
+        agent_exists = conn2.execute("SELECT id FROM users WHERE id=? AND is_active=1", (assigned_agent_id,)).fetchone()
+        conn2.close()
+        if not agent_exists:
+            assigned_agent_id = None
 
     now = now_ts()
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO route_plans (created_by_user_id, name, route_mode, direction_mode,
+        INSERT INTO route_plans (created_by_user_id, assigned_agent_id, name, route_mode, direction_mode,
             start_type, start_address, start_lat, start_lng,
             end_type, end_address, end_lat, end_lng,
             pinned_first_job_id, pinned_last_job_id,
             total_distance_meters, total_duration_seconds,
             suburb_sequence_json, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saved', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'saved', ?, ?)
     """, (
-        session["user_id"], name, route_mode, direction_mode,
+        session["user_id"], assigned_agent_id, name, route_mode, direction_mode,
         start_type, data.get("start_address"), data.get("start_lat"), data.get("start_lng"),
         data.get("end_type"), data.get("end_address"), data.get("end_lat"), data.get("end_lng"),
         data.get("pinned_first_id"), data.get("pinned_last_id"),
@@ -12433,7 +12462,7 @@ def route_planner_load(route_id):
     if not plan:
         conn.close()
         return jsonify(error="Route not found"), 404
-    if plan["created_by_user_id"] != uid and not is_admin:
+    if plan["created_by_user_id"] != uid and plan["assigned_agent_id"] != uid and not is_admin:
         conn.close()
         return jsonify(error="Access denied"), 403
     stops = cur.execute("""
@@ -14248,10 +14277,21 @@ def m_route_planner():
     user = cur.execute("SELECT home_address, home_lat, home_lng FROM users WHERE id=?",
                        (session["user_id"],)).fetchone()
     settings = cur.execute("SELECT office_address, office_lat, office_lng FROM system_settings LIMIT 1").fetchone()
+    uid = session["user_id"]
+    saved_routes = cur.execute("""
+        SELECT rp.id, rp.name, rp.route_mode, rp.created_at,
+               rp.total_distance_meters, rp.total_duration_seconds,
+               rp.assigned_agent_id, cr.full_name AS created_by_name
+        FROM route_plans rp
+        LEFT JOIN users cr ON cr.id = rp.created_by_user_id
+        WHERE rp.assigned_agent_id = ? OR rp.created_by_user_id = ?
+        ORDER BY rp.updated_at DESC LIMIT 20
+    """, (uid, uid)).fetchall()
     conn.close()
     return render_template("mobile/route_planner.html",
                            is_admin=is_admin,
                            suburbs=suburb_list,
+                           saved_routes=saved_routes,
                            user_home=dict(user) if user else {},
                            office=dict(settings) if settings else {})
 

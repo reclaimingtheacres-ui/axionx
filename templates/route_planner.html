@@ -176,8 +176,10 @@
         <div class="rp-saved-item" data-id="{{ r.id }}">
           <div>
             <strong>{{ r.name or 'Untitled' }}</strong>
-            <div style="font-size:.68rem;color:#94a3b8">{{ r.route_mode }} &middot; {{ r.created_at[:10] }}
+            <div style="font-size:.68rem;color:#94a3b8">
+              {{ r.route_mode }} &middot; {{ r.created_at[:10] }}
               {% if r.total_distance_meters %} &middot; {{ (r.total_distance_meters / 1000)|round(1) }} km{% endif %}
+              {% if r.assigned_agent_name %}<br><span style="color:var(--accent)">Assigned: {{ r.assigned_agent_name }}</span>{% endif %}
             </div>
           </div>
           <div style="display:flex;gap:4px">
@@ -226,6 +228,17 @@
       <div><span class="val" id="rp-total-km">0</span><span class="unit">km</span></div>
       <div><span class="val" id="rp-total-time">0</span><span class="unit">min</span></div>
     </div>
+    {% if is_admin %}
+    <div id="rp-assign-wrap" style="display:none;padding:0 2px">
+      <div class="rp-lbl">Assign Route to Agent</div>
+      <select id="rp-assign-agent" class="rp-sel">
+        <option value="">Myself (no assignment)</option>
+        {% for a in agents %}
+        <option value="{{ a.id }}">{{ a.full_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
     <div class="rp-card" style="flex:1;overflow-y:auto;padding:8px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 6px">
         <h6 style="margin:0">Route Stops</h6>
@@ -518,6 +531,8 @@ function rpRenderStops(data) {
   document.getElementById('rp-total-km').textContent = data.total_distance_km;
   document.getElementById('rp-total-time').textContent = data.total_duration_min;
   document.getElementById('rp-save-btn').style.display = 'inline-flex';
+  const assignWrap = document.getElementById('rp-assign-wrap');
+  if (assignWrap) assignWrap.style.display = 'block';
   document.getElementById('rp-clear-route').style.display = 'inline-flex';
 
   document.getElementById('rp-stops-list').innerHTML = data.stops.map(s => {
@@ -626,6 +641,8 @@ function rpClearRoute() {
   document.getElementById('rp-stops-list').innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8">Generate a route to see stops here.</div>';
   document.getElementById('rp-route-summary').style.display = 'none';
   document.getElementById('rp-save-btn').style.display = 'none';
+  const assignWrap2 = document.getElementById('rp-assign-wrap');
+  if (assignWrap2) assignWrap2.style.display = 'none';
   document.getElementById('rp-clear-route').style.display = 'none';
   document.getElementById('rp-warnings').style.display = 'none';
   RP.markers.forEach(m => m.setMap(null));
@@ -637,6 +654,7 @@ async function rpSave() {
   if (!RP.stops.length) return;
   const name = prompt('Route name:', `Route ${new Date().toLocaleDateString()}`);
   if (name === null) return;
+  const agentSel = document.getElementById('rp-assign-agent');
   const body = {
     name: name,
     route_mode: document.getElementById('rp-mode').value,
@@ -652,6 +670,7 @@ async function rpSave() {
     end_lng: rpGetEndPoint()?.lng,
     pinned_first_id: document.getElementById('rp-pin-first').checked ? +document.getElementById('rp-pin-first-job').value || null : null,
     pinned_last_id: document.getElementById('rp-pin-last').checked ? +document.getElementById('rp-pin-last-job').value || null : null,
+    assigned_agent_id: agentSel ? agentSel.value || null : null,
   };
   try {
     const resp = await fetch('/api/route-planner/save', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});

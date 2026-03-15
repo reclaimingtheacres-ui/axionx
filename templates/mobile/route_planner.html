@@ -46,12 +46,38 @@
 
 <div class="mrp-page">
   <div class="mrp-tabs">
-    <div class="mrp-tab active" onclick="mrpTab('filters')">Filters</div>
+    <div class="mrp-tab active" onclick="mrpTab('myroutes')">My Routes</div>
+    <div class="mrp-tab" onclick="mrpTab('filters')">Filters</div>
     <div class="mrp-tab" onclick="mrpTab('select')">Select <span id="mrp-sel-badge" class="mrp-count" style="display:none">0</span></div>
     <div class="mrp-tab" onclick="mrpTab('route')">Route</div>
   </div>
 
-  <div id="mrp-filters" class="mrp-section active">
+  <div id="mrp-myroutes" class="mrp-section active">
+    {% if saved_routes %}
+    {% for r in saved_routes %}
+    <div class="mrp-card" style="display:flex;justify-content:space-between;align-items:center">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.88rem">{{ r.name or 'Untitled Route' }}</div>
+        <div style="font-size:.74rem;color:var(--muted)">
+          {{ r.created_at[:10] }}
+          {% if r.total_distance_meters %} &middot; {{ (r.total_distance_meters / 1000)|round(1) }} km{% endif %}
+          {% if r.total_duration_seconds %} &middot; {{ (r.total_duration_seconds / 60)|round(0)|int }} min{% endif %}
+        </div>
+        {% if r.created_by_name %}
+        <div style="font-size:.72rem;color:var(--accent)">From: {{ r.created_by_name }}</div>
+        {% endif %}
+      </div>
+      <button class="mrp-nav-btn" onclick="mrpLoadSavedRoute({{ r.id }})">Open</button>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="padding:30px;text-align:center;color:var(--muted);font-size:.84rem">
+      No routes assigned yet. Use Filters to create a new route.
+    </div>
+    {% endif %}
+  </div>
+
+  <div id="mrp-filters" class="mrp-section">
     <div class="mrp-card">
       <div class="mrp-lbl">Status</div>
       <select id="mrp-status" class="mrp-sel" multiple size="3">
@@ -145,7 +171,7 @@ const MRP = {
 
 function mrpTab(name) {
   document.querySelectorAll('.mrp-tab').forEach((t,i) => {
-    t.classList.toggle('active', ['filters','select','route'][i] === name);
+    t.classList.toggle('active', ['myroutes','filters','select','route'][i] === name);
   });
   document.querySelectorAll('.mrp-section').forEach(s => s.classList.remove('active'));
   document.getElementById('mrp-'+name).classList.add('active');
@@ -322,6 +348,41 @@ function mrpRenderRoute(data) {
       </div>
     </div>`;
   }).join('');
+}
+
+async function mrpLoadSavedRoute(routeId) {
+  try {
+    const resp = await fetch(`/api/route-planner/${routeId}`);
+    const data = await resp.json();
+    if (data.error) { alert(data.error); return; }
+    const stops = data.stops.map((s, i) => ({
+      order: i + 1,
+      job_id: s.job_id,
+      display_ref: s.display_ref || '',
+      customer_name: s.customer_name || '',
+      address: s.address || '',
+      suburb: s.suburb || '',
+      lat: s.lat,
+      lng: s.lng,
+      distance_m: s.distance_from_previous_meters || 0,
+      duration_s: s.duration_from_previous_seconds || 0,
+      cumulative_km: 0,
+      is_pinned_start: !!s.is_pinned_start,
+      is_pinned_end: !!s.is_pinned_end,
+    }));
+    let cumKm = 0, cumSec = 0;
+    stops.forEach(s => { cumKm += (s.distance_m || 0) / 1000; cumSec += (s.duration_s || 0); s.cumulative_km = Math.round(cumKm * 10) / 10; });
+    MRP.stops = stops;
+    const savedDistKm = data.total_distance_meters ? Math.round(data.total_distance_meters / 100) / 10 : Math.round(cumKm * 10) / 10;
+    const savedDurMin = data.total_duration_seconds ? Math.round(data.total_duration_seconds / 60) : Math.round(cumSec / 60);
+    mrpRenderRoute({
+      stops: stops,
+      total_distance_km: savedDistKm,
+      total_duration_min: savedDurMin,
+      warnings: [],
+    });
+    mrpTab('route');
+  } catch(e) { alert('Failed to load route.'); }
 }
 </script>
 {% endblock %}
