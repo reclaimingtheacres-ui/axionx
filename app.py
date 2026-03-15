@@ -3977,17 +3977,37 @@ def job_detail(job_id: int):
                            payments_total_cents=payments_total_cents)
 
 
+def _sync_job_customer_id(cur, job_id):
+    cur.execute("""
+        SELECT customer_id FROM job_customers
+        WHERE job_id = ?
+        ORDER BY CASE WHEN role = 'Primary' THEN 0 ELSE 1 END, sort_order ASC
+        LIMIT 1
+    """, (job_id,))
+    row = cur.fetchone()
+    new_cid = row[0] if row else None
+    cur.execute("UPDATE jobs SET customer_id = ?, updated_at = ? WHERE id = ?",
+                (new_cid, now_ts(), job_id))
+
+
 @app.post("/jobs/<int:job_id>/customers/add")
 @login_required
 @admin_required
 def job_customer_add(job_id: int):
-    customer_id = request.form.get("customer_id") or None
+    raw_cid = request.form.get("customer_id", "").strip()
     role = request.form.get("role", "Primary").strip()
-    if not customer_id:
+    if not raw_cid or not raw_cid.isdigit():
         flash("Please select a customer.", "warning")
         return redirect(url_for("job_detail", job_id=job_id))
+    cid = int(raw_cid)
     conn = db()
     cur = conn.cursor()
+    cur.execute("SELECT 1 FROM job_customers WHERE job_id = ? AND customer_id = ?",
+                (job_id, cid))
+    if cur.fetchone():
+        conn.close()
+        flash("That customer is already linked to this job.", "warning")
+        return redirect(url_for("job_detail", job_id=job_id))
     cur.execute("SELECT MAX(sort_order) FROM job_customers WHERE job_id = ?", (job_id,))
     row = cur.fetchone()
     next_order = (row[0] or 0) + 1
@@ -3995,7 +4015,8 @@ def job_customer_add(job_id: int):
         cur.execute("""
             INSERT INTO job_customers (job_id, customer_id, role, sort_order, created_at)
             VALUES (?, ?, ?, ?, ?)
-        """, (job_id, int(customer_id), role, next_order, now_ts()))
+        """, (job_id, cid, role, next_order, now_ts()))
+        _sync_job_customer_id(cur, job_id)
         conn.commit()
         flash("Customer added to job.", "success")
     except Exception:
@@ -4017,6 +4038,7 @@ def job_customer_remove(job_id: int, jc_id: int):
         flash("Cannot remove the only customer on this job.", "warning")
         return redirect(url_for("job_detail", job_id=job_id))
     cur.execute("DELETE FROM job_customers WHERE id = ? AND job_id = ?", (jc_id, job_id))
+    _sync_job_customer_id(cur, job_id)
     conn.commit()
     conn.close()
     flash("Customer removed from job.", "success")
