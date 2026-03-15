@@ -667,6 +667,9 @@ let currentScope      = {{ prefs.scope | tojson }};
 let currentAssignment = {{ prefs.assignment | default('all') | tojson }};
 let currentCompleted  = {{ prefs.show_completed | tojson }};
 let currentDistUnit   = DIST_UNIT;
+const _initScope      = currentScope;
+const _initAssignment = currentAssignment;
+const _initCompleted  = currentCompleted;
 let activeStatuses    = new Set();
 
 function setupSeg(id, onChange){
@@ -761,7 +764,9 @@ function updateCount(n){
 }
 
 document.getElementById('apply-btn').addEventListener('click',()=>{
-  applySortAndFilter();
+  const needsReload = (currentScope !== _initScope ||
+                       currentAssignment !== _initAssignment ||
+                       currentCompleted !== _initCompleted);
   document.getElementById('filterSheet').classList.remove('open');
   fetch('/m/jobs/prefs/save',{
     method:'POST',
@@ -771,6 +776,12 @@ document.getElementById('apply-btn').addEventListener('click',()=>{
       assignment:currentAssignment,
       show_completed:currentCompleted, distance_unit:currentDistUnit
     })
+  }).then(()=>{
+    if(needsReload){ window.location.href='/m/jobs'; }
+    else { applySortAndFilter(); }
+  }).catch(()=>{
+    if(needsReload){ window.location.href='/m/jobs'; }
+    else { applySortAndFilter(); }
   });
 });
 
@@ -794,7 +805,24 @@ document.getElementById('reset-btn').addEventListener('click',()=>{
   });
   document.querySelectorAll('.qs-chip').forEach(c=>c.classList.remove('sel'));
   searchBox.value=''; searchQ='';
-  applySortAndFilter();
+  const needsReload = (currentScope !== _initScope ||
+                       currentAssignment !== _initAssignment ||
+                       currentCompleted !== _initCompleted);
+  fetch('/m/jobs/prefs/save',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded','X-Requested-With':'XMLHttpRequest'},
+    body: new URLSearchParams({
+      sort:currentSort, dir:currentDir, scope:currentScope,
+      assignment:currentAssignment,
+      show_completed:currentCompleted, distance_unit:currentDistUnit
+    })
+  }).then(()=>{
+    if(needsReload){ window.location.href='/m/jobs'; }
+    else { applySortAndFilter(); }
+  }).catch(()=>{
+    if(needsReload){ window.location.href='/m/jobs'; }
+    else { applySortAndFilter(); }
+  });
 });
 
 applySortAndFilter();
