@@ -18,7 +18,7 @@
 <div class="ax-card mb-3">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>{{ client.name }}</div>
-    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/clients/{{ client.id }}/edit">Edit</a>{% endif %}
+    {% if session.get('role') in ('admin', 'both') %}<a class="btn btn-primary btn-sm" href="/clients/{{ client.id }}/edit">Edit</a>{% endif %}
   </div>
   <div class="ax-card-b">
     <div class="row g-3">
@@ -44,7 +44,7 @@
       <div class="col-12 col-md-6">
         <div class="mb-2">
           <div class="small" style="color:var(--muted)">Notes</div>
-          <div style="white-space:pre-wrap">{{ client.notes or '&mdash;' }}</div>
+          <div style="white-space:pre-wrap">{% if client.notes %}{{ client.notes }}{% else %}&mdash;{% endif %}</div>
         </div>
       </div>
     </div>
@@ -55,7 +55,7 @@
 <div class="ax-card">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>Jobs</div>
-    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
+    {% if session.get('role') in ('admin', 'both') %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
   </div>
   <div class="ax-card-b">
     {% for j in jobs %}
