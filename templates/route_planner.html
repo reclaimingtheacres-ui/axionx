@@ -272,6 +272,10 @@ const RP = {
   office: {{ office|tojson }},
   currentLat: null,
   currentLng: null,
+  customStartLat: null,
+  customStartLng: null,
+  customEndLat: null,
+  customEndLng: null,
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -358,6 +362,34 @@ function rpInitDragSort() {
   });
 }
 
+var _rpGeoTimer = null;
+function _rpGeocodeCustom(inputEl, target) {
+  clearTimeout(_rpGeoTimer);
+  var addr = inputEl.value.trim();
+  if (!addr) {
+    if (target === 'start') { RP.customStartLat = null; RP.customStartLng = null; }
+    else { RP.customEndLat = null; RP.customEndLng = null; }
+    inputEl.style.borderColor = '';
+    return;
+  }
+  _rpGeoTimer = setTimeout(function() {
+    inputEl.style.borderColor = '#d97706';
+    fetch('/api/geocode?address=' + encodeURIComponent(addr))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.lat) {
+          if (target === 'start') { RP.customStartLat = data.lat; RP.customStartLng = data.lng; }
+          else { RP.customEndLat = data.lat; RP.customEndLng = data.lng; }
+          inputEl.style.borderColor = '#16a34a';
+        } else {
+          if (target === 'start') { RP.customStartLat = null; RP.customStartLng = null; }
+          else { RP.customEndLat = null; RP.customEndLng = null; }
+          inputEl.style.borderColor = '#dc2626';
+        }
+      }).catch(function() { inputEl.style.borderColor = '#dc2626'; });
+  }, 600);
+}
+
 function rpInitStartEnd() {
   document.getElementById('rp-start-type').addEventListener('change', function() {
     document.getElementById('rp-start-custom').style.display = this.value === 'custom' ? 'block' : 'none';
@@ -366,6 +398,12 @@ function rpInitStartEnd() {
   document.getElementById('rp-end-type').addEventListener('change', function() {
     document.getElementById('rp-end-custom').style.display = this.value === 'custom' ? 'block' : 'none';
     if (this.value === 'current') rpGetCurrentLocation('end');
+  });
+  document.getElementById('rp-start-custom').addEventListener('input', function() {
+    _rpGeocodeCustom(this, 'start');
+  });
+  document.getElementById('rp-end-custom').addEventListener('input', function() {
+    _rpGeocodeCustom(this, 'end');
   });
   document.getElementById('rp-mode').addEventListener('change', rpUpdateCorridorSeq);
   document.getElementById('rp-pin-first').addEventListener('change', function() {
@@ -391,6 +429,7 @@ function rpGetStartPoint() {
   if (type === 'home' && RP.userHome.home_lat) return {lat: RP.userHome.home_lat, lng: RP.userHome.home_lng};
   if (type === 'office' && RP.office.office_lat) return {lat: RP.office.office_lat, lng: RP.office.office_lng};
   if (type === 'current' && RP.currentLat) return {lat: RP.currentLat, lng: RP.currentLng};
+  if (type === 'custom' && RP.customStartLat) return {lat: RP.customStartLat, lng: RP.customStartLng};
   return null;
 }
 
@@ -400,6 +439,7 @@ function rpGetEndPoint() {
   if (type === 'home' && RP.userHome.home_lat) return {lat: RP.userHome.home_lat, lng: RP.userHome.home_lng};
   if (type === 'office' && RP.office.office_lat) return {lat: RP.office.office_lat, lng: RP.office.office_lng};
   if (type === 'current' && RP.currentLat) return {lat: RP.currentLat, lng: RP.currentLng};
+  if (type === 'custom' && RP.customEndLat) return {lat: RP.customEndLat, lng: RP.customEndLng};
   return null;
 }
 
@@ -486,6 +526,32 @@ async function rpGenerate() {
   const ids = Array.from(RP.selected);
   if (ids.length < 1) { alert('Please select at least one job.'); return; }
 
+  const startType = document.getElementById('rp-start-type').value;
+  if (startType === 'custom') {
+    const addr = document.getElementById('rp-start-custom').value.trim();
+    if (addr && !RP.customStartLat) {
+      document.getElementById('rp-gen-btn').disabled = true;
+      document.getElementById('rp-gen-btn').textContent = 'Geocoding start address...';
+      try {
+        const gr = await fetch('/api/geocode?address=' + encodeURIComponent(addr));
+        const gd = await gr.json();
+        if (gd.lat) { RP.customStartLat = gd.lat; RP.customStartLng = gd.lng; document.getElementById('rp-start-custom').style.borderColor = '#16a34a'; }
+        else { alert('Could not find start address. Please enter a more specific address.'); document.getElementById('rp-gen-btn').disabled = false; document.getElementById('rp-gen-btn').textContent = 'Generate Route'; return; }
+      } catch(e) { alert('Failed to geocode start address.'); document.getElementById('rp-gen-btn').disabled = false; document.getElementById('rp-gen-btn').textContent = 'Generate Route'; return; }
+    }
+  }
+  const endType = document.getElementById('rp-end-type').value;
+  if (endType === 'custom') {
+    const addr = document.getElementById('rp-end-custom').value.trim();
+    if (addr && !RP.customEndLat) {
+      try {
+        const gr = await fetch('/api/geocode?address=' + encodeURIComponent(addr));
+        const gd = await gr.json();
+        if (gd.lat) { RP.customEndLat = gd.lat; RP.customEndLng = gd.lng; document.getElementById('rp-end-custom').style.borderColor = '#16a34a'; }
+      } catch(e) {}
+    }
+  }
+
   const start = rpGetStartPoint();
   const end = rpGetEndPoint();
 
@@ -506,6 +572,12 @@ async function rpGenerate() {
   document.getElementById('rp-gen-btn').textContent = 'Generating...';
   try {
     const resp = await fetch('/api/route-planner/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) {
+      let errMsg = 'Server error (' + resp.status + ')';
+      try { const errData = await resp.json(); if (errData.error) errMsg = errData.error; } catch(e) {}
+      alert(errMsg);
+      return;
+    }
     const data = await resp.json();
     if (data.error) { alert(data.error); return; }
     RP.stops = data.stops;
@@ -518,7 +590,7 @@ async function rpGenerate() {
       document.getElementById('rp-warnings').style.display = 'none';
     }
   } catch(e) {
-    alert('Route generation failed.');
+    alert('Route generation failed: ' + (e.message || 'Unknown error'));
   } finally {
     document.getElementById('rp-gen-btn').disabled = false;
     document.getElementById('rp-gen-btn').textContent = 'Generate Route';

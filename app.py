@@ -12176,10 +12176,31 @@ def route_planner_jobs_api():
     return jsonify(jobs=jobs)
 
 
+@app.get("/api/geocode")
+@login_required
+def api_geocode():
+    address = request.args.get("address", "").strip()
+    if not address:
+        return jsonify(error="No address provided"), 400
+    result = _geocode_address(address)
+    if result:
+        return jsonify(lat=result[0], lng=result[1])
+    return jsonify(error="Could not geocode address"), 404
+
+
 @app.post("/api/route-planner/generate")
 @login_required
 def route_planner_generate():
     import math
+    try:
+        return _route_planner_generate_inner(math)
+    except Exception as _rp_exc:
+        import logging as _log
+        _log.getLogger(__name__).exception("Route generation error")
+        return jsonify(error=f"Route generation error: {_rp_exc}"), 500
+
+
+def _route_planner_generate_inner(math):
     data = request.get_json(force=True)
     job_ids = data.get("job_ids", [])
     start_lat = data.get("start_lat")

@@ -312,12 +312,18 @@ async function mrpGenerate() {
   };
   try {
     const resp = await fetch('/api/route-planner/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) {
+      let errMsg = 'Server error (' + resp.status + ')';
+      try { const errData = await resp.json(); if (errData.error) errMsg = errData.error; } catch(e) {}
+      alert(errMsg);
+      return;
+    }
     const data = await resp.json();
     if (data.error) { alert(data.error); return; }
     MRP.stops = data.stops;
     mrpRenderRoute(data);
     mrpTab('route');
-  } catch(e) { alert('Route generation failed.'); }
+  } catch(e) { alert('Route generation failed: ' + (e.message || 'Unknown error')); }
 }
 
 function mrpRenderRoute(data) {
