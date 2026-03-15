@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}Axion | {{ job.display_ref }}{% endblock %}
-{% block page_title %}{{ job.display_ref }}{% if job.client_job_number %} <span style="font-weight:400;font-size:.75em;color:#64748b">(Client Job# {{ job.client_job_number }})</span>{% endif %}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} — {{ cx }}{% endif %}{% endblock %}
+{% block page_title %}{{ job.display_ref }}{% if job.client_job_number and job.client_job_number not in (job.display_ref or '') %} ({{ job.client_job_number }}){% endif %}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} — {{ cx }}{% endif %}{% endblock %}
 
 {% block content %}
 <style>
