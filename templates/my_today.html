@@ -3,8 +3,18 @@
 {% block page_title %}My Today{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="m-0">My Jobs Today</h3>
-  <span class="text-muted small">{{ today_display }}</span>
+  <h3 class="m-0">My Jobs {% if is_today %}Today{% else %}{{ today_display }}{% endif %}</h3>
+  <div style="display:flex;align-items:center;gap:6px">
+    <a href="/my/today?date={{ prev_date }}" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e2e8f0);background:#fff;color:var(--text,#1e293b);text-decoration:none;font-size:1rem;transition:background .15s" title="Previous day">&lsaquo;</a>
+    <div style="position:relative;display:inline-block">
+      <button type="button" onclick="document.getElementById('ax-date-pick').showPicker?document.getElementById('ax-date-pick').showPicker():document.getElementById('ax-date-pick').click()" style="padding:5px 12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;background:#fff;font-size:.82rem;font-weight:600;color:var(--text,#1e293b);cursor:pointer;min-width:110px;text-align:center">{{ today_display }}</button>
+      <input type="date" id="ax-date-pick" value="{{ today }}" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="if(this.value)window.location.href='/my/today?date='+this.value">
+    </div>
+    <a href="/my/today?date={{ next_date }}" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e2e8f0);background:#fff;color:var(--text,#1e293b);text-decoration:none;font-size:1rem;transition:background .15s" title="Next day">&rsaquo;</a>
+    {% if not is_today %}
+    <a href="/my/today" style="font-size:.76rem;color:var(--accent,#2563eb);text-decoration:none;padding:5px 10px;border:1px solid var(--accent,#2563eb);border-radius:8px;font-weight:600;white-space:nowrap">Today</a>
+    {% endif %}
+  </div>
 </div>
 
 {% if update_drafts %}
@@ -146,7 +156,7 @@
 {% endif %}
 
 {% if not schedules and not cues and not update_drafts %}
-  <div class="text-muted">No jobs assigned to you for today.</div>
+  <div class="text-muted">No jobs assigned to you for {% if is_today %}today{% else %}{{ today_display }}{% endif %}.</div>
 {% endif %}
 
 <div id="ax-geo-badge" style="display:none;position:fixed;bottom:16px;right:16px;

@@ -11748,8 +11748,28 @@ def my_today():
     lockout = _check_agent_lockout()
     if lockout:
         return lockout
-    today = datetime.now().date().isoformat()
+    from datetime import timedelta as _td, date as _date
+    date_param = request.args.get("date", "").strip()
+    if date_param:
+        try:
+            parsed = datetime.strptime(date_param, "%Y-%m-%d").date()
+            today = parsed.isoformat()
+        except (ValueError, OverflowError):
+            today = datetime.now(_melbourne).date().isoformat()
+    else:
+        today = datetime.now(_melbourne).date().isoformat()
     today_display = today[8:10] + "/" + today[5:7] + "/" + today[:4]
+    actual_today = datetime.now(_melbourne).date().isoformat()
+    sel = datetime.strptime(today, "%Y-%m-%d").date()
+    try:
+        prev_date = (sel - _td(days=1)).isoformat()
+    except (ValueError, OverflowError):
+        prev_date = today
+    try:
+        next_date = (sel + _td(days=1)).isoformat()
+    except (ValueError, OverflowError):
+        next_date = today
+    is_today = (today == actual_today)
     user_id = session.get("user_id")
 
     conn = db()
@@ -11803,7 +11823,9 @@ def my_today():
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
                            today=today, today_display=today_display,
-                           update_drafts=update_drafts)
+                           update_drafts=update_drafts,
+                           prev_date=prev_date, next_date=next_date,
+                           is_today=is_today)
 
 
 @app.get("/my/settings")
@@ -13209,8 +13231,28 @@ def m_today():
     if lockout:
         return lockout
     uid   = session.get("user_id")
-    today = datetime.now(_melbourne).date().isoformat()
+    from datetime import timedelta as _td
+    date_param = request.args.get("date", "").strip()
+    if date_param:
+        try:
+            parsed = datetime.strptime(date_param, "%Y-%m-%d").date()
+            today = parsed.isoformat()
+        except (ValueError, OverflowError):
+            today = datetime.now(_melbourne).date().isoformat()
+    else:
+        today = datetime.now(_melbourne).date().isoformat()
     today_display = today[8:10] + "/" + today[5:7] + "/" + today[:4]
+    actual_today = datetime.now(_melbourne).date().isoformat()
+    sel = datetime.strptime(today, "%Y-%m-%d").date()
+    try:
+        prev_date = (sel - _td(days=1)).isoformat()
+    except (ValueError, OverflowError):
+        prev_date = today
+    try:
+        next_date = (sel + _td(days=1)).isoformat()
+    except (ValueError, OverflowError):
+        next_date = today
+    is_today = (today == actual_today)
 
     conn = db()
 
@@ -13259,7 +13301,9 @@ def m_today():
     return render_template("m/today.html",
                            today=today, today_display=today_display,
                            cues=cues, schedules=schedules,
-                           drafts=drafts_raw, draft_job_ids=draft_job_ids)
+                           drafts=drafts_raw, draft_job_ids=draft_job_ids,
+                           prev_date=prev_date, next_date=next_date,
+                           is_today=is_today)
 
 
 def _mobile_jobs_query(uid, role, params_in):
