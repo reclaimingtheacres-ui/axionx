@@ -4674,72 +4674,77 @@ def schedule_api_history(sched_id):
 @app.post("/schedule/api/<int:sched_id>/update")
 @login_required
 def schedule_api_update(sched_id):
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,))
-    sched = cur.fetchone()
-    if not sched:
-        conn.close()
-        return jsonify({"ok": False, "error": "Booking not found."}), 404
-    caller_id = session.get("user_id")
-    caller_role = session.get("role", "")
-    is_admin = caller_role in ("admin", "both")
-    if not is_admin and sched["assigned_to_user_id"] != caller_id:
-        conn.close()
-        return jsonify({"ok": False, "error": "Not authorised."}), 403
-
-    new_dt = (request.form.get("scheduled_for") or "").strip()
-    new_agent = request.form.get("assigned_to_user_id", "").strip()
-    new_bt = request.form.get("booking_type_id", "").strip()
-    new_notes = request.form.get("notes", "").strip()
-
-    changes = []
-    old_dt = sched["scheduled_for"] or ""
-
-    if new_dt:
-        try:
-            datetime.strptime(new_dt[:16], "%Y-%m-%dT%H:%M")
-        except (ValueError, IndexError):
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,))
+        sched = cur.fetchone()
+        if not sched:
             conn.close()
-            return jsonify({"ok": False, "error": "Invalid date/time format."}), 400
-        if new_dt[:16] != old_dt[:16]:
-            cur.execute("UPDATE schedules SET scheduled_for = ? WHERE id = ?", (new_dt, sched_id))
-            changes.append(f"Date changed from {old_dt[:16]} to {new_dt[:16]}")
+            return jsonify({"ok": False, "error": "Booking not found."}), 404
+        caller_id = session.get("user_id")
+        caller_role = session.get("role", "")
+        is_admin = caller_role in ("admin", "both")
+        if not is_admin and sched["assigned_to_user_id"] != caller_id:
+            conn.close()
+            return jsonify({"ok": False, "error": "Not authorised."}), 403
 
-    if is_admin and "assigned_to_user_id" in request.form:
-        old_agent = sched["assigned_to_user_id"]
-        new_agent_id = int(new_agent) if new_agent.isdigit() else None
-        if new_agent_id != old_agent:
-            cur.execute("UPDATE schedules SET assigned_to_user_id = ? WHERE id = ?", (new_agent_id, sched_id))
-            changes.append("Agent reassigned")
-            if new_agent_id:
-                cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
-                            (new_agent_id, now_ts(), sched["job_id"]))
+        new_dt = (request.form.get("scheduled_for") or "").strip()
+        new_agent = request.form.get("assigned_to_user_id", "").strip()
+        new_bt = request.form.get("booking_type_id", "").strip()
+        new_notes = request.form.get("notes", "").strip()
 
-    if new_bt and new_bt.isdigit():
-        old_bt = sched["booking_type_id"]
-        if int(new_bt) != old_bt:
-            bt_check = cur.execute("SELECT id, name FROM booking_types WHERE id = ? AND active = 1", (int(new_bt),)).fetchone()
-            if not bt_check:
+        changes = []
+        old_dt = sched["scheduled_for"] or ""
+
+        if new_dt:
+            try:
+                datetime.strptime(new_dt[:16], "%Y-%m-%dT%H:%M")
+            except (ValueError, IndexError):
                 conn.close()
-                return jsonify({"ok": False, "error": "Invalid booking type."}), 400
-            cur.execute("UPDATE schedules SET booking_type_id = ? WHERE id = ?", (int(new_bt), sched_id))
-            changes.append("Booking type changed")
-            _sync_visit_type_from_booking(cur, sched["job_id"], bt_check["name"], now_ts())
+                return jsonify({"ok": False, "error": "Invalid date/time format."}), 400
+            if new_dt[:16] != old_dt[:16]:
+                cur.execute("UPDATE schedules SET scheduled_for = ? WHERE id = ?", (new_dt, sched_id))
+                changes.append(f"Date changed from {old_dt[:16]} to {new_dt[:16]}")
 
-    if new_notes != (sched["notes"] or ""):
-        cur.execute("UPDATE schedules SET notes = ? WHERE id = ?", (new_notes, sched_id))
-        changes.append("Notes updated")
+        if is_admin and "assigned_to_user_id" in request.form:
+            old_agent = sched["assigned_to_user_id"]
+            new_agent_id = int(new_agent) if new_agent.isdigit() else None
+            if new_agent_id != old_agent:
+                cur.execute("UPDATE schedules SET assigned_to_user_id = ? WHERE id = ?", (new_agent_id, sched_id))
+                changes.append("Agent reassigned")
+                if new_agent_id:
+                    cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+                                (new_agent_id, now_ts(), sched["job_id"]))
 
-    if changes:
-        action = "rescheduled" if any("Date" in c for c in changes) else "updated"
-        _write_schedule_history(cur, sched_id, sched["job_id"], action,
-                                old_dt, new_dt or old_dt, sched["status"], sched["status"],
-                                caller_id, "; ".join(changes))
+        if new_bt and new_bt.isdigit():
+            old_bt = sched["booking_type_id"]
+            if int(new_bt) != old_bt:
+                bt_check = cur.execute("SELECT id, name FROM booking_types WHERE id = ? AND active = 1", (int(new_bt),)).fetchone()
+                if not bt_check:
+                    conn.close()
+                    return jsonify({"ok": False, "error": "Invalid booking type."}), 400
+                cur.execute("UPDATE schedules SET booking_type_id = ? WHERE id = ?", (int(new_bt), sched_id))
+                changes.append("Booking type changed")
+                _sync_visit_type_from_booking(cur, sched["job_id"], bt_check["name"], now_ts())
 
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
+        if new_notes != (sched["notes"] or ""):
+            cur.execute("UPDATE schedules SET notes = ? WHERE id = ?", (new_notes, sched_id))
+            changes.append("Notes updated")
+
+        if changes:
+            action = "rescheduled" if any("Date" in c for c in changes) else "updated"
+            _write_schedule_history(cur, sched_id, sched["job_id"], action,
+                                    old_dt, new_dt or old_dt, sched["status"], sched["status"],
+                                    caller_id, "; ".join(changes))
+
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True})
+    except Exception as exc:
+        import logging as _log
+        _log.exception("schedule_api_update error for id=%s", sched_id)
+        return jsonify({"ok": False, "error": str(exc) or "Internal server error."}), 500
 
 
 @app.post("/booking-type")

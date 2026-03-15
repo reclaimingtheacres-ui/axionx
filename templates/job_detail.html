@@ -5048,7 +5048,12 @@ function axSaveClient() {
     fd.append('notes', notes);
 
     fetch('/schedule/api/' + sid + '/update', { method: 'POST', body: fd })
-      .then(function(r){ return r.json(); })
+      .then(function(r){
+        if (!r.ok) {
+          return r.json().catch(function(){ return { ok: false, error: 'Server error (' + r.status + ')' }; });
+        }
+        return r.json();
+      })
       .then(function(data){
         if (!data.ok) {
           if (msg) { msg.textContent = data.error || 'Error saving.'; msg.style.display = ''; msg.style.color = '#dc2626'; }
@@ -5057,8 +5062,8 @@ function axSaveClient() {
         if (msg) { msg.textContent = 'Saved.'; msg.style.display = ''; msg.style.color = '#16a34a'; }
         setTimeout(function(){ location.hash = 'tab-schedule'; location.reload(); }, 600);
       })
-      .catch(function(){
-        if (msg) { msg.textContent = 'Network error.'; msg.style.display = ''; msg.style.color = '#dc2626'; }
+      .catch(function(e){
+        if (msg) { msg.textContent = 'Network error: ' + (e.message || 'Please try again.'); msg.style.display = ''; msg.style.color = '#dc2626'; }
       });
   };
 })();
