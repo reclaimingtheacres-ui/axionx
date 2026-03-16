@@ -23,6 +23,8 @@
   .mc-name { font-size:.9rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
   .mc-preview { font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px; }
   .mc-job-tag { font-size:.65rem;font-weight:700;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px;margin-left:5px; }
+  .mc-broadcast-tag { font-size:.60rem;font-weight:700;background:#ede9fe;color:#6d28d9;border-radius:4px;padding:1px 5px;margin-left:5px;text-transform:uppercase;letter-spacing:.03em; }
+  .mc-avatar.broadcast { background:#7c3aed;font-size:.70rem; }
   .mc-meta { display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0; }
   .mc-time { font-size:.72rem;color:var(--muted); }
   .mc-unread { width:10px;height:10px;background:var(--accent);border-radius:50%;margin-right:2px; }
@@ -116,20 +118,29 @@
 <div style="display:flex;gap:6px;padding:10px 16px 6px;background:#fff;border-bottom:1px solid var(--line)">
   <button class="mc-filter-btn active" data-filter="all" onclick="mcFilter('all')">All</button>
   <button class="mc-filter-btn" data-filter="unread" onclick="mcFilter('unread')">Unread</button>
+  <button class="mc-filter-btn" data-filter="broadcast" onclick="mcFilter('broadcast')">Broadcasts</button>
 </div>
 
 {% if convs %}
   <div class="mc-list" id="mc-conv-list">
     {% for c in convs %}
-      {% set other_name = c.others[0].full_name if c.others else 'Unknown' %}
-      {% set parts = other_name.split() %}
-      {% set initials = (parts[0][0] + (parts[-1][0] if parts|length > 1 else ''))|upper %}
-      <div class="mc-row-wrap" data-conv-id="{{ c.id }}" data-unread="{{ c.unread }}">
+      {% set is_broadcast = c.type == 'broadcast' %}
+      {% if is_broadcast %}
+        {% set display_name = 'Broadcast' %}
+        {% set initials = 'ALL' %}
+      {% else %}
+        {% set display_name = c.others[0].full_name if c.others else 'Unknown' %}
+        {% set parts = display_name.split() %}
+        {% set initials = (parts[0][0] + (parts[-1][0] if parts|length > 1 else ''))|upper %}
+      {% endif %}
+      <div class="mc-row-wrap" data-conv-id="{{ c.id }}" data-unread="{{ c.unread }}" data-type="{{ c.type }}">
         <a href="{{ url_for('m_message_thread', conv_id=c.id) }}" class="mc-row">
-          <div class="mc-avatar">{{ initials }}</div>
+          <div class="mc-avatar{% if is_broadcast %} broadcast{% endif %}">{{ initials }}</div>
           <div class="mc-body">
             <div class="mc-name">
-              {{ other_name }}{% if c.type == 'job' and c.job_ref %}<span class="mc-job-tag">{{ c.job_ref }}</span>{% endif %}
+              {{ display_name }}
+              {% if is_broadcast %}<span class="mc-broadcast-tag">broadcast</span>{% endif %}
+              {% if c.type == 'job' and c.job_ref %}<span class="mc-job-tag">{{ c.job_ref }}</span>{% endif %}
             </div>
             <div class="mc-preview">
               {% if c.last_msg %}
@@ -165,9 +176,13 @@
   <div class="mc-sheet" id="composeSheet">
     <div class="mc-sheet-handle"></div>
     <div class="mc-sheet-title">New Message</div>
-    <form class="mc-sheet-body" method="post" action="{{ url_for('m_messages_new') }}">
-      <label class="mc-sheet-label" for="cs_recipient">To</label>
-      <select class="mc-sheet-select" id="cs_recipient" name="recipient_id" required>
+    <form class="mc-sheet-body" method="post" action="{{ url_for('m_messages_new') }}" id="mComposeForm">
+      <label class="mc-sheet-label">To</label>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 0;font-size:.88rem;cursor:pointer;margin:0">
+        <input type="checkbox" id="mc_broadcast" name="is_broadcast" value="1" onchange="mcToggleBroadcast(this.checked)" style="accent-color:#7c3aed;width:18px;height:18px;flex-shrink:0">
+        <span style="font-weight:600;color:#7c3aed">Broadcast to All</span>
+      </label>
+      <select class="mc-sheet-select" id="cs_recipient" name="recipient_id">
         <option value="">— Select person —</option>
         {% for u in users %}
           <option value="{{ u.id }}">{{ u.full_name }}</option>
@@ -198,7 +213,20 @@ function openCompose() {
 }
 function closeCompose() {
   document.getElementById('composeOverlay').classList.remove('open');
+  document.getElementById('mc_broadcast').checked = false;
+  mcToggleBroadcast(false);
 }
+function mcToggleBroadcast(on) {
+  var sel = document.getElementById('cs_recipient');
+  sel.disabled = on;
+  sel.style.opacity = on ? '0.4' : '1';
+  if (on) sel.value = '';
+}
+document.getElementById('mComposeForm').addEventListener('submit', function(e){
+  var bc = document.getElementById('mc_broadcast').checked;
+  var sel = document.getElementById('cs_recipient');
+  if (!bc && !sel.value) { e.preventDefault(); alert('Please select a recipient or use Broadcast.'); }
+});
 
 function mcFilter(mode) {
   document.querySelectorAll('.mc-filter-btn').forEach(function(b){
@@ -207,6 +235,8 @@ function mcFilter(mode) {
   document.querySelectorAll('.mc-row-wrap').forEach(function(row){
     if (mode === 'unread') {
       row.style.display = parseInt(row.getAttribute('data-unread')) > 0 ? '' : 'none';
+    } else if (mode === 'broadcast') {
+      row.style.display = row.getAttribute('data-type') === 'broadcast' ? '' : 'none';
     } else {
       row.style.display = '';
     }

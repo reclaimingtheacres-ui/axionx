@@ -20125,13 +20125,40 @@ def messages_new():
             recipient_ids = [rid]
     body = (request.form.get("body") or "").strip()
     job_id = request.form.get("job_id", type=int) or None
-
-    if not recipient_ids or not body:
-        flash("Recipient and message are required.", "warning")
-        return redirect(url_for("messages_list"))
+    is_broadcast = request.form.get("is_broadcast") == "1"
 
     conn = db()
     _ensure_msg_tables(conn)
+
+    if is_broadcast:
+        all_users = conn.execute(
+            "SELECT id FROM users WHERE active=1 AND id != ?", (uid,)
+        ).fetchall()
+        recipient_ids = [u["id"] for u in all_users]
+
+    if not recipient_ids or not body:
+        conn.close()
+        flash("Recipient and message are required.", "warning")
+        return redirect(url_for("messages_list"))
+
+    if is_broadcast:
+        ts = now_ts()
+        cur = conn.execute(
+            "INSERT INTO conversations (type, job_id, subject, created_at, updated_at) VALUES (?,?,?,?,?)",
+            ("broadcast", job_id, "Broadcast", ts, ts)
+        )
+        conv_id = cur.lastrowid
+        conn.execute("INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)",
+                      (conv_id, uid, ts))
+        for rid in recipient_ids:
+            try:
+                conn.execute("INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)",
+                              (conv_id, rid, ts))
+            except Exception:
+                pass
+        _post_message(conn, conv_id, uid, body)
+        conn.close()
+        return redirect(url_for("message_thread", conv_id=conv_id))
 
     last_conv_id = None
     for rid in recipient_ids:
@@ -20291,12 +20318,40 @@ def m_messages_new():
             recipient_ids = [rid]
     body = (request.form.get("body") or "").strip()
     job_id = request.form.get("job_id", type=int) or None
-
-    if not recipient_ids or not body:
-        return redirect(url_for("m_messages_list"))
+    is_broadcast = request.form.get("is_broadcast") == "1"
 
     conn = db()
     _ensure_msg_tables(conn)
+
+    if is_broadcast:
+        all_users = conn.execute(
+            "SELECT id FROM users WHERE active=1 AND id != ?", (uid,)
+        ).fetchall()
+        recipient_ids = [u["id"] for u in all_users]
+
+    if not recipient_ids or not body:
+        conn.close()
+        return redirect(url_for("m_messages_list"))
+
+    if is_broadcast:
+        ts = now_ts()
+        cur = conn.execute(
+            "INSERT INTO conversations (type, job_id, subject, created_at, updated_at) VALUES (?,?,?,?,?)",
+            ("broadcast", job_id, "Broadcast", ts, ts)
+        )
+        conv_id = cur.lastrowid
+        conn.execute("INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)",
+                      (conv_id, uid, ts))
+        for rid in recipient_ids:
+            try:
+                conn.execute("INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)",
+                              (conv_id, rid, ts))
+            except Exception:
+                pass
+        _post_message(conn, conv_id, uid, body)
+        conn.close()
+        return redirect(url_for("m_message_thread", conv_id=conv_id))
+
     last_conv_id = None
     for rid in recipient_ids:
         if rid == uid:
