@@ -4818,10 +4818,20 @@ def schedule_api_complete(sched_id):
     _write_schedule_history(cur, sched_id, sched["job_id"], "completed",
                             sched["scheduled_for"], sched["scheduled_for"],
                             old_status, "Completed", caller_id, "Marked complete from schedule")
-    cur.execute("""
-        UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
-        WHERE id = ? AND visit_type = 'New Visit'
-    """, (now_ts(), sched["job_id"]))
+    next_sched = cur.execute("""
+        SELECT bt.name AS bt_name FROM schedules s
+        JOIN booking_types bt ON bt.id = s.booking_type_id
+        WHERE s.job_id = ? AND s.id != ? AND s.hidden = 0
+              AND s.status NOT IN ('Completed','Cancelled')
+        ORDER BY s.scheduled_for ASC LIMIT 1
+    """, (sched["job_id"], sched_id)).fetchone()
+    if next_sched:
+        _sync_visit_type_from_booking(cur, sched["job_id"], next_sched["bt_name"], now_ts())
+    else:
+        cur.execute("""
+            UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
+            WHERE id = ? AND visit_type = 'New Visit'
+        """, (now_ts(), sched["job_id"]))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -4951,6 +4961,7 @@ def schedule_api_update(sched_id):
                     cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                                 (new_agent_id, now_ts(), sched["job_id"]))
 
+        effective_bt_name = None
         if new_bt and new_bt.isdigit():
             old_bt = sched["booking_type_id"]
             if int(new_bt) != old_bt:
@@ -4960,7 +4971,15 @@ def schedule_api_update(sched_id):
                     return jsonify({"ok": False, "error": "Invalid booking type."}), 400
                 cur.execute("UPDATE schedules SET booking_type_id = ? WHERE id = ?", (int(new_bt), sched_id))
                 changes.append("Booking type changed")
-                _sync_visit_type_from_booking(cur, sched["job_id"], bt_check["name"], now_ts())
+                effective_bt_name = bt_check["name"]
+            else:
+                bt_row = cur.execute("SELECT name FROM booking_types WHERE id = ?", (old_bt,)).fetchone()
+                if bt_row:
+                    effective_bt_name = bt_row["name"]
+        else:
+            bt_row = cur.execute("SELECT name FROM booking_types WHERE id = ?", (sched["booking_type_id"],)).fetchone()
+            if bt_row:
+                effective_bt_name = bt_row["name"]
 
         if new_notes != (sched["notes"] or ""):
             cur.execute("UPDATE schedules SET notes = ? WHERE id = ?", (new_notes, sched_id))
@@ -4971,6 +4990,8 @@ def schedule_api_update(sched_id):
             _write_schedule_history(cur, sched_id, sched["job_id"], action,
                                     old_dt, new_dt or old_dt, sched["status"], sched["status"],
                                     caller_id, "; ".join(changes))
+            if effective_bt_name:
+                _sync_visit_type_from_booking(cur, sched["job_id"], effective_bt_name, now_ts())
 
         conn.commit()
         conn.close()
@@ -5195,10 +5216,20 @@ def update_schedule_status(job_id: int, sched_id: int):
                             old_status=old_status, new_status=new_status,
                             changed_by_user_id=session.get("user_id"))
     if new_status == "Completed":
-        cur.execute("""
-            UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
-            WHERE id = ? AND visit_type = 'New Visit'
-        """, (now_ts(), job_id))
+        next_sched = cur.execute("""
+            SELECT bt.name AS bt_name FROM schedules s
+            JOIN booking_types bt ON bt.id = s.booking_type_id
+            WHERE s.job_id = ? AND s.id != ? AND s.hidden = 0
+                  AND s.status NOT IN ('Completed','Cancelled')
+            ORDER BY s.scheduled_for ASC LIMIT 1
+        """, (job_id, sched_id)).fetchone()
+        if next_sched:
+            _sync_visit_type_from_booking(cur, job_id, next_sched["bt_name"], now_ts())
+        else:
+            cur.execute("""
+                UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
+                WHERE id = ? AND visit_type = 'New Visit'
+            """, (now_ts(), job_id))
     conn.commit()
     conn.close()
     flash("Booking updated.", "success")
@@ -11946,10 +11977,20 @@ def my_schedule_attended(sched_id: int):
                             old_scheduled_for=old_scheduled, new_scheduled_for=old_scheduled,
                             old_status=old_status, new_status="Completed",
                             changed_by_user_id=uid)
-    conn.execute("""
-        UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
-        WHERE id = ? AND visit_type = 'New Visit'
-    """, (ts, sched["job_id"]))
+    next_sched = conn.execute("""
+        SELECT bt.name AS bt_name FROM schedules s
+        JOIN booking_types bt ON bt.id = s.booking_type_id
+        WHERE s.job_id = ? AND s.id != ? AND s.hidden = 0
+              AND s.status NOT IN ('Completed','Cancelled')
+        ORDER BY s.scheduled_for ASC LIMIT 1
+    """, (sched["job_id"], sched_id)).fetchone()
+    if next_sched:
+        _sync_visit_type_from_booking(conn.cursor(), sched["job_id"], next_sched["bt_name"], ts)
+    else:
+        conn.execute("""
+            UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
+            WHERE id = ? AND visit_type = 'New Visit'
+        """, (ts, sched["job_id"]))
     conn.commit()
     conn.close()
     audit("schedule", sched_id, "status_change", "Schedule marked Attended via My Today.")
