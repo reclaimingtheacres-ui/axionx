@@ -20,8 +20,8 @@
   .ax-job-row{
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 8px 16px;
+    gap: 20px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--line);
     cursor: pointer;
     transition: background .1s;
@@ -318,7 +318,7 @@
           </div>
         </div>
 
-        <div style="text-align:right;width:110px;flex-shrink:0">
+        <div style="text-align:right;width:120px;flex-shrink:0">
           <div style="font-size:.74rem;font-weight:500;color:{% if j.assigned_name %}var(--text){% elif j.status in ('Cancelled','Completed','Invoiced') %}var(--muted){% else %}#dc2626{% endif %};margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
             {% if j.assigned_name %}{{ j.assigned_name }}{% elif j.status in ('Cancelled','Completed','Invoiced') %}—{% else %}Unassigned{% endif %}
           </div>
@@ -333,7 +333,7 @@
           {% endif %}
         </div>
 
-        <div style="width:100px;flex-shrink:0;text-align:center">
+        <div style="width:110px;flex-shrink:0;text-align:center">
           {% if bt %}
             <span class="ax-booking-pill" style="background:{{ bt_color }};display:inline-block">{{ bt }}</span>
             {% if 'Update' in bt and j.next_sched_id %}
@@ -346,7 +346,7 @@
           {% endif %}
         </div>
 
-        <div style="width:130px;flex-shrink:0;text-align:center">
+        <div style="width:140px;flex-shrink:0;text-align:center">
           {% if session.get('role') in ('admin', 'both') %}
             <form method="post" action="/jobs/{{ j.id }}/status" style="margin:0">
               <select name="status" onchange="this.form.submit()"
