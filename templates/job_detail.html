@@ -2198,7 +2198,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span class="fw-semibold">{{ job.visit_type }}</span>
       <span style="color:var(--muted)">Priority</span>
       <span class="fw-semibold">{{ job.priority }}</span>
-      <span style="color:var(--muted)">Internal #</span>
+      <span style="color:var(--muted)">AxionX #</span>
       {% if session.get('role') in ('admin', 'both') %}
       <span class="fw-semibold" id="sidebar-ijn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-ijn-edit').style.display='flex';this.style.display='none';">
@@ -2208,7 +2208,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span></span>
       <div id="sidebar-ijn-edit" style="display:none;align-items:center;gap:4px">
         <input type="text" id="sidebar-ijn-input" class="form-control form-control-sm"
-               value="{{ job.internal_job_number }}" placeholder="Internal #"
+               value="{{ job.internal_job_number }}" placeholder="AxionX #"
                style="font-size:.8rem;padding:2px 6px;height:26px;max-width:140px">
         <button type="button" class="btn btn-primary btn-sm" style="font-size:.7rem;padding:1px 8px;height:26px"
                 onclick="saveSidebarIJN()">Save</button>
@@ -2218,10 +2218,8 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       {% else %}
       <span class="fw-semibold">{{ job.internal_job_number }}</span>
       {% endif %}
-      {% if job.client_reference %}
       <span style="color:var(--muted)">Client Ref</span>
-      <span class="fw-semibold">{{ job.client_reference }}</span>
-      {% endif %}
+      <span class="fw-semibold">{{ job.client_reference or '—' }}</span>
       <span style="color:var(--muted)">Client Job #</span>
       <span class="fw-semibold" id="sidebar-cjn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-cjn-edit').style.display='flex';this.style.display='none';">

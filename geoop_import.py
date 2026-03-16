@@ -2154,7 +2154,9 @@ def import_staged_jobs(mode="insert_only", conn=None):
                     created_at, updated_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
-                insert_ref, insert_ref, sj["parsed_account_number"] or "",
+                insert_ref,
+                f"{insert_ref} ({sj['parsed_account_number']})" if sj["parsed_account_number"] else insert_ref,
+                sj["parsed_account_number"] or "",
                 cust_id, client_id, job_type, "New Visit", status, "Normal",
                 full_address, sj["raw_description"], sj["raw_description"],
                 sj["parsed_client_name"] or "", sj["parsed_account_number"] or "",
@@ -2381,7 +2383,9 @@ def import_staged_jobs_range(ref_start, ref_end, conn=None):
                     created_at, updated_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
-                insert_ref, insert_ref, sj["parsed_account_number"] or "",
+                insert_ref,
+                f"{insert_ref} ({sj['parsed_account_number']})" if sj["parsed_account_number"] else insert_ref,
+                sj["parsed_account_number"] or "",
                 cust_id, client_id, job_type, "New Visit", status, "Normal",
                 full_address, sj["raw_description"], sj["raw_description"],
                 sj["parsed_client_name"] or "", sj["parsed_account_number"] or "",
