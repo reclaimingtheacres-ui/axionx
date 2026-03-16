@@ -1295,8 +1295,8 @@
                 {% if session.get('role') in ('admin', 'both') %}
                 <td>
                   {% if not is_terminal %}
-                  <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
-                          style="font-size:.72rem;line-height:1.5;white-space:nowrap"
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-3"
+                          style="font-size:.74rem;line-height:1.6;white-space:nowrap;min-width:48px"
                           onclick='openSchedEdit({{ s.id }}, {{ s.scheduled_for[:10] | tojson }}, {{ s.scheduled_for[11:16] | tojson }}, {{ s.booking_type_id | tojson }}, {{ (s.booking_type_name or "") | tojson }}, {{ (s.assigned_to_user_id or "") | tojson }}, {{ (s.notes or "") | tojson }})'>
                     Edit
                   </button>
