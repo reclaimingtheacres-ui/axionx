@@ -5961,6 +5961,28 @@ def api_job_internal_number(job_id: int):
     return jsonify({"ok": True, "value": val, "display_ref": display_ref})
 
 
+@app.post("/api/jobs/<int:job_id>/client-reference")
+@login_required
+@admin_required
+def api_job_client_reference(job_id: int):
+    data = request.get_json(silent=True) or {}
+    val = (data.get("value") or "").strip() or None
+    now = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    row = cur.execute("SELECT internal_job_number FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+    internal = row["internal_job_number"]
+    display_ref = f"{internal} ({val})" if val else internal
+    cur.execute("UPDATE jobs SET client_reference=?, display_ref=?, updated_at=? WHERE id=?",
+                (val, display_ref, now, job_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "value": val or ""})
+
+
 @app.post("/api/jobs/<int:job_id>/client-job-number")
 @login_required
 @admin_required

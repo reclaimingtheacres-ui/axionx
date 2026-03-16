@@ -341,18 +341,12 @@
           </div>
           <div id="clientCardBody">
           {% if job.client_id %}
-            <div class="fw-semibold small">
+            <div style="font-size:1.05rem;font-weight:700;color:var(--text);line-height:1.3">
               <span class="client-name-display">{{ job.client_name or "—" }}</span>
               {% if job.client_nickname %}
-                <span class="badge ms-1 py-0 px-1" style="font-size:.68rem;font-weight:600;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
+                <span class="badge ms-1 py-0 px-1" style="font-size:.72rem;font-weight:700;background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);vertical-align:middle;">{{ job.client_nickname }}</span>
               {% endif %}
             </div>
-            {% if job.client_phone %}
-              <div class="small mt-1">
-                <span class="ax-ph" onclick="axPhone('{{ job.client_phone }}',event)">{{ job.client_phone }}</span>
-              </div>
-            {% endif %}
-            {% if job.client_email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ job.client_email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ job.client_email }}</button></div>{% endif %}
             {% if job.bill_to_client_name and job.bill_to_client_name != job.client_name %}
               <div class="small mt-1" style="color:var(--muted)">Bill to: <strong style="color:var(--text)">{{ job.bill_to_client_name }}</strong></div>
             {% endif %}
@@ -2218,8 +2212,26 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       {% else %}
       <span class="fw-semibold">{{ job.internal_job_number }}</span>
       {% endif %}
-      <span style="color:var(--muted)">Account #</span>
+      <span style="color:var(--muted)">Client Ref</span>
+      {% if session.get('role') in ('admin', 'both') %}
+      <span class="fw-semibold" id="sidebar-cref-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
+            onclick="document.getElementById('sidebar-cref-edit').style.display='flex';this.style.display='none';">
+        {{ job.client_reference or '—' }}
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </span>
+      <span></span>
+      <div id="sidebar-cref-edit" style="display:none;align-items:center;gap:4px">
+        <input type="text" id="sidebar-cref-input" class="form-control form-control-sm"
+               value="{{ job.client_reference or '' }}" placeholder="Client Ref"
+               style="font-size:.8rem;padding:2px 6px;height:26px;max-width:140px">
+        <button type="button" class="btn btn-primary btn-sm" style="font-size:.7rem;padding:1px 8px;height:26px"
+                onclick="saveSidebarCRef()">Save</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:1px 6px;height:26px"
+                onclick="document.getElementById('sidebar-cref-edit').style.display='none';document.getElementById('sidebar-cref-display').style.display='flex';">Cancel</button>
+      </div>
+      {% else %}
       <span class="fw-semibold">{{ job.client_reference or '—' }}</span>
+      {% endif %}
       <span style="color:var(--muted)">Client Job #</span>
       <span class="fw-semibold" id="sidebar-cjn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-cjn-edit').style.display='flex';this.style.display='none';">
@@ -2303,6 +2315,28 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 </div><!-- /tab-content + sidebar flex container -->
 
 <script>
+function saveSidebarCRef(){
+  var input = document.getElementById('sidebar-cref-input');
+  var val = input.value.trim();
+  fetch('/api/jobs/{{ job.id }}/client-reference', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body: JSON.stringify({value: val})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.ok){ location.reload(); }
+    else { alert(data.error || 'Error saving.'); }
+  })
+  .catch(function(){ alert('Network error.'); });
+}
+document.getElementById('sidebar-cref-input').addEventListener('keydown', function(e){
+  if(e.key === 'Enter'){ e.preventDefault(); saveSidebarCRef(); }
+  if(e.key === 'Escape'){
+    document.getElementById('sidebar-cref-edit').style.display='none';
+    document.getElementById('sidebar-cref-display').style.display='flex';
+  }
+});
 function saveSidebarCJN(){
   var input = document.getElementById('sidebar-cjn-input');
   var val = input.value.trim();
