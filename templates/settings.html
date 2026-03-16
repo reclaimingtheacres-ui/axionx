@@ -553,8 +553,7 @@ function _renderClientRow(c) {
     '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.email || '---') + '</td>' +
     '<td style="padding:8px 12px;font-size:.82rem">' + _esc(c.phone || '---') + '</td>' +
     '<td style="padding:8px 12px;white-space:nowrap">' +
-      '<a href="/clients/' + c.id + '/edit" class="btn btn-outline-primary btn-sm me-1" style="font-size:.72rem" target="_blank">Edit</a>' +
-      '<button class="btn btn-outline-danger btn-sm" style="font-size:.72rem" onclick="dupDeleteClient(' + c.id + ',\'' + _esc(c.name).replace(/'/g,"\\'") + '\')">Delete</button>' +
+      '<a href="/clients/' + c.id + '/edit" class="btn btn-outline-primary btn-sm" style="font-size:.72rem" target="_blank">Edit</a>' +
     '</td></tr>';
 }
 
@@ -827,17 +826,7 @@ function dupDeleteJob(jobId, displayRef) {
 }
 
 function dupDeleteClient(clientId, name) {
-  if (!confirm('Delete client ' + name + '? This cannot be undone.')) return;
-  var fd = new FormData();
-  fd.append('client_id', clientId);
-  fetch('/admin/api/duplicates/delete-client', {method:'POST', body:fd, credentials:'include'})
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if (!data.ok) { alert(data.error); return; }
-      var row = document.getElementById('dup-client-row-' + clientId);
-      if (row) row.remove();
-    })
-    .catch(function(){ alert('Error deleting client. Please try again.'); });
+  alert('Client deletion is disabled to protect client data.');
 }
 </script>
 

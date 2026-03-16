@@ -6227,44 +6227,7 @@ def clients_list():
 @login_required
 @admin_required
 def clients_delete():
-    ids = request.form.getlist("client_ids")
-    if not ids:
-        flash("No clients selected.", "warning")
-        return redirect(url_for("clients_list"))
-
-    conn = db()
-    cur = conn.cursor()
-    deleted, blocked = [], []
-    for cid in ids:
-        try:
-            cid = int(cid)
-        except ValueError:
-            continue
-        cur.execute("SELECT name FROM clients WHERE id = ?", (cid,))
-        row = cur.fetchone()
-        if not row:
-            continue
-        name = row["name"]
-        cur.execute(
-            "SELECT COUNT(*) cnt FROM jobs WHERE client_id = ? OR bill_to_client_id = ?",
-            (cid, cid)
-        )
-        job_count = cur.fetchone()["cnt"]
-        if job_count > 0:
-            blocked.append(f"'{name}' ({job_count} job{'s' if job_count != 1 else ''})")
-        else:
-            cur.execute("DELETE FROM clients WHERE id = ?", (cid,))
-            deleted.append(name)
-    conn.commit()
-    conn.close()
-
-    if deleted:
-        flash(f"Deleted: {', '.join(deleted)}.", "success")
-    if blocked:
-        flash(
-            f"Could not delete — client(s) with existing jobs: {', '.join(blocked)}.",
-            "warning"
-        )
+    flash("Client deletion is disabled to protect client data.", "warning")
     return redirect(url_for("clients_list"))
 
 @app.get("/clients/new")
@@ -11696,38 +11659,7 @@ def admin_api_delete_job_ajax():
 @login_required
 @admin_required
 def admin_api_delete_client_ajax():
-    client_id = request.form.get("client_id")
-    if not client_id:
-        return jsonify({"ok": False, "error": "No client ID provided."})
-    try:
-        client_id = int(client_id)
-    except ValueError:
-        return jsonify({"ok": False, "error": "Invalid client ID."})
-
-    conn = db()
-    cur = conn.cursor()
-    cur.execute("SELECT name FROM clients WHERE id = ?", (client_id,))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
-        return jsonify({"ok": False, "error": "Client not found."})
-
-    name = row["name"]
-    cur.execute(
-        "SELECT COUNT(*) cnt FROM jobs WHERE client_id = ? OR bill_to_client_id = ?",
-        (client_id, client_id)
-    )
-    job_count = cur.fetchone()["cnt"]
-    if job_count > 0:
-        conn.close()
-        return jsonify({"ok": False, "error": f"Cannot delete '{name}' — {job_count} job{'s' if job_count != 1 else ''} linked."})
-
-    cur.execute("DELETE FROM clients WHERE id = ?", (client_id,))
-    conn.commit()
-    conn.close()
-
-    audit("client", client_id, "delete", f"Client '{name}' deleted via Duplicate Finder", {})
-    return jsonify({"ok": True, "client_id": client_id, "name": name})
+    return jsonify({"ok": False, "error": "Client deletion is disabled to protect client data."})
 
 
 @app.post("/admin/settings")
