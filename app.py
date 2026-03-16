@@ -1078,6 +1078,15 @@ def _migrate_update_builder():
           AND EXISTS (SELECT 1 FROM job_customers jc2 WHERE jc2.job_id = jobs.id)
     """)
 
+    cur.execute("""
+        UPDATE jobs SET visit_type = 'Re-attend'
+        WHERE visit_type = 'New Visit'
+          AND EXISTS (
+            SELECT 1 FROM schedules s
+            WHERE s.job_id = jobs.id AND s.status = 'Completed'
+          )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -4746,6 +4755,10 @@ def schedule_api_complete(sched_id):
     _write_schedule_history(cur, sched_id, sched["job_id"], "completed",
                             sched["scheduled_for"], sched["scheduled_for"],
                             old_status, "Completed", caller_id, "Marked complete from schedule")
+    cur.execute("""
+        UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
+        WHERE id = ? AND visit_type = 'New Visit'
+    """, (now_ts(), sched["job_id"]))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -5106,6 +5119,11 @@ def update_schedule_status(job_id: int, sched_id: int):
                             old_scheduled_for=old_scheduled, new_scheduled_for=old_scheduled,
                             old_status=old_status, new_status=new_status,
                             changed_by_user_id=session.get("user_id"))
+    if new_status == "Completed":
+        cur.execute("""
+            UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
+            WHERE id = ? AND visit_type = 'New Visit'
+        """, (now_ts(), job_id))
     conn.commit()
     conn.close()
     flash("Booking updated.", "success")
@@ -11790,6 +11808,10 @@ def my_schedule_attended(sched_id: int):
                             old_scheduled_for=old_scheduled, new_scheduled_for=old_scheduled,
                             old_status=old_status, new_status="Completed",
                             changed_by_user_id=uid)
+    conn.execute("""
+        UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
+        WHERE id = ? AND visit_type = 'New Visit'
+    """, (ts, sched["job_id"]))
     conn.commit()
     conn.close()
     audit("schedule", sched_id, "status_change", "Schedule marked Attended via My Today.")
