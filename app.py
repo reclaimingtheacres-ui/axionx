@@ -3123,6 +3123,7 @@ def _jobs_list_inner():
          AND (
            j.internal_job_number LIKE ? OR
            j.client_reference     LIKE ? OR
+           j.client_job_number    LIKE ? OR
            j.display_ref          LIKE ? OR
            j.description          LIKE ? OR
            j.job_address          LIKE ? OR
@@ -3137,7 +3138,7 @@ def _jobs_list_inner():
            )
          )"""
         like = f"%{q}%"
-        params.extend([like] * 12)
+        params.extend([like] * 13)
 
     if filter_client:
         from_where += " AND j.client_id = ?"
@@ -3772,8 +3773,8 @@ def _job_create_inner():
     payment_frequency = request.form.get("payment_frequency", "").strip() or None
 
     display_ref = internal_job_number
-    if client_reference:
-        display_ref = f"{internal_job_number} ({client_reference})"
+    if client_job_number:
+        display_ref = f"{internal_job_number} ({client_job_number})"
 
     now = datetime.now().isoformat(timespec="seconds")
 
@@ -5891,8 +5892,8 @@ def job_edit(job_id: int):
 
     internal = row["internal_job_number"]
     display_ref = internal
-    if client_reference:
-        display_ref = f"{internal} ({client_reference})"
+    if client_job_number:
+        display_ref = f"{internal} ({client_job_number})"
 
     cur.execute("""
         UPDATE jobs SET
@@ -5944,13 +5945,13 @@ def api_job_internal_number(job_id: int):
     now = now_ts()
     conn = db()
     cur = conn.cursor()
-    job = cur.execute("SELECT client_reference FROM jobs WHERE id=?", (job_id,)).fetchone()
+    job = cur.execute("SELECT client_job_number FROM jobs WHERE id=?", (job_id,)).fetchone()
     if not job:
         conn.close()
         return jsonify({"ok": False, "error": "Job not found."}), 404
     display_ref = val
-    if job["client_reference"]:
-        display_ref = f"{val} ({job['client_reference']})"
+    if job["client_job_number"]:
+        display_ref = f"{val} ({job['client_job_number']})"
     cur.execute("UPDATE jobs SET internal_job_number=?, display_ref=?, updated_at=? WHERE id=?",
                 (val, display_ref, now, job_id))
     cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
@@ -5969,15 +5970,8 @@ def api_job_client_reference(job_id: int):
     val = (data.get("value") or "").strip() or None
     now = now_ts()
     conn = db()
-    cur = conn.cursor()
-    row = cur.execute("SELECT internal_job_number FROM jobs WHERE id=?", (job_id,)).fetchone()
-    if not row:
-        conn.close()
-        return jsonify({"ok": False, "error": "Job not found."}), 404
-    internal = row["internal_job_number"]
-    display_ref = f"{internal} ({val})" if val else internal
-    cur.execute("UPDATE jobs SET client_reference=?, display_ref=?, updated_at=? WHERE id=?",
-                (val, display_ref, now, job_id))
+    conn.execute("UPDATE jobs SET client_reference=?, updated_at=? WHERE id=?",
+                 (val, now, job_id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "value": val or ""})
@@ -5991,7 +5985,15 @@ def api_job_client_job_number(job_id: int):
     val = (data.get("value") or "").strip() or None
     now = now_ts()
     conn = db()
-    conn.execute("UPDATE jobs SET client_job_number=?, updated_at=? WHERE id=?", (val, now, job_id))
+    cur = conn.cursor()
+    row = cur.execute("SELECT internal_job_number FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+    internal = row["internal_job_number"]
+    display_ref = f"{internal} ({val})" if val else internal
+    cur.execute("UPDATE jobs SET client_job_number=?, display_ref=?, updated_at=? WHERE id=?",
+                (val, display_ref, now, job_id))
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "value": val or ""})
@@ -9957,8 +9959,6 @@ def import_jobs():
 
         client_reference = (row.get("ClientReference") or "").strip() or None
         display_ref = internal_job_number
-        if client_reference:
-            display_ref = f"{internal_job_number} ({client_reference})"
 
         addr_parts = [
             (row.get("Job Address 1") or "").strip(),

@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}Axion | {{ job.display_ref }}{% endblock %}
-{% block page_title %}{{ job.internal_job_number or job.display_ref }}{% if job.job_type %} - {{ job.job_type }}{% endif %}{% set cx = (job.customer_company or job.customer_last_name or '')|upper %}{% if cx %} - {{ cx }}{% endif %}{% if job.client_reference %} - {{ job.client_reference }}{% endif %}{% endblock %}
+{% block page_title %}{{ job.internal_job_number or job.display_ref }}{% if job.job_type %} - {{ job.job_type }}{% endif %}{% set cx = (job.customer_company or job.customer_last_name or '')|upper %}{% if cx %} - {{ cx }}{% endif %}{% if job.client_job_number %} - {{ job.client_job_number }}{% endif %}{% endblock %}
 
 {% set s_top = job.status %}
 {% if s_top == 'New' %}{% set sc_top = '#3b82f6' %}
