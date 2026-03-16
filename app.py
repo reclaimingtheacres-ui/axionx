@@ -6490,14 +6490,20 @@ def customer_new():
 @admin_required
 def customer_create():
     shared_company = request.form.get("shared_company", "").strip()
-    first_names = request.form.getlist("first_name[]")
-    last_names  = request.form.getlist("last_name[]")
-    roles       = request.form.getlist("role[]")
-    emails      = request.form.getlist("email[]")
-    dobs        = request.form.getlist("dob[]")
-    addresses   = request.form.getlist("address[]")
-    notes_list  = request.form.getlist("notes[]")
-    id_photos   = request.files.getlist("id_photo[]")
+    first_names    = request.form.getlist("first_name[]")
+    last_names     = request.form.getlist("last_name[]")
+    roles          = request.form.getlist("role[]")
+    emails_personal = request.form.getlist("email_personal[]")
+    emails_work    = request.form.getlist("email_work[]")
+    emails_other   = request.form.getlist("email_other[]")
+    phones_mobile  = request.form.getlist("phone_mobile[]")
+    phones_home    = request.form.getlist("phone_home[]")
+    phones_work    = request.form.getlist("phone_work[]")
+    phones_other   = request.form.getlist("phone_other[]")
+    dobs           = request.form.getlist("dob[]")
+    addresses      = request.form.getlist("address[]")
+    notes_list     = request.form.getlist("notes[]")
+    id_photos      = request.files.getlist("id_photo[]")
 
     if not first_names or not first_names[0].strip():
         flash("At least one person with a first and last name is required.", "danger")
@@ -6509,17 +6515,20 @@ def customer_create():
     first_new_id = None
     created_count = 0
 
+    def _get(lst, idx):
+        return lst[idx].strip() if idx < len(lst) else ""
+
     for i in range(len(first_names)):
         fn = first_names[i].strip() if i < len(first_names) else ""
         ln = last_names[i].strip()  if i < len(last_names)  else ""
         if not fn or not ln:
             continue
 
-        role    = roles[i].strip()    if i < len(roles)    else ""
-        email   = emails[i].strip()   if i < len(emails)   else ""
-        dob     = dobs[i].strip()     if i < len(dobs)     else ""
-        address = addresses[i].strip() if i < len(addresses) else ""
-        notes   = notes_list[i].strip() if i < len(notes_list) else ""
+        role    = _get(roles, i)
+        email   = _get(emails_personal, i)
+        dob     = _get(dobs, i)
+        address = _get(addresses, i)
+        notes   = _get(notes_list, i)
 
         id_image_filename = None
         id_image_path = None
@@ -6527,7 +6536,7 @@ def customer_create():
             photo = id_photos[i]
             if photo and photo.filename:
                 if not allowed_file(photo.filename):
-                    flash(f"ID photo for {fn} {ln} must be PNG, JPG, JPEG, or WebP — skipped.", "warning")
+                    flash(f"ID photo for {fn} {ln} must be PNG, JPG, JPEG, WebP, or PDF — skipped.", "warning")
                 else:
                     safe_name = secure_filename(photo.filename)
                     safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
@@ -6547,6 +6556,22 @@ def customer_create():
         if first_new_id is None:
             first_new_id = new_id
         created_count += 1
+
+        for label, field_list in [("Personal", emails_personal), ("Work", emails_work), ("Other", emails_other)]:
+            em = _get(field_list, i)
+            if em:
+                cur.execute("""
+                    INSERT INTO contact_emails (entity_type, entity_id, label, email, created_at)
+                    VALUES ('customer', ?, ?, ?, ?)
+                """, (new_id, label, em, ts))
+
+        for label, field_list in [("Mobile", phones_mobile), ("Home", phones_home), ("Work", phones_work), ("Other", phones_other)]:
+            ph = _get(field_list, i)
+            if ph:
+                cur.execute("""
+                    INSERT INTO contact_phone_numbers (entity_type, entity_id, label, phone_number, created_at)
+                    VALUES ('customer', ?, ?, ?, ?)
+                """, (new_id, label, ph, ts))
 
     conn.commit()
     conn.close()
@@ -6570,6 +6595,7 @@ def customer_create():
                 INSERT OR IGNORE INTO job_customers (job_id, customer_id, role, sort_order, created_at)
                 VALUES (?, ?, 'Primary', ?, ?)
             """, (job_id_int, first_new_id, next_order, now_ts()))
+            _sync_job_customer_id(cur2, job_id_int)
             conn2.commit()
             conn2.close()
             flash("Customer linked to job.", "success")
