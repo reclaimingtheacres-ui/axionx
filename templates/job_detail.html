@@ -1243,7 +1243,7 @@
             </select>
           </div>
           <div class="col-md-4">
-            <button class="btn btn-primary w-100" type="button" id="inlineBookingSaveBtn" onclick="inlineSaveBooking()">Add Booking</button>
+            <button class="btn btn-primary w-100" type="button" id="inlineBookingSaveBtn" onclick="inlineSaveBooking()">Save Booking</button>
           </div>
         </div>
         {% endif %}
@@ -5087,7 +5087,7 @@ function axSaveClient() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       btn.disabled = false;
-      btn.textContent = 'Add Booking';
+      btn.textContent = 'Save Booking';
       if (!data.ok) { alert(data.error || 'Error saving booking.'); return; }
       successEl.textContent = 'Booking saved successfully.';
       successEl.style.display = '';
@@ -5103,7 +5103,7 @@ function axSaveClient() {
     })
     .catch(function() {
       btn.disabled = false;
-      btn.textContent = 'Add Booking';
+      btn.textContent = 'Save Booking';
       alert('Error saving booking. Please try again.');
     });
   };
