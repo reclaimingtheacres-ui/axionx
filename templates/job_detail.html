@@ -1,6 +1,22 @@
 {% extends "layout.html" %}
 {% block title %}Axion | {{ job.display_ref }}{% endblock %}
-{% block page_title %}{{ job.display_ref }}{% if job.client_job_number and job.client_job_number not in (job.display_ref or '') %} ({{ job.client_job_number }}){% endif %}{% set cx = job.customer_company or job.customer_last_name %}{% if cx %} — {{ cx }}{% endif %}{% endblock %}
+{% block page_title %}{{ job.internal_job_number or job.display_ref }}{% if job.job_type %} - {{ job.job_type }}{% endif %}{% set cx = (job.customer_company or job.customer_last_name or '')|upper %}{% if cx %} - {{ cx }}{% endif %}{% if job.client_reference %} - {{ job.client_reference }}{% endif %}{% endblock %}
+
+{% set s_top = job.status %}
+{% if s_top == 'New' %}{% set sc_top = '#3b82f6' %}
+{% elif s_top in ('Active', 'Active - Phone work only') %}{% set sc_top = '#22c55e' %}
+{% elif s_top in ('Suspended', 'Awaiting info from client') %}{% set sc_top = '#f59e0b' %}
+{% elif s_top == 'Completed' %}{% set sc_top = '#14b8a6' %}
+{% elif s_top == 'Invoiced' %}{% set sc_top = '#a855f7' %}
+{% elif s_top == 'Cancelled' %}{% set sc_top = '#ef4444' %}
+{% elif s_top == 'Archived - Invoiced' %}{% set sc_top = '#d97706' %}
+{% elif s_top == 'Cold Stored' %}{% set sc_top = '#6366f1' %}
+{% else %}{% set sc_top = '#6b7280' %}{% endif %}
+{% block topbar_center %}
+<div style="flex:1;display:flex;justify-content:center;align-items:center">
+  <span style="background:{{ sc_top }}18;color:{{ sc_top }};border:1.5px solid {{ sc_top }}40;border-radius:999px;padding:4px 18px;font-size:1.1rem;font-weight:650;white-space:nowrap">{{ s_top }}</span>
+</div>
+{% endblock %}
 
 {% block content %}
 <style>

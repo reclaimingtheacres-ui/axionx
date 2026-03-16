@@ -383,8 +383,9 @@
 
     <main class="ax-main">
       <div class="ax-topbar">
-        <div class="title">{% block page_title %}Axion{% endblock %}</div>
-        <div style="display:flex; align-items:center; gap:14px;">
+        <div class="title" style="flex-shrink:0">{% block page_title %}Axion{% endblock %}</div>
+        {% block topbar_center %}{% endblock %}
+        <div style="display:flex; align-items:center; gap:14px; flex-shrink:0">
           {% if session.get('user_id') and session.get('role') != 'agent' %}
             <a href="/jobs/new" class="btn btn-primary btn-sm">+ New Job</a>
           {% endif %}
