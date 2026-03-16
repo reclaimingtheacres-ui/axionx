@@ -528,6 +528,7 @@ def init_db():
     add_column_if_missing(cur, "interactions", "photo_path", "TEXT")
     add_column_if_missing(cur, "system_settings", "email_signature", "TEXT")
     add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
+    add_column_if_missing(cur, "schedules", "hidden", "INTEGER NOT NULL DEFAULT 0")
     add_column_if_missing(cur, "jobs", "lat", "REAL")
     add_column_if_missing(cur, "jobs", "lng", "REAL")
 
@@ -1155,6 +1156,39 @@ def _write_schedule_history(cur, schedule_id, job_id, action,
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (schedule_id, job_id, action, old_scheduled_for, new_scheduled_for,
           old_status, new_status, changed_by_user_id, now_ts(), notes))
+
+
+def _suspend_old_agent_bookings(cur, job_id, old_agent_id, changed_by_user_id=None):
+    """When a job is reassigned to a different agent, suspend and hide the
+    old agent's non-terminal bookings so they disappear from the job detail
+    and the old agent's personal schedule."""
+    if not old_agent_id:
+        return
+    rows = cur.execute("""
+        SELECT id, scheduled_for, status
+        FROM schedules
+        WHERE job_id = ? AND assigned_to_user_id = ?
+          AND status NOT IN ('Completed', 'Cancelled', 'Suspended')
+    """, (job_id, old_agent_id)).fetchall()
+    ts = now_ts()
+    for r in rows:
+        cur.execute("UPDATE schedules SET status='Suspended', hidden=1 WHERE id=?", (r["id"],))
+        _write_schedule_history(cur, r["id"], job_id, "suspended",
+                                old_scheduled_for=r["scheduled_for"],
+                                new_scheduled_for=r["scheduled_for"],
+                                old_status=r["status"], new_status="Suspended",
+                                changed_by_user_id=changed_by_user_id,
+                                notes="Auto-suspended — job reassigned to another agent.")
+
+
+def _unhide_suspended_bookings_on_complete(cur, job_id):
+    """When a job is completed, unhide suspended bookings so they appear on the
+    job timeline for audit, but clear assigned_to_user_id so they don't show
+    on any agent's personal schedule."""
+    cur.execute("""
+        UPDATE schedules SET hidden = 0, assigned_to_user_id = NULL
+        WHERE job_id = ? AND hidden = 1 AND status = 'Suspended'
+    """, (job_id,))
 
 
 def normalise_registration(reg_text: str) -> str:
@@ -2627,7 +2661,7 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
           AND job_id NOT IN (
               SELECT s.job_id FROM schedules s
               WHERE date(s.scheduled_for, 'localtime') < ?
-                AND s.status NOT IN ('Cancelled', 'Completed')
+                AND s.status NOT IN ('Cancelled', 'Completed') AND s.hidden = 0
           )
     """, (now_str, now_str, today))
 
@@ -2638,7 +2672,7 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
           AND job_id NOT IN (
               SELECT s.job_id FROM schedules s
               WHERE date(s.scheduled_for, 'localtime') = ?
-                AND s.status NOT IN ('Cancelled', 'Completed')
+                AND s.status NOT IN ('Cancelled', 'Completed') AND s.hidden = 0
           )
     """, (now_str, now_str, today))
 
@@ -2659,7 +2693,7 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
             SELECT job_id, MIN(scheduled_for) AS scheduled_for
             FROM schedules
             WHERE date(scheduled_for,'localtime') <= ?
-              AND status NOT IN ('Cancelled', 'Completed')
+              AND status NOT IN ('Cancelled', 'Completed') AND hidden = 0
             GROUP BY job_id
         ) s ON s.job_id = j.id
         WHERE j.status NOT IN ('Completed', 'Invoiced', 'New', 'Archived - Invoiced', 'Cold Stored')
@@ -2710,10 +2744,11 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
             INNER JOIN (
                 SELECT job_id, MIN(scheduled_for) AS min_sf
                 FROM schedules
-                WHERE status NOT IN ('Cancelled', 'Completed')
+                WHERE status NOT IN ('Cancelled', 'Completed') AND hidden = 0
                 GROUP BY job_id
             ) ms ON ms.job_id = s.job_id AND ms.min_sf = s.scheduled_for
             WHERE s.status NOT IN ('Cancelled', 'Completed')
+              AND s.hidden = 0
               AND s.assigned_to_user_id IS NOT NULL
         ) sub
         WHERE jobs.id = sub.job_id
@@ -2749,7 +2784,7 @@ def dashboard():
             COALESCE(
                 (SELECT u2.full_name FROM schedules sx
                  JOIN users u2 ON u2.id = sx.assigned_to_user_id
-                 WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed')
+                 WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed') AND sx.hidden = 0
                  ORDER BY sx.scheduled_for ASC LIMIT 1),
                 u.full_name
             ) AS assigned_name"""
@@ -2757,6 +2792,7 @@ def dashboard():
             (SELECT sx2.scheduled_for FROM schedules sx2
              WHERE sx2.job_id = j.id
                AND date(sx2.scheduled_for) >= date('now','localtime')
+               AND sx2.hidden = 0
              ORDER BY sx2.scheduled_for ASC LIMIT 1) AS next_scheduled"""
         base_sel = f"""
                 SELECT j.id, j.display_ref, j.status,
@@ -2772,7 +2808,7 @@ def dashboard():
             sql = base_sel + """
                 WHERE j.status = ? AND (j.assigned_user_id = ? OR EXISTS (
                     SELECT 1 FROM schedules s WHERE s.job_id = j.id
-                    AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+                    AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled') AND s.hidden = 0
                 ))
                 ORDER BY j.updated_at DESC"""
             cur.execute(sql, (status, user_id, user_id))
@@ -2788,7 +2824,7 @@ def dashboard():
     if role == "agent":
         base = """(assigned_user_id = ? OR EXISTS (
             SELECT 1 FROM schedules s WHERE s.job_id = jobs.id
-            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled') AND s.hidden = 0
         ))"""
         uu   = (user_id, user_id)
         jobs_all       = jcount(base + f" AND {_excl_arch}", uu)
@@ -2819,7 +2855,7 @@ def dashboard():
         COALESCE(
             (SELECT u2.full_name FROM schedules sx
              JOIN users u2 ON u2.id = sx.assigned_to_user_id
-             WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed')
+             WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed') AND sx.hidden = 0
              ORDER BY sx.scheduled_for ASC LIMIT 1),
             u.full_name
         ) AS assigned_name"""
@@ -2827,6 +2863,7 @@ def dashboard():
         (SELECT sx2.scheduled_for FROM schedules sx2
          WHERE sx2.job_id = j.id
            AND date(sx2.scheduled_for) >= date('now','localtime')
+           AND sx2.hidden = 0
          ORDER BY sx2.scheduled_for ASC LIMIT 1) AS next_scheduled"""
     base_sel = f"""
         SELECT j.id, j.display_ref, j.status,
@@ -2842,7 +2879,7 @@ def dashboard():
         recent_sql = base_sel + f"""
             WHERE {_excl_arch} AND (j.assigned_user_id = ? OR EXISTS (
                 SELECT 1 FROM schedules s WHERE s.job_id = j.id
-                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled') AND s.hidden = 0
             ))
             ORDER BY j.updated_at DESC LIMIT 15"""
         cur.execute(recent_sql, (user_id, user_id))
@@ -2865,6 +2902,7 @@ def dashboard():
             SELECT job_id, MIN(scheduled_for) AS scheduled_for
             FROM schedules
             WHERE date(scheduled_for) >= date('now','localtime')
+              AND status NOT IN ('Cancelled','Completed','Suspended') AND hidden = 0
             GROUP BY job_id
         ) s_next ON s_next.job_id = j.id
         WHERE {_excl_arch}"""
@@ -2872,7 +2910,7 @@ def dashboard():
         sched_sel += """
             AND (j.assigned_user_id = ? OR EXISTS (
                 SELECT 1 FROM schedules s WHERE s.job_id = j.id
-                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled') AND s.hidden = 0
             ))"""
         sched_sel += " ORDER BY s_next.scheduled_for ASC LIMIT 6"
         cur.execute(sched_sel, (user_id, user_id))
@@ -2888,7 +2926,7 @@ def dashboard():
             WHERE status = 'Completed' AND date(updated_at) = ?
             AND (assigned_user_id = ? OR EXISTS (
                 SELECT 1 FROM schedules s WHERE s.job_id = jobs.id
-                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+                AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled') AND s.hidden = 0
             ))""", (_mel_now_d.isoformat(), user_id, user_id))
     else:
         cur.execute("SELECT COUNT(*) AS c FROM jobs WHERE status = 'Completed' AND date(updated_at) = ?",
@@ -2948,7 +2986,7 @@ def dashboard_jobs_api():
         COALESCE(
             (SELECT u2.full_name FROM schedules sx
              JOIN users u2 ON u2.id = sx.assigned_to_user_id
-             WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed')
+             WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled', 'Completed') AND sx.hidden = 0
              ORDER BY sx.scheduled_for ASC LIMIT 1),
             u.full_name
         ) AS assigned_name"""
@@ -2965,7 +3003,7 @@ def dashboard_jobs_api():
     if role == "agent":
         sql += """ AND (j.assigned_user_id = ? OR EXISTS (
             SELECT 1 FROM schedules s WHERE s.job_id = j.id
-            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')
+            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled') AND s.hidden = 0
         ))"""
         sql += " ORDER BY j.updated_at DESC LIMIT 25"
         cur.execute(sql, (user_id, user_id))
@@ -3036,19 +3074,19 @@ def _jobs_list_inner():
            COALESCE(
                (SELECT u2.full_name FROM schedules s2
                 JOIN users u2 ON u2.id = s2.assigned_to_user_id
-                WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed')
+                WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed') AND s2.hidden = 0
                 ORDER BY s2.scheduled_for ASC LIMIT 1),
                u.full_name
            ) AS assigned_name,
            (SELECT s.scheduled_for FROM schedules s
-            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
+            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled,
            (SELECT bt.name FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
-            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
+            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_booking_type,
            (SELECT s.id FROM schedules s
-            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled')
+            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id
     """
 
@@ -3069,7 +3107,7 @@ def _jobs_list_inner():
         from_where += """ AND (j.assigned_user_id = ? OR EXISTS (
             SELECT 1 FROM schedules s
             WHERE s.job_id = j.id AND s.assigned_to_user_id = ?
-              AND s.status NOT IN ('Cancelled')
+              AND s.status NOT IN ('Cancelled') AND s.hidden = 0
         ))"""
         params.extend([user_id, user_id])
 
@@ -3110,11 +3148,11 @@ def _jobs_list_inner():
         from_where += " AND j.assigned_user_id IS NULL AND j.status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')"
 
     if filter_agent and role in ("admin", "both"):
-        from_where += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled')))"
+        from_where += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled') AND sa.hidden = 0))"
         params.extend([filter_agent, filter_agent])
 
     if filter_btype:
-        from_where += " AND EXISTS (SELECT 1 FROM schedules sb JOIN booking_types btf ON btf.id = sb.booking_type_id WHERE sb.job_id = j.id AND sb.booking_type_id = ? AND sb.status NOT IN ('Completed', 'Cancelled'))"
+        from_where += " AND EXISTS (SELECT 1 FROM schedules sb JOIN booking_types btf ON btf.id = sb.booking_type_id WHERE sb.job_id = j.id AND sb.booking_type_id = ? AND sb.status NOT IN ('Completed', 'Cancelled') AND sb.hidden = 0)"
         params.append(filter_btype)
 
     if filter_date_from:
@@ -3992,7 +4030,7 @@ def job_detail(job_id: int):
     if role == "agent" and job["assigned_user_id"] != user_id:
         sched_check = conn.execute(
             """SELECT 1 FROM schedules WHERE job_id = ? AND assigned_to_user_id = ?
-               AND status NOT IN ('Cancelled') LIMIT 1""",
+               AND status NOT IN ('Cancelled') AND hidden = 0 LIMIT 1""",
             (job_id, user_id)
         ).fetchone()
         if not sched_check:
@@ -4050,7 +4088,7 @@ def job_detail(job_id: int):
         FROM schedules s
         JOIN booking_types bt ON bt.id = s.booking_type_id
         LEFT JOIN users u ON u.id = s.assigned_to_user_id
-        WHERE s.job_id = ?
+        WHERE s.job_id = ? AND s.hidden = 0
         ORDER BY s.scheduled_for ASC
     """, (job_id,))
     schedules = cur.fetchall()
@@ -4620,7 +4658,7 @@ def schedule_api_events():
     conn = db()
     cur  = conn.cursor()
 
-    where_clauses = ["s.scheduled_for >= ?", "s.scheduled_for <= ?"]
+    where_clauses = ["s.scheduled_for >= ?", "s.scheduled_for <= ?", "s.hidden = 0"]
     params = [start_str, end_str]
 
     if status_filter == "upcoming":
@@ -4720,7 +4758,7 @@ def schedule_api_reschedule(sched_id):
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
     is_admin = caller_role in ("admin", "both")
-    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+    if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
     old_dt = sched["scheduled_for"]
@@ -4747,7 +4785,7 @@ def schedule_api_complete(sched_id):
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
     is_admin = caller_role in ("admin", "both")
-    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+    if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
     old_status = sched["status"]
@@ -4777,7 +4815,7 @@ def schedule_api_cancel(sched_id):
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
     is_admin = caller_role in ("admin", "both")
-    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+    if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
     old_status = sched["status"]
@@ -4803,7 +4841,7 @@ def schedule_api_history(sched_id):
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
     is_admin = caller_role in ("admin", "both")
-    if not is_admin and sched["assigned_to_user_id"] != caller_id:
+    if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
     cur.execute("""
@@ -4844,7 +4882,7 @@ def schedule_api_update(sched_id):
         caller_id = session.get("user_id")
         caller_role = session.get("role", "")
         is_admin = caller_role in ("admin", "both")
-        if not is_admin and sched["assigned_to_user_id"] != caller_id:
+        if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
             conn.close()
             return jsonify({"ok": False, "error": "Not authorised."}), 403
 
@@ -4873,6 +4911,11 @@ def schedule_api_update(sched_id):
                 cur.execute("UPDATE schedules SET assigned_to_user_id = ? WHERE id = ?", (new_agent_id, sched_id))
                 changes.append("Agent reassigned")
                 if new_agent_id:
+                    job_row = cur.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (sched["job_id"],)).fetchone()
+                    prev_job_agent = job_row["assigned_user_id"] if job_row else None
+                    if prev_job_agent and prev_job_agent != new_agent_id:
+                        _suspend_old_agent_bookings(cur, sched["job_id"], prev_job_agent,
+                                                    changed_by_user_id=caller_id)
                     cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                                 (new_agent_id, now_ts(), sched["job_id"]))
 
@@ -5210,15 +5253,17 @@ def job_status_update(job_id: int):
             (job_id,)).fetchall()
         cur.execute("""
             UPDATE schedules SET status = 'Cancelled'
-            WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')
+            WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled', 'Suspended')
         """, (job_id,))
         for ps in pending_scheds:
-            _write_schedule_history(cur, ps["id"], job_id, "cancelled",
-                                    old_scheduled_for=ps["scheduled_for"],
-                                    new_scheduled_for=ps["scheduled_for"],
-                                    old_status=ps["status"], new_status="Cancelled",
-                                    changed_by_user_id=session.get("user_id"),
-                                    notes=f"Auto-cancelled — job marked '{status}'.")
+            if ps["status"] != "Suspended":
+                _write_schedule_history(cur, ps["id"], job_id, "cancelled",
+                                        old_scheduled_for=ps["scheduled_for"],
+                                        new_scheduled_for=ps["scheduled_for"],
+                                        old_status=ps["status"], new_status="Cancelled",
+                                        changed_by_user_id=session.get("user_id"),
+                                        notes=f"Auto-cancelled — job marked '{status}'.")
+        _unhide_suspended_bookings_on_complete(cur, job_id)
         cur.execute("""
             INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
             VALUES (?, ?, ?, ?, ?)
@@ -5290,6 +5335,10 @@ def job_assign_agent(job_id: int):
         return jsonify({"ok": False, "error": "Agent not found or inactive."}), 404
     now = datetime.now().isoformat(timespec="seconds")
     prev = cur.execute("SELECT assigned_user_id, display_ref, job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    old_agent = prev["assigned_user_id"] if prev else None
+    if old_agent and old_agent != agent_id:
+        _suspend_old_agent_bookings(cur, job_id, old_agent,
+                                    changed_by_user_id=session.get("user_id"))
     cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                 (agent_id, now, job_id))
     conn.commit()
@@ -5672,6 +5721,13 @@ def job_update(job_id: int):
     conn = db()
     cur = conn.cursor()
     _prev_job = cur.execute("SELECT assigned_user_id, display_ref, job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
+
+    old_agent = _prev_job["assigned_user_id"] if _prev_job else None
+    new_agent = int(assigned_user_id) if assigned_user_id else None
+    if old_agent and new_agent and old_agent != new_agent:
+        _suspend_old_agent_bookings(cur, job_id, old_agent,
+                                    changed_by_user_id=session.get("user_id"))
+
     cur.execute("UPDATE jobs SET status = ?, visit_type = ?, assigned_user_id = ?, updated_at = ? WHERE id = ?",
                 (status, visit_type, assigned_user_id, now, job_id))
 
@@ -5688,15 +5744,17 @@ def job_update(job_id: int):
             (job_id,)).fetchall()
         cur.execute("""
             UPDATE schedules SET status = 'Cancelled'
-            WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')
+            WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled', 'Suspended')
         """, (job_id,))
         for ps in pending_scheds:
-            _write_schedule_history(cur, ps["id"], job_id, "cancelled",
-                                    old_scheduled_for=ps["scheduled_for"],
-                                    new_scheduled_for=ps["scheduled_for"],
-                                    old_status=ps["status"], new_status="Cancelled",
-                                    changed_by_user_id=session.get("user_id"),
-                                    notes=f"Auto-cancelled — job marked '{status}'.")
+            if ps["status"] != "Suspended":
+                _write_schedule_history(cur, ps["id"], job_id, "cancelled",
+                                        old_scheduled_for=ps["scheduled_for"],
+                                        new_scheduled_for=ps["scheduled_for"],
+                                        old_status=ps["status"], new_status="Cancelled",
+                                        changed_by_user_id=session.get("user_id"),
+                                        notes=f"Auto-cancelled — job marked '{status}'.")
+        _unhide_suspended_bookings_on_complete(cur, job_id)
         cur.execute("""
             INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
             VALUES (?, ?, ?, ?, ?)
@@ -5739,12 +5797,18 @@ def job_edit(job_id: int):
 
     conn = db()
     cur  = conn.cursor()
-    cur.execute("SELECT internal_job_number FROM jobs WHERE id = ?", (job_id,))
+    cur.execute("SELECT internal_job_number, assigned_user_id FROM jobs WHERE id = ?", (job_id,))
     row = cur.fetchone()
     if not row:
         conn.close()
         flash("Job not found.", "danger")
         return redirect(url_for("jobs_list"))
+
+    old_agent_edit = row["assigned_user_id"]
+    new_agent_edit = int(assigned_user_id) if assigned_user_id else None
+    if old_agent_edit and new_agent_edit and old_agent_edit != new_agent_edit:
+        _suspend_old_agent_bookings(cur, job_id, old_agent_edit,
+                                    changed_by_user_id=session.get("user_id"))
 
     internal = row["internal_job_number"]
     display_ref = internal
@@ -8614,7 +8678,7 @@ def download_job_document(job_id: int, doc_id: int):
             """SELECT 1 FROM jobs WHERE id=? AND (
                assigned_user_id=? OR EXISTS (
                  SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
-                 AND status NOT IN ('Cancelled')
+                 AND status NOT IN ('Cancelled') AND hidden = 0
                )
              )""",
             (job_id, user_id, job_id, user_id),
@@ -9485,7 +9549,7 @@ def update_builder_serve_photo(job_id, photo_id):
     if role not in ("admin", "both"):
         job = conn.execute("SELECT assigned_user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
         has_schedule = conn.execute(
-            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed')",
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed') AND hidden = 0",
             (job_id, uid)
         ).fetchone()
         if not job or (job["assigned_user_id"] != uid and not has_schedule):
@@ -11819,7 +11883,7 @@ def my_schedule_attended(sched_id: int):
         abort(404)
     uid  = session.get("user_id")
     role = session.get("role", "")
-    if role not in ("admin", "both") and sched["assigned_to_user_id"] != uid:
+    if role not in ("admin", "both") and (sched["assigned_to_user_id"] != uid or sched.get("hidden", 0)):
         conn.close()
         flash("Access denied.", "danger")
         return redirect(url_for("my_today"))
@@ -12343,6 +12407,7 @@ def my_today():
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE date(s.scheduled_for) = ? AND s.assigned_to_user_id = ?
           AND s.status NOT IN ('Cancelled', 'Completed')
+          AND s.hidden = 0
           AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY s.scheduled_for
     """, (today, user_id))
@@ -12428,7 +12493,7 @@ def note_update_emailed(job_id: int):
     if role == "agent" and job["assigned_user_id"] != user_id:
         sched_check = conn.execute(
             """SELECT 1 FROM schedules WHERE job_id = ? AND assigned_to_user_id = ?
-               AND status NOT IN ('Cancelled') LIMIT 1""",
+               AND status NOT IN ('Cancelled') AND hidden = 0 LIMIT 1""",
             (job_id, user_id)
         ).fetchone()
         if not sched_check:
@@ -12731,7 +12796,7 @@ def route_planner_jobs_api():
     elif role == "agent":
         conditions.append("""(j.assigned_user_id = ? OR EXISTS (
             SELECT 1 FROM schedules s WHERE s.job_id = j.id
-            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled')))""")
+            AND s.assigned_to_user_id = ? AND s.status NOT IN ('Cancelled') AND s.hidden = 0))""")
         params.extend([user_id, user_id])
 
     if q:
@@ -12750,6 +12815,7 @@ def route_planner_jobs_api():
                u.full_name AS agent_name,
                (SELECT MIN(sx.scheduled_for) FROM schedules sx
                 WHERE sx.job_id = j.id AND sx.status NOT IN ('Cancelled','Completed')
+                AND sx.hidden = 0
                 AND date(sx.scheduled_for) >= date('now','localtime')) AS next_scheduled
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -13823,6 +13889,7 @@ def m_today():
         LEFT JOIN customers cu ON cu.id = j.customer_id
         WHERE date(s.scheduled_for,'localtime') = ? AND s.assigned_to_user_id = ?
           AND s.status NOT IN ('Cancelled','Completed')
+          AND s.hidden = 0
           AND j.status NOT IN {ARCHIVED_STATUSES!r}
         ORDER BY s.scheduled_for
     """, (today, uid)).fetchall()
@@ -13916,11 +13983,11 @@ def _mobile_jobs_query(uid, role, params_in):
     if not has_search:
         if scope == "scheduled":
             where_clauses.append(
-                "EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
+                "EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0)"
             )
         elif scope == "unscheduled":
             where_clauses.append(
-                "NOT EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed'))"
+                "NOT EXISTS (SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0)"
             )
 
     # ── Status filter (skip completed restriction when searching) ──
@@ -13983,7 +14050,7 @@ def _mobile_jobs_query(uid, role, params_in):
                (SELECT ji.reg  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_reg,
                (SELECT ji.vin  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_vin,
                (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
-                AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
+                AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0 ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
@@ -14055,7 +14122,7 @@ def m_api_jobs_search():
         "(j.assigned_user_id = ? OR EXISTS ("
         "  SELECT 1 FROM schedules s"
         "  WHERE s.job_id=j.id AND s.assigned_to_user_id=?"
-        "  AND s.status NOT IN ('Cancelled','Completed')"
+        "  AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0"
         "))")
     params = [] if is_admin else [uid, uid]
     params += [like] * 10
@@ -14067,7 +14134,7 @@ def m_api_jobs_search():
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_reg,
                (SELECT ji.vin FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type='vehicle' ORDER BY ji.id LIMIT 1) AS asset_vin,
                (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
-                AND s.status NOT IN ('Cancelled','Completed') ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
+                AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0 ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
@@ -14153,7 +14220,7 @@ def m_job_detail(job_id):
 
     if role not in ("admin", "both"):
         has_access = job["assigned_user_id"] == uid or conn.execute(
-            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed')",
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed') AND hidden = 0",
             (job_id, uid)
         ).fetchone()
         if not has_access:
@@ -14237,7 +14304,7 @@ def m_update_builder(job_id):
 
     if role not in ("admin", "both"):
         has_access = job["assigned_user_id"] == uid or conn.execute(
-            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed')",
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed') AND hidden = 0",
             (job_id, uid)
         ).fetchone()
         if not has_access:
