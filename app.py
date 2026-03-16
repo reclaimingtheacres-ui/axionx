@@ -12034,27 +12034,21 @@ def queue_active_cue_ids():
     return jsonify({"ok": True, "ids": [r["id"] for r in rows]})
 
 
-_VISIT_TYPES_FROM_BOOKING = {
-    "new visit", "re-attend", "urgent new visit",
-    "first update", "urgent update", "phone follow-up", "locate only",
-    "update required", "urgent update required",
-}
-
 def _sync_visit_type_from_booking(cur, job_id, booking_type_name, ts=None):
     if ts is None:
         ts = now_ts()
-    bt_lower = (booking_type_name or "").strip().lower()
-    if bt_lower not in _VISIT_TYPES_FROM_BOOKING:
+    bt_name = (booking_type_name or "").strip()
+    if not bt_name:
         return
     cur.execute("SELECT visit_type FROM jobs WHERE id = ?", (job_id,))
     row = cur.fetchone()
     if not row:
         return
-    old_visit = row["visit_type"]
-    if old_visit.strip().lower() == bt_lower:
+    old_visit = (row["visit_type"] or "").strip()
+    if old_visit.lower() == bt_name.lower():
         return
     cur.execute("UPDATE jobs SET visit_type = ?, updated_at = ? WHERE id = ?",
-                (booking_type_name, ts, job_id))
+                (bt_name, ts, job_id))
 
 
 def _auto_complete_schedule_cues(cur, job_id, ts=None):
