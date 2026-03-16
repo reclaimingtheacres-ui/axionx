@@ -464,20 +464,21 @@
   </div>
 
   <script>
+  var _gmReady = false;
   function attachAddressAutocomplete(root) {
-    if (!(window.google && google.maps && google.maps.places)) return;
+    if (!_gmReady) return;
     root = root || document;
 
     root.querySelectorAll("input.ax-address").forEach((input) => {
       if (input.dataset.gmAttached === "1") return;
 
-      const ac = new google.maps.places.Autocomplete(input, {
+      var ac = new google.maps.places.Autocomplete(input, {
         types: ["address"],
         componentRestrictions: { country: "au" }
       });
 
-      ac.addListener("place_changed", () => {
-        const place = ac.getPlace();
+      ac.addListener("place_changed", function() {
+        var place = ac.getPlace();
         if (place && place.formatted_address) input.value = place.formatted_address;
       });
 
@@ -486,14 +487,21 @@
   }
 
   window.initGoogleMaps = function() {
-    attachAddressAutocomplete(document);
-
-    document.addEventListener("shown.bs.modal", (e) => {
+    document.addEventListener("shown.bs.modal", function(e) {
       attachAddressAutocomplete(e.target);
     });
+    _gmReady = !!(window.google && google.maps && google.maps.places);
+    if (!_gmReady && window.google && google.maps) {
+      google.maps.importLibrary("places").then(function() {
+        _gmReady = true;
+        attachAddressAutocomplete(document);
+      });
+      return;
+    }
+    attachAddressAutocomplete(document);
   };
   window.axionInitPlaces = window.initGoogleMaps;
-  window.axionSetAddress = (input, value) => { if (input) input.value = value; };
+  window.axionSetAddress = function(input, value) { if (input) input.value = value; };
   </script>
 
   {% block scripts %}{% endblock %}
