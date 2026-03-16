@@ -4476,6 +4476,7 @@ def add_schedule_ajax(job_id: int):
                 (job_id, f"Booking '{bt_name}' added for {dt_str[:10]}.", now, now))
     _auto_complete_schedule_cues(cur, job_id, now)
     _sync_visit_type_from_booking(cur, job_id, bt_name, now)
+    notify_agent = request.form.get("notify_agent") == "1"
     last_assigned = next((c["assigned_to"] for c in reversed(created) if c["assigned_to"]), None)
     if last_assigned:
         _prev = cur.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
@@ -4490,6 +4491,24 @@ def add_schedule_ajax(job_id: int):
                     (last_assigned, now, job_id))
     conn.commit()
     conn.close()
+    if notify_agent and not unassigned:
+        _job_row = None
+        try:
+            _c2 = db()
+            _job_row = _c2.execute("SELECT display_ref, job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            _c2.close()
+        except Exception:
+            pass
+        agents_to_notify = set()
+        for c in created:
+            if c["assigned_to"]:
+                agents_to_notify.add(c["assigned_to"])
+        for aid in agents_to_notify:
+            _notify_agent_job_assigned(
+                aid, job_id,
+                _job_row["display_ref"] if _job_row else str(job_id),
+                _job_row["job_address"] if _job_row else ""
+            )
     return jsonify({"ok": True, "count": len(created)})
 
 

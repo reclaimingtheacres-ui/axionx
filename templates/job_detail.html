@@ -4281,6 +4281,14 @@ function adocOpenEditJob() {
           </div>
         </div>
 
+        <!-- Notify Agent -->
+        <div class="row g-3 mb-3 align-items-center">
+          <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px">Notify Assigned Agent:</div>
+          <div class="col">
+            <input type="checkbox" id="abk_notify_agent" class="form-check-input" style="width:18px;height:18px" checked>
+          </div>
+        </div>
+
         <!-- Unassigned -->
         <div class="row g-3 mb-4 align-items-center">
           <div class="col-auto" style="color:var(--accent);font-size:.85rem;font-weight:500;min-width:160px">Create Unassigned Bookings:</div>
@@ -4469,6 +4477,7 @@ function doSendMsg() {
     var label = document.getElementById('abk_label').value.trim() || 'New Booking';
     var details = document.getElementById('abk_details').value.trim();
     var unassigned = document.getElementById('abk_unassigned').checked;
+    var notifyAgent = document.getElementById('abk_notify_agent').checked;
     var errEl = document.getElementById('abk-error');
 
     if (!date) { errEl.textContent = 'Please select a booking date.'; errEl.style.display = ''; return; }
@@ -4485,6 +4494,7 @@ function doSendMsg() {
     fd.append('booking_label', label);
     fd.append('booking_details', details);
     if (unassigned) fd.append('unassigned', '1');
+    if (notifyAgent) fd.append('notify_agent', '1');
     checkedIds.forEach(function(id){ fd.append('assigned_user_ids', id); });
 
     abkDisable(true);
