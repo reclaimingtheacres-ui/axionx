@@ -157,7 +157,6 @@
       align-items:center;
       justify-content: space-between;
       margin-bottom: 16px;
-      position: relative;
     }
     .ax-topbar .title{
       font-size: 1.1rem;
@@ -384,7 +383,7 @@
 
     <main class="ax-main">
       <div class="ax-topbar">
-        <div class="title" style="flex-shrink:0">{% block page_title %}Axion{% endblock %}</div>
+        <div class="title" style="flex-shrink:1;min-width:0">{% block page_title %}Axion{% endblock %}</div>
         {% block topbar_center %}{% endblock %}
         <div style="display:flex; align-items:center; gap:14px; flex-shrink:0">
           {% if session.get('user_id') and session.get('role') != 'agent' %}

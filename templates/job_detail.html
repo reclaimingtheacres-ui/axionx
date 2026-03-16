@@ -13,7 +13,7 @@
 {% elif s_top == 'Cold Stored' %}{% set sc_top = '#6366f1' %}
 {% else %}{% set sc_top = '#6b7280' %}{% endif %}
 {% block topbar_center %}
-<div style="position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center">
+<div style="flex:1 1 0;display:flex;justify-content:center;align-items:center;min-width:0;padding:0 12px">
   <span style="background:{{ sc_top }}18;color:{{ sc_top }};border:1.5px solid {{ sc_top }}40;border-radius:999px;padding:4px 18px;font-size:1.1rem;font-weight:650;white-space:nowrap">{{ s_top }}</span>
 </div>
 {% endblock %}
