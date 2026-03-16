@@ -1949,7 +1949,7 @@ STATUS_MAP = {
     "Invoiced": "Completed",
     "Cancelled": "Cancelled",
     "Suspended": "Suspended",
-    "Awaiting advice from Client": "Awaiting info from client",
+    "Awaiting advice from Client": "Awaiting Advice From Client",
 }
 
 

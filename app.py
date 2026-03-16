@@ -2773,7 +2773,7 @@ def dashboard():
         ("Active",                    "active"),
         ("Active - Phone work only",  "phone"),
         ("Suspended",                 "suspended"),
-        ("Awaiting info from client", "awaiting"),
+        ("Awaiting Advice From Client", "awaiting"),
         ("Completed",                 "completed"),
         ("Invoiced",                  "invoiced"),
         ("Cancelled",                 "cancelled"),
@@ -2832,7 +2832,7 @@ def dashboard():
         jobs_active    = jcount(base + " AND status = 'Active'",                   (*uu,))
         jobs_phone     = jcount(base + " AND status = 'Active - Phone work only'", (*uu,))
         jobs_suspended = jcount(base + " AND status = 'Suspended'",                (*uu,))
-        jobs_awaiting  = jcount(base + " AND status = 'Awaiting info from client'",(*uu,))
+        jobs_awaiting  = jcount(base + " AND status = 'Awaiting Advice From Client'",(*uu,))
         jobs_completed = jcount(base + " AND status = 'Completed'",                (*uu,))
         jobs_invoiced  = jcount(base + " AND status = 'Invoiced'",                 (*uu,))
         jobs_archived  = jcount(base + " AND status = 'Archived - Invoiced'",      (*uu,))
@@ -2842,7 +2842,7 @@ def dashboard():
         jobs_active    = jcount("status = 'Active'")
         jobs_phone     = jcount("status = 'Active - Phone work only'")
         jobs_suspended = jcount("status = 'Suspended'")
-        jobs_awaiting  = jcount("status = 'Awaiting info from client'")
+        jobs_awaiting  = jcount("status = 'Awaiting Advice From Client'")
         jobs_completed = jcount("status = 'Completed'")
         jobs_invoiced  = jcount("status = 'Invoiced'")
         jobs_archived  = jcount("status = 'Archived - Invoiced'")
@@ -2970,7 +2970,7 @@ def dashboard_jobs_api():
     STATUS_MAP = {
         "active":    "j.status IN ('Active','Active - Phone work only')",
         "suspended": "j.status = 'Suspended'",
-        "awaiting":  "j.status = 'Awaiting info from client'",
+        "awaiting":  "j.status = 'Awaiting Advice From Client'",
         "completed": "j.status = 'Completed'",
         "completed_today": f"j.status = 'Completed' AND date(j.updated_at) = '{_mel_now_d.isoformat()}'",
     }
@@ -3196,7 +3196,7 @@ def _jobs_list_inner():
 
     agent_counts = {}
     if role in ("admin", "both"):
-        _active_statuses = "('New','Active','Active - Phone work only','Suspended','Awaiting info from client','Awaiting Instructions')"
+        _active_statuses = "('New','Active','Active - Phone work only','Suspended','Awaiting Advice From Client','Awaiting Instructions')"
         for ac_row in cur.execute(f"""
             SELECT j.assigned_user_id AS aid, COUNT(*) AS cnt
             FROM jobs j
@@ -3220,7 +3220,7 @@ def _jobs_list_inner():
         "Active",
         "Active - Phone work only",
         "Suspended",
-        "Awaiting info from client",
+        "Awaiting Advice From Client",
         "Completed",
         "Invoiced",
         "Cancelled",
@@ -3702,7 +3702,7 @@ def _job_new_render(conn):
     next_number = f"{settings['job_prefix']}{str(settings['job_sequence'] + 1).zfill(3)}"
 
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
-    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced", "Cancelled"]
+    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting Advice From Client", "Completed", "Invoiced", "Cancelled"]
     priorities = ["Low", "Normal", "High", "Urgent"]
 
     return render_template("job_new.html", clients=clients, customers=customers,
@@ -4132,7 +4132,7 @@ def job_detail(job_id: int):
     form_templates = conn2.execute("SELECT * FROM form_templates WHERE active=1 ORDER BY name").fetchall()
     conn2.close()
 
-    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting info from client", "Completed", "Invoiced", "Cancelled"]
+    statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting Advice From Client", "Completed", "Invoiced", "Cancelled"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
     priorities = ["Low", "Normal", "High", "Urgent"]
     item_types = ["vehicle", "property", "equipment", "other"]
@@ -4582,7 +4582,7 @@ def job_activate(job_id):
     caller_id   = session.get("user_id")
     now         = datetime.now(_melbourne).isoformat(timespec="seconds")
 
-    allowed = ["Active", "Active - Phone work only", "Suspended", "Awaiting info from client"]
+    allowed = ["Active", "Active - Phone work only", "Suspended", "Awaiting Advice From Client"]
     if new_status not in allowed:
         flash("Invalid status.", "danger")
         return redirect(url_for("job_detail", job_id=job_id))
@@ -5295,7 +5295,7 @@ def delete_job(job_id: int):
 def job_status_update(job_id: int):
     status = request.form.get("status", "").strip()
     allowed = ["New", "Active", "Active - Phone work only", "Suspended",
-               "Awaiting info from client", "Completed", "Invoiced", "Cancelled"]
+               "Awaiting Advice From Client", "Completed", "Invoiced", "Cancelled"]
     if status not in allowed:
         flash("Invalid status.", "danger")
         return redirect(url_for("jobs_list"))
@@ -9898,8 +9898,8 @@ def import_jobs():
         return f"{d} {parsed_t}"
 
     STATUS_MAP = {
-        "awaiting advice from client": "Awaiting info from client",
-        "awaiting info from client":   "Awaiting info from client",
+        "awaiting advice from client": "Awaiting Advice From Client",
+        "awaiting info from client":   "Awaiting Advice From Client",
         "active":     "Active",
         "new":        "New",
         "completed":  "Completed",

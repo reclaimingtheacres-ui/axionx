@@ -116,7 +116,7 @@
     {% endif %}
   </div>
 
-  {% set _status_tabs = [('', 'All'), ('New', 'New'), ('Active', 'Active'), ('Suspended', 'Suspended'), ('Awaiting info from client', 'Awaiting Info'), ('Active - Phone work only', 'Phone Only'), ('Completed', 'Completed'), ('Invoiced', 'Invoiced')] %}
+  {% set _status_tabs = [('', 'All'), ('New', 'New'), ('Active', 'Active'), ('Suspended', 'Suspended'), ('Awaiting Advice From Client', 'Awaiting Info'), ('Active - Phone work only', 'Phone Only'), ('Completed', 'Completed'), ('Invoiced', 'Invoiced')] %}
   <div class="ax-status-tabs">
     {% for sval, slabel in _status_tabs %}
       <a class="ax-status-tab{% if status == sval %} active{% endif %}"
@@ -287,7 +287,7 @@
       {% set s = j.status %}
       {% if s == 'New' %}{% set sc = '#3b82f6' %}
       {% elif s in ('Active', 'Active - Phone work only') %}{% set sc = '#22c55e' %}
-      {% elif s in ('Suspended', 'Awaiting info from client', 'Awaiting Instructions') %}{% set sc = '#f59e0b' %}
+      {% elif s in ('Suspended', 'Awaiting Advice From Client', 'Awaiting Instructions') %}{% set sc = '#f59e0b' %}
       {% elif s == 'Completed' %}{% set sc = '#14b8a6' %}
       {% elif s == 'Invoiced' %}{% set sc = '#a855f7' %}
       {% elif s == 'Cancelled' %}{% set sc = '#ef4444' %}
