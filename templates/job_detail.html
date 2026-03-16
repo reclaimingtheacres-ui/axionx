@@ -200,7 +200,9 @@
     <button class="ax-tab" id="tab-notes-btn" data-bs-toggle="tab"
             data-bs-target="#tab-notes" type="button" role="tab">
       Notes &amp; Docs
-      {% set _nd_count = field_notes|length + documents|length %}
+      {% set _nf_count = namespace(n=0) %}
+      {% for fn in field_notes %}{% set _nf_count.n = _nf_count.n + fn.files|length %}{% endfor %}
+      {% set _nd_count = field_notes|length + _nf_count.n %}
       {% if _nd_count %}<span class="ax-tab-badge">{{ _nd_count }}</span>{% endif %}
     </button>
   </li>
@@ -2292,7 +2294,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span style="color:var(--muted)">Notes</span>
       <span class="fw-semibold">{{ field_notes|length }}</span>
       <span style="color:var(--muted)">Docs</span>
-      <span class="fw-semibold">{{ documents|length + total_note_files.count }}</span>
+      <span class="fw-semibold">{{ total_note_files.count }}</span>
       <span style="color:var(--muted)">Bookings</span>
       <span class="fw-semibold">{{ schedules|length }}</span>
     </div>
