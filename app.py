@@ -4391,6 +4391,14 @@ def add_schedule(job_id: int):
     _auto_complete_schedule_cues(cur, job_id, ts)
     _sync_visit_type_from_booking(cur, job_id, bt_status, ts)
     if assigned_to:
+        _prev = cur.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        _old_aid = _prev["assigned_user_id"] if _prev else None
+        if _old_aid and _old_aid != assigned_to:
+            _aname = cur.execute("SELECT full_name FROM users WHERE id = ?", (assigned_to,)).fetchone()
+            cur.execute(
+                "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+                (job_id, caller_id, f"Reallocated to {_aname['full_name'] if _aname else 'Unknown'}", ts)
+            )
         cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                     (assigned_to, ts, job_id))
     conn.commit()
@@ -4469,6 +4477,14 @@ def add_schedule_ajax(job_id: int):
     _sync_visit_type_from_booking(cur, job_id, bt_name, now)
     last_assigned = next((c["assigned_to"] for c in reversed(created) if c["assigned_to"]), None)
     if last_assigned:
+        _prev = cur.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        _old_aid = _prev["assigned_user_id"] if _prev else None
+        if _old_aid and _old_aid != last_assigned:
+            _aname = cur.execute("SELECT full_name FROM users WHERE id = ?", (last_assigned,)).fetchone()
+            cur.execute(
+                "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+                (job_id, caller_id, f"Reallocated to {_aname['full_name'] if _aname else 'Unknown'}", now)
+            )
         cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                     (last_assigned, now, job_id))
     conn.commit()
@@ -4599,6 +4615,14 @@ def job_activate(job_id):
                                         changed_by_user_id=caller_id)
                 _auto_complete_schedule_cues(cur, job_id, now)
                 if assigned_int:
+                    _prev = cur.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
+                    _old_aid = _prev["assigned_user_id"] if _prev else None
+                    if _old_aid and _old_aid != assigned_int:
+                        _aname = cur.execute("SELECT full_name FROM users WHERE id = ?", (assigned_int,)).fetchone()
+                        cur.execute(
+                            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+                            (job_id, caller_id, f"Reallocated to {_aname['full_name'] if _aname else 'Unknown'}", now_ts())
+                        )
                     cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                                 (assigned_int, now_ts(), job_id))
         except Exception as exc:
