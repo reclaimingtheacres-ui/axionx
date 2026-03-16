@@ -1067,6 +1067,17 @@ def _migrate_update_builder():
     )
     """)
 
+    cur.execute("""
+        UPDATE jobs SET customer_id = (
+            SELECT jc.customer_id FROM job_customers jc
+            WHERE jc.job_id = jobs.id
+            ORDER BY CASE WHEN jc.role = 'Primary' THEN 0 ELSE 1 END, jc.sort_order ASC
+            LIMIT 1
+        )
+        WHERE customer_id IS NULL
+          AND EXISTS (SELECT 1 FROM job_customers jc2 WHERE jc2.job_id = jobs.id)
+    """)
+
     conn.commit()
     conn.close()
 
@@ -6693,6 +6704,11 @@ def customer_edit_post(customer_id: int):
                     (entity_type, entity_id, label, email, created_at)
                 VALUES ('customer', ?, ?, ?, ?)
             """, (customer_id, label, em, ts))
+
+    cur.execute("""
+        UPDATE jobs SET updated_at = ?
+        WHERE id IN (SELECT job_id FROM job_customers WHERE customer_id = ?)
+    """, (ts, customer_id))
 
     conn.commit()
     conn.close()
