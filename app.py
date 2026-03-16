@@ -4089,10 +4089,11 @@ def job_detail(job_id: int):
         JOIN booking_types bt ON bt.id = s.booking_type_id
         LEFT JOIN users u ON u.id = s.assigned_to_user_id
         WHERE s.job_id = ? AND s.hidden = 0
+              AND s.status NOT IN ('Completed', 'Cancelled')
         ORDER BY s.scheduled_for ASC
     """, (job_id,))
     schedules = cur.fetchall()
-    next_schedule = next((s for s in schedules if s["status"] not in ("Cancelled", "Completed")), None)
+    next_schedule = schedules[0] if schedules else None
 
     cur.execute("""
         SELECT d.*, u.full_name AS uploaded_by
