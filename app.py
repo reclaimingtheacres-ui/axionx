@@ -14080,13 +14080,13 @@ def _mobile_jobs_query(uid, role, params_in):
             " j.client_reference LIKE ? OR j.job_address LIKE ? OR"
             " j.lender_name LIKE ? OR j.client_job_number LIKE ? OR"
             " j.account_number LIKE ? OR"
-            " cl.name LIKE ? OR"
+            " cl.name LIKE ? OR cu.company LIKE ? OR"
             " (cu.first_name || ' ' || cu.last_name) LIKE ? OR"
             " EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id"
             "   AND (ji.reg LIKE ? OR ji.vin LIKE ?)))"
         )
         like = f"%{q}%"
-        params += [like]*11
+        params += [like]*12
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
@@ -14183,7 +14183,7 @@ def m_api_jobs_search():
         "  AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0"
         "))")
     params = [] if is_admin else [uid, uid]
-    params += [like] * 11
+    params += [like] * 12
     rows = conn.execute(f"""
         SELECT j.id, j.display_ref, j.internal_job_number, j.client_reference,
                j.account_number, j.status, j.job_address, j.lat, j.lng,
@@ -14206,7 +14206,7 @@ def m_api_jobs_search():
                j.client_reference LIKE ? OR j.job_address LIKE ? OR
                j.lender_name LIKE ? OR j.client_job_number LIKE ? OR
                j.account_number LIKE ? OR
-               c.name LIKE ? OR
+               c.name LIKE ? OR cu.company LIKE ? OR
                (cu.first_name || ' ' || cu.last_name) LIKE ? OR
                EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id
                  AND (ji.reg LIKE ? OR ji.vin LIKE ?)))
