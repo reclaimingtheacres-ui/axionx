@@ -5290,6 +5290,32 @@ function axSaveClient() {
 </script>
 {% endif %}
 
+{% if job.status == 'New' and (not job.assigned_user_id or not schedules) %}
+<script>
+(function() {
+  var missing = [];
+  {% if not job.assigned_user_id %}missing.push('an assigned agent');{% endif %}
+  {% if not schedules %}missing.push('a booking');{% endif %}
+  var msg = 'This new job is missing ' + missing.join(' and ') + '. Are you sure you want to leave?';
+  var allowLeave = false;
+  window.addEventListener('beforeunload', function(e) {
+    if (allowLeave) return;
+    e.preventDefault();
+    e.returnValue = msg;
+    return msg;
+  });
+  document.addEventListener('click', function(e) {
+    var link = e.target.closest('a[href]');
+    if (!link) return;
+    var href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript')) return;
+    if (link.getAttribute('target') === '_blank') return;
+    if (confirm(msg)) { allowLeave = true; } else { e.preventDefault(); }
+  }, true);
+})();
+</script>
+{% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('[id^="note-text-"]').forEach(function(el) { axLinkPhones(el); });

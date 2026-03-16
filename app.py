@@ -16465,11 +16465,108 @@ def _extract_suburb(job_address):
 
 
 def _notify_agent_job_assigned(agent_id, job_id, job_ref, job_address):
+    conn = None
     try:
         suburb = _extract_suburb(job_address) or "an unspecified location"
-        msg_body = f"You have a new job to attend to in {suburb}."
         conn = db()
         _ensure_msg_tables(conn)
+
+        job = conn.execute("""
+            SELECT j.*, c.name AS client_name,
+                   cu.first_name AS cust_first, cu.last_name AS cust_last, cu.address AS cust_address
+            FROM jobs j
+            LEFT JOIN clients c ON c.id = j.client_id
+            LEFT JOIN job_customers jc ON jc.job_id = j.id AND jc.role = 'Primary'
+            LEFT JOIN customers cu ON cu.id = jc.customer_id
+            WHERE j.id = ?
+        """, (job_id,)).fetchone()
+
+        items = conn.execute(
+            "SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,)
+        ).fetchall()
+
+        sched = conn.execute("""
+            SELECT s.scheduled_for, bt.name AS bt_name
+            FROM schedules s
+            JOIN booking_types bt ON bt.id = s.booking_type_id
+            WHERE s.job_id = ? AND s.hidden = 0
+                  AND s.status NOT IN ('Completed','Cancelled')
+            ORDER BY s.scheduled_for ASC LIMIT 1
+        """, (job_id,)).fetchone()
+
+        lines = ["A message from SWPI Admin\n"]
+        ref = job_ref
+        header_parts = [f"Job #{ref}"]
+        if job and job["job_type"]:
+            header_parts.append(job["job_type"])
+        cust_label = ""
+        if job and job["cust_last"]:
+            cust_label = (job["cust_first"] or "") + " " + job["cust_last"]
+            header_parts.append(job["cust_last"].upper())
+        if job and job["client_name"]:
+            header_parts.append(job["client_name"])
+        if job and job["account_number"]:
+            header_parts.append(job["account_number"])
+        lines.append(f"Job booking added. {' - '.join(header_parts)}")
+
+        if job and job["regulation_type"]:
+            lines.append(job["regulation_type"])
+
+        fin_parts = []
+        if job and job["arrears_cents"]:
+            fin_parts.append(f"Arrears ${job['arrears_cents']/100:,.2f}")
+        if job and job["costs_cents"]:
+            fin_parts.append(f"costs of ${job['costs_cents']/100:,.2f}inc")
+        if fin_parts:
+            lines.append(" + ".join(fin_parts))
+
+        if job and job["mmp_cents"]:
+            due_date = ""
+            if job["job_due_date"]:
+                try:
+                    dd = datetime.strptime(job["job_due_date"][:10], "%Y-%m-%d")
+                    due_date = f" on the {dd.strftime('%d/%m/%y')}"
+                except Exception:
+                    pass
+            lines.append(f"NMPD ${job['mmp_cents']/100:,.2f}{due_date}")
+
+        if items:
+            sec_descs = []
+            for it in items:
+                desc_parts = []
+                if it["description"]:
+                    desc_parts.append(it["description"])
+                if it["serial_number"]:
+                    desc_parts.append(f"Serial No. {it['serial_number']}")
+                if it["reg"]:
+                    desc_parts.append(f"Rego: {it['reg']}")
+                if desc_parts:
+                    sec_descs.append(" - ".join(desc_parts))
+            if sec_descs:
+                lines.append(f"Security: {' '.join(sec_descs)}")
+
+        cust_line_parts = []
+        if cust_label:
+            cust_addr = (job["cust_address"] if job and job["cust_address"] else
+                         job["job_address"] if job else job_address)
+            cust_line_parts.append(f"for {cust_label}")
+            if cust_addr:
+                cust_line_parts.append(f"at {cust_addr}")
+        elif job and job["job_address"]:
+            cust_line_parts.append(f"at {job['job_address']}")
+        if sched and sched["scheduled_for"]:
+            try:
+                sd = datetime.strptime(sched["scheduled_for"][:16], "%Y-%m-%dT%H:%M")
+                day_suffix = {1:'st',2:'nd',3:'rd',21:'st',22:'nd',23:'rd',31:'st'}.get(sd.day, 'th')
+                sched_str = f"@ {sd.strftime('%H:%M')} {sd.strftime('%a')} {sd.day}{day_suffix} {sd.strftime('%b, %Y')}"
+                cust_line_parts.append(sched_str)
+            except Exception:
+                pass
+        if cust_line_parts:
+            lines.append(" ".join(cust_line_parts) + ".")
+
+        msg_body = "\n".join(lines)
+
         admins = conn.execute(
             "SELECT id FROM users WHERE role IN ('admin','both') AND active=1 ORDER BY id LIMIT 1"
         ).fetchone()
@@ -16484,13 +16581,19 @@ def _notify_agent_job_assigned(agent_id, job_id, job_ref, job_address):
             "UPDATE conversations SET updated_at=? WHERE id=?", (ts, conv_id)
         )
         conn.commit()
-        conn.close()
         _notify_user(agent_id, "New Job Assigned",
                      f"{job_ref} — {suburb}",
                      "job_assigned",
                      {"type": "job_assigned", "job_id": job_id})
     except Exception:
-        pass
+        import traceback
+        traceback.print_exc()
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # ── Device token registration ──────────────────────────────────────────────────
