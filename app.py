@@ -4910,6 +4910,13 @@ def schedule_api_update(sched_id):
             if new_agent_id != old_agent:
                 cur.execute("UPDATE schedules SET assigned_to_user_id = ? WHERE id = ?", (new_agent_id, sched_id))
                 changes.append("Agent reassigned")
+                if old_agent and new_agent_id:
+                    agent_name_row = cur.execute("SELECT full_name FROM users WHERE id = ?", (new_agent_id,)).fetchone()
+                    agent_name = agent_name_row["full_name"] if agent_name_row else "Unknown"
+                    cur.execute(
+                        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+                        (sched["job_id"], caller_id, f"Reallocated to {agent_name}", now_ts())
+                    )
                 if new_agent_id:
                     job_row = cur.execute("SELECT assigned_user_id FROM jobs WHERE id = ?", (sched["job_id"],)).fetchone()
                     prev_job_agent = job_row["assigned_user_id"] if job_row else None
@@ -5339,6 +5346,11 @@ def job_assign_agent(job_id: int):
     if old_agent and old_agent != agent_id:
         _suspend_old_agent_bookings(cur, job_id, old_agent,
                                     changed_by_user_id=session.get("user_id"))
+        _aname = cur.execute("SELECT full_name FROM users WHERE id = ?", (agent_id,)).fetchone()
+        cur.execute(
+            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+            (job_id, session.get("user_id"), f"Reallocated to {_aname['full_name'] if _aname else 'Unknown'}", now)
+        )
     cur.execute("UPDATE jobs SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                 (agent_id, now, job_id))
     conn.commit()
@@ -5727,6 +5739,11 @@ def job_update(job_id: int):
     if old_agent and new_agent and old_agent != new_agent:
         _suspend_old_agent_bookings(cur, job_id, old_agent,
                                     changed_by_user_id=session.get("user_id"))
+        _aname = cur.execute("SELECT full_name FROM users WHERE id = ?", (new_agent,)).fetchone()
+        cur.execute(
+            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+            (job_id, session.get("user_id"), f"Reallocated to {_aname['full_name'] if _aname else 'Unknown'}", now)
+        )
 
     cur.execute("UPDATE jobs SET status = ?, visit_type = ?, assigned_user_id = ?, updated_at = ? WHERE id = ?",
                 (status, visit_type, assigned_user_id, now, job_id))
@@ -5809,6 +5826,12 @@ def job_edit(job_id: int):
     if old_agent_edit and new_agent_edit and old_agent_edit != new_agent_edit:
         _suspend_old_agent_bookings(cur, job_id, old_agent_edit,
                                     changed_by_user_id=session.get("user_id"))
+        _aname = cur.execute("SELECT full_name FROM users WHERE id = ?", (new_agent_edit,)).fetchone()
+        _now_ts = datetime.now().isoformat(timespec="seconds")
+        cur.execute(
+            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+            (job_id, session.get("user_id"), f"Reallocated to {_aname['full_name'] if _aname else 'Unknown'}", _now_ts)
+        )
 
     internal = row["internal_job_number"]
     display_ref = internal
