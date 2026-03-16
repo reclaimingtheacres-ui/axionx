@@ -184,7 +184,8 @@
     <button class="ax-tab" id="tab-notes-btn" data-bs-toggle="tab"
             data-bs-target="#tab-notes" type="button" role="tab">
       Notes &amp; Docs
-      {% if field_notes %}<span class="ax-tab-badge">{{ field_notes|length }}</span>{% endif %}
+      {% set _nd_count = field_notes|length + documents|length %}
+      {% if _nd_count %}<span class="ax-tab-badge">{{ _nd_count }}</span>{% endif %}
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -2269,11 +2270,13 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 
   <div>
     <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">ACTIVITY</div>
+    {% set total_note_files = namespace(count=0) %}
+    {% for fn in field_notes %}{% set total_note_files.count = total_note_files.count + fn.files|length %}{% endfor %}
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
       <span style="color:var(--muted)">Notes</span>
       <span class="fw-semibold">{{ field_notes|length }}</span>
       <span style="color:var(--muted)">Docs</span>
-      <span class="fw-semibold">{{ documents|length }}</span>
+      <span class="fw-semibold">{{ documents|length + total_note_files.count }}</span>
       <span style="color:var(--muted)">Bookings</span>
       <span class="fw-semibold">{{ schedules|length }}</span>
     </div>
