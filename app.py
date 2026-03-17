@@ -8832,6 +8832,13 @@ def edit_job_note(job_id: int, note_id: int):
         staff_uid_raw = request.form.get("staff_user_id", "").strip()
         if staff_uid_raw and staff_uid_raw.isdigit():
             fields["created_by_user_id"] = int(staff_uid_raw)
+        new_cat = request.form.get("note_category", "").strip()
+        if new_cat in ("field_note", "file_note"):
+            fields["note_category"] = new_cat
+            if new_cat == "file_note":
+                fields["review_status"] = "published"
+                if not note["published_at"]:
+                    fields["published_at"] = ts
 
     set_clause = ", ".join(f"{k}=?" for k in fields)
     cur.execute(f"UPDATE job_field_notes SET {set_clause} WHERE id=?",
@@ -8867,12 +8874,16 @@ def edit_job_note(job_id: int, note_id: int):
     all_files = [dict(r) for r in cur.fetchall()]
     conn.close()
 
-    audit("job_note", note_id, "edit", "Field note edited", {"job_id": job_id, "files_added": len(new_files)})
+    _final_cat = fields.get("note_category", note["note_category"] or "file_note")
+    audit("job_note", note_id, "edit",
+          f"{'Field' if _final_cat == 'field_note' else 'File'} note edited",
+          {"job_id": job_id, "files_added": len(new_files)})
     return jsonify({
         "ok": True,
         "note_text": new_text,
         "created_at": updated["created_at"] if updated else note["created_at"],
         "updated_at": updated["updated_at"] if updated else ts,
+        "note_category": _final_cat,
         "files": all_files,
     })
 
@@ -8912,6 +8923,7 @@ def note_detail_api(job_id: int, note_id: int):
         "author_name": note["author_name"] or "Unknown",
         "updated_at": note["updated_at"],
         "updated_by_name": updated_by_name,
+        "note_category": note["note_category"] or "file_note",
         "files": files,
     })
 
@@ -15135,15 +15147,25 @@ def m_quick_note_save(job_id):
         return jsonify({"ok": False, "error": "Nothing to save"}), 400
 
     ts  = now_ts()
-    submit_for_review = request.form.get("submit_for_review") == "1"
-    _note_cat = "field_note"
-    _rev_stat = "submitted_for_review" if submit_for_review else "private_scratch"
+    _is_admin = session.get("role") in ("admin", "both")
+    submit_for_review = request.form.get("submit_for_review") == "1" and not _is_admin
+    if _is_admin:
+        _note_cat = "file_note"
+        _rev_stat = "published"
+    elif submit_for_review:
+        _note_cat = "field_note"
+        _rev_stat = "submitted_for_review"
+    else:
+        _note_cat = "field_note"
+        _rev_stat = "private_scratch"
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
-                                        note_type, audio_filename, note_category, review_status)
-           VALUES (?,?,?,?,?,?,?,?)""",
-        (job_id, uid, note_text, ts, note_type, audio_filename, _note_cat, _rev_stat)
+                                        note_type, audio_filename, note_category, review_status,
+                                        published_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (job_id, uid, note_text, ts, note_type, audio_filename, _note_cat, _rev_stat,
+         ts if _rev_stat == "published" else None)
     )
     note_id = cur.lastrowid
 

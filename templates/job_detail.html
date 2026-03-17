@@ -3644,6 +3644,18 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
         </div>
         {% endif %}
 
+        {% if session.get('role') in ('admin', 'both') %}
+        <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
+          <label class="form-label mb-0" style="font-size:.78rem;color:var(--muted)">Note Type:</label>
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="en_note_category" id="en_cat_file" value="file_note" autocomplete="off" checked>
+            <label class="btn btn-outline-success" for="en_cat_file" style="font-size:.78rem;padding:3px 12px">File Note</label>
+            <input type="radio" class="btn-check" name="en_note_category" id="en_cat_field" value="field_note" autocomplete="off">
+            <label class="btn btn-outline-primary" for="en_cat_field" style="font-size:.78rem;padding:3px 12px">Field Note</label>
+          </div>
+        </div>
+        {% endif %}
+
         <label class="form-label" style="font-size:.82rem;font-weight:600">Note</label>
         <textarea class="form-control" id="en_text" rows="5" style="font-size:.85rem;resize:vertical;margin-bottom:16px"></textarea>
 
@@ -3746,6 +3758,12 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
         }
         var staffEl = document.getElementById('en_staff');
         if (staffEl && data.created_by_user_id) staffEl.value = String(data.created_by_user_id);
+        var enCatFile = document.getElementById('en_cat_file');
+        var enCatField = document.getElementById('en_cat_field');
+        if (enCatFile && enCatField && data.note_category) {
+          if (data.note_category === 'field_note') { enCatField.checked = true; }
+          else { enCatFile.checked = true; }
+        }
         if (data.created_at && data.created_at.length >= 16) {
           var dateEl = document.getElementById('en_date');
           var hourEl = document.getElementById('en_hour');
@@ -3777,6 +3795,8 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     if (dateEl && dateEl.value) fd.append('note_date', dateEl.value);
     if (hourEl) fd.append('note_hour', hourEl.value);
     if (minEl) fd.append('note_minute', minEl.value);
+    var enCatSel = document.querySelector('input[name="en_note_category"]:checked');
+    if (enCatSel) fd.append('note_category', enCatSel.value);
 
     fetch('/jobs/' + JOB_ID + '/notes/' + noteId + '/edit', {
       method: 'POST', body: fd, credentials: 'same-origin'

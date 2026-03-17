@@ -722,14 +722,16 @@ function showTab(name) {
               style="width:100%;padding:14px;background:var(--accent);color:#fff;
                      border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
                      -webkit-tap-highlight-color:transparent;">
-        Save as Field Note
+        {% if session.get('role') in ('admin', 'both') %}Save as File Note{% else %}Save as Field Note{% endif %}
       </button>
+      {% if session.get('role') not in ('admin', 'both') %}
       <button type="button" id="noteSubmitBtn" onclick="saveQuickNote(true)"
               style="width:100%;padding:14px;background:#16a34a;color:#fff;
                      border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
                      -webkit-tap-highlight-color:transparent;">
         Submit as File Update for Admin Review
       </button>
+      {% endif %}
       <button type="button" onclick="closeNoteSheet()"
               style="width:100%;padding:13px;border:none;border-radius:12px;
                      background:#f3f4f6;font-size:.9rem;font-weight:600;color:var(--muted);
@@ -738,7 +740,8 @@ function showTab(name) {
       </button>
     </div>
 
-    {# Smart detection prompt (hidden by default) #}
+    {% if session.get('role') not in ('admin', 'both') %}
+    {# Smart detection prompt (agents only, hidden by default) #}
     <div id="noteSmartPrompt" style="display:none;margin-top:10px;padding:12px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;">
       <div style="font-size:.85rem;font-weight:600;color:#92400e;margin-bottom:8px">
         This note appears to be a file update. Submit for admin review?
@@ -754,6 +757,7 @@ function showTab(name) {
         </button>
       </div>
     </div>
+    {% endif %}
 
   </div>
 </div>
@@ -1527,6 +1531,8 @@ var _noteRecSec      = 0;
 
 // ── Open / close sheet ──────────────────────────────────
 var _editNoteId = 0;
+var _noteDefaultTitle = {{ '"Add File Note"' if session.get('role') in ('admin', 'both') else '"Add Field Note"' | safe }};
+var _noteDefaultSaveLabel = {{ '"Save as File Note"' if session.get('role') in ('admin', 'both') else '"Save as Field Note"' | safe }};
 
 window.mNoteFilter = function(cat, btn) {
   document.querySelectorAll('.m-note-filter-btn').forEach(function(b){
@@ -1561,10 +1567,10 @@ window.openNoteSheet = function(editData) {
     if (saveBtnEl) saveBtnEl.textContent = 'Save Edit';
     if (submitBtnEl) submitBtnEl.style.display = 'none';
   } else {
-    if (titleEl)   titleEl.textContent = 'Add Field Note';
+    if (titleEl)   titleEl.textContent = _noteDefaultTitle;
     if (mediaRow)  mediaRow.style.display = '';
     if (textEl)    textEl.value = '';
-    if (saveBtnEl) saveBtnEl.textContent = 'Save as Field Note';
+    if (saveBtnEl) saveBtnEl.textContent = _noteDefaultSaveLabel;
     if (submitBtnEl) submitBtnEl.style.display = '';
   }
 
@@ -1589,9 +1595,9 @@ window.closeNoteSheet = function() {
   var submitBtnEl = document.getElementById('noteSubmitBtn');
   var smartPrompt = document.getElementById('noteSmartPrompt');
   var saveBtns = document.getElementById('noteSaveBtns');
-  if (titleEl)   titleEl.textContent = 'Add Field Note';
+  if (titleEl)   titleEl.textContent = _noteDefaultTitle;
   if (mediaRow)  mediaRow.style.display = '';
-  if (saveBtnEl) saveBtnEl.textContent = 'Save as Field Note';
+  if (saveBtnEl) saveBtnEl.textContent = _noteDefaultSaveLabel;
   if (submitBtnEl) submitBtnEl.style.display = '';
   if (smartPrompt) smartPrompt.style.display = 'none';
   if (saveBtns) saveBtns.style.display = '';
@@ -1877,7 +1883,7 @@ window.saveQuickNote = function(submitForReview) {
     .catch(function(){ alert('Network error. Please try again.'); })
     .finally(function(){
       btn.disabled    = false;
-      btn.textContent = 'Save as Field Note';
+      btn.textContent = _noteDefaultSaveLabel;
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit as File Update for Admin Review'; }
     });
 };
