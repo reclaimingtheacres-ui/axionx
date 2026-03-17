@@ -63,11 +63,11 @@ final class PushNotificationService: NSObject {
         }.resume()
     }
 
-    // MARK: - Unread count badge (polled after login)
+    // MARK: - Unread count badge (polled after login & on foreground)
 
     func refreshUnreadBadge() {
         guard let url = URL(
-            string: AppConfig.currentBaseURL + "/m/api/lpr/notifications/unread-count"
+            string: AppConfig.currentBaseURL + "/api/messages/unread-count"
         ) else { return }
 
         var request = URLRequest(url: url)

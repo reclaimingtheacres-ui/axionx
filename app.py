@@ -16673,7 +16673,8 @@ _FOLLOWUP_VALID_TRANSITIONS: dict = {
 
 # ── APNs push delivery ─────────────────────────────────────────────────────────
 
-def _apns_send(device_token: str, title: str, body: str, data: dict = None) -> bool:
+def _apns_send(device_token: str, title: str, body: str, data: dict = None,
+               badge: int = None) -> bool:
     try:
         import jwt as _jwt
         import httpx as _httpx
@@ -16697,7 +16698,10 @@ def _apns_send(device_token: str, title: str, body: str, data: dict = None) -> b
             headers={"kid": key_id},
         )
         host    = "api.sandbox.push.apple.com" if is_sandbox else "api.push.apple.com"
-        payload = {"aps": {"alert": {"title": title, "body": body}, "sound": "default"}}
+        aps = {"alert": {"title": title, "body": body}, "sound": "default"}
+        if badge is not None:
+            aps["badge"] = badge
+        payload = {"aps": aps}
         if data:
             payload.update(data)
         with _httpx.Client(http2=True, timeout=10) as client:
@@ -20544,6 +20548,7 @@ def _post_message(conn, conv_id, sender_id, body):
 
     try:
         _lpr_device_tokens_ensure(conn)
+        _ensure_msg_tables(conn)
         sender = conn.execute("SELECT full_name FROM users WHERE id=?", (sender_id,)).fetchone()
         sender_name = sender["full_name"] if sender else "Someone"
         recipients = conn.execute(
@@ -20552,12 +20557,14 @@ def _post_message(conn, conv_id, sender_id, body):
         ).fetchall()
         preview = body.strip()[:80]
         for r in recipients:
+            recipient_unread = _get_unread_count(conn, r["user_id"])
             tokens = conn.execute(
                 "SELECT token FROM lpr_device_tokens WHERE user_id=?", (r["user_id"],)
             ).fetchall()
             for tok in tokens:
                 _apns_send(tok["token"], sender_name, preview,
-                           {"type": "message", "conv_id": conv_id})
+                           {"type": "message", "conv_id": conv_id},
+                           badge=recipient_unread)
     except Exception:
         pass
 

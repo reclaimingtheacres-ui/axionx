@@ -307,6 +307,11 @@ struct WebViewContainer: View {
             if let url = comps.url {
                 store.webView.load(URLRequest(url: url))
             }
+            if notifType == "message" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    PushNotificationService.shared.refreshUnreadBadge()
+                }
+            }
         }
     }
 
@@ -323,6 +328,11 @@ struct WebViewContainer: View {
                url.path.hasPrefix("/m/login") || url.path == "/login" {
                 NotificationCenter.default.post(name: .axionSessionExpired, object: nil)
                 return
+            }
+            if let url = store.webView.url, url.path.hasPrefix("/m/messages") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    PushNotificationService.shared.refreshUnreadBadge()
+                }
             }
         }
         store.webView.addObserver(
