@@ -34,6 +34,7 @@
                 F100000000000000000035 /* DispatchManager.swift in Sources */        = {isa = PBXBuildFile; fileRef = F100000000000000000034; };
                 F100000000000000000037 /* DispatchSheet.swift in Sources */          = {isa = PBXBuildFile; fileRef = F100000000000000000036; };
                 F100000000000000000039 /* PatrolPredictionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000038; };
+                F10000000000000000003B /* PatrolCameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000003A; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,6 +68,7 @@
                 F100000000000000000034 /* DispatchManager.swift */         = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchManager.swift; sourceTree = "<group>"; };
                 F100000000000000000036 /* DispatchSheet.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSheet.swift; sourceTree = "<group>"; };
                 F100000000000000000038 /* PatrolPredictionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatrolPredictionService.swift; sourceTree = "<group>"; };
+                F10000000000000000003A /* PatrolCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatrolCameraService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -149,6 +151,7 @@
                                 F100000000000000000030 /* FieldStatusManager.swift */,
                                 F100000000000000000034 /* DispatchManager.swift */,
                                 F100000000000000000038 /* PatrolPredictionService.swift */,
+                                F10000000000000000003A /* PatrolCameraService.swift */,
                         );
                         path = Services;
                         sourceTree = "<group>";
@@ -275,6 +278,7 @@
                                 F100000000000000000035 /* DispatchManager.swift in Sources */,
                                 F100000000000000000037 /* DispatchSheet.swift in Sources */,
                                 F100000000000000000039 /* PatrolPredictionService.swift in Sources */,
+                                F10000000000000000003B /* PatrolCameraService.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };

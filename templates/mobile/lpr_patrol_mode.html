@@ -316,6 +316,81 @@ function _detectCameraSupport() {
   return 'available';
 }
 
+/* ── Native patrol bridge ──────────────────────────────── */
+var _nativePatrolActive = false;
+
+function _hasNativePatrolBridge() {
+  return _isNativeWrapper
+    && window.webkit
+    && window.webkit.messageHandlers
+    && window.webkit.messageHandlers.patrolCamera;
+}
+
+function _startNativePatrol() {
+  window._nativePatrolStatus = function(status) {
+    if (status === 'active') {
+      _nativePatrolActive = true;
+      _scanning = true;
+      _setCameraState('active', 'PATROL MODE ACTIVE',
+        'Native camera scanning · Matches trigger an alert', '#ef4444', true);
+    } else if (status === 'permission_denied') {
+      _setCameraState('permission_denied', 'CAMERA BLOCKED',
+        'Camera access is turned off for AxionX. Enable Camera in iPhone Settings → AxionX → Camera.',
+        '#ef4444', false);
+    } else if (status === 'no_camera') {
+      _setCameraState('no_hardware', 'NO CAMERA',
+        'No camera found on this device.', '#ef4444', false);
+    } else {
+      _setCameraState('init_failed', 'CAMERA ERROR',
+        'Native camera failed to start. Close Patrol Mode and try again.',
+        '#ef4444', false);
+    }
+  };
+
+  window._nativePatrolPlateDetected = function(plate) {
+    if (!plate || plate.length < MIN_PLATE_LEN) return;
+    _scanCount++;
+    document.getElementById('pmScanNum').textContent = _scanCount;
+
+    addToFeed(plate, null);
+
+    _fetchInFlight = true;
+    fetch('/m/api/lpr/patrol-scan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({plate: plate})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (!data.ok || !data.plate) return;
+      var result = data.result;
+      var rtype  = result && result.result_type;
+      var feedItems = document.querySelectorAll('.pm-feed-item');
+      if (feedItems.length > 0) {
+        var latest = feedItems[0];
+        if (rtype === 'allocated_match') latest.classList.add('match');
+        else if (rtype === 'restricted_match') latest.classList.add('restricted');
+        else if (rtype === 'watchlist_hit' || (rtype && rtype.indexOf('watchlist') >= 0)) latest.classList.add('watchlist');
+      }
+      if (rtype === 'allocated_match' || rtype === 'restricted_match' || rtype === 'conflict' || (result && result.watchlist_hit)) {
+        showAlert(plate, result);
+      }
+    })
+    .catch(function(){})
+    .finally(function(){ _fetchInFlight = false; });
+  };
+
+  _setCameraState('init', 'STARTING', 'Initialising native camera…', '#f59e0b', true);
+  window.webkit.messageHandlers.patrolCamera.postMessage({action: 'start'});
+}
+
+function _stopNativePatrol() {
+  if (_nativePatrolActive && _hasNativePatrolBridge()) {
+    window.webkit.messageHandlers.patrolCamera.postMessage({action: 'stop'});
+  }
+  _nativePatrolActive = false;
+}
+
 /* ── Camera init ────────────────────────────────────────── */
 async function startCamera() {
   _recovering = false;
@@ -323,18 +398,27 @@ async function startCamera() {
   var support = _detectCameraSupport();
 
   if (support !== 'available') {
-    var msg, status;
     if (support === 'insecure_context') {
-      status = 'INSECURE CONTEXT';
-      msg = 'Camera requires a secure (HTTPS) connection. Please access AxionX via HTTPS.';
-    } else if (_isNativeWrapper) {
-      status = 'BUILD UPDATE REQUIRED';
-      msg = 'This installed build does not include camera support. Please install the latest AxionX mobile build.';
-    } else {
-      status = 'CAMERA UNAVAILABLE';
-      msg = 'Camera API is not available in this browser. Use the latest AxionX mobile app or a supported browser.';
+      _setCameraState('api_missing', 'INSECURE CONTEXT',
+        'Camera requires a secure (HTTPS) connection. Please access AxionX via HTTPS.',
+        '#ef4444', false);
+      return;
     }
-    _setCameraState('api_missing', status, msg, '#ef4444', false);
+
+    if (_hasNativePatrolBridge()) {
+      _startNativePatrol();
+      return;
+    }
+
+    if (_isNativeWrapper) {
+      _setCameraState('api_missing', 'CAMERA UNAVAILABLE',
+        'Camera is not available. Please close and reopen the app, or check Camera is enabled in iPhone Settings → AxionX.',
+        '#ef4444', false);
+    } else {
+      _setCameraState('api_missing', 'CAMERA UNAVAILABLE',
+        'Camera API is not available in this browser. Use the latest AxionX mobile app or a supported browser.',
+        '#ef4444', false);
+    }
     return;
   }
 
@@ -723,6 +807,7 @@ function _pmFullCleanup() {
 
 /* ── Stop patrol ─────────────────────────────────────────── */
 window.pmStop = function() {
+  _stopNativePatrol();
   _pmFullCleanup();
   window.location.href = '{{ url_for("m_jobs") }}';
 };
@@ -805,7 +890,7 @@ function _updateDiagnostics() {
 
   var support = _detectCameraSupport();
   var nativeBridge = _isNativeWrapper
-    ? ((window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startPatrolMode) ? 'yes' : 'no')
+    ? (_hasNativePatrolBridge() ? 'yes (patrolCamera)' : 'no')
     : 'n/a';
   var permStatus = 'unknown';
   if (_cameraState === 'permission_denied') permStatus = 'denied';
@@ -880,12 +965,20 @@ setInterval(function() {
 /* ── iOS Native Bridge Contract ─────────────────────────────
  *
  * When running inside the AxionXiOS wrapper the native layer
- * handles camera/OCR/duplicate-suppression.  The web layer
- * remains the coordinator for lookup, result rendering and
- * sighting persistence.
+ * handles camera/OCR/duplicate-suppression via PatrolCameraService.
+ * The web layer remains the coordinator for lookup, result
+ * rendering and sighting persistence.
  *
- * Swift → JS callbacks (called by the native scanner):
+ * JS → Swift messages (via webkit.messageHandlers.patrolCamera):
+ *   {action:'start'}  — begin native camera + Vision OCR
+ *   {action:'stop'}   — end native camera session
+ *   {action:'torch', on:true/false} — toggle torch
  *
+ * Swift → JS callbacks:
+ *   window._nativePatrolStatus(status) — camera state: active/permission_denied/no_camera/etc
+ *   window._nativePatrolPlateDetected(plate) — detected plate candidate
+ *
+ * Legacy bridge (kept for compatibility):
  *   window.axionPatrolPlateRead(plate)
  *     Called each time a unique plate candidate is read.
  *     The web layer runs the AxionX lookup and shows alerts.
@@ -946,47 +1039,36 @@ window.axionPatrolStopped = function() {
 
 /* ── Kickoff ─────────────────────────────────────────────── */
 if (_isNativeWrapper) {
-  var _nativeBridgeAvailable = false;
-  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.startPatrolMode) {
-    _nativeBridgeAvailable = true;
+  if (_hasNativePatrolBridge()) {
     document.getElementById('patrolVideo').style.display = 'none';
     document.getElementById('pmScanLine').style.display  = 'none';
-    _setCameraState('native_active', 'PATROL MODE ACTIVE', 'Native scanner active · Matches trigger an alert', '#ef4444', true);
-    window.webkit.messageHandlers.startPatrolMode.postMessage({});
-  } else if (window.AxionXBridge && window.AxionXBridge.startPatrolMode) {
-    _nativeBridgeAvailable = true;
-    document.getElementById('patrolVideo').style.display = 'none';
-    document.getElementById('pmScanLine').style.display  = 'none';
-    _setCameraState('native_active', 'PATROL MODE ACTIVE', 'Native scanner active · Matches trigger an alert', '#ef4444', true);
-    window.AxionXBridge.startPatrolMode();
+    _startNativePatrol();
   } else {
-    // iOS wrapper detected but native scanner bridge not wired — try web camera
-    // Video/scanline stay visible for web camera fallback
     startCamera();
   }
-  // Override torch and stop to route through native bridge
   window.pmToggleTorch = function() {
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.toggleTorch) {
-      window.webkit.messageHandlers.toggleTorch.postMessage({});
+    if (_nativePatrolActive && _hasNativePatrolBridge()) {
+      _torchOn = !_torchOn;
+      window.webkit.messageHandlers.patrolCamera.postMessage({action: 'torch', on: _torchOn});
+    } else if (_stream) {
+      _torchOn = !_torchOn;
+      var track = _stream.getVideoTracks()[0];
+      if (track && track.getCapabilities && track.getCapabilities().torch) {
+        track.applyConstraints({advanced: [{torch: _torchOn}]});
+      }
     }
     var btn = document.getElementById('pmTorchBtn');
-    _torchOn = !_torchOn;
     if (btn) {
       btn.style.background = _torchOn ? 'rgba(251,191,36,.8)' : 'rgba(255,255,255,.12)';
       btn.style.color      = _torchOn ? '#111' : '#fff';
     }
   };
   window.pmStop = function() {
+    _stopNativePatrol();
     _pmFullCleanup();
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.stopPatrolMode) {
-      window.webkit.messageHandlers.stopPatrolMode.postMessage({});
-    } else if (window.AxionXBridge && window.AxionXBridge.stopPatrolMode) {
-      window.AxionXBridge.stopPatrolMode();
-    }
     window.location.href = '{{ url_for("m_jobs") }}';
   };
 } else {
-  // Browser web camera fallback
   startCamera();
 }
 

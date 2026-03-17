@@ -337,7 +337,12 @@ struct WebViewContainer: View {
         }
         store.webView.addObserver(
             URLObserver { url in
-                DispatchQueue.main.async { currentURL = url }
+                DispatchQueue.main.async {
+                    currentURL = url
+                    if let u = url, !u.path.hasPrefix("/m/lpr/patrol") {
+                        PatrolCameraService.shared.stopPatrol()
+                    }
+                }
             },
             forKeyPath: #keyPath(WKWebView.url),
             options: [.new],
@@ -345,6 +350,8 @@ struct WebViewContainer: View {
         )
         // Give the sync manager access to the shared webView session
         SyncManager.shared.setWebView(store.webView)
+        // Give the patrol camera service access to the webView for JS callbacks
+        PatrolCameraService.shared.setWebView(store.webView)
     }
 
     /// Call the lookup API natively using the webview's session cookies.

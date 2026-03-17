@@ -18,6 +18,7 @@ final class WebViewStore: ObservableObject {
 
         let biometricHandler = BiometricSettingsHandler()
         config.userContentController.add(biometricHandler, name: "biometricSettings")
+        config.userContentController.add(PatrolCameraService.shared, name: "patrolCamera")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.backgroundColor = .white
