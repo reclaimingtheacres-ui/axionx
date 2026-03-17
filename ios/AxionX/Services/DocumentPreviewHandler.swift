@@ -28,6 +28,10 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         fetchCookiesAndDownload(remoteURL: docURL, filename: filename)
     }
 
+    func previewFile(at url: URL, filename: String) {
+        fetchCookiesAndDownload(remoteURL: url, filename: filename)
+    }
+
     private func fetchCookiesAndDownload(remoteURL: URL, filename: String) {
         guard let cookieStore = webView?.configuration.websiteDataStore.httpCookieStore else {
             downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: [])

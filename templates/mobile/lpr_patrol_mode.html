@@ -299,6 +299,29 @@ var ctx     = canvas.getContext('2d');
 
 /* ── Camera state detection ─────────────────────────────── */
 var _cameraState = 'unknown';
+var _cameraRetrying = false;
+
+window._cameraPermissionResult = function(status) {
+  console.log('[PatrolJS] _cameraPermissionResult: ' + status + ', current state: ' + _cameraState);
+  if (status === 'authorized' && (_cameraState === 'permission_denied' || _cameraState === 'api_missing' || _cameraState === 'init_failed')) {
+    _cameraRetrying = true;
+    if (_hasNativePatrolBridge()) {
+      _kickoffNative();
+    } else {
+      startCamera();
+    }
+  }
+};
+
+window.axRetryCamera = function() {
+  console.log('[PatrolJS] axRetryCamera called, current state: ' + _cameraState);
+  _cameraRetrying = true;
+  if (_hasNativePatrolBridge()) {
+    _kickoffNative();
+  } else {
+    startCamera();
+  }
+};
 
 function _setCameraState(state, statusText, subtitle, pulseColor, pulseAnim, showSettingsLink) {
   _cameraState = state;
@@ -458,6 +481,22 @@ async function startCamera() {
     }
 
     if (_isNativeWrapper) {
+      if (!_cameraRetrying) {
+        _cameraRetrying = true;
+        _setCameraState('init', 'STARTING', 'Retrying native camera bridge…', '#f59e0b', true);
+        setTimeout(function() {
+          if (_hasNativePatrolBridge()) {
+            _kickoffNative();
+          } else {
+            _cameraRetrying = false;
+            _setCameraState('api_missing', 'CAMERA UNAVAILABLE',
+              'Camera is not available. Check Camera is enabled in iPhone Settings → AxionX.',
+              '#ef4444', false, true);
+          }
+        }, 1500);
+        return;
+      }
+      _cameraRetrying = false;
       _setCameraState('api_missing', 'CAMERA UNAVAILABLE',
         'Camera is not available. Check Camera is enabled in iPhone Settings → AxionX.',
         '#ef4444', false, true);
@@ -1095,7 +1134,7 @@ function _waitForBridgeThenStart(attempt) {
     _kickoffNative();
     return;
   }
-  if (attempt >= 10) {
+  if (attempt >= 15) {
     startCamera();
     return;
   }

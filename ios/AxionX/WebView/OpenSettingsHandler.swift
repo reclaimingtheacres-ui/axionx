@@ -30,16 +30,38 @@ final class OpenSettingsHandler: NSObject, WKScriptMessageHandler {
                 NotificationCenter.default.removeObserver(token)
                 self.observerToken = nil
             }
-            print("[OpenSettings] App became active, refreshing webview")
+            print("[OpenSettings] App became active, refreshing camera status")
 
             CameraPermissionService.shared.ensureCameraPermission()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                 guard let wv = self.webView else { return }
-                if let saved = savedURL {
-                    wv.load(URLRequest(url: saved))
-                } else {
-                    wv.reload()
+                let checkJS = "typeof window.axRetryCamera === 'function'"
+                wv.evaluateJavaScript(checkJS) { result, error in
+                    if error == nil, let hasHandler = result as? Bool, hasHandler {
+                        print("[OpenSettings] Page alive, axRetryCamera present — triggering camera retry via JS")
+                        wv.evaluateJavaScript("window.axRetryCamera()") { _, _ in }
+                    } else if error == nil {
+                        print("[OpenSettings] Page alive but no axRetryCamera — status already pushed, reloading")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            guard let wv2 = self.webView else { return }
+                            if let saved = savedURL {
+                                wv2.load(URLRequest(url: saved))
+                            } else {
+                                wv2.reload()
+                            }
+                        }
+                    } else {
+                        print("[OpenSettings] Page unresponsive or no JS handler — reloading")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            guard let wv2 = self.webView else { return }
+                            if let saved = savedURL {
+                                wv2.load(URLRequest(url: saved))
+                            } else {
+                                wv2.reload()
+                            }
+                        }
+                    }
                 }
             }
         }

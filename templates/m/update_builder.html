@@ -181,9 +181,14 @@ Update Builder
       <textarea id="final_narrative" class="m-textarea" rows="10" style="font-size:.88rem;line-height:1.6;"></textarea>
     </div>
   </div>
-  <button type="button" class="m-btn m-btn-green" id="applyBtn" style="margin-bottom:8px;">
-    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-    Apply to Job Notes
+  <div style="font-size:.78rem;font-weight:600;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;">Save as…</div>
+  <button type="button" class="m-btn m-btn-green" id="saveFieldNoteBtn" style="margin-bottom:8px;">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    Save as Field Note
+  </button>
+  <button type="button" class="m-btn" id="submitReviewBtn" style="margin-bottom:8px;background:#2563eb;color:#fff;">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    Submit for Admin Review
   </button>
   <button type="button" class="m-btn m-btn-secondary" id="regenerateBtn">Regenerate</button>
 </div>
@@ -413,7 +418,8 @@ Update Builder
     updatePhoneRow();
 
     $$('generateBtn').addEventListener('click', generate);
-    $$('applyBtn').addEventListener('click', apply);
+    $$('saveFieldNoteBtn').addEventListener('click', function() { apply('field_note'); });
+    $$('submitReviewBtn').addEventListener('click', function() { apply('submit_review'); });
     $$('regenerateBtn').addEventListener('click', generate);
 
     _timer = setInterval(function(){ doAutosave(false); }, 30000);
@@ -451,24 +457,32 @@ Update Builder
     .catch(function(){ btn.textContent = 'Generate AI Update'; btn.disabled = false; alert('Network error. Please try again.'); });
   }
 
-  function apply() {
+  var _saving = false;
+  function apply(saveMode) {
+    if (_saving) return;
     var narrative = $$('final_narrative').value.trim();
     if (!narrative) { alert('Please generate a narrative first.'); return; }
-    var btn = $$('applyBtn');
+    _saving = true;
+    var isFieldNote = saveMode === 'field_note';
+    var btn = isFieldNote ? $$('saveFieldNoteBtn') : $$('submitReviewBtn');
+    var otherBtn = isFieldNote ? $$('submitReviewBtn') : $$('saveFieldNoteBtn');
+    var origText = btn.textContent;
     btn.textContent = 'Saving\u2026'; btn.disabled = true;
+    otherBtn.disabled = true;
     var payload = formData();
     payload.final_narrative = narrative;
     payload.generated_narrative = narrative;
+    payload.save_mode = saveMode;
     fetch('/jobs/' + JOB_ID + '/update-builder/save', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
     })
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if (data.error) { btn.textContent = 'Apply to Job Notes'; btn.disabled = false; alert(data.error); return; }
+      if (data.error) { btn.textContent = origText; btn.disabled = false; otherBtn.disabled = false; _saving = false; alert(data.error); return; }
       _applied = true; clearInterval(_timer);
       window.location.href = '/m/job/' + JOB_ID;
     })
-    .catch(function(){ btn.textContent = 'Apply to Job Notes'; btn.disabled = false; alert('Save failed. Try again.'); });
+    .catch(function(){ btn.textContent = origText; btn.disabled = false; otherBtn.disabled = false; _saving = false; alert('Save failed. Try again.'); });
   }
 })();
 </script>

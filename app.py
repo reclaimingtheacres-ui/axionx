@@ -9709,6 +9709,7 @@ def update_builder_save(job_id: int):
     final_text   = (data.get("final_narrative") or "").strip()
     gen_text     = (data.get("generated_narrative") or "").strip()
     was_edited   = 1 if final_text != gen_text else 0
+    save_mode    = data.get("save_mode", "submit_review")
 
     if not final_text:
         conn.close()
@@ -9735,12 +9736,14 @@ def update_builder_save(job_id: int):
     if photos_count > 0:
         note_type = "photo_text" if final_text else "photo"
 
+    review_status = "approved" if save_mode == "field_note" else "submitted_for_review"
+
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
                                         note_type, note_category, review_status)
            VALUES (?,?,?,?,?,?,?)""",
-        (job_id, uid, final_text, ts, note_type, "field_note", "submitted_for_review")
+        (job_id, uid, final_text, ts, note_type, "field_note", review_status)
     )
     note_id = cur.lastrowid
 
@@ -9763,24 +9766,25 @@ def update_builder_save(job_id: int):
                          (ts, ts, cue_today["id"]))
             conn.commit()
 
-    try:
-        existing_review = conn.execute(
-            """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
-               AND status='Pending' AND cue_status IN ('open','in_review')""",
-            (job_id,)
-        ).fetchone()
-        if not existing_review:
-            from datetime import datetime as _dt2
-            _today = _dt2.now(_melbourne).date().isoformat()
-            conn.execute("""
-                INSERT INTO cue_items
-                  (job_id, visit_type, due_date, priority, status,
-                   instructions, created_by_user_id, created_at, updated_at, cue_status)
-                VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
-            """, (job_id, _today, final_text[:200], uid, ts, ts))
-            conn.commit()
-    except Exception:
-        pass
+    if save_mode != "field_note":
+        try:
+            existing_review = conn.execute(
+                """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
+                   AND status='Pending' AND cue_status IN ('open','in_review')""",
+                (job_id,)
+            ).fetchone()
+            if not existing_review:
+                from datetime import datetime as _dt2
+                _today = _dt2.now(_melbourne).date().isoformat()
+                conn.execute("""
+                    INSERT INTO cue_items
+                      (job_id, visit_type, due_date, priority, status,
+                       instructions, created_by_user_id, created_at, updated_at, cue_status)
+                    VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
+                """, (job_id, _today, final_text[:200], uid, ts, ts))
+                conn.commit()
+        except Exception:
+            pass
 
     conn.close()
     audit("job_update", draft_id or 0, "save",

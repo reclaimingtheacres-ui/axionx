@@ -44,6 +44,16 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
 
+        let ext = url.pathExtension.lowercased()
+        if Self.documentExtensions.contains(ext)
+            && AllowedDomains.isTrusted(url)
+            && navigationAction.navigationType == .linkActivated {
+            let filename = url.lastPathComponent
+            DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
+            decisionHandler(.cancel)
+            return
+        }
+
         if AllowedDomains.isTrusted(url),
            url.path.hasPrefix("/m/login") || url.path == "/login" {
             DispatchQueue.main.async {
@@ -91,13 +101,23 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     ) -> WKWebView? {
         if let url = navigationAction.request.url {
             if AllowedDomains.isTrusted(url) {
-                webView.load(navigationAction.request)
+                let ext = url.pathExtension.lowercased()
+                if Self.documentExtensions.contains(ext) {
+                    let filename = url.lastPathComponent
+                    DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
+                } else {
+                    webView.load(navigationAction.request)
+                }
             } else {
                 UIApplication.shared.open(url)
             }
         }
         return nil
     }
+
+    private static let documentExtensions: Set<String> = [
+        "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx", "rtf"
+    ]
 
     /// Native alert() support so JS dialogs work inside the WebView.
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
