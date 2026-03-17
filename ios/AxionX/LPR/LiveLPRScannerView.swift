@@ -72,7 +72,7 @@ struct LiveLPRScannerView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if error == .permissionDenied {
+                if error == .permissionDenied || error == .restricted {
                     Button(action: {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)

@@ -35,6 +35,12 @@
                 F100000000000000000037 /* DispatchSheet.swift in Sources */          = {isa = PBXBuildFile; fileRef = F100000000000000000036; };
                 F100000000000000000039 /* PatrolPredictionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000038; };
                 F10000000000000000003B /* PatrolCameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000003A; };
+                F10000000000000000003D /* BiometricSettingsHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000003C; };
+                F10000000000000000003F /* OpenSettingsHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000003E; };
+                F100000000000000000041 /* BiometricAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000040; };
+                F100000000000000000043 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000042; };
+                F100000000000000000045 /* LoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000044; };
+                F100000000000000000047 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000046; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -69,6 +75,12 @@
                 F100000000000000000036 /* DispatchSheet.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSheet.swift; sourceTree = "<group>"; };
                 F100000000000000000038 /* PatrolPredictionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatrolPredictionService.swift; sourceTree = "<group>"; };
                 F10000000000000000003A /* PatrolCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatrolCameraService.swift; sourceTree = "<group>"; };
+                F10000000000000000003C /* BiometricSettingsHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricSettingsHandler.swift; sourceTree = "<group>"; };
+                F10000000000000000003E /* OpenSettingsHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSettingsHandler.swift; sourceTree = "<group>"; };
+                F100000000000000000040 /* BiometricAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthService.swift; sourceTree = "<group>"; };
+                F100000000000000000042 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+                F100000000000000000044 /* LoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginService.swift; sourceTree = "<group>"; };
+                F100000000000000000046 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -115,6 +127,8 @@
                                 F100000000000000000005 /* AxionWebView.swift */,
                                 F100000000000000000007 /* WebViewContainer.swift */,
                                 F100000000000000000009 /* WebViewNavigationDelegate.swift */,
+                                F10000000000000000003C /* BiometricSettingsHandler.swift */,
+                                F10000000000000000003E /* OpenSettingsHandler.swift */,
                         );
                         path = WebView;
                         sourceTree = "<group>";
@@ -136,6 +150,7 @@
                                 F10000000000000000002C /* SyncStatusView.swift */,
                                 F100000000000000000032 /* FieldStatusView.swift */,
                                 F100000000000000000036 /* DispatchSheet.swift */,
+                                F100000000000000000046 /* LoginView.swift */,
                         );
                         path = Views;
                         sourceTree = "<group>";
@@ -152,6 +167,9 @@
                                 F100000000000000000034 /* DispatchManager.swift */,
                                 F100000000000000000038 /* PatrolPredictionService.swift */,
                                 F10000000000000000003A /* PatrolCameraService.swift */,
+                                F100000000000000000040 /* BiometricAuthService.swift */,
+                                F100000000000000000042 /* KeychainService.swift */,
+                                F100000000000000000044 /* LoginService.swift */,
                         );
                         path = Services;
                         sourceTree = "<group>";
@@ -279,6 +297,12 @@
                                 F100000000000000000037 /* DispatchSheet.swift in Sources */,
                                 F100000000000000000039 /* PatrolPredictionService.swift in Sources */,
                                 F10000000000000000003B /* PatrolCameraService.swift in Sources */,
+                                F10000000000000000003D /* BiometricSettingsHandler.swift in Sources */,
+                                F10000000000000000003F /* OpenSettingsHandler.swift in Sources */,
+                                F100000000000000000041 /* BiometricAuthService.swift in Sources */,
+                                F100000000000000000043 /* KeychainService.swift in Sources */,
+                                F100000000000000000045 /* LoginService.swift in Sources */,
+                                F100000000000000000047 /* LoginView.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };

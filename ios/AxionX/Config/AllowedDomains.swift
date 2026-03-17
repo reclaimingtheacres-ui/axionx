@@ -21,7 +21,7 @@ enum AllowedDomains {
     }()
 
     // ── Native URL schemes (open in system app) ───────────────────────────────
-    private static let nativeSchemes: Set<String> = ["tel", "sms", "facetime", "facetime-audio"]
+    private static let nativeSchemes: Set<String> = ["tel", "sms", "facetime", "facetime-audio", "app-settings"]
 
     // ── Map hosts (open in Apple Maps) ───────────────────────────────────────
     private static let mapHosts: Set<String> = ["maps.apple.com", "maps.google.com"]

@@ -17,8 +17,10 @@ final class WebViewStore: ObservableObject {
         config.mediaTypesRequiringUserActionForPlayback = []
 
         let biometricHandler = BiometricSettingsHandler()
+        let openSettingsHandler = OpenSettingsHandler()
         config.userContentController.add(biometricHandler, name: "biometricSettings")
         config.userContentController.add(PatrolCameraService.shared, name: "patrolCamera")
+        config.userContentController.add(openSettingsHandler, name: "openSettings")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.backgroundColor = .white
@@ -33,9 +35,11 @@ final class WebViewStore: ObservableObject {
         self.webView = wv
         self.navigationDelegate = delegate
         self.biometricHandler = biometricHandler
+        self.openSettingsHandler = openSettingsHandler
     }
 
     private let biometricHandler: BiometricSettingsHandler
+    private let openSettingsHandler: OpenSettingsHandler
 
     func loadInitial() {
         webView.load(URLRequest(

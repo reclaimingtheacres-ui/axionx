@@ -300,10 +300,27 @@ var ctx     = canvas.getContext('2d');
 /* ── Camera state detection ─────────────────────────────── */
 var _cameraState = 'unknown';
 
-function _setCameraState(state, statusText, subtitle, pulseColor, pulseAnim) {
+function _setCameraState(state, statusText, subtitle, pulseColor, pulseAnim, showSettingsLink) {
   _cameraState = state;
   document.getElementById('pmStatusText').textContent = statusText;
-  document.getElementById('pmSubtitle').textContent = subtitle;
+  var subEl = document.getElementById('pmSubtitle');
+  subEl.textContent = subtitle;
+  if (showSettingsLink && _isNativeWrapper) {
+    var link = document.createElement('a');
+    link.href = 'app-settings:';
+    link.textContent = 'Open Settings';
+    link.style.cssText = 'display:inline-block;margin-top:10px;padding:10px 20px;background:rgba(255,255,255,.15);color:#fff;border-radius:10px;font-weight:600;font-size:.85rem;text-decoration:none;';
+    link.onclick = function(e) {
+      e.preventDefault();
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openSettings) {
+        window.webkit.messageHandlers.openSettings.postMessage({});
+      } else {
+        window.location.href = 'app-settings:';
+      }
+    };
+    subEl.appendChild(document.createElement('br'));
+    subEl.appendChild(link);
+  }
   document.getElementById('pmPulseDot').style.background = pulseColor || '#ef4444';
   document.getElementById('pmPulseDot').style.animation = pulseAnim === false ? 'none' : 'pm-pulse 1s infinite';
   _updateDiagnostics();
@@ -335,8 +352,11 @@ function _startNativePatrol() {
         'Native camera scanning · Matches trigger an alert', '#ef4444', true);
     } else if (status === 'permission_denied') {
       _setCameraState('permission_denied', 'CAMERA BLOCKED',
-        'Camera access is turned off for AxionX. Enable Camera in iPhone Settings → AxionX → Camera.',
-        '#ef4444', false);
+        'Camera access is turned off. Enable Camera in iPhone Settings → AxionX.',
+        '#ef4444', false, true);
+    } else if (status === 'not_determined') {
+      _setCameraState('init', 'REQUESTING ACCESS',
+        'Please allow camera access when prompted…', '#f59e0b', true);
     } else if (status === 'no_camera') {
       _setCameraState('no_hardware', 'NO CAMERA',
         'No camera found on this device.', '#ef4444', false);
@@ -412,8 +432,8 @@ async function startCamera() {
 
     if (_isNativeWrapper) {
       _setCameraState('api_missing', 'CAMERA UNAVAILABLE',
-        'Camera is not available. Please close and reopen the app, or check Camera is enabled in iPhone Settings → AxionX.',
-        '#ef4444', false);
+        'Camera is not available. Check Camera is enabled in iPhone Settings → AxionX.',
+        '#ef4444', false, true);
     } else {
       _setCameraState('api_missing', 'CAMERA UNAVAILABLE',
         'Camera API is not available in this browser. Use the latest AxionX mobile app or a supported browser.',
@@ -429,8 +449,8 @@ async function startCamera() {
         permResult = await navigator.permissions.query({ name: 'camera' });
         if (permResult.state === 'denied') {
           _setCameraState('permission_denied', 'CAMERA BLOCKED',
-            'Camera access is turned off for AxionX. Enable Camera in iPhone Settings → AxionX → Camera.',
-            '#ef4444', false);
+            'Camera access is turned off. Enable Camera in iPhone Settings → AxionX.',
+            '#ef4444', false, true);
           return;
         }
       } catch(pErr) {}
@@ -462,8 +482,8 @@ async function startCamera() {
   } catch(err) {
     if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
       _setCameraState('permission_denied', 'CAMERA BLOCKED',
-        'Camera access is turned off for AxionX. Enable Camera in iPhone Settings → AxionX → Camera.',
-        '#ef4444', false);
+        'Camera access is turned off. Enable Camera in iPhone Settings → AxionX.',
+        '#ef4444', false, true);
     } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
       _setCameraState('no_hardware', 'NO CAMERA',
         'No camera found on this device.',
@@ -1038,13 +1058,28 @@ window.axionPatrolStopped = function() {
 };
 
 /* ── Kickoff ─────────────────────────────────────────────── */
+function _kickoffNative() {
+  document.getElementById('patrolVideo').style.display = 'none';
+  document.getElementById('pmScanLine').style.display  = 'none';
+  _startNativePatrol();
+}
+function _waitForBridgeThenStart(attempt) {
+  if (_hasNativePatrolBridge()) {
+    _kickoffNative();
+    return;
+  }
+  if (attempt >= 10) {
+    startCamera();
+    return;
+  }
+  setTimeout(function() { _waitForBridgeThenStart(attempt + 1); }, 200);
+}
 if (_isNativeWrapper) {
   if (_hasNativePatrolBridge()) {
-    document.getElementById('patrolVideo').style.display = 'none';
-    document.getElementById('pmScanLine').style.display  = 'none';
-    _startNativePatrol();
+    _kickoffNative();
   } else {
-    startCamera();
+    _setCameraState('init', 'STARTING', 'Waiting for native camera bridge…', '#f59e0b', true);
+    _waitForBridgeThenStart(0);
   }
   window.pmToggleTorch = function() {
     if (_nativePatrolActive && _hasNativePatrolBridge()) {

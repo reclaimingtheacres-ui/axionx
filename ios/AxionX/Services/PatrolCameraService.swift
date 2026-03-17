@@ -55,6 +55,7 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         case .authorized:
             setupAndStart()
         case .notDetermined:
+            sendStatus("not_determined")
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
                     if granted {
@@ -67,7 +68,7 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         case .denied:
             sendStatus("permission_denied")
         case .restricted:
-            sendStatus("restricted")
+            sendStatus("permission_denied")
         @unknown default:
             sendStatus("error")
         }
