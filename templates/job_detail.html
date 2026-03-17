@@ -3263,10 +3263,6 @@ document.addEventListener('click', function(e) {
           iframe.src = blobUrl;
           iframe.style.cssText = 'width:100%;height:78vh;border:0;display:block';
           body.appendChild(iframe);
-          var fallback = document.createElement('div');
-          fallback.style.cssText = 'padding:6px 12px;font-size:.75rem;color:var(--muted);text-align:center';
-          fallback.innerHTML = 'PDF not displaying? Use <strong>Save / Download</strong> below.';
-          body.appendChild(fallback);
         })
         .catch(function() {
           body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)"><div style="font-size:2rem">&#9888;</div><div style="font-size:.9rem;margin-top:8px">This file is not available. It may not have been imported yet.</div></div>';
@@ -3319,10 +3315,7 @@ document.addEventListener('click', function(e) {
           wrap.style.cssText = 'padding:32px 24px;text-align:center;width:100%';
           wrap.innerHTML =
             '<div style="font-size:3.5rem;margin-bottom:10px">' + _fileIcon(ext) + '</div>' +
-            '<div style="font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:6px;word-break:break-all">' + filename + '</div>' +
-            '<div style="font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:16px">' +
-              'Office documents open in your device\'s default viewer.' +
-            '</div>';
+            '<div style="font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:16px;word-break:break-all">' + filename + '</div>';
           var openBtn = document.createElement('a');
           openBtn.href = blobUrl;
           openBtn.target = '_blank';
@@ -3345,7 +3338,7 @@ document.addEventListener('click', function(e) {
           '<div style="font-size:3.5rem;margin-bottom:10px">' + _fileIcon(ext) + '</div>' +
           '<div style="font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:6px;word-break:break-all">' + filename + '</div>' +
           '<div style="font-size:.82rem;color:var(--muted);line-height:1.5">' +
-            'This file cannot be previewed here. Use the buttons below to open, save, or share it.' +
+            'Use the buttons below to open or download.' +
           '</div>' +
         '</div>';
       fetch(url, {method: 'HEAD', credentials: 'include'})

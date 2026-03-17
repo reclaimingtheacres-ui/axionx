@@ -434,24 +434,7 @@
         {# File attachments (images, PDFs, docs) #}
         {% set n_files = note_files_map.get(n.id, []) %}
         {% if n_files %}
-          {% set ns_f = namespace(has_img=false) %}
-          {% for f in n_files %}
-            {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
-            {% if fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp'] %}
-              {% set ns_f.has_img = true %}
-            {% endif %}
-          {% endfor %}
-          {# Full-width image if only one image #}
-          {% if n_files | length == 1 and ns_f.has_img %}
-            {% set f = n_files[0] %}
-            <div style="margin-bottom:8px;">
-              <img src="/uploads/{{ f.filename }}"
-                   style="width:100%;max-height:220px;object-fit:cover;border-radius:9px;cursor:pointer;display:block;"
-                   onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
-                   alt="Note photo" loading="lazy">
-            </div>
-          {% else %}
-            {# Multiple or non-image files: scrollable row of thumbnails #}
+          {# Scrollable row of thumbnails — tap to preview #}
             <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:4px;">
               {% for f in n_files %}
                 {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
@@ -492,7 +475,6 @@
                 </button>
               {% endfor %}
             </div>
-          {% endif %}
         {% endif %}
         {# Text #}
         {% if n.note_text %}
@@ -791,19 +773,27 @@ function showTab(name) {
     <div id="mFilePreviewBody"
          style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;min-height:180px;"></div>
     {# Footer buttons #}
-    <div style="display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));
+    <div style="display:flex;gap:8px;padding:12px 16px 6px;
                 border-top:1px solid #e5e7eb;flex-shrink:0;">
       <a id="mFileDownloadBtn" href="#" download
          style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-                padding:12px;border-radius:12px;background:#2563eb;color:#fff;
-                font-size:.88rem;font-weight:700;text-decoration:none;">
-        &#8659; Save / Download
+                padding:11px;border-radius:12px;background:#2563eb;color:#fff;
+                font-size:.85rem;font-weight:700;text-decoration:none;">
+        &#8659; Download
       </a>
       <button id="mFileShareBtn" type="button" onclick="axMobileShare()"
          style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-                padding:12px;border-radius:12px;background:#f3f4f6;color:#374151;
-                border:1.5px solid #e5e7eb;font-size:.88rem;font-weight:700;cursor:pointer;">
-        &#9993; Email / Share
+                padding:11px;border-radius:12px;background:#f3f4f6;color:#374151;
+                border:1.5px solid #e5e7eb;font-size:.85rem;font-weight:700;cursor:pointer;">
+        &#9993; Share
+      </button>
+    </div>
+    <div style="padding:4px 16px calc(8px + env(safe-area-inset-bottom,0px));flex-shrink:0;">
+      <button type="button" onclick="axMobilePreviewClose()"
+              style="width:100%;padding:11px;border-radius:12px;background:none;
+                     border:1.5px solid #d1d5db;font-size:.88rem;font-weight:700;
+                     color:#374151;cursor:pointer;">
+        Done
       </button>
     </div>
   </div>
@@ -830,38 +820,38 @@ function showTab(name) {
     body.innerHTML = '';
 
     if (IMAGE_EXT.includes(ext)) {
-      body.style.padding = '12px';
-      var img = document.createElement('img');
-      img.src = url;
-      img.alt = filename;
-      img.style.cssText = 'max-width:100%;max-height:55vh;object-fit:contain;border-radius:8px;display:block;margin:auto;';
-      body.appendChild(img);
+      body.style.padding = '0';
+      body.style.overflow = 'hidden';
+      body.innerHTML =
+        '<div id="mImgZoomWrap" style="width:100%;height:60vh;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:center;justify-content:center;">' +
+          '<img src="' + url + '" alt="' + filename + '" ' +
+          'style="max-width:100%;max-height:60vh;object-fit:contain;display:block;margin:auto;transition:transform .2s;" ' +
+          'ondblclick="this.style.transform=this.style.transform===\'scale(2)\'?\'scale(1)\':\'scale(2)\'">' +
+        '</div>';
     } else if (PDF_EXT.includes(ext)) {
       body.style.padding = '0';
       var embed = document.createElement('embed');
       embed.src = url;
       embed.type = 'application/pdf';
-      embed.style.cssText = 'width:100%;height:55vh;border:0;display:block;';
+      embed.style.cssText = 'width:100%;height:60vh;border:0;display:block;';
       body.appendChild(embed);
-      var hint = document.createElement('div');
-      hint.style.cssText = 'padding:6px 12px;font-size:.72rem;color:#9ca3af;text-align:center;';
-      hint.textContent = 'If PDF does not display, use Save / Download below.';
-      body.appendChild(hint);
     } else if (AUDIO_EXT.includes(ext)) {
       body.style.padding = '24px 16px';
       body.innerHTML = '<div style="text-align:center;width:100%">' +
         '<div style="font-size:3rem;margin-bottom:10px;">&#127911;</div>' +
         '<div style="font-size:.92rem;font-weight:600;color:#111;margin-bottom:10px;word-break:break-all;">' + filename + '</div>' +
         '<audio controls preload="none" style="width:100%;margin-bottom:6px"><source src="' + url + '"></audio>' +
-        '<div style="font-size:.72rem;color:#6b7280;margin-top:4px">Play above or <strong>Save / Download</strong> below.</div>' +
         '</div>';
     } else {
-      body.style.padding = '32px 16px';
+      body.style.padding = '24px 16px';
       var icon = ext === 'doc' || ext === 'docx' ? '📄' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv' ? '📊' : '📎');
       body.innerHTML = '<div style="text-align:center;">' +
         '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
-        '<div style="font-size:.92rem;font-weight:600;color:#111;margin-bottom:4px;word-break:break-all;">' + filename + '</div>' +
-        '<div style="font-size:.78rem;color:#6b7280;">Preview not available — use <strong>Save / Download</strong> or <strong>Email / Share</strong> below.</div>' +
+        '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+        '<a href="' + url + '" target="_blank" rel="noopener" ' +
+          'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+          'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
+          '&#8599; Open</a>' +
         '</div>';
     }
 
