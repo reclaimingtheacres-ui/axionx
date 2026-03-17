@@ -1531,8 +1531,8 @@ var _noteRecSec      = 0;
 
 // ── Open / close sheet ──────────────────────────────────
 var _editNoteId = 0;
-var _noteDefaultTitle = {{ '"Add File Note"' if session.get('role') in ('admin', 'both') else '"Add Field Note"' | safe }};
-var _noteDefaultSaveLabel = {{ '"Save as File Note"' if session.get('role') in ('admin', 'both') else '"Save as Field Note"' | safe }};
+var _noteDefaultTitle = {{ ('"Add File Note"' if session.get('role') in ('admin', 'both') else '"Add Field Note"') | safe }};
+var _noteDefaultSaveLabel = {{ ('"Save as File Note"' if session.get('role') in ('admin', 'both') else '"Save as Field Note"') | safe }};
 
 window.mNoteFilter = function(cat, btn) {
   document.querySelectorAll('.m-note-filter-btn').forEach(function(b){
