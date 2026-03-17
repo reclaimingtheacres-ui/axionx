@@ -40,11 +40,14 @@ LPR Scan
           name="image"
           accept="image/*"
           capture="environment"
-          required
           style="display:none;"
           onchange="showFilename(this,'cam-label')"
         >
         <div id="cam-label" style="font-size:.8rem;color:var(--muted);text-align:center;margin-top:6px;"></div>
+        <div id="cam-preview" style="display:none;margin-top:10px;text-align:center;">
+          <img id="cam-preview-img" src="" alt="Captured photo"
+               style="max-width:100%;max-height:200px;border-radius:10px;object-fit:cover;">
+        </div>
       </div>
 
       <button type="submit" class="m-btn m-btn-primary">
@@ -111,12 +114,21 @@ function showFilename(input, labelId) {
       el.textContent = 'File too large (' + sizeMB + ' MB). Maximum 25 MB.';
       el.style.color = 'var(--red)';
       input.value = '';
+      return;
     }
 
     if (!file.type.startsWith('image/')) {
       el.textContent = 'Invalid file type. Please select an image.';
       el.style.color = 'var(--red)';
       input.value = '';
+      return;
+    }
+
+    var preview = document.getElementById('cam-preview');
+    var previewImg = document.getElementById('cam-preview-img');
+    if (preview && previewImg && labelId === 'cam-label') {
+      previewImg.src = URL.createObjectURL(file);
+      preview.style.display = '';
     }
   }
 }
