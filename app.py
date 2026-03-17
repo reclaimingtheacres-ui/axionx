@@ -8659,9 +8659,22 @@ def add_job_note(job_id: int):
     conn = db()
     cur = conn.cursor()
 
-    is_agent = session.get("role") not in ("admin", "both") or author_id != session.get("user_id")
-    _note_cat = "field_note" if is_agent else "file_note"
-    _rev_stat = "private_scratch" if _note_cat == "field_note" else "published"
+    _form_cat = request.form.get("note_category", "").strip()
+    _action   = request.form.get("_action", "").strip()
+    _submit_for_review = _action == "submit_review"
+    _is_admin = session.get("role") in ("admin", "both")
+    if _form_cat in ("field_note", "file_note"):
+        _note_cat = _form_cat
+    else:
+        is_agent = not _is_admin or author_id != session.get("user_id")
+        _note_cat = "field_note" if is_agent else "file_note"
+    if not _is_admin and _note_cat == "file_note":
+        _note_cat = "field_note"
+    if _submit_for_review:
+        _note_cat = "field_note"
+        _rev_stat = "submitted_for_review"
+    else:
+        _rev_stat = "private_scratch" if _note_cat == "field_note" else "published"
 
     cur.execute("""
         INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
@@ -8692,11 +8705,39 @@ def add_job_note(job_id: int):
             """, (note_id, unique_name, unique_name, ts))
 
     conn.commit()
+
+    _queue_ok = True
+    if _submit_for_review:
+        try:
+            _today = datetime.now(_melbourne).date().isoformat()
+            _ts2 = now_ts()
+            _existing = conn.execute(
+                """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
+                   AND status='Pending' AND cue_status IN ('open','in_review','held')""",
+                (job_id,)
+            ).fetchone()
+            if not _existing:
+                conn.execute("""
+                    INSERT INTO cue_items
+                      (job_id, visit_type, due_date, priority, status,
+                       instructions, created_by_user_id, created_at, updated_at, cue_status)
+                    VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
+                """, (job_id, _today, (note_text or "")[:200], author_id, _ts2, _ts2))
+                conn.commit()
+        except Exception as _qe:
+            _queue_ok = False
+            app.logger.warning("Failed to create review queue item for note %s: %s", note_id, _qe)
+
     conn.close()
 
-    audit("job_note", note_id, "create", f"{'Field' if _note_cat == 'field_note' else 'File'} note added", {"job_id": job_id})
+    audit("job_note", note_id, "create", f"{'Field' if _note_cat == 'field_note' else 'File'} note added{' (submitted for review)' if _submit_for_review else ''}", {"job_id": job_id})
 
-    flash("Note saved.", "success")
+    if _submit_for_review and _queue_ok:
+        flash("Note submitted for review.", "success")
+    elif _submit_for_review and not _queue_ok:
+        flash("Note saved but queue item could not be created. Please notify an admin.", "warning")
+    else:
+        flash("Note saved.", "success")
     if session.get("role") in ("admin", "both"):
         _sconn = db()
         has_active_schedule = _sconn.execute(
@@ -12189,6 +12230,7 @@ def _queue_row_sql():
                c.name  AS client_name,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+               COALESCE(NULLIF(TRIM(cu.address), ''), j.job_address) AS resolved_address,
                (SELECT ji.reg FROM job_items ji
                 WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
                ag.full_name AS agent_name,
@@ -12836,7 +12878,7 @@ def queue_email_agent_queue():
         ref = _h(item["display_ref"] or item["internal_job_number"] or "")
         client = _h(item["client_name"] or "—")
         borrower = _h(item["customer_label"] or item["customer_name"] or "—")
-        address = _h(item["job_address"] or "—")
+        address = _h(item["resolved_address"] or item["job_address"] or "—")
         status = _h(item["job_status"] or "—")
         action = _h(item["instructions"] or item["visit_type"] or "—")
         rows_html += f'''<tr>
@@ -12869,7 +12911,7 @@ def queue_email_agent_queue():
     body_txt = f"Your Queue — {date_str}\n\nHi {agent['full_name']}, here is your current queue ({len(all_items)} items):\n\n"
     for section, item in all_items:
         ref = item["display_ref"] or ""
-        body_txt += f"[{section}] {ref} | {item['client_name'] or '—'} | {item['customer_label'] or item['customer_name'] or '—'} | {item['job_address'] or '—'} | {item['instructions'] or item['visit_type'] or '—'}\n"
+        body_txt += f"[{section}] {ref} | {item['client_name'] or '—'} | {item['customer_label'] or item['customer_name'] or '—'} | {item['resolved_address'] or item['job_address'] or '—'} | {item['instructions'] or item['visit_type'] or '—'}\n"
 
     subject = f"Your AxionX Queue — {date_str} ({len(all_items)} items)"
     to_list = [agent["email"]]

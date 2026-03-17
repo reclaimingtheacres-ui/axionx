@@ -237,7 +237,7 @@
     data-agent="{{ (c.agent_name or '')|e }}"
     data-agent-id="{{ c.job_assigned_uid or '' }}"
     data-client="{{ (c.client_name or '')|e }}"
-    data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}"
+    data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.resolved_address or c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}"
     style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions,.q-status-dd')){queueRowClick(this,{{ c.id }},{% if show_note_col %}true{% else %}false{% endif %});}">
   <td>
     <button class="q-dismiss" title="Dismiss" onclick="event.stopPropagation();confirmDismiss({{ c.id }})">&#10005;</button>
@@ -248,7 +248,7 @@
   <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
   <td>{{ c.client_name or '—' }}</td>
   <td>{{ c.customer_label or c.customer_name or '—' }}</td>
-  <td>{{ c.job_address or '—' }}</td>
+  <td>{{ c.resolved_address or c.job_address or '—' }}</td>
   <td>
     {% if c.agent_name %}
     <span class="q-agent-badge">{{ c.agent_name }}</span>
@@ -295,7 +295,7 @@
         <th>Date/Time</th>
         <th>Client</th>
         <th>Borrower(s)</th>
-        <th>Given Address</th>
+        <th>Address</th>
         <th>Agent</th>
         <th>Status</th>
         <th></th>
@@ -320,7 +320,7 @@
         <th>Date/Time</th>
         <th>Client</th>
         <th>Borrower(s)</th>
-        <th>Given Address</th>
+        <th>Address</th>
         <th>Agent</th>
         <th>Action Required</th>
         <th></th>
@@ -346,7 +346,7 @@
         <th>Date/Time</th>
         <th>Client</th>
         <th>Borrower(s)</th>
-        <th>Given Address</th>
+        <th>Address</th>
         <th>Agent</th>
         <th>Action Required</th>
         <th></th>

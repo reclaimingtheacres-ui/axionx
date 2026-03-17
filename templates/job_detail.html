@@ -3440,10 +3440,26 @@ document.addEventListener('click', function(e) {
                    multiple accept=".png,.jpg,.jpeg,.heic,.pdf,.doc,.docx" style="font-size:.8rem">
           </div>
 
+          <!-- Note Category -->
+          <div class="an-row">
+            <div class="an-label">Note Type:</div>
+            <div class="d-flex gap-2 align-items-center">
+              <div class="btn-group btn-group-sm" role="group" id="an_cat_group">
+                <input type="radio" class="btn-check" name="note_category" id="an_cat_file" value="file_note" autocomplete="off" checked>
+                <label class="btn btn-outline-success" for="an_cat_file" style="font-size:.78rem;padding:3px 12px">File Note</label>
+                <input type="radio" class="btn-check" name="note_category" id="an_cat_field" value="field_note" autocomplete="off">
+                <label class="btn btn-outline-primary" for="an_cat_field" style="font-size:.78rem;padding:3px 12px">Field Note</label>
+              </div>
+              <small class="text-muted" id="an_cat_hint" style="font-size:.7rem"></small>
+            </div>
+          </div>
+
         </div>
-        <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
+        <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem;flex-wrap:wrap">
           <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save">Save</button>
           <span id="an_save_add_wrap"><button type="submit" class="btn btn-primary btn-sm" name="_action" value="save_add" id="an_save_add">Save and Add</button></span>
+          <button type="submit" class="btn btn-warning btn-sm" name="_action" value="submit_review" id="an_submit_review"
+                  style="display:none" title="Save as Field Note and submit for admin review">Submit for Review</button>
           <button type="button" class="btn btn-outline-secondary btn-sm" onclick="anClear()">Clear</button>
         </div>
       </form>
@@ -3495,11 +3511,54 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     if (minEl)  minEl.value  = t.minute;
   }
 
+  var _anFieldRe = /\b(attended|attendance|spoke\s+with|telephoned|voicemail|left\s+a?\s*message|sms\s+sent|call(?:ed)?|contact(?:ed)?|door\s*knock|no\s+answer|site\s+visit)\b/i;
+  var _anUserOverride = false;
+
+  function anDetectCategory() {
+    if (_anUserOverride) return;
+    var text = (document.getElementById('an_text').value || '').trim();
+    var fileEl = document.getElementById('an_file');
+    var hasDoc = false;
+    if (fileEl && fileEl.files) {
+      for (var i = 0; i < fileEl.files.length; i++) {
+        var ext = (fileEl.files[i].name || '').split('.').pop().toLowerCase();
+        if (['pdf','doc','docx'].indexOf(ext) >= 0) { hasDoc = true; break; }
+      }
+    }
+    var hint = document.getElementById('an_cat_hint');
+    if (_anFieldRe.test(text)) {
+      document.getElementById('an_cat_field').checked = true;
+      if (hint) hint.textContent = 'Detected as field activity';
+    } else if (hasDoc) {
+      document.getElementById('an_cat_file').checked = true;
+      if (hint) hint.textContent = 'Document upload → File Note';
+    } else {
+      document.getElementById('an_cat_file').checked = true;
+      if (hint) hint.textContent = '';
+    }
+    anUpdateReviewBtn();
+  }
+
+  document.getElementById('an_text').addEventListener('input', anDetectCategory);
+  var _anFileEl = document.getElementById('an_file');
+  if (_anFileEl) _anFileEl.addEventListener('change', anDetectCategory);
+  function anUpdateReviewBtn() {
+    var isField = document.getElementById('an_cat_field').checked;
+    var btn = document.getElementById('an_submit_review');
+    if (btn) btn.style.display = isField ? '' : 'none';
+  }
+  document.querySelectorAll('input[name="note_category"]').forEach(function(r) {
+    r.addEventListener('change', function() { _anUserOverride = true; var h = document.getElementById('an_cat_hint'); if (h) h.textContent = ''; anUpdateReviewBtn(); });
+  });
+
   window.anClear = function() {
     document.getElementById('an_text').value = '';
     document.getElementById('an_barcode').value = '';
     var fileEl = document.getElementById('an_file');
     if (fileEl) { fileEl.value = ''; }
+    document.getElementById('an_cat_file').checked = true;
+    _anUserOverride = false;
+    var h = document.getElementById('an_cat_hint'); if (h) h.textContent = '';
     anSetNow();
   };
 
