@@ -14726,6 +14726,20 @@ def m_job_detail(job_id):
         _ag = conn.execute("SELECT full_name FROM users WHERE id=?", (job["assigned_user_id"],)).fetchone()
         if _ag:
             assigned_agent_name = _ag["full_name"]
+
+    job = dict(job)
+    total_dollars, include_mmp = calc_total_due_now(
+        (job.get("arrears_cents") or 0) / 100,
+        (job.get("costs_cents") or 0) / 100,
+        (job.get("mmp_cents") or 0) / 100,
+        job.get("job_due_date"),
+        (job.get("costs2_cents") or 0) / 100,
+    )
+    _adv_due = advance_due_date_display(job.get("job_due_date"), job.get("payment_frequency"))
+    job["due_date_display"] = format_ddmmyyyy(_adv_due)
+    job["total_due_now_cents"] = int(round(total_dollars * 100))
+    job["mmp_included_in_total"] = include_mmp
+
     conn.close()
 
     is_admin = role in ("admin", "both")

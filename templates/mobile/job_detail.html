@@ -215,8 +215,7 @@
 {% endif %}
 
 {# ── 3. Financial Details card ── #}
-{% if job.lender_name or job.arrears_cents or job.costs_cents or job.mmp_cents or job.job_due_date %}
-{% set _total_due = (job.arrears_cents or 0) + (job.costs_cents or 0) %}
+{% if job.lender_name or job.arrears_cents or job.costs_cents or job.costs2_cents or job.mmp_cents or job.job_due_date or job.total_due_now_cents %}
 <div class="m-card" style="margin-bottom:10px;">
   <div class="m-card-header">Financial Details</div>
   <div class="m-card-body">
@@ -249,27 +248,34 @@
     </div>
     {% endif %}
 
-    {% if job.mmp_cents %}
+    {% if job.costs2_cents %}
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
-      <div class="m-label" style="margin-bottom:0;min-width:120px;">Next Payment Due</div>
-      <div style="font-weight:600;font-size:.9rem;text-align:right;">${{ "%.2f" | format(job.mmp_cents / 100) }}</div>
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Add. Costs</div>
+      <div style="font-weight:600;font-size:.9rem;text-align:right;">${{ "%.2f" | format(job.costs2_cents / 100) }}</div>
     </div>
     {% endif %}
 
-    {% if job.job_due_date %}
+    {% if job.mmp_cents %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Next Payment Due</div>
+      <div style="font-weight:600;font-size:.9rem;text-align:right;">${{ "%.2f" | format(job.mmp_cents / 100) }}{% if job.mmp_included_in_total %} <span style="font-size:.65rem;color:#92400e;font-weight:600">(included)</span>{% endif %}</div>
+    </div>
+    {% endif %}
+
+    {% if job.due_date_display %}
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
       <div class="m-label" style="margin-bottom:0;min-width:120px;">Due Date</div>
       <div style="font-size:.9rem;font-weight:600;text-align:right;">
-        {{ job.job_due_date[8:10] }}/{{ job.job_due_date[5:7] }}/{{ job.job_due_date[:4] }}
+        {{ job.due_date_display }}
       </div>
     </div>
     {% endif %}
 
-    {% if _total_due > 0 %}
+    {% if job.total_due_now_cents and job.total_due_now_cents > 0 %}
     <div style="display:flex;justify-content:space-between;align-items:baseline;
                 border-top:1.5px solid var(--line);padding-top:9px;margin-top:4px;">
       <div style="font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:120px;">Total Now Due</div>
-      <div style="font-size:1.05rem;font-weight:800;color:#dc2626;text-align:right;">${{ "%.2f" | format(_total_due / 100) }}</div>
+      <div style="font-size:1.05rem;font-weight:800;color:#dc2626;text-align:right;">${{ "%.2f" | format(job.total_due_now_cents / 100) }}</div>
     </div>
     {% endif %}
 
