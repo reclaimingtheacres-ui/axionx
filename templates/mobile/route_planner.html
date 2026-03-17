@@ -190,7 +190,10 @@
         Select jobs and generate a route first.
       </div>
     </div>
-    <button class="mrp-btn mrp-btn-primary" style="margin-top:12px" id="mrp-regen" onclick="mrpGenerate()" style="display:none">Regenerate Route</button>
+    <div id="mrp-route-actions" style="display:none;margin-top:12px">
+      <button class="mrp-btn mrp-btn-primary" id="mrp-regen" onclick="mrpRegenerate()">Regenerate Route</button>
+      <button class="mrp-btn mrp-btn-outline" id="mrp-save" onclick="mrpSaveRoute()">Save Route</button>
+    </div>
   </div>
 </div>
 
@@ -205,6 +208,9 @@ const MRP = {
   office: {{ office|tojson }},
   currentLat: null,
   currentLng: null,
+  lastGenParams: null,
+  lastRouteData: null,
+  savedRouteId: null,
 };
 
 function mrpTab(name) {
@@ -419,7 +425,7 @@ async function mrpGenerate() {
   if (!ids.length) { alert('Please select at least one job.'); return; }
   const start = mrpGetStart();
   const end = mrpGetEnd();
-  const body = {
+  MRP.lastGenParams = {
     job_ids: ids,
     start_lat: start ? start.lat : null,
     start_lng: start ? start.lng : null,
@@ -427,10 +433,14 @@ async function mrpGenerate() {
     end_lng: end ? end.lng : null,
     route_mode: document.getElementById('mrp-mode').value,
     direction_mode: document.getElementById('mrp-direction').value,
-    suburb_sequence: MRP.selectedSuburbs,
+    suburb_sequence: MRP.selectedSuburbs.slice(),
+    start_type: document.getElementById('mrp-start').value,
+    end_type: document.getElementById('mrp-end').value,
   };
+  var regenBtn = document.getElementById('mrp-regen');
+  if (regenBtn) { regenBtn.disabled = true; regenBtn.textContent = 'Generating...'; }
   try {
-    const resp = await fetch('/api/route-planner/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    const resp = await fetch('/api/route-planner/generate', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(MRP.lastGenParams)});
     if (!resp.ok) {
       let errMsg = 'Server error (' + resp.status + ')';
       try { const errData = await resp.json(); if (errData.error) errMsg = errData.error; } catch(e) {}
@@ -440,9 +450,79 @@ async function mrpGenerate() {
     const data = await resp.json();
     if (data.error) { alert(data.error); return; }
     MRP.stops = data.stops;
+    MRP.lastRouteData = data;
     mrpRenderRoute(data);
+    document.getElementById('mrp-route-actions').style.display = 'block';
+    MRP.savedRouteId = null;
     mrpTab('route');
   } catch(e) { alert('Route generation failed: ' + (e.message || 'Unknown error')); }
+  finally {
+    if (regenBtn) { regenBtn.disabled = false; regenBtn.textContent = 'Regenerate Route'; }
+  }
+}
+
+async function mrpRegenerate() {
+  if (!MRP.selected.size && MRP.stops.length) {
+    MRP.stops.forEach(function(s) { MRP.selected.add(s.job_id); });
+  }
+  if (document.getElementById('mrp-start').value === 'current' && navigator.geolocation) {
+    try {
+      var pos = await new Promise(function(resolve, reject) {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {timeout: 8000, enableHighAccuracy: true});
+      });
+      MRP.currentLat = pos.coords.latitude;
+      MRP.currentLng = pos.coords.longitude;
+    } catch(e) {}
+  }
+  await mrpGenerate();
+}
+
+async function mrpSaveRoute() {
+  if (!MRP.stops.length) { alert('Generate a route first.'); return; }
+  var routeName = prompt('Route name:', 'Route ' + new Date().toLocaleDateString());
+  if (routeName === null) return;
+  var saveBtn = document.getElementById('mrp-save');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+  var params = MRP.lastGenParams || {};
+  var body = {
+    name: routeName || 'Untitled Route',
+    route_mode: params.route_mode || 'full_optimise',
+    direction_mode: params.direction_mode || 'forward',
+    start_type: params.start_type || 'current',
+    start_lat: params.start_lat,
+    start_lng: params.start_lng,
+    start_address: null,
+    end_type: params.end_type || '',
+    end_lat: params.end_lat,
+    end_lng: params.end_lng,
+    end_address: null,
+    suburb_sequence: params.suburb_sequence || [],
+    total_distance_km: MRP.lastRouteData ? MRP.lastRouteData.total_distance_km : 0,
+    total_duration_min: MRP.lastRouteData ? MRP.lastRouteData.total_duration_min : 0,
+    stops: MRP.stops,
+  };
+  try {
+    var resp = await fetch('/api/route-planner/save', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!resp.ok) {
+      var errMsg = 'Server error (' + resp.status + ')';
+      try { var errData = await resp.json(); if (errData.error) errMsg = errData.error; } catch(e) {}
+      alert(errMsg);
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Route'; }
+      return;
+    }
+    var data = await resp.json();
+    if (data.success) {
+      MRP.savedRouteId = data.route_id;
+      if (saveBtn) { saveBtn.textContent = 'Saved!'; saveBtn.style.background = '#dcfce7'; saveBtn.style.color = '#166534'; saveBtn.style.borderColor = '#bbf7d0'; }
+      setTimeout(function(){ if (saveBtn) { saveBtn.textContent = 'Save Route'; saveBtn.style.background = ''; saveBtn.style.color = ''; saveBtn.style.borderColor = ''; saveBtn.disabled = false; } }, 2000);
+    } else {
+      alert(data.error || 'Failed to save route.');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Route'; }
+    }
+  } catch(e) {
+    alert('Network error saving route.');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Route'; }
+  }
 }
 
 function mrpRenderRoute(data) {
@@ -498,14 +578,44 @@ async function mrpLoadSavedRoute(routeId) {
     let cumKm = 0, cumSec = 0;
     stops.forEach(s => { cumKm += (s.distance_m || 0) / 1000; cumSec += (s.duration_s || 0); s.cumulative_km = Math.round(cumKm * 10) / 10; });
     MRP.stops = stops;
-    const savedDistKm = data.total_distance_meters ? Math.round(data.total_distance_meters / 100) / 10 : Math.round(cumKm * 10) / 10;
-    const savedDurMin = data.total_duration_seconds ? Math.round(data.total_duration_seconds / 60) : Math.round(cumSec / 60);
-    mrpRenderRoute({
+    MRP.savedRouteId = routeId;
+
+    MRP.selected.clear();
+    stops.forEach(function(s) { MRP.selected.add(s.job_id); });
+    mrpUpdateBadge();
+
+    var plan = data.plan || {};
+    if (plan.route_mode) document.getElementById('mrp-mode').value = plan.route_mode;
+    if (plan.direction_mode) document.getElementById('mrp-direction').value = plan.direction_mode;
+    if (plan.start_type) document.getElementById('mrp-start').value = plan.start_type;
+    if (plan.end_type) document.getElementById('mrp-end').value = plan.end_type;
+    MRP.selectedSuburbs = data.suburb_sequence || [];
+    mrpRenderSuburbTags();
+
+    MRP.lastGenParams = {
+      job_ids: Array.from(MRP.selected),
+      start_lat: plan.start_lat || null,
+      start_lng: plan.start_lng || null,
+      end_lat: plan.end_lat || null,
+      end_lng: plan.end_lng || null,
+      route_mode: plan.route_mode || 'full_optimise',
+      direction_mode: plan.direction_mode || 'forward',
+      suburb_sequence: data.suburb_sequence || [],
+      start_type: plan.start_type || 'current',
+      end_type: plan.end_type || '',
+    };
+
+    const savedDistKm = data.plan && data.plan.total_distance_meters ? Math.round(data.plan.total_distance_meters / 100) / 10 : Math.round(cumKm * 10) / 10;
+    const savedDurMin = data.plan && data.plan.total_duration_seconds ? Math.round(data.plan.total_duration_seconds / 60) : Math.round(cumSec / 60);
+    var routeData = {
       stops: stops,
       total_distance_km: savedDistKm,
       total_duration_min: savedDurMin,
       warnings: [],
-    });
+    };
+    MRP.lastRouteData = routeData;
+    mrpRenderRoute(routeData);
+    document.getElementById('mrp-route-actions').style.display = 'block';
     mrpTab('route');
   } catch(e) { alert('Failed to load route.'); }
 }

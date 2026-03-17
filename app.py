@@ -13440,7 +13440,7 @@ def route_planner_save():
         assigned_agent_id = None
     if assigned_agent_id:
         conn2 = db()
-        agent_exists = conn2.execute("SELECT id FROM users WHERE id=? AND is_active=1", (assigned_agent_id,)).fetchone()
+        agent_exists = conn2.execute("SELECT id FROM users WHERE id=? AND active=1", (assigned_agent_id,)).fetchone()
         conn2.close()
         if not agent_exists:
             assigned_agent_id = None
