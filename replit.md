@@ -27,7 +27,18 @@ Axion Prototype is a Flask-based field operations management application designe
 - **Queue Summary bar**: Live counts at top showing Total Jobs, per-Agent counts, and per-Client counts. Each count chip is clickable and acts as a one-click filter. Summary updates automatically as items are dismissed or filtered.
 - **Queue filters**: Agent dropdown (All Agents / specific agent / Unassigned), Client dropdown (All Clients / specific client), and a free-text search field (job #, customer name, address). Filters combine independently. Clear Filters button resets all. Active filters also apply to the email-queue function.
 - **Email Queue to Agent**: `POST /queue/email-agent-queue` sends a clean HTML table of the agent's entire queue. Respects active client filter. Email includes job ref, client, borrower, address, status, and action required — grouped by section (Overdue / Currently Due / Agent Notes). Accessible via "Email Queue to Agent" button next to the summary bar.
-- Routes: `POST /queue/email-agent-queue`.
+- **Cue Status Lifecycle**: Queue items have a `cue_status` column (separate from the Pending/Completed `status`). Values: `open`, `in_review`, `held`, `resolved`. Agent Note Review rows show a status dropdown in the queue to move between states. `resolved` auto-dismisses the row. Only `open/in_review/held` items appear in the queue.
+- **Queue Row Click**: Clicking a queue row navigates to the job in the same tab (no auto-dismiss). Agent Note Review rows navigate to `/jobs/{id}?from_cue={cue_id}#tab-notes`.
+- **Queue Leave-Page Safeguard**: When admin opens a job from a queue note-review item (`from_cue` param), a `beforeunload` handler and link-click interceptor warn if the cue is unresolved. Options: "Keep in Queue" / "Delete Queue Entry" / "Cancel".
+- Routes: `POST /queue/email-agent-queue`, `POST /queue/<cue_id>/status`, `POST /queue/<cue_id>/dismiss`.
+
+**2-notes. Note Workflow (Field Notes → File Notes):**
+- **Note Categories**: `job_field_notes` has `note_category` column: `field_note` (agent scratchpad, pending review) or `file_note` (admin-published final notes). Legacy notes default to `file_note/published`.
+- **Review Status**: Field notes have `review_status`: `pending_review`, `reviewed`, or `published`. File notes are always `published`.
+- **Note Creation**: Agent notes → `field_note/pending_review`. Admin notes (when admin is the author) → `file_note/published`. Admin logging on behalf of agent → `field_note/pending_review`.
+- **Web Job Detail**: Notes tab has filter tabs (All / Field Notes / File Notes). Each note shows category badge and review status badge. Admin context menu on field notes includes "Publish to File Notes" (creates a new file_note linked via `source_field_note_id`) and "Mark Reviewed".
+- **Mobile Job Detail**: Same category/review badges and All/Field/File filter toggle. `prependNoteCard()` includes badges for live-added notes.
+- Routes: `POST /jobs/{id}/notes/{note_id}/review-status`, `POST /jobs/{id}/notes/{note_id}/publish-to-file`.
 
 **2a. Job Scheduling (Booking Type Combobox):** All booking type fields across the system (job detail inline form, schedule prompt modal, add bookings modal, new job form) use a unified searchable combobox with type-to-search, type-to-select, and create-new behaviour. Recently used types appear at the top with a "recent" label. New types are saved via `/booking-type/ajax` with case/spacing normalization to prevent duplicates. After saving a booking, users remain on the same page (AJAX submission) with a success message — no redirect to Jobs or other screens.
 

@@ -93,6 +93,25 @@
     white-space: nowrap; display: inline-block;
   }
   .q-agent-badge.unassigned { background: #fef3c7; color: #92400e; }
+  .q-cue-status {
+    font-size: .68rem; font-weight: 700; padding: .15rem .5rem;
+    border-radius: 4px; white-space: nowrap; display: inline-block;
+    text-transform: uppercase; letter-spacing: .03em;
+  }
+  .q-cue-open      { background: #dbeafe; color: #1e40af; }
+  .q-cue-in_review { background: #fef3c7; color: #92400e; }
+  .q-cue-resolved  { background: #dcfce7; color: #166534; }
+  .q-cue-held      { background: #f3e8ff; color: #6b21a8; }
+  .q-cue-select {
+    font-size: .7rem; font-weight: 700; padding: 3px 6px;
+    border-radius: 5px; border: 1px solid var(--line);
+    cursor: pointer; outline: none;
+    text-transform: uppercase; letter-spacing: .03em;
+  }
+  select.q-cue-open      { background: #dbeafe; color: #1e40af; }
+  select.q-cue-in_review { background: #fef3c7; color: #92400e; }
+  select.q-cue-resolved  { background: #dcfce7; color: #166534; }
+  select.q-cue-held      { background: #f3e8ff; color: #6b21a8; }
 
   .q-summary-bar {
     background: var(--card);
@@ -213,17 +232,18 @@
 </div>
 
 {% macro queue_row(c, show_note_col=false) %}
-<tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}"
+{% set _cue_st = c.cue_status or 'open' %}
+<tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}" data-cue-id="{{ c.id }}"
     data-agent="{{ (c.agent_name or '')|e }}"
     data-agent-id="{{ c.job_assigned_uid or '' }}"
     data-client="{{ (c.client_name or '')|e }}"
     data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}"
-    style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions')){dismissItem({{ c.id }});window.location.href='/jobs/'+this.dataset.jobId}">
+    style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions,.q-status-dd')){queueRowClick(this,{{ c.id }},{% if show_note_col %}true{% else %}false{% endif %});}">
   <td>
-    <button class="q-dismiss" title="Dismiss" onclick="dismissItem({{ c.id }})">&#10005;</button>
+    <button class="q-dismiss" title="Dismiss" onclick="event.stopPropagation();confirmDismiss({{ c.id }})">&#10005;</button>
   </td>
   <td>
-    <a class="q-job-link" href="/jobs/{{ c.job_id }}" target="_blank">{{ c.display_ref }}</a>
+    <a class="q-job-link" href="/jobs/{{ c.job_id }}{% if show_note_col %}?from_cue={{ c.id }}#tab-notes{% endif %}">{{ c.display_ref }}</a>
   </td>
   <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
   <td>{{ c.client_name or '—' }}</td>
@@ -237,7 +257,14 @@
     {% endif %}
   </td>
   {% if show_note_col %}
-  <td class="q-action-text" style="color:var(--accent);font-weight:600">New Note to Review</td>
+  <td class="q-status-dd" onclick="event.stopPropagation()">
+    <select class="q-cue-select q-cue-{{ _cue_st }}" data-cue-id="{{ c.id }}" onchange="updateCueStatus(this)">
+      <option value="open"{% if _cue_st == 'open' %} selected{% endif %}>Open</option>
+      <option value="in_review"{% if _cue_st == 'in_review' %} selected{% endif %}>In Review</option>
+      <option value="held"{% if _cue_st == 'held' %} selected{% endif %}>Held</option>
+      <option value="resolved"{% if _cue_st == 'resolved' %} selected{% endif %}>Resolved</option>
+    </select>
+  </td>
   {% else %}
   <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
   {% endif %}
@@ -251,7 +278,7 @@
         data-agent-name="{{ (c.agent_name or '')|e }}"
         data-client-name="{{ (c.client_name or 'Client')|e }}"
         onclick="openEmailModal(this)">Email</button>
-      <a class="q-update-btn" href="/jobs/{{ c.job_id }}?add_note=1" target="_blank">Update</a>
+      <a class="q-update-btn" href="/jobs/{{ c.job_id }}{% if show_note_col %}?from_cue={{ c.id }}#tab-notes{% endif %}">Review</a>
     </div>
   </td>
 </tr>
@@ -270,7 +297,7 @@
         <th>Borrower(s)</th>
         <th>Given Address</th>
         <th>Agent</th>
-        <th>Note</th>
+        <th>Status</th>
         <th></th>
       </tr>
     </thead>
@@ -355,6 +382,44 @@ function dismissItem(cueId) {
     }
   })
   .catch(function(){ alert('Could not dismiss item. Please try again.'); });
+}
+
+function confirmDismiss(cueId) {
+  if (confirm('Delete this queue entry?')) {
+    dismissItem(cueId);
+  }
+}
+
+function queueRowClick(row, cueId, isNoteReview) {
+  var jobId = row.dataset.jobId;
+  if (isNoteReview) {
+    window.location.href = '/jobs/' + jobId + '?from_cue=' + cueId + '#tab-notes';
+  } else {
+    window.location.href = '/jobs/' + jobId;
+  }
+}
+
+function updateCueStatus(sel) {
+  var cueId = sel.dataset.cueId;
+  var newStatus = sel.value;
+  fetch('/queue/' + cueId + '/status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify({cue_status: newStatus})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (data.ok) {
+      sel.className = 'q-cue-select q-cue-' + newStatus;
+      if (newStatus === 'resolved') {
+        var row = sel.closest('tr');
+        if (row) { row.style.opacity = '0.4'; setTimeout(function(){ row.remove(); updateSectionCounts(); updateSummary(); }, 800); }
+      }
+    } else {
+      alert(data.error || 'Failed to update status.');
+    }
+  })
+  .catch(function(){ alert('Could not update status. Please try again.'); });
 }
 
 function updateSectionCounts() {

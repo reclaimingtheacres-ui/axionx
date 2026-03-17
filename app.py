@@ -901,6 +901,13 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "system_settings", "ai_use_own_key",          "INTEGER")
     add_column_if_missing(cur, "system_settings", "lpr_patrol_mode_enabled", "INTEGER DEFAULT 1")
     add_column_if_missing(cur, "cue_items", "cue_link", "TEXT")
+    add_column_if_missing(cur, "cue_items", "cue_status", "TEXT DEFAULT 'open'")
+    add_column_if_missing(cur, "job_field_notes", "note_category", "TEXT DEFAULT 'file_note'")
+    add_column_if_missing(cur, "job_field_notes", "review_status", "TEXT DEFAULT 'published'")
+    add_column_if_missing(cur, "job_field_notes", "source_field_note_id", "INTEGER")
+    add_column_if_missing(cur, "job_field_notes", "reviewed_by_user_id", "INTEGER")
+    add_column_if_missing(cur, "job_field_notes", "reviewed_at", "TEXT")
+    add_column_if_missing(cur, "job_field_notes", "published_at", "TEXT")
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_updates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4259,6 +4266,8 @@ def job_detail(job_id: int):
     conn5.close()
     repo_lock_map = {r["item_id"]: (r["status"] or "Draft") for r in _rl_rows}
 
+    from_cue = request.args.get("from_cue", "")
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -4278,7 +4287,8 @@ def job_detail(job_id: int):
                            job_patrol_intel=job_patrol_intel,
                            repo_lock_map=repo_lock_map,
                            job_payments=job_payments,
-                           payments_total_cents=payments_total_cents)
+                           payments_total_cents=payments_total_cents,
+                           from_cue=from_cue)
 
 
 def _sync_job_customer_id(cur, job_id):
@@ -8515,10 +8525,16 @@ def add_job_note(job_id: int):
     conn = db()
     cur = conn.cursor()
 
+    is_agent = session.get("role") not in ("admin", "both") or author_id != session.get("user_id")
+    _note_cat = "field_note" if is_agent else "file_note"
+    _rev_stat = "pending_review" if _note_cat == "field_note" else "published"
+
     cur.execute("""
-        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)
-        VALUES (?, ?, ?, ?)
-    """, (job_id, author_id, note_text, ts))
+        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
+                                     note_category, review_status, published_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (job_id, author_id, note_text, ts, _note_cat, _rev_stat,
+          ts if _rev_stat == "published" else None))
 
     note_id = cur.lastrowid
 
@@ -8544,7 +8560,7 @@ def add_job_note(job_id: int):
     conn.commit()
     conn.close()
 
-    audit("job_note", note_id, "create", "Field note added", {"job_id": job_id})
+    audit("job_note", note_id, "create", f"{'Field' if _note_cat == 'field_note' else 'File'} note added", {"job_id": job_id})
 
     if session.get("role") in ("agent", "both") and note_text:
         try:
@@ -8553,21 +8569,22 @@ def add_job_note(job_id: int):
             _conn  = db()
             _cur   = _conn.cursor()
             _cur.execute("""SELECT id FROM cue_items
-                            WHERE job_id=? AND visit_type='Agent Note Review' AND status='Pending'""",
+                            WHERE job_id=? AND visit_type='Agent Note Review'
+                            AND status='Pending' AND cue_status IN ('open','in_review')""",
                          (job_id,))
             if not _cur.fetchone():
                 _cur.execute("""
                     INSERT INTO cue_items
                       (job_id, visit_type, due_date, priority, status,
-                       instructions, created_by_user_id, created_at, updated_at)
-                    VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?)
+                       instructions, created_by_user_id, created_at, updated_at, cue_status)
+                    VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
                 """, (job_id, _today, note_text[:200], session.get("user_id"), _ts, _ts))
                 _conn.commit()
             _conn.close()
         except Exception:
             pass
 
-    flash("Field note saved.", "success")
+    flash("Note saved.", "success")
     if session.get("role") in ("admin", "both"):
         _sconn = db()
         has_active_schedule = _sconn.execute(
@@ -9516,8 +9533,10 @@ def update_builder_save(job_id: int):
 
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at, note_type) VALUES (?,?,?,?,?)",
-        (job_id, uid, final_text, ts, note_type)
+        """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
+                                        note_type, note_category, review_status)
+           VALUES (?,?,?,?,?,?,?)""",
+        (job_id, uid, final_text, ts, note_type, "field_note", "pending_review")
     )
     note_id = cur.lastrowid
 
@@ -9541,7 +9560,8 @@ def update_builder_save(job_id: int):
 
     try:
         existing_review = conn.execute(
-            "SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review' AND status='Pending'",
+            """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
+               AND status='Pending' AND cue_status IN ('open','in_review')""",
             (job_id,)
         ).fetchone()
         if not existing_review:
@@ -9550,8 +9570,8 @@ def update_builder_save(job_id: int):
             conn.execute("""
                 INSERT INTO cue_items
                   (job_id, visit_type, due_date, priority, status,
-                   instructions, created_by_user_id, created_at, updated_at)
-                VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?)
+                   instructions, created_by_user_id, created_at, updated_at, cue_status)
+                VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
             """, (job_id, _today, final_text[:200], uid, ts, ts))
             conn.commit()
     except Exception:
@@ -11981,6 +12001,7 @@ def job_queue():
 
     cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type = ? AND ci.status = 'Pending'
+        AND COALESCE(ci.cue_status, 'open') IN ('open', 'in_review', 'held')
         {_arch_excl}
         ORDER BY ci.updated_at DESC, ci.created_at DESC
     """, (note_type,))
@@ -12190,12 +12211,97 @@ def queue_job_attachments(job_id: int):
 def queue_dismiss(cue_id: int):
     ts = now_ts()
     conn = db()
-    conn.execute("UPDATE cue_items SET status='Completed', completed_at=?, updated_at=? WHERE id=?",
+    conn.execute("UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?, cue_status='resolved' WHERE id=?",
                  (ts, ts, cue_id))
     conn.commit()
     conn.close()
     audit("cue", cue_id, "dismiss", f"Queue item {cue_id} dismissed.")
     return jsonify({"ok": True})
+
+
+@app.post("/queue/<int:cue_id>/status")
+@admin_required
+def queue_update_status(cue_id: int):
+    data = request.get_json(silent=True) or {}
+    new_status = data.get("cue_status", "").strip()
+    if new_status not in ("open", "in_review", "resolved", "held"):
+        return jsonify({"ok": False, "error": "Invalid status"}), 400
+    ts = now_ts()
+    conn = db()
+    if new_status == "resolved":
+        conn.execute(
+            "UPDATE cue_items SET cue_status=?, status='Completed', completed_at=?, updated_at=? WHERE id=?",
+            (new_status, ts, ts, cue_id))
+    else:
+        conn.execute(
+            "UPDATE cue_items SET cue_status=?, updated_at=? WHERE id=?",
+            (new_status, ts, cue_id))
+    conn.commit()
+    conn.close()
+    audit("cue", cue_id, "status_change", f"Queue item {cue_id} → {new_status}")
+    return jsonify({"ok": True})
+
+
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/review-status")
+@admin_required
+def note_review_status(job_id: int, note_id: int):
+    data = request.get_json(silent=True) or {}
+    new_status = data.get("review_status", "").strip()
+    if new_status not in ("pending_review", "reviewed", "published"):
+        return jsonify({"ok": False, "error": "Invalid review status"}), 400
+    ts = now_ts()
+    conn = db()
+    note = conn.execute("SELECT id, job_id FROM job_field_notes WHERE id=? AND job_id=?",
+                        (note_id, job_id)).fetchone()
+    if not note:
+        conn.close()
+        return jsonify({"ok": False, "error": "Note not found"}), 404
+    updates = {"review_status": new_status, "reviewed_by_user_id": session.get("user_id"), "reviewed_at": ts}
+    if new_status == "published":
+        updates["published_at"] = ts
+    set_clause = ", ".join(f"{k}=?" for k in updates)
+    conn.execute(f"UPDATE job_field_notes SET {set_clause} WHERE id=?",
+                 list(updates.values()) + [note_id])
+    conn.commit()
+    conn.close()
+    audit("job_note", note_id, "review_status", f"Note {note_id} → {new_status}", {"job_id": job_id})
+    return jsonify({"ok": True, "review_status": new_status})
+
+
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/publish-to-file")
+@admin_required
+def note_publish_to_file(job_id: int, note_id: int):
+    data = request.get_json(silent=True) or {}
+    file_note_text = (data.get("note_text") or "").strip()
+    if not file_note_text:
+        return jsonify({"ok": False, "error": "File note text is required"}), 400
+    ts = now_ts()
+    conn = db()
+    field_note = conn.execute("SELECT id, job_id, note_text FROM job_field_notes WHERE id=? AND job_id=?",
+                              (note_id, job_id)).fetchone()
+    if not field_note:
+        conn.close()
+        return jsonify({"ok": False, "error": "Field note not found"}), 404
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
+                                     note_category, review_status, source_field_note_id,
+                                     reviewed_by_user_id, reviewed_at, published_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (job_id, session.get("user_id"), file_note_text, ts,
+          "file_note", "published", note_id,
+          session.get("user_id"), ts, ts))
+    file_note_id = cur.lastrowid
+    conn.execute("""
+        UPDATE job_field_notes SET review_status='published',
+               reviewed_by_user_id=?, reviewed_at=?, published_at=?
+        WHERE id=?
+    """, (session.get("user_id"), ts, ts, note_id))
+    conn.commit()
+    conn.close()
+    audit("job_note", file_note_id, "publish",
+          f"Field note {note_id} published as file note {file_note_id}", {"job_id": job_id})
+    return jsonify({"ok": True, "file_note_id": file_note_id})
 
 
 @app.get("/queue/active-cue-ids")
@@ -12208,7 +12314,8 @@ def queue_active_cue_ids():
             (visit_type IN ('Urgent: Schedule Overdue', 'Schedule Due Today', 'Schedule Due Tomorrow')
              AND status IN ('Pending', 'In Progress'))
             OR
-            (visit_type = 'Agent Note Review' AND status = 'Pending')
+            (visit_type = 'Agent Note Review' AND status = 'Pending'
+             AND COALESCE(cue_status, 'open') IN ('open', 'in_review', 'held'))
         )
     """).fetchall()
     conn.close()
@@ -14619,10 +14726,14 @@ def m_quick_note_save(job_id):
         return jsonify({"ok": False, "error": "Nothing to save"}), 400
 
     ts  = now_ts()
+    _note_cat = "field_note"
+    _rev_stat = "pending_review"
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at, note_type, audio_filename) VALUES (?,?,?,?,?,?)",
-        (job_id, uid, note_text, ts, note_type, audio_filename)
+        """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
+                                        note_type, audio_filename, note_category, review_status)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (job_id, uid, note_text, ts, note_type, audio_filename, _note_cat, _rev_stat)
     )
     note_id = cur.lastrowid
 
@@ -14649,6 +14760,26 @@ def m_quick_note_save(job_id):
         photo_file_id = cur.lastrowid
 
     conn.commit()
+
+    try:
+        _today = datetime.now(_melbourne).date().isoformat()
+        _ts2   = now_ts()
+        _existing = conn.execute(
+            """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
+               AND status='Pending' AND cue_status IN ('open','in_review')""",
+            (job_id,)
+        ).fetchone()
+        if not _existing:
+            conn.execute("""
+                INSERT INTO cue_items
+                  (job_id, visit_type, due_date, priority, status,
+                   instructions, created_by_user_id, created_at, updated_at, cue_status)
+                VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
+            """, (job_id, _today, (note_text or "")[:200], uid, _ts2, _ts2))
+            conn.commit()
+    except Exception:
+        pass
+
     conn.close()
 
     return jsonify({
@@ -14660,6 +14791,8 @@ def m_quick_note_save(job_id):
         "note_text":    note_text or "",
         "audio_url":    f"/m/note-audio/{note_id}" if audio_filename else None,
         "photo_url":    f"/m/note-photo/{photo_file_id}" if photo_file_id else None,
+        "note_category": _note_cat,
+        "review_status": _rev_stat,
     })
 
 

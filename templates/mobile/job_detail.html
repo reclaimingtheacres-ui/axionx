@@ -327,14 +327,41 @@
       Add Note
     </button>
   </div>
+  <div style="display:flex;gap:6px;margin-bottom:10px;padding:0 2px;">
+    <button type="button" class="m-note-filter-btn active" onclick="mNoteFilter('all',this)"
+            style="font-size:.68rem;font-weight:700;padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:var(--accent);color:#fff;cursor:pointer;">All</button>
+    <button type="button" class="m-note-filter-btn" onclick="mNoteFilter('field_note',this)"
+            style="font-size:.68rem;font-weight:700;padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--text);cursor:pointer;">Field Notes</button>
+    <button type="button" class="m-note-filter-btn" onclick="mNoteFilter('file_note',this)"
+            style="font-size:.68rem;font-weight:700;padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--text);cursor:pointer;">File Notes</button>
+  </div>
 
   {# Notes list — updated live via JS #}
   <div id="notesList">
     {% if notes %}
     {% for n in notes %}
     {% set ntype = n.note_type or 'text' %}
-    <div class="m-card" style="margin-bottom:8px;" id="note-{{ n.id }}">
+    {% set _mncat = n.note_category or 'file_note' %}
+    {% set _mnrs = n.review_status or 'published' %}
+    <div class="m-card" style="margin-bottom:8px;" id="note-{{ n.id }}" data-note-category="{{ _mncat }}">
       <div class="m-card-body" style="padding:12px 14px;">
+        {# Category & review status badges #}
+        <div style="display:flex;gap:5px;margin-bottom:5px;flex-wrap:wrap;align-items:center;">
+          {% if _mncat == 'field_note' %}
+          <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dbeafe;color:#1e40af;text-transform:uppercase;letter-spacing:.03em">Field Note</span>
+          {% else %}
+          <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase;letter-spacing:.03em">File Note</span>
+          {% endif %}
+          {% if _mncat == 'field_note' %}
+            {% if _mnrs == 'pending_review' %}
+            <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Pending Review</span>
+            {% elif _mnrs == 'reviewed' %}
+            <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#e0e7ff;color:#3730a3;text-transform:uppercase">Reviewed</span>
+            {% elif _mnrs == 'published' %}
+            <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase">Published</span>
+            {% endif %}
+          {% endif %}
+        </div>
         {# Row: type icon + agent + date + badge #}
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:{% if n.note_text or n.audio_filename or n.photo_file_id %}9px{% else %}0{% endif %};">
           {# Type icon pill #}
@@ -1400,6 +1427,21 @@ var _noteRecSec      = 0;
 // ── Open / close sheet ──────────────────────────────────
 var _editNoteId = 0;
 
+window.mNoteFilter = function(cat, btn) {
+  document.querySelectorAll('.m-note-filter-btn').forEach(function(b){
+    b.style.background = '#fff';
+    b.style.color = 'var(--text)';
+    b.classList.remove('active');
+  });
+  btn.style.background = 'var(--accent)';
+  btn.style.color = '#fff';
+  btn.classList.add('active');
+  document.querySelectorAll('#notesList > .m-card').forEach(function(card){
+    if (cat === 'all') { card.style.display = ''; return; }
+    card.style.display = card.dataset.noteCategory === cat ? '' : 'none';
+  });
+};
+
 window.openNoteSheet = function(editData) {
   _editNoteId = (editData && editData.id) ? editData.id : 0;
 
@@ -1721,11 +1763,25 @@ function prependNoteCard(d) {
     ? '<div style="margin-top:9px;"><audio controls preload="none" src="' + d.audio_url + '" style="width:100%;height:36px;border-radius:8px;outline:none;display:block;"></audio></div>'
     : '';
 
+  var nCat = d.note_category || 'field_note';
+  var nRs  = d.review_status || 'pending_review';
+  var catBadge = nCat === 'field_note'
+    ? '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dbeafe;color:#1e40af;text-transform:uppercase;letter-spacing:.03em">Field Note</span>'
+    : '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase;letter-spacing:.03em">File Note</span>';
+  var rsBadge = '';
+  if (nCat === 'field_note') {
+    if (nRs === 'pending_review') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Pending Review</span>';
+    else if (nRs === 'reviewed') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#e0e7ff;color:#3730a3;text-transform:uppercase">Reviewed</span>';
+    else if (nRs === 'published') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase">Published</span>';
+  }
+
   var card = document.createElement('div');
   card.className       = 'm-card';
   card.style.marginBottom = '8px';
   card.id              = 'note-' + d.note_id;
+  card.dataset.noteCategory = nCat;
   card.innerHTML = '<div class="m-card-body" style="padding:12px 14px;">'
+    + '<div style="display:flex;gap:5px;margin-bottom:5px;flex-wrap:wrap;align-items:center;">' + catBadge + rsBadge + '</div>'
     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">'
     + typeIcon(ntype)
     + '<div style="flex:1;min-width:0;"><div style="font-size:.73rem;font-weight:700;color:#111;line-height:1.2;">' + escHtml(d.agent_name) + '</div><div style="font-size:.66rem;color:var(--muted);">' + escHtml(d.created_at) + '</div></div>'
