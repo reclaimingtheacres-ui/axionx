@@ -337,7 +337,10 @@
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
         {% if session.get('role') in ('admin', 'both') %}
-        <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}">Queue</a>
+        <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}" style="position:relative">
+          Queue
+          <span id="ax-queue-badge" style="display:none;background:#dc2626;color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
+        </a>
         {% endif %}
         {% if session.get('user_id') %}
         <a href="/messages" class="{% if request.path.startswith('/messages') %}active{% endif %}" style="position:relative">
@@ -761,6 +764,26 @@
   }
   pollMsgBadge();
   setInterval(pollMsgBadge, 30000);
+})();
+</script>
+{% endif %}
+{% if session.get('role') in ('admin', 'both') %}
+<script>
+(function(){
+  function pollQueueBadge(){
+    fetch('/api/queue/pending-review-count', {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var count = d.count || 0;
+        var badge = document.getElementById('ax-queue-badge');
+        if(badge){
+          badge.textContent = count;
+          badge.style.display = count > 0 ? 'inline' : 'none';
+        }
+      }).catch(function(){});
+  }
+  pollQueueBadge();
+  setInterval(pollQueueBadge, 30000);
 })();
 </script>
 {% endif %}

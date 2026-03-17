@@ -12304,6 +12304,22 @@ def note_publish_to_file(job_id: int, note_id: int):
     return jsonify({"ok": True, "file_note_id": file_note_id})
 
 
+@app.get("/api/queue/pending-review-count")
+@admin_required
+def queue_pending_review_count():
+    conn = db()
+    row = conn.execute(f"""
+        SELECT COUNT(*) AS cnt FROM cue_items ci
+        JOIN jobs j ON j.id = ci.job_id
+        WHERE ci.visit_type = 'Agent Note Review'
+          AND ci.status = 'Pending'
+          AND COALESCE(ci.cue_status, 'open') IN ('open', 'in_review', 'held')
+          AND j.status NOT IN {ARCHIVED_STATUSES!r}
+    """).fetchone()
+    conn.close()
+    return jsonify({"ok": True, "count": row["cnt"] if row else 0})
+
+
 @app.get("/queue/active-cue-ids")
 @admin_required
 def queue_active_cue_ids():
