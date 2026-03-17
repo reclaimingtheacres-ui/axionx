@@ -434,47 +434,64 @@
         {# File attachments (images, PDFs, docs) #}
         {% set n_files = note_files_map.get(n.id, []) %}
         {% if n_files %}
-          {# Scrollable row of thumbnails — tap to preview #}
-            <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:4px;">
-              {% for f in n_files %}
-                {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
-                {% set is_img   = fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp','avif','jfif'] %}
-                {% set is_pdf   = fext == 'pdf' %}
-                {% set is_word  = fext in ['doc','docx'] %}
-                {% set is_excel = fext in ['xls','xlsx','csv'] %}
-                {% set is_audio = fext in ['m4a','wav','mp3','ogg','aac','wma'] %}
-                <button type="button"
-                        onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
-                        style="background:none;border:0;padding:0;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;width:68px;">
-                  {% if is_img %}
-                    <span style="width:64px;height:64px;border-radius:8px;border:1.5px solid #e5e7eb;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                      <img src="/uploads/{{ f.filename }}" alt="" style="width:64px;height:64px;object-fit:cover;display:block">
-                    </span>
-                  {% elif is_pdf %}
-                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
-                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#fee2e2"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#fecaca"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#dc2626" font-size="10" font-family="system-ui" font-weight="800">PDF</text></svg>
-                    </span>
-                  {% elif is_word %}
-                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
-                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#dbeafe"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#bfdbfe"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#2563eb" font-size="10" font-family="system-ui" font-weight="800">DOC</text></svg>
-                    </span>
-                  {% elif is_excel %}
-                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
-                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#dcfce7"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#bbf7d0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#16a34a" font-size="10" font-family="system-ui" font-weight="800">XLS</text></svg>
-                    </span>
-                  {% elif is_audio %}
-                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
-                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#fef3c7"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#fde68a"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#d97706" font-size="9" font-family="system-ui" font-weight="800">M4A</text></svg>
-                    </span>
-                  {% else %}
-                    <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
-                      <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#f1f5f9"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#e2e8f0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/></svg>
-                    </span>
-                  {% endif %}
-                  <span style="font-size:.6rem;color:#6b7280;text-align:center;word-break:break-all;line-height:1.2;max-width:68px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">{{ f.filename.rsplit('_',1)[-1] if '_' in f.filename else f.filename }}</span>
-                </button>
+          {# ── Images: medium inline previews ── #}
+          {% set ns_imgs = [] %}
+          {% set ns_docs = [] %}
+          {% for f in n_files %}
+            {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
+            {% if fext in ['jpg','jpeg','png','gif','webp','heic','heif','bmp','avif','jfif'] %}
+              {% set _ = ns_imgs.append(f) %}
+            {% else %}
+              {% set _ = ns_docs.append(f) %}
+            {% endif %}
+          {% endfor %}
+          {% if ns_imgs %}
+            <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:{% if ns_docs %}4px{% else %}0{% endif %};">
+              {% for f in ns_imgs %}
+                <div onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
+                     style="flex-shrink:0;border-radius:10px;overflow:hidden;border:1.5px solid #e5e7eb;cursor:pointer;max-width:200px;">
+                  <img src="/uploads/{{ f.filename }}" alt="" loading="lazy"
+                       style="display:block;width:auto;height:130px;max-width:200px;object-fit:cover;">
+                </div>
               {% endfor %}
             </div>
+          {% endif %}
+          {# ── Documents: "Open Document" rows ── #}
+          {% for f in ns_docs %}
+            {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}
+            {% set is_pdf   = fext == 'pdf' %}
+            {% set is_word  = fext in ['doc','docx'] %}
+            {% set is_excel = fext in ['xls','xlsx','csv'] %}
+            {% set is_audio = fext in ['m4a','wav','mp3','ogg','aac','wma'] %}
+            {% set disp = f.filename.rsplit('_',1)[-1] if '_' in f.filename else f.filename %}
+            {% if is_audio %}
+            <div style="margin-bottom:4px;margin-top:4px;">
+              <audio controls preload="none" style="width:100%;height:36px;">
+                <source src="/uploads/{{ f.filename }}">
+              </audio>
+              <div style="font-size:.68rem;color:#6b7280;margin-top:2px;">{{ disp }}</div>
+            </div>
+            {% else %}
+            <div onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
+                 style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:4px;
+                        background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;">
+              {% if is_pdf %}
+                <svg width="28" height="34" viewBox="0 0 40 48" fill="none" style="flex-shrink:0"><rect width="40" height="48" rx="5" fill="#fee2e2"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#fecaca"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#dc2626" font-size="10" font-family="system-ui" font-weight="800">PDF</text></svg>
+              {% elif is_word %}
+                <svg width="28" height="34" viewBox="0 0 40 48" fill="none" style="flex-shrink:0"><rect width="40" height="48" rx="5" fill="#dbeafe"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#bfdbfe"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#2563eb" font-size="10" font-family="system-ui" font-weight="800">DOC</text></svg>
+              {% elif is_excel %}
+                <svg width="28" height="34" viewBox="0 0 40 48" fill="none" style="flex-shrink:0"><rect width="40" height="48" rx="5" fill="#dcfce7"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#bbf7d0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><text x="20" y="30" text-anchor="middle" fill="#16a34a" font-size="10" font-family="system-ui" font-weight="800">XLS</text></svg>
+              {% else %}
+                <svg width="28" height="34" viewBox="0 0 40 48" fill="none" style="flex-shrink:0"><rect width="40" height="48" rx="5" fill="#f1f5f9"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#e2e8f0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/></svg>
+              {% endif %}
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:.82rem;font-weight:600;color:#2563eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Open Document</div>
+                <div style="font-size:.68rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ disp }}</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" style="flex-shrink:0"><path d="M9 18l6-6-6-6"/></svg>
+            </div>
+            {% endif %}
+          {% endfor %}
         {% endif %}
         {# Text #}
         {% if n.note_text %}
@@ -765,36 +782,36 @@ function showTab(name) {
             style="font-size:.88rem;font-weight:700;color:#111;
                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:10px;"></span>
       <button type="button" onclick="axMobilePreviewClose()"
-              style="background:#f3f4f6;border:0;padding:8px 10px;font-size:1.1rem;line-height:1;color:#374151;
-                     cursor:pointer;flex-shrink:0;border-radius:8px;min-width:36px;min-height:36px;
-                     display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;">&#x2715;</button>
+              style="background:none;border:0;padding:6px 2px;font-size:.92rem;font-weight:600;color:#2563eb;
+                     cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;">Done</button>
     </div>
     {# Content area #}
     <div id="mFilePreviewBody"
          style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;min-height:180px;"></div>
-    {# Footer buttons #}
-    <div style="display:flex;gap:8px;padding:12px 16px 6px;
+    {# Footer toolbar #}
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));
                 border-top:1px solid #e5e7eb;flex-shrink:0;">
-      <a id="mFileDownloadBtn" href="#" download
-         style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-                padding:11px;border-radius:12px;background:#2563eb;color:#fff;
-                font-size:.85rem;font-weight:700;text-decoration:none;">
-        &#8659; Download
-      </a>
       <button id="mFileShareBtn" type="button" onclick="axMobileShare()"
-         style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
-                padding:11px;border-radius:12px;background:#f3f4f6;color:#374151;
-                border:1.5px solid #e5e7eb;font-size:.85rem;font-weight:700;cursor:pointer;">
-        &#9993; Share
+         style="background:none;border:0;padding:8px;cursor:pointer;color:#2563eb;
+                display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;"
+         title="Share">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
+          <polyline points="16 6 12 2 8 6"/>
+          <line x1="12" y1="2" x2="12" y2="15"/>
+        </svg>
       </button>
-    </div>
-    <div style="padding:4px 16px calc(8px + env(safe-area-inset-bottom,0px));flex-shrink:0;">
-      <button type="button" onclick="axMobilePreviewClose()"
-              style="width:100%;padding:11px;border-radius:12px;background:none;
-                     border:1.5px solid #d1d5db;font-size:.88rem;font-weight:700;
-                     color:#374151;cursor:pointer;">
-        Done
-      </button>
+      <a id="mFileDownloadBtn" href="#" download
+         style="background:none;border:0;padding:8px;cursor:pointer;color:#2563eb;
+                display:flex;align-items:center;justify-content:center;text-decoration:none;-webkit-tap-highlight-color:transparent;"
+         title="Download">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </a>
     </div>
   </div>
 </div>
@@ -865,21 +882,28 @@ function showTab(name) {
     document.getElementById('mFilePreviewBody').innerHTML = '';
   };
 
-  window.axMobileShare = function() {
+  window.axMobileShare = async function() {
     var fileUrl = window.location.origin + _curUrl;
-    /* Use native share sheet if available (iOS/Android) */
-    if (navigator.share) {
-      navigator.share({
-        title: _curFilename,
-        text: 'File: ' + _curFilename,
-        url: fileUrl
-      }).catch(function(){});
-    } else {
-      /* Fallback: open mailto */
+    if (!navigator.share) {
       var su = encodeURIComponent('Document: ' + _curFilename);
       var bo = encodeURIComponent('File: ' + _curFilename + '\nDownload: ' + fileUrl);
       window.location.href = 'mailto:?subject=' + su + '&body=' + bo;
+      return;
     }
+    var useFileShare = false;
+    try {
+      var resp = await fetch(_curUrl);
+      var blob = await resp.blob();
+      var file = new File([blob], _curFilename, {type: blob.type});
+      if (navigator.canShare && navigator.canShare({files:[file]})) {
+        useFileShare = true;
+        await navigator.share({files:[file], title: _curFilename});
+        return;
+      }
+    } catch(e) {
+      if (useFileShare) return;
+    }
+    try { await navigator.share({title:_curFilename, url:fileUrl}); } catch(e) {}
   };
 })();
 </script>
