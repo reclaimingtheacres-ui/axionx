@@ -84,9 +84,9 @@
     <key>NSLocationAlwaysUsageDescription</key>
     <string>AxionX uses your location in the background to support low-power field availability tracking when you set your status to Available or Active Job.</string>
 
-    <!-- Camera permission — required for live plate scanning -->
+    <!-- Camera permission — required for photos and live plate scanning -->
     <key>NSCameraUsageDescription</key>
-    <string>AxionX requires camera access to scan vehicle registrations for live LPR lookups.</string>
+    <string>AxionX requires camera access to capture photos and perform licence plate recognition (LPR) during field operations.</string>
 
     <!-- Microphone permission — required for voice notes in Add Note -->
     <key>NSMicrophoneUsageDescription</key>

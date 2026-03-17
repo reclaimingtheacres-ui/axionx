@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import AVFoundation
 
 /// WKNavigationDelegate + WKUIDelegate implementation.
 /// Controls all URL routing decisions and propagates load errors to SwiftUI.
@@ -120,10 +121,9 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     // MARK: - Camera permission (iOS 15+)
 
     /// WKWebView calls this before allowing getUserMedia / camera access from web JS.
-    /// Without this delegate method WKWebView silently denies the request every time,
-    /// even if the host app has NSCameraUsageDescription and the user granted camera
-    /// permission in iOS Settings.  We grant unconditionally — the user already approved
-    /// camera access at the native iOS level when the OS prompt was accepted.
+    /// Without this delegate method WKWebView silently denies the request every time.
+    /// We check the OS-level camera permission first: if not yet determined, we trigger
+    /// the native permission dialog so the Camera row appears in iOS Settings.
     @available(iOS 15.0, *)
     func webView(
         _ webView: WKWebView,
@@ -132,7 +132,49 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         type: WKMediaCaptureType,
         decisionHandler: @escaping (WKPermissionDecision) -> Void
     ) {
-        decisionHandler(.grant)
+        let needsCamera = type == .camera || type == .cameraAndMicrophone
+        let needsMic    = type == .microphone || type == .cameraAndMicrophone
+
+        func checkAndRequest(
+            mediaType: AVMediaType,
+            then completion: @escaping (Bool) -> Void
+        ) {
+            let status = AVCaptureDevice.authorizationStatus(for: mediaType)
+            switch status {
+            case .authorized:
+                completion(true)
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: mediaType) { granted in
+                    DispatchQueue.main.async { completion(granted) }
+                }
+            case .denied, .restricted:
+                completion(false)
+            @unknown default:
+                completion(false)
+            }
+        }
+
+        func resolveCamera(_ cameraDone: @escaping (Bool) -> Void) {
+            if needsCamera {
+                checkAndRequest(mediaType: .video, then: cameraDone)
+            } else {
+                cameraDone(true)
+            }
+        }
+
+        func resolveMic(_ micDone: @escaping (Bool) -> Void) {
+            if needsMic {
+                checkAndRequest(mediaType: .audio, then: micDone)
+            } else {
+                micDone(true)
+            }
+        }
+
+        resolveCamera { cameraOk in
+            resolveMic { micOk in
+                decisionHandler((cameraOk && micOk) ? .grant : .deny)
+            }
+        }
     }
 
     // MARK: - Private
