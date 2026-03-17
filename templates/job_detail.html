@@ -991,6 +991,7 @@
       <button type="button" class="btn btn-outline-secondary active" onclick="axNoteFilter('all',this)">All</button>
       <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('field_note',this)">Field Notes</button>
       <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('file_note',this)">File Notes</button>
+      <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('submitted_for_review',this)">Submitted for Review</button>
     </div>
   </div>
 
@@ -1034,13 +1035,13 @@
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
                         ✏ Edit
                       </button>
-                      {% if session.get('role') in ('admin', 'both') and _ncat == 'field_note' and _nrs != 'published' %}
+                      {% if session.get('role') in ('admin', 'both') and _ncat == 'field_note' and _nrs not in ('published',) %}
                       <button type="button"
                               onclick='axPublishFieldNote({{ job.id }}, {{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson }})'
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:#16a34a;cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
                         📋 Publish to File Notes
                       </button>
-                      {% if _nrs == 'pending_review' %}
+                      {% if _nrs == 'submitted_for_review' %}
                       <button type="button"
                               onclick='axMarkReviewed({{ job.id }}, {{ entry.note.id }})'
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:#2563eb;cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
@@ -1107,8 +1108,10 @@
                     <span style="font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase;letter-spacing:.03em">File Note</span>
                     {% endif %}
                     {% if _ncat == 'field_note' %}
-                      {% if _nrs == 'pending_review' %}
-                      <span style="font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Pending Review</span>
+                      {% if _nrs == 'private_scratch' %}
+                      <span style="font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:3px;background:#f3f4f6;color:#6b7280;text-transform:uppercase">Scratch</span>
+                      {% elif _nrs == 'submitted_for_review' %}
+                      <span style="font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Submitted for Review</span>
                       {% elif _nrs == 'reviewed' %}
                       <span style="font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:3px;background:#e0e7ff;color:#3730a3;text-transform:uppercase">Reviewed</span>
                       {% elif _nrs == 'published' %}
@@ -2566,7 +2569,11 @@ function axNoteFilter(cat, btn) {
   btn.classList.add('active');
   document.querySelectorAll('.ax-note-row').forEach(function(row){
     if (cat === 'all') { row.style.display = ''; return; }
-    row.style.display = row.dataset.noteCategory === cat ? '' : 'none';
+    if (cat === 'submitted_for_review') {
+      row.style.display = row.dataset.reviewStatus === 'submitted_for_review' ? '' : 'none';
+    } else {
+      row.style.display = row.dataset.noteCategory === cat ? '' : 'none';
+    }
   });
 }
 

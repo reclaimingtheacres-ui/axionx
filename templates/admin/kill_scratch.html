@@ -1,0 +1,175 @@
+{% extends "layout.html" %}
+{% block title %}Axionx | Kill Scratch{% endblock %}
+{% block page_title %}Kill Scratch{% endblock %}
+
+{% block content %}
+<style>
+  .ks-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .ks-warn { background: #fef2f2; border: 2px solid #fecaca; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .ks-warn-title { font-weight: 700; color: #991b1b; font-size: 1rem; margin-bottom: .5rem; display: flex; align-items: center; gap: .5rem; }
+  .ks-label { font-weight: 600; font-size: .85rem; color: var(--muted); margin-bottom: .35rem; }
+  .ks-count { font-size: 1.8rem; font-weight: 800; color: var(--text); }
+  .ks-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+  .ks-stat { background: var(--sidebar); border-radius: 10px; padding: 1rem; text-align: center; }
+  .ks-radio-group { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1.25rem; }
+  .ks-radio-group label { display: flex; align-items: center; gap: .5rem; padding: .6rem .8rem; border: 1.5px solid var(--line); border-radius: 8px; cursor: pointer; font-size: .88rem; font-weight: 500; transition: border-color .15s; }
+  .ks-radio-group label:hover { border-color: var(--accent); }
+  .ks-radio-group input[type="radio"] { accent-color: var(--accent); }
+  .ks-confirm-input { width: 100%; padding: .6rem .8rem; border: 1.5px solid var(--line); border-radius: 8px; font-size: .88rem; font-family: monospace; margin-top: .35rem; }
+  .ks-btn { padding: .65rem 1.5rem; border: none; border-radius: 8px; font-size: .9rem; font-weight: 700; cursor: pointer; transition: opacity .15s; }
+  .ks-btn:hover { opacity: .85; }
+  .ks-btn-danger { background: #dc2626; color: #fff; }
+  .ks-btn-warning { background: #d97706; color: #fff; }
+  .ks-btn-secondary { background: #e5e7eb; color: #374151; margin-left: .5rem; }
+  .ks-result { margin-top: 1rem; padding: 1rem; border-radius: 8px; font-weight: 600; display: none; }
+  .ks-result.success { background: #dcfce7; color: #166534; display: block; }
+  .ks-result.error { background: #fef2f2; color: #991b1b; display: block; }
+</style>
+
+<div style="max-width: 680px;">
+  <a href="/admin/settings" style="font-size:.85rem;color:var(--accent);text-decoration:none;margin-bottom:.75rem;display:inline-block">&larr; Back to Settings</a>
+
+  <div class="ks-warn">
+    <div class="ks-warn-title">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#dc2626" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Danger Zone
+    </div>
+    <p style="font-size:.88rem;color:#7f1d1d;margin:0">
+      This function will remove all private scratch Field Notes from the system.
+      File Notes and submitted/reviewed notes are never affected.
+      This action cannot be undone unless you choose Archive first.
+    </p>
+  </div>
+
+  <div class="ks-grid">
+    <div class="ks-stat">
+      <div class="ks-label">All Scratch Notes</div>
+      <div class="ks-count" id="ksCountAll">{{ counts['All'] }}</div>
+    </div>
+    <div class="ks-stat">
+      <div class="ks-label">Older than 30 days</div>
+      <div class="ks-count" id="ksCount30">{{ counts['Older than 30 days'] }}</div>
+    </div>
+    <div class="ks-stat">
+      <div class="ks-label">Older than 90 days</div>
+      <div class="ks-count" id="ksCount90">{{ counts['Older than 90 days'] }}</div>
+    </div>
+  </div>
+
+  <div class="ks-card">
+    <h6 style="font-weight:700;margin-bottom:1rem">Select Age Range</h6>
+    <div class="ks-radio-group">
+      <label><input type="radio" name="ks_age" value="all" checked> All scratch notes</label>
+      <label><input type="radio" name="ks_age" value="30"> Older than 30 days</label>
+      <label><input type="radio" name="ks_age" value="90"> Older than 90 days</label>
+    </div>
+
+    <h6 style="font-weight:700;margin-bottom:1rem">Select Action</h6>
+    <div class="ks-radio-group">
+      <label><input type="radio" name="ks_action" value="archive" checked> Archive Scratch (soft delete &mdash; can purge later)</label>
+      <label><input type="radio" name="ks_action" value="delete"> Permanently Delete (irreversible)</label>
+    </div>
+
+    <div style="margin-top:1.25rem">
+      <div class="ks-label">Type <strong style="color:#dc2626;font-family:monospace">DELETE ALL FIELD NOTES</strong> to confirm:</div>
+      <input type="text" id="ksConfirmInput" class="ks-confirm-input" placeholder="Type confirmation here..." autocomplete="off" spellcheck="false">
+    </div>
+
+    <div style="margin-top:1.25rem;display:flex;align-items:center">
+      <button type="button" class="ks-btn ks-btn-danger" id="ksExecuteBtn" onclick="ksExecute()" disabled>Execute Kill Scratch</button>
+      <a href="/admin/settings" class="ks-btn ks-btn-secondary" style="text-decoration:none;text-align:center">Cancel</a>
+    </div>
+
+    <div id="ksResult" class="ks-result"></div>
+  </div>
+
+  <div class="ks-card" id="ksPurgeSection" style="border-color:#d97706">
+    <h6 style="font-weight:700;margin-bottom:.5rem;color:#92400e">Purge Archived Scratch</h6>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:1rem">
+      Permanently delete all previously archived scratch notes.
+    </p>
+    <button type="button" class="ks-btn ks-btn-warning" onclick="ksPurge()">Purge Archived</button>
+    <div id="ksPurgeResult" class="ks-result" style="margin-top:.75rem"></div>
+  </div>
+</div>
+
+<script>
+var ksInput = document.getElementById('ksConfirmInput');
+var ksBtn   = document.getElementById('ksExecuteBtn');
+ksInput.addEventListener('input', function() {
+  ksBtn.disabled = this.value.trim() !== 'DELETE ALL FIELD NOTES';
+});
+
+function ksExecute() {
+  var action   = document.querySelector('input[name="ks_action"]:checked').value;
+  var ageRange = document.querySelector('input[name="ks_age"]:checked').value;
+  var verb     = action === 'archive' ? 'archive' : 'permanently delete';
+  var ageLabel = ageRange === 'all' ? 'ALL' : 'older than ' + ageRange + ' days';
+
+  if (!confirm('Are you absolutely sure you want to ' + verb + ' ' + ageLabel + ' scratch field notes?\n\nThis is the final confirmation.')) return;
+
+  ksBtn.disabled = true;
+  ksBtn.textContent = 'Processing...';
+
+  fetch('/admin/settings/kill-scratch', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify({
+      confirm_text: 'DELETE ALL FIELD NOTES',
+      action: action,
+      age_range: ageRange
+    })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    var el = document.getElementById('ksResult');
+    if (data.ok) {
+      el.className = 'ks-result success';
+      el.textContent = data.count + ' scratch field notes ' + data.action + ' successfully.';
+    } else {
+      el.className = 'ks-result error';
+      el.textContent = data.error || 'Operation failed.';
+    }
+  })
+  .catch(function() {
+    var el = document.getElementById('ksResult');
+    el.className = 'ks-result error';
+    el.textContent = 'Network error. Please try again.';
+  })
+  .finally(function() {
+    ksBtn.disabled = false;
+    ksBtn.textContent = 'Execute Kill Scratch';
+    ksInput.value = '';
+    ksBtn.disabled = true;
+  });
+}
+
+function ksPurge() {
+  if (!confirm('Permanently delete all archived scratch notes?\n\nThis cannot be undone.')) return;
+  var inp = prompt('Type DELETE ALL FIELD NOTES to confirm:');
+  if (!inp || inp.trim() !== 'DELETE ALL FIELD NOTES') { alert('Confirmation did not match.'); return; }
+
+  fetch('/admin/settings/purge-archived-scratch', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify({ confirm_text: 'DELETE ALL FIELD NOTES' })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    var el = document.getElementById('ksPurgeResult');
+    if (data.ok) {
+      el.className = 'ks-result success';
+      el.textContent = data.count + ' archived scratch notes permanently deleted.';
+    } else {
+      el.className = 'ks-result error';
+      el.textContent = data.error || 'Operation failed.';
+    }
+  })
+  .catch(function() {
+    var el = document.getElementById('ksPurgeResult');
+    el.className = 'ks-result error';
+    el.textContent = 'Network error.';
+  });
+}
+</script>
+{% endblock %}

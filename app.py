@@ -909,6 +909,10 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "job_field_notes", "reviewed_at", "TEXT")
     add_column_if_missing(cur, "job_field_notes", "published_at", "TEXT")
     cur.execute("""
+        UPDATE job_field_notes SET review_status='submitted_for_review'
+        WHERE review_status='pending_review'
+    """)
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS job_updates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         job_id INTEGER NOT NULL,
@@ -8527,7 +8531,7 @@ def add_job_note(job_id: int):
 
     is_agent = session.get("role") not in ("admin", "both") or author_id != session.get("user_id")
     _note_cat = "field_note" if is_agent else "file_note"
-    _rev_stat = "pending_review" if _note_cat == "field_note" else "published"
+    _rev_stat = "private_scratch" if _note_cat == "field_note" else "published"
 
     cur.execute("""
         INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
@@ -8561,28 +8565,6 @@ def add_job_note(job_id: int):
     conn.close()
 
     audit("job_note", note_id, "create", f"{'Field' if _note_cat == 'field_note' else 'File'} note added", {"job_id": job_id})
-
-    if session.get("role") in ("agent", "both") and note_text:
-        try:
-            _today = datetime.now(_melbourne).date().isoformat()
-            _ts    = now_ts()
-            _conn  = db()
-            _cur   = _conn.cursor()
-            _cur.execute("""SELECT id FROM cue_items
-                            WHERE job_id=? AND visit_type='Agent Note Review'
-                            AND status='Pending' AND cue_status IN ('open','in_review')""",
-                         (job_id,))
-            if not _cur.fetchone():
-                _cur.execute("""
-                    INSERT INTO cue_items
-                      (job_id, visit_type, due_date, priority, status,
-                       instructions, created_by_user_id, created_at, updated_at, cue_status)
-                    VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
-                """, (job_id, _today, note_text[:200], session.get("user_id"), _ts, _ts))
-                _conn.commit()
-            _conn.close()
-        except Exception:
-            pass
 
     flash("Note saved.", "success")
     if session.get("role") in ("admin", "both"):
@@ -9536,7 +9518,7 @@ def update_builder_save(job_id: int):
         """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
                                         note_type, note_category, review_status)
            VALUES (?,?,?,?,?,?,?)""",
-        (job_id, uid, final_text, ts, note_type, "field_note", "pending_review")
+        (job_id, uid, final_text, ts, note_type, "field_note", "submitted_for_review")
     )
     note_id = cur.lastrowid
 
@@ -11937,6 +11919,96 @@ def admin_settings_archive():
     return redirect(url_for("admin_settings") + "#data-management")
 
 
+# -------- Kill Scratch --------
+@app.get("/admin/settings/kill-scratch")
+@admin_required
+def kill_scratch_page():
+    if session.get("role") != "admin":
+        flash("Master admin access required.", "danger")
+        return redirect(url_for("admin_settings"))
+    conn = db()
+    counts = {}
+    for label, days in [("All", None), ("Older than 30 days", 30), ("Older than 90 days", 90)]:
+        if days:
+            cutoff = (datetime.now(_melbourne) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM job_field_notes WHERE note_category='field_note' AND review_status='private_scratch' AND created_at < ?",
+                (cutoff,)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM job_field_notes WHERE note_category='field_note' AND review_status='private_scratch'").fetchone()
+        counts[label] = row["cnt"] if row else 0
+    conn.close()
+    return render_template("admin/kill_scratch.html", counts=counts)
+
+
+@app.post("/admin/settings/kill-scratch")
+@admin_required
+def kill_scratch_execute():
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "Master admin access required"}), 403
+    data = request.get_json(silent=True) or {}
+    confirm_text = (data.get("confirm_text") or "").strip()
+    if confirm_text != "DELETE ALL FIELD NOTES":
+        return jsonify({"ok": False, "error": "Confirmation text does not match"}), 400
+    action = data.get("action", "delete")
+    age_range = data.get("age_range", "all")
+    ts = now_ts()
+    conn = db()
+    where = "note_category='field_note' AND review_status='private_scratch'"
+    if age_range == "30":
+        cutoff = (datetime.now(_melbourne) - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        where += f" AND created_at < '{cutoff}'"
+    elif age_range == "90":
+        cutoff = (datetime.now(_melbourne) - timedelta(days=90)).strftime("%Y-%m-%d %H:%M:%S")
+        where += f" AND created_at < '{cutoff}'"
+    count_row = conn.execute(f"SELECT COUNT(*) AS cnt FROM job_field_notes WHERE {where}").fetchone()
+    total = count_row["cnt"] if count_row else 0
+    if action == "archive":
+        conn.execute(f"UPDATE job_field_notes SET review_status='archived' WHERE {where}")
+    else:
+        note_ids = [r["id"] for r in conn.execute(f"SELECT id FROM job_field_notes WHERE {where}").fetchall()]
+        if note_ids:
+            placeholders = ",".join("?" * len(note_ids))
+            conn.execute(f"DELETE FROM job_note_files WHERE job_field_note_id IN ({placeholders})", note_ids)
+            conn.execute(f"DELETE FROM job_field_notes WHERE id IN ({placeholders})", note_ids)
+    conn.commit()
+    conn.close()
+    verb = "archived" if action == "archive" else "deleted"
+    audit("system", 0, "kill_scratch",
+          f"Kill Scratch: {total} field notes {verb} (age_range={age_range})",
+          {"count": total, "action": action, "age_range": age_range,
+           "user_id": session.get("user_id")})
+    return jsonify({"ok": True, "count": total, "action": verb})
+
+
+@app.post("/admin/settings/purge-archived-scratch")
+@admin_required
+def purge_archived_scratch():
+    if session.get("role") != "admin":
+        return jsonify({"ok": False, "error": "Master admin access required"}), 403
+    data = request.get_json(silent=True) or {}
+    confirm_text = (data.get("confirm_text") or "").strip()
+    if confirm_text != "DELETE ALL FIELD NOTES":
+        return jsonify({"ok": False, "error": "Confirmation text does not match"}), 400
+    conn = db()
+    count_row = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM job_field_notes WHERE note_category='field_note' AND review_status='archived'").fetchone()
+    total = count_row["cnt"] if count_row else 0
+    note_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM job_field_notes WHERE note_category='field_note' AND review_status='archived'").fetchall()]
+    if note_ids:
+        placeholders = ",".join("?" * len(note_ids))
+        conn.execute(f"DELETE FROM job_note_files WHERE job_field_note_id IN ({placeholders})", note_ids)
+        conn.execute(f"DELETE FROM job_field_notes WHERE id IN ({placeholders})", note_ids)
+    conn.commit()
+    conn.close()
+    audit("system", 0, "purge_archived_scratch",
+          f"Purge archived scratch: {total} field notes permanently deleted",
+          {"count": total, "user_id": session.get("user_id")})
+    return jsonify({"ok": True, "count": total})
+
+
 # -------- Cues --------
 def _queue_row_sql():
     return """
@@ -12242,12 +12314,54 @@ def queue_update_status(cue_id: int):
     return jsonify({"ok": True})
 
 
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/submit-for-review")
+@login_required
+def note_submit_for_review(job_id: int, note_id: int):
+    ts = now_ts()
+    conn = db()
+    note = conn.execute(
+        "SELECT id, job_id, created_by_user_id, note_text, review_status, note_category FROM job_field_notes WHERE id=? AND job_id=?",
+        (note_id, job_id)).fetchone()
+    if not note:
+        conn.close()
+        return jsonify({"ok": False, "error": "Note not found"}), 404
+    if (note["note_category"] or "file_note") != "field_note":
+        conn.close()
+        return jsonify({"ok": False, "error": "Only field notes can be submitted for review"}), 400
+    uid = session.get("user_id")
+    if note["created_by_user_id"] != uid and session.get("role") not in ("admin", "both"):
+        conn.close()
+        return jsonify({"ok": False, "error": "Not authorised"}), 403
+    if note["review_status"] == "submitted_for_review":
+        conn.close()
+        return jsonify({"ok": True, "review_status": "submitted_for_review"})
+    conn.execute(
+        "UPDATE job_field_notes SET review_status='submitted_for_review' WHERE id=?", (note_id,))
+    _today = datetime.now(_melbourne).date().isoformat()
+    _existing = conn.execute(
+        """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
+           AND status='Pending' AND cue_status IN ('open','in_review')""",
+        (job_id,)).fetchone()
+    if not _existing:
+        conn.execute("""
+            INSERT INTO cue_items
+              (job_id, visit_type, due_date, priority, status,
+               instructions, created_by_user_id, created_at, updated_at, cue_status)
+            VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
+        """, (job_id, _today, (note["note_text"] or "")[:200], uid, ts, ts))
+    conn.commit()
+    conn.close()
+    audit("job_note", note_id, "submit_for_review",
+          f"Field note {note_id} submitted for review", {"job_id": job_id})
+    return jsonify({"ok": True, "review_status": "submitted_for_review"})
+
+
 @app.post("/jobs/<int:job_id>/notes/<int:note_id>/review-status")
 @admin_required
 def note_review_status(job_id: int, note_id: int):
     data = request.get_json(silent=True) or {}
     new_status = data.get("review_status", "").strip()
-    if new_status not in ("pending_review", "reviewed", "published"):
+    if new_status not in ("private_scratch", "submitted_for_review", "reviewed", "published"):
         return jsonify({"ok": False, "error": "Invalid review status"}), 400
     ts = now_ts()
     conn = db()
@@ -14742,8 +14856,9 @@ def m_quick_note_save(job_id):
         return jsonify({"ok": False, "error": "Nothing to save"}), 400
 
     ts  = now_ts()
+    submit_for_review = request.form.get("submit_for_review") == "1"
     _note_cat = "field_note"
-    _rev_stat = "pending_review"
+    _rev_stat = "submitted_for_review" if submit_for_review else "private_scratch"
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
@@ -14777,24 +14892,25 @@ def m_quick_note_save(job_id):
 
     conn.commit()
 
-    try:
-        _today = datetime.now(_melbourne).date().isoformat()
-        _ts2   = now_ts()
-        _existing = conn.execute(
-            """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
-               AND status='Pending' AND cue_status IN ('open','in_review')""",
-            (job_id,)
-        ).fetchone()
-        if not _existing:
-            conn.execute("""
-                INSERT INTO cue_items
-                  (job_id, visit_type, due_date, priority, status,
-                   instructions, created_by_user_id, created_at, updated_at, cue_status)
-                VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
-            """, (job_id, _today, (note_text or "")[:200], uid, _ts2, _ts2))
-            conn.commit()
-    except Exception:
-        pass
+    if submit_for_review:
+        try:
+            _today = datetime.now(_melbourne).date().isoformat()
+            _ts2   = now_ts()
+            _existing = conn.execute(
+                """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
+                   AND status='Pending' AND cue_status IN ('open','in_review')""",
+                (job_id,)
+            ).fetchone()
+            if not _existing:
+                conn.execute("""
+                    INSERT INTO cue_items
+                      (job_id, visit_type, due_date, priority, status,
+                       instructions, created_by_user_id, created_at, updated_at, cue_status)
+                    VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')
+                """, (job_id, _today, (note_text or "")[:200], uid, _ts2, _ts2))
+                conn.commit()
+        except Exception:
+            pass
 
     conn.close()
 

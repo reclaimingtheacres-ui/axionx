@@ -353,8 +353,10 @@
           <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase;letter-spacing:.03em">File Note</span>
           {% endif %}
           {% if _mncat == 'field_note' %}
-            {% if _mnrs == 'pending_review' %}
-            <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Pending Review</span>
+            {% if _mnrs == 'private_scratch' %}
+            <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#f3f4f6;color:#6b7280;text-transform:uppercase">Scratch</span>
+            {% elif _mnrs == 'submitted_for_review' %}
+            <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Submitted for Review</span>
             {% elif _mnrs == 'reviewed' %}
             <span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#e0e7ff;color:#3730a3;text-transform:uppercase">Reviewed</span>
             {% elif _mnrs == 'published' %}
@@ -688,19 +690,44 @@ function showTab(name) {
 
     </div>
 
-    {# Save + Cancel #}
-    <button type="button" id="noteSaveBtn" onclick="saveQuickNote()"
-            style="width:100%;margin-top:14px;padding:14px;background:var(--accent);color:#fff;
-                   border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
-                   -webkit-tap-highlight-color:transparent;">
-      Save Note
-    </button>
-    <button type="button" onclick="closeNoteSheet()"
-            style="width:100%;margin-top:8px;padding:13px;border:none;border-radius:12px;
-                   background:#f3f4f6;font-size:.9rem;font-weight:600;color:var(--muted);
-                   cursor:pointer;-webkit-tap-highlight-color:transparent;">
-      Cancel
-    </button>
+    {# Save + Submit + Cancel #}
+    <div id="noteSaveBtns" style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">
+      <button type="button" id="noteSaveBtn" onclick="saveQuickNote()"
+              style="width:100%;padding:14px;background:var(--accent);color:#fff;
+                     border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
+                     -webkit-tap-highlight-color:transparent;">
+        Save as Field Note
+      </button>
+      <button type="button" id="noteSubmitBtn" onclick="saveQuickNote(true)"
+              style="width:100%;padding:14px;background:#16a34a;color:#fff;
+                     border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
+                     -webkit-tap-highlight-color:transparent;">
+        Submit as File Update for Admin Review
+      </button>
+      <button type="button" onclick="closeNoteSheet()"
+              style="width:100%;padding:13px;border:none;border-radius:12px;
+                     background:#f3f4f6;font-size:.9rem;font-weight:600;color:var(--muted);
+                     cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        Cancel
+      </button>
+    </div>
+
+    {# Smart detection prompt (hidden by default) #}
+    <div id="noteSmartPrompt" style="display:none;margin-top:10px;padding:12px;background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;">
+      <div style="font-size:.85rem;font-weight:600;color:#92400e;margin-bottom:8px">
+        This note appears to be a file update. Submit for admin review?
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="button" onclick="saveQuickNote(true)"
+                style="flex:1;padding:10px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:.85rem;font-weight:700;cursor:pointer">
+          Yes &ndash; Submit for Review
+        </button>
+        <button type="button" onclick="saveQuickNote(false)"
+                style="flex:1;padding:10px;background:#e5e7eb;color:#374151;border:none;border-radius:8px;font-size:.85rem;font-weight:700;cursor:pointer">
+          No &ndash; Save as Field Note
+        </button>
+      </div>
+    </div>
 
   </div>
 </div>
@@ -1451,17 +1478,20 @@ window.openNoteSheet = function(editData) {
   var textEl     = document.getElementById('noteText');
   var saveBtnEl  = document.getElementById('noteSaveBtn');
 
+  var submitBtnEl = document.getElementById('noteSubmitBtn');
   if (_editNoteId) {
     if (titleEl)   titleEl.textContent = 'Edit Note';
     if (mediaRow)  mediaRow.style.display = 'none';
     if (photoPreview) photoPreview.style.display = 'none';
     if (textEl)    textEl.value = (editData.text || '');
     if (saveBtnEl) saveBtnEl.textContent = 'Save Edit';
+    if (submitBtnEl) submitBtnEl.style.display = 'none';
   } else {
     if (titleEl)   titleEl.textContent = 'Add Field Note';
     if (mediaRow)  mediaRow.style.display = '';
     if (textEl)    textEl.value = '';
-    if (saveBtnEl) saveBtnEl.textContent = 'Save Note';
+    if (saveBtnEl) saveBtnEl.textContent = 'Save as Field Note';
+    if (submitBtnEl) submitBtnEl.style.display = '';
   }
 
   var ov = document.getElementById('noteSheetOverlay');
@@ -1478,12 +1508,19 @@ window.openNoteSheet = function(editData) {
 window.closeNoteSheet = function() {
   stopNoteRecord();
   _editNoteId = 0;
+  _smartPromptShown = false;
   var titleEl  = document.getElementById('noteSheetTitle');
   var mediaRow = document.getElementById('noteMediaRow');
   var saveBtnEl = document.getElementById('noteSaveBtn');
+  var submitBtnEl = document.getElementById('noteSubmitBtn');
+  var smartPrompt = document.getElementById('noteSmartPrompt');
+  var saveBtns = document.getElementById('noteSaveBtns');
   if (titleEl)   titleEl.textContent = 'Add Field Note';
   if (mediaRow)  mediaRow.style.display = '';
-  if (saveBtnEl) saveBtnEl.textContent = 'Save Note';
+  if (saveBtnEl) saveBtnEl.textContent = 'Save as Field Note';
+  if (submitBtnEl) submitBtnEl.style.display = '';
+  if (smartPrompt) smartPrompt.style.display = 'none';
+  if (saveBtns) saveBtns.style.display = '';
   var ov    = document.getElementById('noteSheetOverlay');
   var panel = document.getElementById('noteSheetPanel');
   ov.style.background    = 'rgba(0,0,0,0)';
@@ -1629,11 +1666,43 @@ window.clearNotePhoto = function() {
   if (gal) gal.value = '';
 };
 
+// ── Smart detection patterns ─────────────────────────────
+var _fileUpdatePatterns = [
+  /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/i,
+  /\bat\s+\d{1,2}[:.]\d{2}\s*(am|pm)?\b/i,
+  /\bour agent attended\b/i,
+  /\bre-?attended\b/i,
+  /\btelephoned\b/i,
+  /\bvoicemail left\b/i,
+  /\bsms sent\b/i,
+  /\bcalling card\b/i,
+  /\bsecurity was not sighted\b/i,
+  /\bplease reschedule\b/i,
+  /\bfurther attendance\b/i,
+  /\bclient update\b/i,
+  /\bfile update\b/i,
+  /\battended at\b/i,
+  /\bleft at premises\b/i,
+  /\bspoke with\b/i,
+  /\bno answer at door\b/i
+];
+
+function _looksLikeFileUpdate(text) {
+  if (!text || text.length < 15) return false;
+  for (var i = 0; i < _fileUpdatePatterns.length; i++) {
+    if (_fileUpdatePatterns[i].test(text)) return true;
+  }
+  return false;
+}
+
+var _smartPromptShown = false;
+
 // ── Save via fetch ───────────────────────────────────────
-window.saveQuickNote = function() {
+window.saveQuickNote = function(submitForReview) {
   var editNoteId = _editNoteId;
   var noteText   = (document.getElementById('noteText').value || '').trim();
   var btn        = document.getElementById('noteSaveBtn');
+  var submitBtn  = document.getElementById('noteSubmitBtn');
 
   /* ── Edit mode ── */
   if (editNoteId) {
@@ -1677,8 +1746,22 @@ window.saveQuickNote = function() {
     return;
   }
 
-  btn.disabled    = true;
+  if (typeof submitForReview === 'undefined' && !_smartPromptShown && _looksLikeFileUpdate(noteText)) {
+    _smartPromptShown = true;
+    document.getElementById('noteSaveBtns').style.display = 'none';
+    document.getElementById('noteSmartPrompt').style.display = '';
+    return;
+  }
+
+  if (typeof submitForReview === 'undefined') submitForReview = false;
+
+  _smartPromptShown = false;
+  document.getElementById('noteSmartPrompt').style.display = 'none';
+  document.getElementById('noteSaveBtns').style.display = '';
+
+  btn.disabled = true;
   btn.textContent = 'Saving…';
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving…'; }
 
   var fd = new FormData();
   if (noteText)       fd.append('note_text',   noteText);
@@ -1687,6 +1770,7 @@ window.saveQuickNote = function() {
     fd.append('audio_file', _noteAudioBlob, 'voice_note' + ext);
   }
   if (_notePhotoFile) fd.append('photo_file', _notePhotoFile);
+  if (submitForReview) fd.append('submit_for_review', '1');
 
   fetch('/m/job/{{ job.id }}/quick-note', { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })
@@ -1719,7 +1803,8 @@ window.saveQuickNote = function() {
     .catch(function(){ alert('Network error. Please try again.'); })
     .finally(function(){
       btn.disabled    = false;
-      btn.textContent = 'Save Note';
+      btn.textContent = 'Save as Field Note';
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit as File Update for Admin Review'; }
     });
 };
 
@@ -1764,13 +1849,14 @@ function prependNoteCard(d) {
     : '';
 
   var nCat = d.note_category || 'field_note';
-  var nRs  = d.review_status || 'pending_review';
+  var nRs  = d.review_status || 'private_scratch';
   var catBadge = nCat === 'field_note'
     ? '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dbeafe;color:#1e40af;text-transform:uppercase;letter-spacing:.03em">Field Note</span>'
     : '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase;letter-spacing:.03em">File Note</span>';
   var rsBadge = '';
   if (nCat === 'field_note') {
-    if (nRs === 'pending_review') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Pending Review</span>';
+    if (nRs === 'private_scratch') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#f3f4f6;color:#6b7280;text-transform:uppercase">Scratch</span>';
+    else if (nRs === 'submitted_for_review') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;text-transform:uppercase">Submitted for Review</span>';
     else if (nRs === 'reviewed') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#e0e7ff;color:#3730a3;text-transform:uppercase">Reviewed</span>';
     else if (nRs === 'published') rsBadge = '<span style="font-size:.56rem;font-weight:700;padding:1px 5px;border-radius:3px;background:#dcfce7;color:#166534;text-transform:uppercase">Published</span>';
   }
