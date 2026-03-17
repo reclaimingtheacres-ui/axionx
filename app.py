@@ -6847,7 +6847,7 @@ def customer_edit_post(customer_id: int):
     ts = now_ts()
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT id_image_filename, id_image_path FROM customers WHERE id = ?", (customer_id,))
+    cur.execute("SELECT id_image_filename, id_image_path, address AS old_address FROM customers WHERE id = ?", (customer_id,))
     existing = cur.fetchone()
 
     id_image_filename = existing["id_image_filename"] if existing else None
@@ -6903,6 +6903,22 @@ def customer_edit_post(customer_id: int):
                 VALUES ('customer', ?, ?, ?, ?)
             """, (customer_id, label, em, ts))
 
+    old_address = (existing["old_address"] or "").strip() if existing else ""
+    new_address = (address or "").strip()
+    _synced_job_ids = []
+    if new_address and new_address != old_address:
+        _active_jobs = cur.execute("""
+            SELECT DISTINCT j.id, j.job_address FROM jobs j
+            LEFT JOIN job_customers jc ON jc.job_id = j.id
+            WHERE (jc.customer_id = ? OR j.customer_id = ?)
+              AND j.lifecycle_status = 'active'
+              AND (j.job_address IS NULL OR j.job_address = '' OR j.job_address = ?)
+        """, (customer_id, customer_id, old_address)).fetchall()
+        for _aj in _active_jobs:
+            cur.execute("UPDATE jobs SET job_address = ?, lat = NULL, lng = NULL, geocode_fail = 0, updated_at = ? WHERE id = ?",
+                        (new_address, ts, _aj["id"]))
+            _synced_job_ids.append(_aj["id"])
+
     cur.execute("""
         UPDATE jobs SET updated_at = ?
         WHERE id IN (SELECT job_id FROM job_customers WHERE customer_id = ?)
@@ -6911,8 +6927,12 @@ def customer_edit_post(customer_id: int):
     conn.commit()
     conn.close()
 
+    for _sjid in _synced_job_ids:
+        _geocode_job_async(_sjid, new_address)
+
     audit("customer", customer_id, "update", "Customer details updated",
-          {"id_image_updated": bool(id_image and id_image.filename)})
+          {"id_image_updated": bool(id_image and id_image.filename),
+           "address_synced_jobs": len(_synced_job_ids)})
 
     flash("Customer updated.", "success")
     return redirect(url_for("customer_detail", customer_id=customer_id))
@@ -14086,12 +14106,13 @@ def _mobile_jobs_query(uid, role, params_in):
             " j.lender_name LIKE ? OR j.client_job_number LIKE ? OR"
             " j.account_number LIKE ? OR"
             " cl.name LIKE ? OR cu.company LIKE ? OR"
+            " cu.address LIKE ? OR"
             " (cu.first_name || ' ' || cu.last_name) LIKE ? OR"
             " EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id"
             "   AND (ji.reg LIKE ? OR ji.vin LIKE ?)))"
         )
         like = f"%{q}%"
-        params += [like]*12
+        params += [like]*13
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
@@ -14118,6 +14139,7 @@ def _mobile_jobs_query(uid, role, params_in):
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
                (SELECT COUNT(*) FROM job_field_notes fn WHERE fn.job_id = j.id) AS note_count,
                au.full_name AS assigned_agent_name,
+               cu.address AS customer_address,
                (SELECT bt.name FROM schedules s JOIN booking_types bt ON bt.id = s.booking_type_id
                 WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0
                 ORDER BY s.scheduled_for LIMIT 1) AS next_booking_type
@@ -14191,7 +14213,7 @@ def m_api_jobs_search():
         "  AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0"
         "))")
     params = [] if is_admin else [uid, uid]
-    params += [like] * 12
+    params += [like] * 13
     rows = conn.execute(f"""
         SELECT j.id, j.display_ref, j.internal_job_number, j.client_reference,
                j.account_number, j.status, j.job_address, j.lat, j.lng,
@@ -14204,7 +14226,8 @@ def m_api_jobs_search():
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
-               au.full_name AS assigned_agent_name
+               au.full_name AS assigned_agent_name,
+               cu.address AS customer_address
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients c ON c.id = j.client_id
@@ -14215,6 +14238,7 @@ def m_api_jobs_search():
                j.lender_name LIKE ? OR j.client_job_number LIKE ? OR
                j.account_number LIKE ? OR
                c.name LIKE ? OR cu.company LIKE ? OR
+               cu.address LIKE ? OR
                (cu.first_name || ' ' || cu.last_name) LIKE ? OR
                EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id
                  AND (ji.reg LIKE ? OR ji.vin LIKE ?)))
@@ -14231,7 +14255,7 @@ def m_api_jobs_search():
             "client_reference": r["client_reference"] or "",
             "account_number": r["account_number"] or "",
             "status": r["status"] or "",
-            "job_address": r["job_address"] or "",
+            "job_address": r["customer_address"] or r["job_address"] or "",
             "lat": r["lat"],
             "lng": r["lng"],
             "lender_name": r["lender_name"] or "",
@@ -15021,6 +15045,7 @@ def m_api_map_jobs():
             SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
                    j.job_due_date, j.lender_name, j.client_job_number,
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   cu.address AS customer_address,
                    c.name  AS client_name,
                    ag.full_name AS agent_name,
                    ag.id        AS agent_id
@@ -15038,6 +15063,7 @@ def m_api_map_jobs():
             SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
                    j.job_due_date, j.lender_name, j.client_job_number,
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   cu.address AS customer_address,
                    c.name  AS client_name,
                    ag.full_name AS agent_name,
                    ag.id        AS agent_id
@@ -15057,7 +15083,7 @@ def m_api_map_jobs():
         jobs_out.append({
             "id":           r["id"],
             "ref":          r["display_ref"],
-            "address":      r["job_address"] or "",
+            "address":      r["customer_address"] or r["job_address"] or "",
             "status":       r["status"] or "",
             "lat":          r["lat"],
             "lng":          r["lng"],

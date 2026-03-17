@@ -279,10 +279,11 @@
                   Add Customer
                 </button>
               {% endif %}
-              {% if job.job_address %}
+              {% set _resolved_map_addr = (job_linked_customers[0].address if job_linked_customers and job_linked_customers[0].address else '') or job.job_address %}
+              {% if _resolved_map_addr %}
                 <a class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:2px 8px"
                    target="_blank"
-                   href="https://www.google.com/maps/search/?api=1&query={{ job.job_address|urlencode }}">
+                   href="https://www.google.com/maps/search/?api=1&query={{ _resolved_map_addr|urlencode }}">
                   Open in Maps
                 </a>
               {% endif %}

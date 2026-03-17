@@ -212,7 +212,7 @@
     {% set bar_color = '#9ca3af' %}
   {% endif %}
   {% set phone = j.customer_phone or '' %}
-  {% set addr  = j.job_address or '' %}
+  {% set addr  = j.customer_address or j.job_address or '' %}
 
   <div class="job-row-wrap"
        data-id="{{ j.id }}"
@@ -220,7 +220,7 @@
        data-lng="{{ j.lng or '' }}"
        data-ref="{{ [j.display_ref or '', j.internal_job_number or '', j.client_reference or '', j.account_number or ''] | join(' ') | lower | trim }}"
        data-customer="{{ (j.customer_name or '') | lower }}"
-       data-address="{{ (j.job_address or '') | lower }}"
+       data-address="{{ addr | lower }}"
        data-reg="{{ (j.asset_reg or '') | lower }}"
        data-vin="{{ (j.asset_vin or '') | lower }}"
        data-lender="{{ (j.lender_name or '') | lower }}"
