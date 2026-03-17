@@ -686,18 +686,19 @@ function showTab(name) {
         Voice
       </button>
 
-      <label style="padding:11px 6px;border:1.5px solid var(--line);border-radius:10px;
-                    background:#fff;cursor:pointer;display:flex;flex-direction:column;
-                    align-items:center;gap:5px;font-size:.72rem;font-weight:600;color:#374151;
-                    -webkit-tap-highlight-color:transparent;">
+      <button type="button" onclick="axCheckCameraThenOpen('noteCamInput')"
+              style="padding:11px 6px;border:1.5px solid var(--line);border-radius:10px;
+                     background:#fff;cursor:pointer;display:flex;flex-direction:column;
+                     align-items:center;gap:5px;font-size:.72rem;font-weight:600;color:#374151;
+                     -webkit-tap-highlight-color:transparent;">
         <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2">
           <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
           <circle cx="12" cy="13" r="4"/>
         </svg>
         Camera
-        <input type="file" accept="image/*" capture="environment" id="noteCamInput"
-               style="display:none;" onchange="onNotePhotoSelected(this)">
-      </label>
+      </button>
+      <input type="file" accept="image/*" capture="environment" id="noteCamInput"
+             style="display:none;" onchange="onNotePhotoSelected(this)">
 
       <label style="padding:11px 6px;border:1.5px solid var(--line);border-radius:10px;
                     background:#fff;cursor:pointer;display:flex;flex-direction:column;

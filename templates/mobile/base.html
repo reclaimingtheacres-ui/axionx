@@ -907,6 +907,69 @@ function axLinkPhones(container) {
     node.parentNode.replaceChild(wrap, node);
   });
 }
+
+
+window.axCheckCameraThenOpen = function(inputId) {
+  var hasBridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cameraPermission;
+  if (!hasBridge) {
+    document.getElementById(inputId).click();
+    return;
+  }
+  var rid = '_cp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+  if (!window._cameraPermissionCallbacks) window._cameraPermissionCallbacks = {};
+  window._cameraPermissionCallbacks[rid] = function(status) {
+    delete window._cameraPermissionCallbacks[rid];
+    if (status === 'authorized') {
+      document.getElementById(inputId).click();
+    } else if (status === 'not_determined') {
+      var rid2 = '_cp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+      window._cameraPermissionCallbacks[rid2] = function(s2) {
+        delete window._cameraPermissionCallbacks[rid2];
+        if (s2 === 'authorized') {
+          document.getElementById(inputId).click();
+        } else {
+          axShowCameraDenied();
+        }
+      };
+      window._cameraPermissionActiveRid = rid2;
+      window.webkit.messageHandlers.cameraPermission.postMessage({action:'request'});
+    } else {
+      axShowCameraDenied();
+    }
+  };
+  window._cameraPermissionActiveRid = rid;
+  window.webkit.messageHandlers.cameraPermission.postMessage({action:'check'});
+};
+
+window._cameraPermissionResult = function(status) {
+  var rid = window._cameraPermissionActiveRid;
+  if (rid && window._cameraPermissionCallbacks && window._cameraPermissionCallbacks[rid]) {
+    window._cameraPermissionCallbacks[rid](status);
+  }
+};
+
+window.axShowCameraDenied = function() {
+  var hasSettings = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openSettings;
+  var settingsBtn = hasSettings
+    ? '<button onclick="window.webkit.messageHandlers.openSettings.postMessage({})" ' +
+      'style="margin-top:12px;padding:10px 20px;border-radius:10px;border:0;background:#2563eb;' +
+      'color:#fff;font-size:.88rem;font-weight:700;cursor:pointer;">Open Settings</button>'
+    : '';
+  var overlay = document.createElement('div');
+  overlay.id = 'axCameraDeniedOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);' +
+    'display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:28px 24px;' +
+    'max-width:320px;text-align:center;margin:20px;">' +
+    '<div style="font-size:2.5rem;margin-bottom:8px;">📷</div>' +
+    '<div style="font-size:1rem;font-weight:700;color:#111;margin-bottom:6px;">Camera Access Required</div>' +
+    '<div style="font-size:.88rem;color:#555;">To take photos, allow camera access in Settings → AxionX → Camera.</div>' +
+    settingsBtn +
+    '<div style="margin-top:10px;"><button onclick="document.getElementById(\'axCameraDeniedOverlay\').remove()" ' +
+    'style="padding:8px 18px;border-radius:10px;border:1px solid #ccc;background:#fff;' +
+    'color:#333;font-size:.85rem;font-weight:600;cursor:pointer;">Cancel</button></div></div>';
+  document.body.appendChild(overlay);
+};
 </script>
 </body>
 </html>

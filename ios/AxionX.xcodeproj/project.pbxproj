@@ -42,6 +42,7 @@
                 F100000000000000000045 /* LoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000044; };
                 F100000000000000000047 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000046; };
                 F100000000000000000049 /* DocumentPreviewHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000048; };
+                F10000000000000000004B /* CameraPermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000004A; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -83,6 +84,7 @@
                 F100000000000000000044 /* LoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginService.swift; sourceTree = "<group>"; };
                 F100000000000000000046 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
                 F100000000000000000048 /* DocumentPreviewHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPreviewHandler.swift; sourceTree = "<group>"; };
+                F10000000000000000004A /* CameraPermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPermissionService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -173,6 +175,7 @@
                                 F100000000000000000042 /* KeychainService.swift */,
                                 F100000000000000000044 /* LoginService.swift */,
                                 F100000000000000000048 /* DocumentPreviewHandler.swift */,
+                                F10000000000000000004A /* CameraPermissionService.swift */,
                         );
                         path = Services;
                         sourceTree = "<group>";
@@ -307,6 +310,7 @@
                                 F100000000000000000045 /* LoginService.swift in Sources */,
                                 F100000000000000000047 /* LoginView.swift in Sources */,
                                 F100000000000000000049 /* DocumentPreviewHandler.swift in Sources */,
+                                F10000000000000000004B /* CameraPermissionService.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };

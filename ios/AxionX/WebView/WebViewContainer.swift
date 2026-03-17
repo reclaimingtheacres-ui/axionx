@@ -345,6 +345,9 @@ struct WebViewContainer: View {
                     if let u = url, u.path.hasPrefix("/m/lpr") {
                         PatrolCameraService.shared.ensureCameraPermission()
                     }
+                    if let u = url, (u.path.hasPrefix("/m/job/") || u.path.hasPrefix("/m/update-builder")) {
+                        CameraPermissionService.shared.ensureCameraPermission()
+                    }
                 }
             },
             forKeyPath: #keyPath(WKWebView.url),
@@ -355,6 +358,7 @@ struct WebViewContainer: View {
         SyncManager.shared.setWebView(store.webView)
         PatrolCameraService.shared.setWebView(store.webView)
         DocumentPreviewHandler.shared.setWebView(store.webView)
+        CameraPermissionService.shared.setWebView(store.webView)
     }
 
     /// Call the lookup API natively using the webview's session cookies.
