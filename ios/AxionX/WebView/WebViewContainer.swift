@@ -356,6 +356,7 @@ struct WebViewContainer: View {
         PatrolCameraService.shared.setWebView(store.webView)
         DocumentPreviewHandler.shared.setWebView(store.webView)
         CameraPermissionService.shared.setWebView(store.webView)
+        CameraCaptureService.shared.setWebView(store.webView)
         store.openSettingsHandler.setWebView(store.webView)
     }
 

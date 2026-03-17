@@ -915,18 +915,74 @@ window._cameraPermissionResult = function(status) {
   window._axCameraStatus = status;
 };
 
+window._axPendingCameraInputId = null;
+
+window._cameraCaptureCallback = function(cbId, base64Data, error) {
+  if (error) {
+    if (error !== 'cancelled') { console.warn('[CameraCapture] Error:', error); }
+    return;
+  }
+  if (!base64Data) return;
+
+  var byteChars = atob(base64Data);
+  var byteLen = byteChars.length;
+  var bytes = new Uint8Array(byteLen);
+  for (var i = 0; i < byteLen; i++) { bytes[i] = byteChars.charCodeAt(i); }
+  var blob = new Blob([bytes], { type: 'image/jpeg' });
+  var file = new File([blob], 'camera_photo_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+
+  var inputId = window._axPendingCameraInputId;
+  if (inputId) {
+    var input = document.getElementById(inputId);
+    if (input) {
+      try {
+        var dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch(e) {
+        var handler = input.getAttribute('onchange');
+        if (handler) {
+          var fnMatch = handler.match(/^(\w+)\(/);
+          if (fnMatch && window[fnMatch[1]]) {
+            window[fnMatch[1]]({ files: [file] });
+          }
+        }
+      }
+    }
+  }
+
+  if (window._axNativeCameraResolve) {
+    window._axNativeCameraResolve(file);
+    window._axNativeCameraResolve = null;
+  }
+};
+
 window.axCheckCameraThenOpen = function(inputId) {
-  var hasBridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cameraPermission;
-  if (!hasBridge) {
+  var hasCaptureBridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cameraCapture;
+  var hasPermBridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cameraPermission;
+
+  if (!hasPermBridge && !hasCaptureBridge) {
     document.getElementById(inputId).click();
     return;
   }
+
   if (window._axCameraStatus === 'denied' || window._axCameraStatus === 'restricted') {
     axShowCameraDenied();
     return;
   }
+
+  if (hasCaptureBridge && window._axCameraStatus === 'authorized') {
+    window._axPendingCameraInputId = inputId;
+    window.webkit.messageHandlers.cameraCapture.postMessage({
+      action: 'capture',
+      callbackId: 'cap_' + Date.now()
+    });
+    return;
+  }
+
   document.getElementById(inputId).click();
-  if (!window._axCameraStatus || window._axCameraStatus === 'not_determined') {
+  if (hasPermBridge && (!window._axCameraStatus || window._axCameraStatus === 'not_determined')) {
     window.webkit.messageHandlers.cameraPermission.postMessage({action:'request'});
   }
 };

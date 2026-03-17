@@ -23,6 +23,7 @@ final class WebViewStore: ObservableObject {
         config.userContentController.add(openSettingsHandler, name: "openSettings")
         config.userContentController.add(DocumentPreviewHandler.shared, name: "documentPreview")
         config.userContentController.add(CameraPermissionService.shared, name: "cameraPermission")
+        config.userContentController.add(CameraCaptureService.shared, name: "cameraCapture")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.backgroundColor = .white
