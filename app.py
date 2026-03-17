@@ -9904,7 +9904,8 @@ def my_drafts():
         SELECT ju.id AS draft_id, ju.job_id, ju.attend_date, ju.attend_time,
                ju.created_at, ju.updated_at,
                j.display_ref, j.internal_job_number, j.client_reference, j.job_address,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name
+               COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                        NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name
         FROM job_updates ju
         JOIN jobs j ON j.id = ju.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -14414,7 +14415,8 @@ def m_today():
     cues = conn.execute(f"""
         SELECT ci.*, j.internal_job_number, j.client_reference, j.display_ref,
                j.job_address, j.id AS jid,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                        NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
@@ -14429,7 +14431,8 @@ def m_today():
         SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
                bt.name AS booking_type_name,
                j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                        NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
         FROM schedules s
         JOIN booking_types bt ON bt.id = s.booking_type_id
@@ -14597,7 +14600,8 @@ def _mobile_jobs_query(uid, role, params_in):
 
     jobs = conn.execute(f"""
         SELECT j.*,
-               (cu.first_name || ' ' || cu.last_name)  AS customer_name,
+               COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                        NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
                (SELECT ji.reg  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_reg,
                (SELECT ji.vin  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_vin,
                (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
@@ -14686,7 +14690,8 @@ def m_api_jobs_search():
         SELECT j.id, j.display_ref, j.internal_job_number, j.client_reference,
                j.account_number, j.status, j.job_address, j.lat, j.lng,
                j.lender_name,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                        NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
                (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_reg,
                (SELECT ji.vin FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_vin,
                (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
@@ -15564,7 +15569,8 @@ def m_api_map_jobs():
         rows = conn.execute(f"""
             SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
                    j.job_due_date, j.lender_name, j.client_job_number,
-                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                            NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
                    cu.address AS customer_address,
                    c.name  AS client_name,
                    ag.full_name AS agent_name,
@@ -15582,7 +15588,8 @@ def m_api_map_jobs():
         rows = conn.execute(f"""
             SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
                    j.job_due_date, j.lender_name, j.client_job_number,
-                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                            NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
                    cu.address AS customer_address,
                    c.name  AS client_name,
                    ag.full_name AS agent_name,

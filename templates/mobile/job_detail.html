@@ -66,10 +66,17 @@
 
     {# Customer name #}
     {% if customer %}
+    {% set _cust_fullname = ((customer.first_name or '') ~ ' ' ~ (customer.last_name or ''))|trim %}
     <div style="margin-bottom:12px;">
       <div class="m-label">Customer</div>
-      <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">{{ customer.first_name }} {{ customer.last_name }}</div>
-      {% if customer.company %}<div style="font-size:.82rem;color:var(--muted);margin-top:2px;">{{ customer.company }}</div>{% endif %}
+      {% if _cust_fullname %}
+        <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">{{ _cust_fullname }}</div>
+        {% if customer.company %}<div style="font-size:.82rem;color:var(--muted);margin-top:2px;">{{ customer.company }}</div>{% endif %}
+      {% elif customer.company %}
+        <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">{{ customer.company }}</div>
+      {% else %}
+        <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">Customer #{{ customer.id }}</div>
+      {% endif %}
     </div>
     {% else %}
     <div style="margin-bottom:12px;">
