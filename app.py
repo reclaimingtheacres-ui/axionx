@@ -576,6 +576,8 @@ def init_db():
         ("mmp_cents",         "INTEGER"),
         ("job_due_date",      "TEXT"),
         ("payment_frequency", "TEXT"),
+        ("tp_referral",       "TEXT"),
+        ("tp_job_number",     "TEXT"),
     ]:
         add_column_if_missing(cur, "jobs", col, coltype)
 
@@ -1991,6 +1993,19 @@ def _parse_instruction_text(text):
     ])
     phone = _normalise_phone(phone)
 
+    # ── Third Party Referral ──────────────────────────────────────────────
+    tp_referral = find_after([
+        r"(?:Third\s*Party|3rd\s*Party|Forwarding\s*(?:Firm|Agent|Company)|Intermediary|Referral\s*Source)[:\s]+"
+        r"([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|\s{3,}|$)",
+        r"(?:Referred\s*(?:by|from|via))[:\s]+([A-Za-z0-9 ,.'&\-]{3,60}?)(?:\s*\n|\s{3,}|$)",
+    ])
+    if tp_referral:
+        tp_referral = tp_referral.strip().rstrip(".,")
+    tp_job_number = find_after([
+        r"(?:Third\s*Party|3rd\s*Party|Forwarding)\s*(?:Job|Ref(?:erence)?|File)\s*(?:No\.?|Number|#)?[:\s]*"
+        r"([A-Za-z0-9\-\/]+)",
+    ])
+
     # ── Financial ─────────────────────────────────────────────────────────
     arrears  = find_after([r"Arrears?[:\s]*\$?\s*([0-9,]+\.?\d{0,2})"])
     due_date = find_after([
@@ -2058,6 +2073,8 @@ def _parse_instruction_text(text):
         "instructions":     _conf(instructions),
         "costs":            _conf(costs),
         "arrears":          _conf(arrears),
+        "tp_referral":      _conf(tp_referral),
+        "tp_job_number":    _conf(tp_job_number),
     }
     filled_count = sum(1 for v in confidence.values() if v)
 
@@ -2071,6 +2088,8 @@ def _parse_instruction_text(text):
         "from_name":         from_name,
         "deliver_to":        deliver_to,
         "costs":             costs,
+        "tp_referral":       tp_referral,
+        "tp_job_number":     tp_job_number,
         "security_type":     security_type,
         "customer": {
             "full_name":  cust_name,
@@ -3192,6 +3211,8 @@ def _jobs_list_inner():
            j.display_ref          LIKE ? OR
            j.description          LIKE ? OR
            j.job_address          LIKE ? OR
+           j.tp_referral          LIKE ? OR
+           j.tp_job_number        LIKE ? OR
            cu.first_name          LIKE ? OR
            cu.last_name           LIKE ? OR
            cu.company             LIKE ? OR
@@ -3203,7 +3224,7 @@ def _jobs_list_inner():
            )
          )"""
         like = f"%{q}%"
-        params.extend([like] * 13)
+        params.extend([like] * 15)
 
     if filter_client:
         from_where += " AND j.client_id = ?"
@@ -3333,11 +3354,13 @@ def api_jobs_search():
         WHERE j.display_ref LIKE ?
            OR j.client_reference LIKE ?
            OR j.client_job_number LIKE ?
+           OR j.tp_referral LIKE ?
+           OR j.tp_job_number LIKE ?
            OR cu.last_name LIKE ?
            OR cu.company LIKE ?
         ORDER BY j.created_at DESC
         LIMIT 12
-    """, (like, like, like, like, like)).fetchall()
+    """, (like, like, like, like, like, like, like)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
@@ -3409,6 +3432,8 @@ def job_clone_data(job_id: int):
         "costs":            cents_to_str(job["costs_cents"]),
         "mmp":              cents_to_str(job["mmp_cents"]),
         "job_due_date":     job["job_due_date"] or "",
+        "tp_referral":      job["tp_referral"] or "",
+        "tp_job_number":    job["tp_job_number"] or "",
         "display_ref":      job["display_ref"],
         "assets": [
             {
@@ -3548,6 +3573,8 @@ def _job_new_render(conn):
     prefill_deliver_to        = ""
     prefill_costs             = ""
     prefill_client_job_number = ""
+    prefill_tp_referral       = ""
+    prefill_tp_job_number     = ""
     autofill_client_id        = None
 
     autofill_customer_id      = None
@@ -3571,6 +3598,10 @@ def _job_new_render(conn):
             prefill_costs = autofill.get("costs") or ""
         if not prefill_client_job_number:
             prefill_client_job_number = autofill.get("our_ref") or ""
+        if not prefill_tp_referral:
+            prefill_tp_referral = autofill.get("tp_referral") or ""
+        if not prefill_tp_job_number:
+            prefill_tp_job_number = autofill.get("tp_job_number") or ""
 
         autofill_confidence   = autofill.get("_confidence") or {}
         autofill_filled_count = autofill.get("_filled_count") or 0
@@ -3755,6 +3786,11 @@ def _job_new_render(conn):
     except Exception:
         known_lenders = []
     try:
+        cur.execute("SELECT DISTINCT tp_referral FROM jobs WHERE tp_referral IS NOT NULL AND tp_referral != '' ORDER BY tp_referral")
+        known_referrals = [r["tp_referral"] for r in cur.fetchall()]
+    except Exception:
+        known_referrals = []
+    try:
         cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
         booking_types = cur.fetchall()
     except Exception:
@@ -3792,6 +3828,9 @@ def _job_new_render(conn):
                            autofill_confidence=autofill_confidence,
                            autofill_filled_count=autofill_filled_count,
                            known_lenders=known_lenders,
+                           known_referrals=known_referrals,
+                           prefill_tp_referral=prefill_tp_referral,
+                           prefill_tp_job_number=prefill_tp_job_number,
                            booking_types=booking_types,
                            auction_yards=auction_yards,
                            autofill=autofill,
@@ -3836,6 +3875,8 @@ def _job_create_inner():
     mmp_cents = money_to_cents(request.form.get("mmp"))
     job_due_date = request.form.get("job_due_date", "").strip() or None
     payment_frequency = request.form.get("payment_frequency", "").strip() or None
+    tp_referral = request.form.get("tp_referral", "").strip()
+    tp_job_number = request.form.get("tp_job_number", "").strip()
 
     display_ref = internal_job_number
     if client_job_number:
@@ -3853,9 +3894,10 @@ def _job_create_inner():
             job_address, description, deliver_to,
             lender_name, account_number, regulation_type,
             arrears_cents, costs_cents, mmp_cents, job_due_date, payment_frequency,
+            tp_referral, tp_job_number,
             created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         internal_job_number, client_reference or None, client_job_number, display_ref,
         client_id, customer_id, bill_to_client_id, assigned_user_id,
@@ -3863,6 +3905,7 @@ def _job_create_inner():
         job_address, description, deliver_to,
         lender_name or None, account_number or None, regulation_type or None,
         arrears_cents or None, costs_cents or None, mmp_cents or None, job_due_date, payment_frequency,
+        tp_referral or None, tp_job_number or None,
         now, now
     ))
     job_id = cur.lastrowid
@@ -4272,6 +4315,15 @@ def job_detail(job_id: int):
 
     from_cue = request.args.get("from_cue", "")
 
+    conn6 = db()
+    try:
+        known_referrals = [r["tp_referral"] for r in conn6.execute(
+            "SELECT DISTINCT tp_referral FROM jobs WHERE tp_referral IS NOT NULL AND tp_referral != '' ORDER BY tp_referral"
+        ).fetchall()]
+    except Exception:
+        known_referrals = []
+    conn6.close()
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -4292,6 +4344,7 @@ def job_detail(job_id: int):
                            repo_lock_map=repo_lock_map,
                            job_payments=job_payments,
                            payments_total_cents=payments_total_cents,
+                           known_referrals=known_referrals,
                            from_cue=from_cue)
 
 
@@ -6190,15 +6243,18 @@ def job_lender_update(job_id: int):
     mmp_cents          = money_to_cents(request.form.get("mmp", ""))
     job_due_date       = request.form.get("job_due_date", "").strip() or None
     payment_frequency  = request.form.get("payment_frequency", "").strip() or None
+    tp_referral        = request.form.get("tp_referral", "").strip()
+    tp_job_number      = request.form.get("tp_job_number", "").strip()
     conn = db()
     cur  = conn.cursor()
     cur.execute("""
         UPDATE jobs SET lender_name=?, account_number=?, regulation_type=?,
         arrears_cents=?, costs_cents=?, costs2_cents=?, mmp_cents=?, job_due_date=?,
-        payment_frequency=?, updated_at=? WHERE id=?
+        payment_frequency=?, tp_referral=?, tp_job_number=?, updated_at=? WHERE id=?
     """, (lender_name or None, account_number or None, regulation_type or None,
           arrears_cents or None, costs_cents or None, costs2_cents or None,
-          mmp_cents or None, job_due_date, payment_frequency, now_ts(), job_id))
+          mmp_cents or None, job_due_date, payment_frequency,
+          tp_referral or None, tp_job_number or None, now_ts(), job_id))
     conn.commit()
     conn.close()
     flash("Lender details updated.", "success")
@@ -14503,6 +14559,7 @@ def _mobile_jobs_query(uid, role, params_in):
             " j.client_reference LIKE ? OR j.job_address LIKE ? OR"
             " j.lender_name LIKE ? OR j.client_job_number LIKE ? OR"
             " j.account_number LIKE ? OR"
+            " j.tp_referral LIKE ? OR j.tp_job_number LIKE ? OR"
             " cl.name LIKE ? OR cu.company LIKE ? OR"
             " cu.address LIKE ? OR"
             " (cu.first_name || ' ' || cu.last_name) LIKE ? OR"
@@ -14510,7 +14567,7 @@ def _mobile_jobs_query(uid, role, params_in):
             "   AND (ji.reg LIKE ? OR ji.vin LIKE ?)))"
         )
         like = f"%{q}%"
-        params += [like]*13
+        params += [like]*15
 
     where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
@@ -14611,7 +14668,7 @@ def m_api_jobs_search():
         "  AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0"
         "))")
     params = [] if is_admin else [uid, uid]
-    params += [like] * 13
+    params += [like] * 15
     rows = conn.execute(f"""
         SELECT j.id, j.display_ref, j.internal_job_number, j.client_reference,
                j.account_number, j.status, j.job_address, j.lat, j.lng,
@@ -14635,6 +14692,7 @@ def m_api_jobs_search():
                j.client_reference LIKE ? OR j.job_address LIKE ? OR
                j.lender_name LIKE ? OR j.client_job_number LIKE ? OR
                j.account_number LIKE ? OR
+               j.tp_referral LIKE ? OR j.tp_job_number LIKE ? OR
                c.name LIKE ? OR cu.company LIKE ? OR
                cu.address LIKE ? OR
                (cu.first_name || ' ' || cu.last_name) LIKE ? OR

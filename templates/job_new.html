@@ -378,6 +378,22 @@
           </div>
         </div>
         <div class="nj-row">
+          <div style="flex:1;min-width:140px;">
+            <label class="nj-lbl">Third Party Referral {{ conf_badge('tp_referral') }}</label>
+            <input class="form-control form-control-sm" name="tp_referral" id="tp_referral"
+                   list="tp_referral_list" placeholder="e.g. Pickles, Collection House" autocomplete="off"
+                   value="{{ prefill_tp_referral or (autofill.tp_referral if autofill else '') }}">
+            <datalist id="tp_referral_list">
+              {% for tr in known_referrals %}<option value="{{ tr }}">{% endfor %}
+            </datalist>
+          </div>
+          <div style="flex:1;min-width:120px;">
+            <label class="nj-lbl">Third Party Job # {{ conf_badge('tp_job_number') }}</label>
+            <input class="form-control form-control-sm" name="tp_job_number" id="tp_job_number" placeholder="e.g. PKL-123456"
+                   value="{{ prefill_tp_job_number or (autofill.tp_job_number if autofill else '') }}">
+          </div>
+        </div>
+        <div class="nj-row">
           <div style="flex:1;">
             <label class="nj-lbl">Arrears</label>
             <input class="form-control form-control-sm" name="arrears" placeholder="$0.00"
@@ -1050,6 +1066,10 @@ function toggleParsed(btn) {
       if (d.account_number) rows.push(['Account #', escHtml(d.account_number)]);
       if (d.arrears) rows.push(['Arrears', '$' + escHtml(d.arrears)]);
     }
+    if (d.tp_referral) {
+      rows.push(['Third Party Referral', escHtml(d.tp_referral)]);
+      if (d.tp_job_number) rows.push(['Third Party Job #', escHtml(d.tp_job_number)]);
+    }
     var html = '<table class="table table-sm mb-0"><tbody>';
     rows.forEach(function (r) {
       if (!r[1] || r[1] === '') return;
@@ -1144,6 +1164,8 @@ function toggleParsed(btn) {
     setInput('mmp', d.mmp);
     setInput('job_due_date', d.job_due_date);
     setSelect('payment_frequency', d.payment_frequency);
+    setInput('tp_referral', d.tp_referral);
+    setInput('tp_job_number', d.tp_job_number);
 
     if (d.assets && d.assets.length) {
       var wrap = document.getElementById('assetsWrap');

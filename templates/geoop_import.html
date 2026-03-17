@@ -1026,6 +1026,8 @@ function loadDiagnostics() {
                 if (fp.lender_name) fpText.push('Lender: ' + fp.lender_name);
                 if (fp.account_number) fpText.push('Account: ' + fp.account_number);
                 if (fp.regulation_type) fpText.push('Regulation: ' + fp.regulation_type);
+                if (fp.tp_referral) fpText.push('Third Party: ' + fp.tp_referral);
+                if (fp.tp_job_number) fpText.push('TP Job #: ' + fp.tp_job_number);
                 if (fp.arrears) fpText.push('Arrears: ' + fp.arrears);
                 if (fp.costs) fpText.push('Costs: ' + fp.costs);
                 if (fp.mmp) fpText.push('Installment: ' + fp.mmp);
@@ -1050,6 +1052,8 @@ function loadDiagnostics() {
                   if (s.lender_name) fields.push('Lender: ' + s.lender_name);
                   if (s.account_number) fields.push('Account: ' + s.account_number);
                   if (s.regulation_type) fields.push('Regulation: ' + s.regulation_type);
+                  if (s.tp_referral) fields.push('Third Party: ' + s.tp_referral);
+                  if (s.tp_job_number) fields.push('TP Job #: ' + s.tp_job_number);
                   if (s.arrears) fields.push('Arrears: ' + s.arrears);
                   if (s.costs) fields.push('Costs: ' + s.costs);
                   if (s.mmp) fields.push('Installment: ' + s.mmp);
@@ -1232,6 +1236,8 @@ function loadDiagnostics() {
         if (fp.lender_name) fpText.push('Lender: ' + fp.lender_name);
         if (fp.account_number) fpText.push('Account: ' + fp.account_number);
         if (fp.regulation_type) fpText.push('Regulation: ' + fp.regulation_type);
+        if (fp.tp_referral) fpText.push('Third Party: ' + fp.tp_referral);
+        if (fp.tp_job_number) fpText.push('TP Job #: ' + fp.tp_job_number);
         if (fp.arrears) fpText.push('Arrears: ' + fp.arrears);
         if (fp.costs) fpText.push('Costs: ' + fp.costs);
         if (fp.mmp) fpText.push('Installment: ' + fp.mmp);
@@ -1256,6 +1262,8 @@ function loadDiagnostics() {
           if (s.lender_name) fields.push('Lender: ' + s.lender_name);
           if (s.account_number) fields.push('Account: ' + s.account_number);
           if (s.regulation_type) fields.push('Regulation: ' + s.regulation_type);
+          if (s.tp_referral) fields.push('Third Party: ' + s.tp_referral);
+          if (s.tp_job_number) fields.push('TP Job #: ' + s.tp_job_number);
           if (s.arrears) fields.push('Arrears: ' + s.arrears);
           if (s.costs) fields.push('Costs: ' + s.costs);
           if (s.mmp) fields.push('Installment: ' + s.mmp);

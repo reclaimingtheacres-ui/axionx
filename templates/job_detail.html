@@ -381,6 +381,18 @@
               <div class="small fw-semibold">{{ job.regulation_type or '—' }}</div>
             </div>
           </div>
+          {% if job.tp_referral or job.tp_job_number %}
+          <div class="row g-2 mb-1">
+            <div class="col-12 col-sm-5">
+              <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">THIRD PARTY REFERRAL</div>
+              <div class="small fw-semibold">{{ job.tp_referral or '—' }}</div>
+            </div>
+            <div class="col-6 col-sm-4">
+              <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">THIRD PARTY JOB #</div>
+              <div class="small fw-semibold">{{ job.tp_job_number or '—' }}</div>
+            </div>
+          </div>
+          {% endif %}
           <div class="row g-2 mb-2">
             <div class="col-6 col-sm-3">
               <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">ARREARS</div>
@@ -445,6 +457,20 @@
                       <option value="{{ rt }}" {% if job.regulation_type == rt %}selected{% endif %}>{{ rt }}</option>
                     {% endfor %}
                   </select>
+                </div>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-12 col-lg-5">
+                  <label class="form-label form-label-sm">Third Party Referral</label>
+                  <input class="form-control form-control-sm" name="tp_referral" list="tp_referral_edit_list"
+                         value="{{ job.tp_referral or '' }}" placeholder="e.g. Pickles, Collection House" autocomplete="off">
+                  <datalist id="tp_referral_edit_list">
+                    {% for tr in known_referrals %}<option value="{{ tr }}">{% endfor %}
+                  </datalist>
+                </div>
+                <div class="col-6 col-lg-4">
+                  <label class="form-label form-label-sm">Third Party Job #</label>
+                  <input class="form-control form-control-sm" name="tp_job_number" value="{{ job.tp_job_number or '' }}" placeholder="e.g. PKL-123456">
                 </div>
               </div>
               <div class="row g-2 mb-2">
@@ -1586,6 +1612,18 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               <div class="fpa-value">{{ job.lender_name or '' }}</div>
             </div>
           </div>
+          {% if job.tp_referral %}
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Third Party Referral</div>
+              <div class="fpa-value">{{ job.tp_referral or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Third Party Job #</div>
+              <div class="fpa-value">{{ job.tp_job_number or '' }}</div>
+            </div>
+          </div>
+          {% endif %}
           <div class="fpa-row">
             <div class="fpa-section">
               <div class="fpa-label">Customer Name</div>
@@ -1786,6 +1824,18 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               <div class="fpa-value">{{ job.account_number or '' }}</div>
             </div>
           </div>
+          {% if job.tp_referral %}
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Third Party Referral</div>
+              <div class="fpa-value">{{ job.tp_referral or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Third Party Job #</div>
+              <div class="fpa-value">{{ job.tp_job_number or '' }}</div>
+            </div>
+          </div>
+          {% endif %}
           <div class="fpa-row">
             <div class="fpa-section">
               <div class="fpa-label">Regulation Type</div>
@@ -2082,6 +2132,18 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               <div class="fpa-value">{{ job.account_number or '' }}</div>
             </div>
           </div>
+          {% if job.tp_referral %}
+          <div class="fpa-row">
+            <div class="fpa-section">
+              <div class="fpa-label">Third Party Referral</div>
+              <div class="fpa-value">{{ job.tp_referral or '' }}</div>
+            </div>
+            <div class="fpa-section">
+              <div class="fpa-label">Third Party Job #</div>
+              <div class="fpa-value">{{ job.tp_job_number or '' }}</div>
+            </div>
+          </div>
+          {% endif %}
           <div class="fpa-row">
             <div class="fpa-section">
               <div class="fpa-label">Contract Number</div>
@@ -2151,6 +2213,8 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               ('lender_name',       'Lender Name'),
               ('account_number',    'Account Number'),
               ('regulation_type',   'Regulation Type'),
+              ('tp_referral',       'Third Party Referral'),
+              ('tp_job_number',     'Third Party Job #'),
               ('job_address',       'Job Address'),
               ('security_type',     'Security Type'),
               ('security_reg',      'Security Reg'),
@@ -4149,6 +4213,7 @@ function axCopyVin(btn) {
     job_number:'Job Number', contract_number:'Contract Number', client_name:'Client Name',
     customer_name:'Customer Name', customer_address:'Customer Address', customer_phone:'Customer Phone',
     lender_name:'Lender Name', account_number:'Account Number', regulation_type:'Regulation Type',
+    tp_referral:'Third Party Referral', tp_job_number:'Third Party Job #',
     job_address:'Job Address', security_type:'Security Type', security_reg:'Security Reg',
     security_vin:'Security VIN', security_desc:'Security Description',
     amount_owing:'Amount Owing', costs:'Costs', monthly_payment:'Installment', current_date:'Current Date'
@@ -4164,6 +4229,8 @@ function axCopyVin(btn) {
     lender_name:      {{ (job.lender_name or '')|tojson }},
     account_number:   {{ (job.account_number or '')|tojson }},
     regulation_type:  {{ (job.regulation_type or '')|tojson }},
+    tp_referral:      {{ (job.tp_referral or '')|tojson }},
+    tp_job_number:    {{ (job.tp_job_number or '')|tojson }},
     job_address:      {{ (job.job_address or '')|tojson }},
     security_type:    {{ ((job_items[0]['item_type']|title) if job_items else '')|tojson }},
     security_reg:     {{ (job_items[0]['reg'] if job_items and job_items[0]['reg'] else '')|tojson }},
@@ -4287,6 +4354,12 @@ function axCopyVin(btn) {
                   </div>
                 {% else %}
                   <div class="small" style="color:var(--muted)">— Not entered</div>
+                {% endif %}
+                {% if job.tp_referral %}
+                  <div style="font-size:.68rem;color:var(--muted);font-weight:600;letter-spacing:.04em;margin-top:4px">THIRD PARTY</div>
+                  <div class="small fw-semibold" style="color:var(--text)">
+                    {{ job.tp_referral }}{% if job.tp_job_number %} · Ref {{ job.tp_job_number }}{% endif %}
+                  </div>
                 {% endif %}
                 {% if not job_linked_customers or not job.client_name or not job.lender_name %}
                   <div class="mt-1" style="font-size:.72rem;color:#d97706">

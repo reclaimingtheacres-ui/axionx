@@ -215,7 +215,7 @@
 {% endif %}
 
 {# ── 3. Financial Details card ── #}
-{% if job.lender_name or job.arrears_cents or job.costs_cents or job.costs2_cents or job.mmp_cents or job.job_due_date or job.total_due_now_cents %}
+{% if job.lender_name or job.tp_referral or job.arrears_cents or job.costs_cents or job.costs2_cents or job.mmp_cents or job.job_due_date or job.total_due_now_cents %}
 <div class="m-card" style="margin-bottom:10px;">
   <div class="m-card-header">Financial Details</div>
   <div class="m-card-body">
@@ -224,6 +224,19 @@
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
       <div class="m-label" style="margin-bottom:0;min-width:120px;">Lender</div>
       <div style="font-weight:600;font-size:.9rem;text-align:right;">{{ job.lender_name }}</div>
+    </div>
+    {% endif %}
+
+    {% if job.tp_referral %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Third Party</div>
+      <div style="font-weight:600;font-size:.9rem;text-align:right;">{{ job.tp_referral }}</div>
+    </div>
+    {% endif %}
+    {% if job.tp_job_number %}
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">TP Job #</div>
+      <div style="font-size:.9rem;text-align:right;">{{ job.tp_job_number }}</div>
     </div>
     {% endif %}
 
