@@ -8,6 +8,7 @@ python-docx
 openai
 pytesseract
 Pillow
+pillow-heif
 cryptography
 httpx[http2]
 PyJWT
@@ -19,6 +20,7 @@ gunicorn==21.2.0
 httpx[http2]
 openai
 Pillow
+pillow-heif
 PyJWT
 pypdf
 pytesseract

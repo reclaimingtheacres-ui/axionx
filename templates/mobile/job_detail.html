@@ -1553,7 +1553,8 @@ window.onNotePhotoSelected = function(input) {
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       canvas.toBlob(function(blob) {
         if (blob) {
-          _notePhotoFile = new File([blob], imgFile.name || 'photo.jpg', { type: 'image/jpeg' });
+          var fname = (imgFile.name || 'photo.jpg').replace(/\.hei[cf]$/i, '.jpg');
+          _notePhotoFile = new File([blob], fname, { type: 'image/jpeg' });
         } else {
           _notePhotoFile = imgFile;
         }

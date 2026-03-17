@@ -16,7 +16,13 @@ import traceback
 import threading
 import secrets
 import pytesseract
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image, ImageFilter, ImageEnhance, ImageOps
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    _HEIF_AVAILABLE = True
+except ImportError:
+    _HEIF_AVAILABLE = False
 from datetime import date, datetime
 import pytz
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -24,6 +30,49 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 _melbourne = pytz.timezone("Australia/Melbourne")
 
 ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
+
+_HEIC_EXTENSIONS = {"heic", "heif"}
+_HEIC_QUALITY = 88
+
+def _convert_heic_to_jpeg(file_storage):
+    """Convert HEIC/HEIF file to JPEG bytes. Returns (jpeg_bytes, new_filename) or raises ValueError."""
+    raw = file_storage.read()
+    file_storage.seek(0)
+    if not raw:
+        raise ValueError("Empty HEIC/HEIF file — nothing to convert.")
+    try:
+        img = Image.open(io.BytesIO(raw))
+    except Exception as e:
+        raise ValueError(f"Could not open HEIC/HEIF image: {e}")
+    try:
+        img = ImageOps.exif_transpose(img) or img
+    except Exception:
+        pass
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    buf = io.BytesIO()
+    try:
+        img.save(buf, format="JPEG", quality=_HEIC_QUALITY, optimize=True)
+    except Exception as e:
+        raise ValueError(f"Failed to convert HEIC/HEIF to JPEG: {e}")
+    buf.seek(0)
+    orig = file_storage.filename or "photo.heic"
+    base = orig.rsplit(".", 1)[0] if "." in orig else orig
+    return buf.read(), f"{base}.jpg"
+
+def _maybe_convert_heic(file_storage):
+    """If the file is HEIC/HEIF, convert to JPEG and return (bytes, new_filename, converted=True).
+    Otherwise return (None, original_filename, converted=False).
+    Raises ValueError with a user-facing message on any failure."""
+    ext = ""
+    if file_storage.filename and "." in file_storage.filename:
+        ext = file_storage.filename.rsplit(".", 1)[1].lower()
+    if ext not in _HEIC_EXTENSIONS:
+        return None, file_storage.filename, False
+    if not _HEIF_AVAILABLE:
+        raise ValueError("HEIC/HEIF images are not supported on this server (missing pillow-heif).")
+    jpeg_bytes, new_name = _convert_heic_to_jpeg(file_storage)
+    return jpeg_bytes, new_name, True
 
 from security import throttle_check, throttle_fail, throttle_success
 from datetime import timedelta as _td
@@ -6199,11 +6248,20 @@ def interaction_add(job_id: int):
     photo = request.files.get("attendance_photo")
     if photo and photo.filename:
         ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else ""
-        if ext in {"png", "jpg", "jpeg", "webp", "heic"}:
-            stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{secure_filename(photo.filename)}"
-            blob_name   = f"interactions/{job_id}/{stored_name}"
-            upload_to_blob(photo, blob_name)
-            photo_path = blob_name
+        if ext in {"png", "jpg", "jpeg", "webp", "heic", "heif"}:
+            try:
+                heic_bytes, heic_name, was_heic = _maybe_convert_heic(photo)
+            except ValueError as _hce:
+                flash(f"Photo upload failed: {_hce}", "danger")
+                heic_bytes, heic_name, was_heic = None, None, False
+            if heic_name:
+                stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{secure_filename(heic_name)}"
+                blob_name   = f"interactions/{job_id}/{stored_name}"
+                if was_heic:
+                    _save_bytes_to_storage(heic_bytes, blob_name, "image/jpeg")
+                else:
+                    upload_to_blob(photo, blob_name)
+                photo_path = blob_name
 
     now = datetime.now().isoformat(timespec="seconds")
 
@@ -6692,12 +6750,21 @@ def customer_create():
                 if not allowed_file(photo.filename):
                     flash(f"ID photo for {fn} {ln} must be PNG, JPG, JPEG, WebP, or PDF — skipped.", "warning")
                 else:
-                    safe_name = secure_filename(photo.filename)
-                    safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
-                    stored_name = f"cust_{safe_ts}_{i}_{safe_name}"
-                    upload_to_blob(photo, stored_name)
-                    id_image_filename = safe_name
-                    id_image_path = stored_name
+                    try:
+                        heic_bytes, heic_name, was_heic = _maybe_convert_heic(photo)
+                    except ValueError as _hce:
+                        flash(f"ID photo for {fn} {ln} could not be processed: {_hce}", "warning")
+                        heic_bytes, heic_name, was_heic = None, None, False
+                    if heic_name:
+                        safe_name = secure_filename(heic_name)
+                        safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
+                        stored_name = f"cust_{safe_ts}_{i}_{safe_name}"
+                        if was_heic:
+                            _save_bytes_to_storage(heic_bytes, stored_name, "image/jpeg")
+                        else:
+                            upload_to_blob(photo, stored_name)
+                        id_image_filename = safe_name
+                        id_image_path = stored_name
 
         cur.execute("""
             INSERT INTO customers (first_name, last_name, company, role, email, dob, address, notes,
@@ -6858,10 +6925,19 @@ def customer_edit_post(customer_id: int):
             conn.close()
             flash("Unsupported file type. Use PNG/JPG/PDF.", "danger")
             return redirect(url_for("customer_edit", customer_id=customer_id))
-        filename = secure_filename(id_image.filename)
+        try:
+            heic_bytes, heic_name, was_heic = _maybe_convert_heic(id_image)
+        except ValueError as _hce:
+            conn.close()
+            flash(f"ID photo could not be processed: {_hce}", "danger")
+            return redirect(url_for("customer_edit", customer_id=customer_id))
+        filename = secure_filename(heic_name or id_image.filename)
         safe_ts = ts.replace(":", "").replace("-", "").replace(" ", "")
         unique_name = f"customer_{customer_id}_id_{safe_ts}_{filename}"
-        upload_to_blob(id_image, unique_name)
+        if was_heic:
+            _save_bytes_to_storage(heic_bytes, unique_name, "image/jpeg")
+        else:
+            upload_to_blob(id_image, unique_name)
         id_image_filename = filename
         id_image_path = unique_name
 
@@ -8449,9 +8525,17 @@ def add_job_note(job_id: int):
     import time as _time
     for file in files:
         if file and file.filename and allowed_file(file.filename):
-            filename    = secure_filename(file.filename)
+            try:
+                heic_bytes, heic_name, was_heic = _maybe_convert_heic(file)
+            except ValueError as _hce:
+                flash(f"File '{file.filename}' skipped: {_hce}", "warning")
+                continue
+            filename    = secure_filename(heic_name or file.filename)
             unique_name = f"{job_id}_{note_id}_{int(_time.time())}_{filename}"
-            upload_to_blob(file, unique_name)
+            if was_heic:
+                _save_bytes_to_storage(heic_bytes, unique_name, "image/jpeg")
+            else:
+                upload_to_blob(file, unique_name)
             cur.execute("""
                 INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
                 VALUES (?, ?, ?, ?)
@@ -8579,9 +8663,16 @@ def edit_job_note(job_id: int, note_id: int):
     new_files = []
     for file in files:
         if file and file.filename and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            try:
+                heic_bytes, heic_name, was_heic = _maybe_convert_heic(file)
+            except ValueError:
+                continue
+            filename = secure_filename(heic_name or file.filename)
             unique_name = f"{job_id}_{note_id}_{int(_time.time())}_{filename}"
-            upload_to_blob(file, unique_name)
+            if was_heic:
+                _save_bytes_to_storage(heic_bytes, unique_name, "image/jpeg")
+            else:
+                upload_to_blob(file, unique_name)
             cur.execute("""
                 INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
                 VALUES (?, ?, ?, ?)
@@ -8678,9 +8769,17 @@ def add_note_attachments(job_id: int, note_id: int):
         if not allowed_file(file.filename):
             rejected.append(file.filename)
             continue
-        filename = secure_filename(file.filename)
+        try:
+            heic_bytes, heic_name, was_heic = _maybe_convert_heic(file)
+        except ValueError as _hce:
+            rejected.append(f"{file.filename} ({_hce})")
+            continue
+        filename = secure_filename(heic_name or file.filename)
         unique_name = f"{job_id}_{note_id}_{int(_time.time())}_{filename}"
-        upload_to_blob(file, unique_name)
+        if was_heic:
+            _save_bytes_to_storage(heic_bytes, unique_name, "image/jpeg")
+        else:
+            upload_to_blob(file, unique_name)
         cur.execute("""
             INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
             VALUES (?, ?, ?, ?)
@@ -8855,11 +8954,20 @@ def job_document_upload(job_id: int):
         if not allowed_file(file.filename):
             skipped.append(file.filename)
             continue
-        original_filename = secure_filename(file.filename)
+        try:
+            heic_bytes, heic_name, was_heic = _maybe_convert_heic(file)
+        except ValueError as _hce:
+            skipped.append(f"{file.filename} ({_hce})")
+            continue
+        original_filename = secure_filename(heic_name or file.filename)
         ts_safe = ts.replace(":", "").replace("-", "").replace(" ", "")
         stored_filename = f"job_{job_id}_{ts_safe}_{original_filename}"
-        mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
-        file_size = upload_to_blob(file, stored_filename)
+        if was_heic:
+            mime_type = "image/jpeg"
+            file_size = _save_bytes_to_storage(heic_bytes, stored_filename, "image/jpeg")
+        else:
+            mime_type = mimetypes.guess_type(original_filename)[0] or "application/octet-stream"
+            file_size = upload_to_blob(file, stored_filename)
         cur.execute("""
             INSERT INTO job_documents
                 (job_id, doc_type, title, original_filename, stored_filename,
@@ -9587,10 +9695,19 @@ def update_builder_upload_photo(job_id):
         return jsonify({"ok": False, "error": "Maximum 10 photos per update"}), 400
 
     tag = (request.form.get("tag") or "general").strip()[:50]
-    safe_fn = secure_filename(photo.filename)
+    try:
+        heic_bytes, heic_name, was_heic = _maybe_convert_heic(photo)
+    except ValueError as _hce:
+        conn.close()
+        return jsonify({"ok": False, "error": str(_hce)}), 400
+    safe_fn = secure_filename(heic_name or photo.filename)
     stored_name = f"{uuid.uuid4().hex}_{safe_fn}"
     filepath = os.path.join(_UPDATE_PHOTO_DIR, stored_name)
-    photo.save(filepath)
+    if was_heic:
+        with open(filepath, "wb") as _pf:
+            _pf.write(heic_bytes)
+    else:
+        photo.save(filepath)
 
     ts = now_ts()
     cur = conn.cursor()
@@ -14511,11 +14628,20 @@ def m_quick_note_save(job_id):
 
     photo_file_id = None
     if has_photo:
-        safe_fn      = secure_filename(photo_file.filename or "photo.jpg")
+        try:
+            heic_bytes, heic_name, was_heic = _maybe_convert_heic(photo_file)
+        except ValueError as _hce:
+            conn.close()
+            return jsonify({"ok": False, "error": str(_hce)}), 400
+        safe_fn      = secure_filename(heic_name or photo_file.filename or "photo.jpg")
         photo_name   = f"{uuid.uuid4().hex}_{safe_fn}"
         photo_path   = os.path.join(_NOTE_PHOTO_DIR, photo_name)
         os.makedirs(_NOTE_PHOTO_DIR, exist_ok=True)
-        photo_file.save(photo_path)
+        if was_heic:
+            with open(photo_path, "wb") as _pf:
+                _pf.write(heic_bytes)
+        else:
+            photo_file.save(photo_path)
         cur.execute(
             "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
             (note_id, photo_name, photo_path, ts)
