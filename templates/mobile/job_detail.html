@@ -1826,17 +1826,18 @@ window.saveQuickNote = function(submitForReview) {
     return;
   }
 
-  if (typeof submitForReview === 'undefined' && !_smartPromptShown && _looksLikeFileUpdate(noteText)) {
+  var _spEl = document.getElementById('noteSmartPrompt');
+  if (typeof submitForReview === 'undefined' && !_smartPromptShown && _spEl && _looksLikeFileUpdate(noteText)) {
     _smartPromptShown = true;
     document.getElementById('noteSaveBtns').style.display = 'none';
-    document.getElementById('noteSmartPrompt').style.display = '';
+    _spEl.style.display = '';
     return;
   }
 
   if (typeof submitForReview === 'undefined') submitForReview = false;
 
   _smartPromptShown = false;
-  document.getElementById('noteSmartPrompt').style.display = 'none';
+  if (_spEl) _spEl.style.display = 'none';
   document.getElementById('noteSaveBtns').style.display = '';
 
   btn.disabled = true;
