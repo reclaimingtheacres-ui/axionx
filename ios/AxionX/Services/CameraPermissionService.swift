@@ -15,11 +15,18 @@ final class CameraPermissionService: NSObject, WKScriptMessageHandler {
 
     func ensureCameraPermission() {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
-        print("[CameraPermission] ensureCameraPermission called, status: \(status.rawValue)")
+        let statusStr = statusString(status)
+        print("[CameraPermission] ensureCameraPermission called, status: \(statusStr) (\(status.rawValue))")
+        pushStatusToJS(statusStr)
+
         if status == .notDetermined {
             print("[CameraPermission] Requesting camera access proactively")
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                print("[CameraPermission] Proactive permission result: \(granted)")
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                let result = granted ? "authorized" : "denied"
+                print("[CameraPermission] Proactive permission result: \(result)")
+                DispatchQueue.main.async {
+                    self?.pushStatusToJS(result)
+                }
             }
         }
     }
@@ -29,29 +36,35 @@ final class CameraPermissionService: NSObject, WKScriptMessageHandler {
         didReceive message: WKScriptMessage
     ) {
         guard let body = message.body as? [String: Any],
-              let action = body["action"] as? String else { return }
+              let action = body["action"] as? String else {
+            print("[CameraPermission] Failed to parse message body: \(message.body)")
+            return
+        }
+
+        print("[CameraPermission] Received action: \(action)")
 
         switch action {
         case "check":
             let status = currentStatusString()
             print("[CameraPermission] check → \(status)")
-            sendToJS(status)
+            pushStatusToJS(status)
 
         case "request":
             let current = AVCaptureDevice.authorizationStatus(for: .video)
+            print("[CameraPermission] request — current status: \(statusString(current)) (\(current.rawValue))")
             if current == .notDetermined {
-                print("[CameraPermission] Requesting camera access")
+                print("[CameraPermission] Calling AVCaptureDevice.requestAccess(for: .video)")
                 AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                     let result = granted ? "authorized" : "denied"
-                    print("[CameraPermission] Request result: \(result)")
+                    print("[CameraPermission] requestAccess result: \(result)")
                     DispatchQueue.main.async {
-                        self?.sendToJS(result)
+                        self?.pushStatusToJS(result)
                     }
                 }
             } else {
                 let status = currentStatusString()
                 print("[CameraPermission] Already determined: \(status)")
-                sendToJS(status)
+                pushStatusToJS(status)
             }
 
         default:
@@ -60,7 +73,11 @@ final class CameraPermissionService: NSObject, WKScriptMessageHandler {
     }
 
     private func currentStatusString() -> String {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        return statusString(AVCaptureDevice.authorizationStatus(for: .video))
+    }
+
+    private func statusString(_ status: AVAuthorizationStatus) -> String {
+        switch status {
         case .authorized:    return "authorized"
         case .denied:        return "denied"
         case .restricted:    return "restricted"
@@ -69,8 +86,8 @@ final class CameraPermissionService: NSObject, WKScriptMessageHandler {
         }
     }
 
-    private func sendToJS(_ status: String) {
-        let js = "if(window._cameraPermissionResult){window._cameraPermissionResult('\(status)');}"
+    private func pushStatusToJS(_ status: String) {
+        let js = "window._axCameraStatus='\(status)';if(window._cameraPermissionResult){window._cameraPermissionResult('\(status)');}"
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript(js) { _, error in
                 if let error = error {

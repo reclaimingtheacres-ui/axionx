@@ -41,7 +41,7 @@ final class WebViewStore: ObservableObject {
     }
 
     private let biometricHandler: BiometricSettingsHandler
-    private let openSettingsHandler: OpenSettingsHandler
+    let openSettingsHandler: OpenSettingsHandler
 
     func loadInitial() {
         webView.load(URLRequest(

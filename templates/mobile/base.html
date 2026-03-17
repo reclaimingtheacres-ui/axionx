@@ -909,42 +909,25 @@ function axLinkPhones(container) {
 }
 
 
+window._axCameraStatus = null;
+
+window._cameraPermissionResult = function(status) {
+  window._axCameraStatus = status;
+};
+
 window.axCheckCameraThenOpen = function(inputId) {
   var hasBridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.cameraPermission;
   if (!hasBridge) {
     document.getElementById(inputId).click();
     return;
   }
-  var rid = '_cp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-  if (!window._cameraPermissionCallbacks) window._cameraPermissionCallbacks = {};
-  window._cameraPermissionCallbacks[rid] = function(status) {
-    delete window._cameraPermissionCallbacks[rid];
-    if (status === 'authorized') {
-      document.getElementById(inputId).click();
-    } else if (status === 'not_determined') {
-      var rid2 = '_cp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-      window._cameraPermissionCallbacks[rid2] = function(s2) {
-        delete window._cameraPermissionCallbacks[rid2];
-        if (s2 === 'authorized') {
-          document.getElementById(inputId).click();
-        } else {
-          axShowCameraDenied();
-        }
-      };
-      window._cameraPermissionActiveRid = rid2;
-      window.webkit.messageHandlers.cameraPermission.postMessage({action:'request'});
-    } else {
-      axShowCameraDenied();
-    }
-  };
-  window._cameraPermissionActiveRid = rid;
-  window.webkit.messageHandlers.cameraPermission.postMessage({action:'check'});
-};
-
-window._cameraPermissionResult = function(status) {
-  var rid = window._cameraPermissionActiveRid;
-  if (rid && window._cameraPermissionCallbacks && window._cameraPermissionCallbacks[rid]) {
-    window._cameraPermissionCallbacks[rid](status);
+  if (window._axCameraStatus === 'denied' || window._axCameraStatus === 'restricted') {
+    axShowCameraDenied();
+    return;
+  }
+  document.getElementById(inputId).click();
+  if (!window._axCameraStatus || window._axCameraStatus === 'not_determined') {
+    window.webkit.messageHandlers.cameraPermission.postMessage({action:'request'});
   }
 };
 
