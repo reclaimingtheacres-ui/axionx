@@ -116,7 +116,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     }
 
     private static let documentExtensions: Set<String> = [
-        "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx", "rtf"
+        "pdf", "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx", "rtf"
     ]
 
     /// Native alert() support so JS dialogs work inside the WebView.

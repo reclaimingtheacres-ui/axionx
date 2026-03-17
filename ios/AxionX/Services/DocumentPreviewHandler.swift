@@ -90,32 +90,17 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             }
 
             DispatchQueue.main.async {
-                self?.presentDocument(fileURL: destURL, filename: filename)
+                self?.presentQuickLook(fileURL: destURL)
             }
         }.resume()
     }
 
-    private static let qlNativeExtensions: Set<String> = [
-        "pdf", "png", "jpg", "jpeg", "gif", "heic", "heif", "tiff", "bmp",
-        "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "rtf"
-    ]
-
-    private func presentDocument(fileURL: URL, filename: String) {
+    private func presentQuickLook(fileURL: URL) {
         guard let vc = topViewController() else {
             print("[DocPreview] No view controller to present document viewer")
             return
         }
 
-        let ext = fileURL.pathExtension.lowercased()
-
-        if Self.qlNativeExtensions.contains(ext) {
-            presentQuickLook(fileURL: fileURL, on: vc)
-        } else {
-            presentWebDocViewer(fileURL: fileURL, filename: filename, on: vc)
-        }
-    }
-
-    private func presentQuickLook(fileURL: URL, on vc: UIViewController) {
         let coordinator = QLPreviewCoordinator(fileURL: fileURL)
         let qlController = QLPreviewController()
         qlController.dataSource = coordinator
@@ -125,13 +110,6 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         objc_setAssociatedObject(qlController, &AssociatedKeys.coordinator, coordinator, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
         vc.present(qlController, animated: true)
-    }
-
-    private func presentWebDocViewer(fileURL: URL, filename: String, on vc: UIViewController) {
-        let viewer = DocumentViewerController(fileURL: fileURL, filename: filename)
-        let nav = UINavigationController(rootViewController: viewer)
-        nav.modalPresentationStyle = .fullScreen
-        vc.present(nav, animated: true)
     }
 
     private func topViewController() -> UIViewController? {
@@ -167,87 +145,5 @@ private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSourc
 
     func previewControllerDidDismiss(_ controller: QLPreviewController) {
         try? FileManager.default.removeItem(at: fileURL)
-    }
-}
-
-private final class DocumentViewerController: UIViewController {
-    private let fileURL: URL
-    private let filename: String
-    private var docWebView: WKWebView!
-
-    init(fileURL: URL, filename: String) {
-        self.fileURL = fileURL
-        self.filename = filename
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    deinit {
-        try? FileManager.default.removeItem(at: fileURL)
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        view.backgroundColor = .white
-
-        let displayName: String
-        if filename.count > 40 {
-            let start = filename.prefix(20)
-            let ext = (filename as NSString).pathExtension
-            displayName = start + "…." + ext
-        } else {
-            displayName = filename
-        }
-        title = displayName
-
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: self,
-            action: #selector(doneTapped)
-        )
-
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "square.and.arrow.up"),
-            style: .plain,
-            target: self,
-            action: #selector(shareTapped)
-        )
-
-        let config = WKWebViewConfiguration()
-
-        docWebView = WKWebView(frame: .zero, configuration: config)
-        docWebView.translatesAutoresizingMaskIntoConstraints = false
-        docWebView.backgroundColor = .white
-        docWebView.isOpaque = true
-        view.addSubview(docWebView)
-
-        NSLayoutConstraint.activate([
-            docWebView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            docWebView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            docWebView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            docWebView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-
-        let dir = fileURL.deletingLastPathComponent()
-        docWebView.loadFileURL(fileURL, allowingReadAccessTo: dir)
-    }
-
-    @objc private func doneTapped() {
-        dismiss(animated: true) { [weak self] in
-            guard let self = self else { return }
-            try? FileManager.default.removeItem(at: self.fileURL)
-        }
-    }
-
-    @objc private func shareTapped() {
-        let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-        if let popover = activityVC.popoverPresentationController {
-            popover.barButtonItem = navigationItem.leftBarButtonItem
-        }
-        present(activityVC, animated: true)
     }
 }
