@@ -353,8 +353,8 @@ struct WebViewContainer: View {
         )
         // Give the sync manager access to the shared webView session
         SyncManager.shared.setWebView(store.webView)
-        // Give the patrol camera service access to the webView for JS callbacks
         PatrolCameraService.shared.setWebView(store.webView)
+        DocumentPreviewHandler.shared.setWebView(store.webView)
     }
 
     /// Call the lookup API natively using the webview's session cookies.

@@ -41,6 +41,7 @@
                 F100000000000000000043 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000042; };
                 F100000000000000000045 /* LoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000044; };
                 F100000000000000000047 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000046; };
+                F100000000000000000049 /* DocumentPreviewHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000048; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -81,6 +82,7 @@
                 F100000000000000000042 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
                 F100000000000000000044 /* LoginService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginService.swift; sourceTree = "<group>"; };
                 F100000000000000000046 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+                F100000000000000000048 /* DocumentPreviewHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPreviewHandler.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -170,6 +172,7 @@
                                 F100000000000000000040 /* BiometricAuthService.swift */,
                                 F100000000000000000042 /* KeychainService.swift */,
                                 F100000000000000000044 /* LoginService.swift */,
+                                F100000000000000000048 /* DocumentPreviewHandler.swift */,
                         );
                         path = Services;
                         sourceTree = "<group>";
@@ -303,6 +306,7 @@
                                 F100000000000000000043 /* KeychainService.swift in Sources */,
                                 F100000000000000000045 /* LoginService.swift in Sources */,
                                 F100000000000000000047 /* LoginView.swift in Sources */,
+                                F100000000000000000049 /* DocumentPreviewHandler.swift in Sources */,
                         );
                         runOnlyForDeploymentPostprocessing = 0;
                 };
