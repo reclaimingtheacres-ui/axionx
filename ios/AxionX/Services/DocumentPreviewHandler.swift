@@ -18,12 +18,20 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        print("[DocPreview] Handler fired, body type: \(type(of: message.body))")
         guard let body = message.body as? [String: Any],
               let urlString = body["url"] as? String,
-              let filename = body["filename"] as? String else { return }
+              let filename = body["filename"] as? String else {
+            print("[DocPreview] Guard failed: could not parse body")
+            return
+        }
+        print("[DocPreview] urlString=\(urlString), filename=\(filename), webView nil=\(webView == nil)")
 
         guard let baseURL = webView?.url,
-              let docURL = URL(string: urlString, relativeTo: baseURL)?.absoluteURL ?? URL(string: urlString) else { return }
+              let docURL = URL(string: urlString, relativeTo: baseURL)?.absoluteURL ?? URL(string: urlString) else {
+            print("[DocPreview] Guard failed: baseURL=\(String(describing: webView?.url)), could not build docURL from '\(urlString)'")
+            return
+        }
 
         print("[DocPreview] Opening: \(docURL.absoluteString), filename: \(filename)")
         fetchCookiesAndDownload(remoteURL: docURL, filename: filename)
@@ -252,16 +260,19 @@ private final class DocumentContainerController: UIViewController {
         ql.dataSource = coord
         self.qlController = ql
 
-        addChild(ql)
-        ql.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(ql.view)
-        ql.didMove(toParent: self)
+        let nav = UINavigationController(rootViewController: ql)
+        nav.isNavigationBarHidden = true
+
+        addChild(nav)
+        nav.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(nav.view)
+        nav.didMove(toParent: self)
 
         NSLayoutConstraint.activate([
-            ql.view.topAnchor.constraint(equalTo: bar.bottomAnchor),
-            ql.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            ql.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            ql.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            nav.view.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            nav.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            nav.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            nav.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
         view.bringSubviewToFront(bar)
