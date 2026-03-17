@@ -228,7 +228,8 @@
        data-draft="{{ 'true' if has_draft else 'false' }}"
        data-scheduled="{{ j.next_scheduled or '' }}"
        data-phone="{{ phone }}"
-       data-addr="{{ addr | e }}">
+       data-addr="{{ addr | e }}"
+       data-job-addr="{{ (j.job_address or '') | e }}">
 
     {# ── Action tray (revealed on left swipe) ── #}
     <div class="job-actions">
@@ -866,11 +867,12 @@ window.jaClose = function(wrap){ if(wrap){ _jaSnap(wrap, false); _openWrap=null;
 window.jaNavigate = function(wrap){
   if(!wrap) return;
   jaClose(wrap);
-  const addr  = wrap.dataset.addr  || '';
-  const lat   = wrap.dataset.lat   || '';
-  const lng   = wrap.dataset.lng   || '';
-  const enc   = encodeURIComponent(addr);
-  const ll    = (lat && lng) ? lat+','+lng : null;
+  const addr    = wrap.dataset.addr    || '';
+  const lat     = wrap.dataset.lat     || '';
+  const lng     = wrap.dataset.lng     || '';
+  const jobAddr = wrap.dataset.jobAddr || '';
+  const enc     = encodeURIComponent(addr);
+  const ll      = (lat && lng && addr.trim() === jobAddr.trim()) ? lat+','+lng : null;
   document.getElementById('lncWaze').href   = ll
     ? 'https://waze.com/ul?ll='+ll+'&navigate=yes'
     : 'https://waze.com/ul?q='+enc+'&navigate=yes';

@@ -891,7 +891,8 @@ function showTab(name) {
 {% set _nav_addr = (customer.address if customer and customer.address else '') or job.job_address or '' %}
 {% if _nav_addr %}
 {% set _enc_addr = _nav_addr | urlencode %}
-{% if job.lat and job.lng %}
+{% set _coords_match = job.lat and job.lng and (job.job_address|trim == _nav_addr|trim) %}
+{% if _coords_match %}
   {% set _waze_url   = "https://waze.com/ul?ll=" ~ job.lat ~ "," ~ job.lng ~ "&navigate=yes" %}
   {% set _gmaps_url  = "https://www.google.com/maps/dir/?api=1&destination=" ~ job.lat ~ "," ~ job.lng %}
   {% set _apple_url  = "http://maps.apple.com/?daddr=" ~ job.lat ~ "," ~ job.lng ~ "&dirflg=d" %}
