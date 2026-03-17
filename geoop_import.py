@@ -2662,7 +2662,7 @@ def _backfill_one_job(conn, row, ts):
 
     if p_reg or p_vin or p_make:
         existing_item = conn.execute(
-            "SELECT id FROM job_items WHERE job_id=? AND item_type='vehicle'",
+            "SELECT id FROM job_items WHERE job_id=? AND item_type IN ('vehicle','motorcycle','trailer')",
             (axion_job_id,)
         ).fetchone()
         if existing_item:
@@ -4159,7 +4159,7 @@ def get_backfill_samples(run_id, limit=5):
             FROM geoop_staging_jobs sj
             JOIN jobs j ON j.id = sj.axion_job_id
             LEFT JOIN job_field_notes fn ON fn.job_id = sj.axion_job_id AND fn.note_type = 'geoop_import'
-            LEFT JOIN job_items ji ON ji.job_id = sj.axion_job_id AND ji.item_type = 'vehicle'
+            LEFT JOIN job_items ji ON ji.job_id = sj.axion_job_id AND ji.item_type IN ('vehicle','motorcycle','trailer')
             WHERE sj.axion_job_id IS NOT NULL
               AND sj.raw_description IS NOT NULL
               AND sj.raw_description != ''
@@ -4186,7 +4186,7 @@ def get_backfill_samples(run_id, limit=5):
             SELECT COUNT(*) FROM job_items ji
             JOIN geoop_staging_jobs sj ON ji.job_id = sj.axion_job_id
             JOIN jobs j ON j.id = sj.axion_job_id
-            WHERE ji.item_type = 'vehicle' AND sj.axion_job_id IS NOT NULL
+            WHERE ji.item_type IN ('vehicle','motorcycle','trailer') AND sj.axion_job_id IS NOT NULL
               AND j.updated_at = ?
         """, (backfill_ts,)).fetchone()[0]
 
@@ -5088,7 +5088,7 @@ def repair_registrations():
                            j.geoop_source_description AS desc_text
                     FROM job_items ji
                     JOIN jobs j ON j.id = ji.job_id
-                    WHERE ji.item_type = 'vehicle'
+                    WHERE ji.item_type IN ('vehicle','motorcycle','trailer')
                       AND j.geoop_source_description IS NOT NULL
                       AND j.geoop_source_description != ''
                 """).fetchall()

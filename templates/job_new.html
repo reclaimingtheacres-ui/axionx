@@ -260,6 +260,8 @@
                 {% set _stype = autofill.security_type if autofill else 'Vehicle' %}
                 <select class="form-select form-select-sm" name="asset_type[]">
                   <option {% if _stype == 'Vehicle' %}selected{% endif %}>Vehicle</option>
+                  <option {% if _stype == 'Motorcycle' %}selected{% endif %}>Motorcycle</option>
+                  <option {% if _stype == 'Trailer' %}selected{% endif %}>Trailer</option>
                   <option {% if _stype == 'Property' %}selected{% endif %}>Property</option>
                   <option {% if _stype == 'Equipment' %}selected{% endif %}>Equipment</option>
                   <option {% if _stype == 'Other' %}selected{% endif %}>Other</option>
@@ -1181,7 +1183,7 @@ function toggleParsed(btn) {
             var el = row.querySelector('.' + cls);
             if (el) el.value = val;
           }
-          var typeMap = {'vehicle':'Vehicle','property':'Property','equipment':'Equipment'};
+          var typeMap = {'vehicle':'Vehicle','motorcycle':'Motorcycle','trailer':'Trailer','property':'Property','equipment':'Equipment'};
           var typeSel = row.querySelector('select[name="asset_type[]"]');
           if (typeSel) {
             var want = typeMap[a.item_type] || 'Vehicle';
