@@ -542,7 +542,7 @@
     <div class="m-card-body" style="{% if not loop.last %}border-bottom:1px solid var(--line);{% endif %}">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
         <div>
-          <div style="font-weight:600;font-size:.88rem;">{{ asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}</div>
+          <div style="font-weight:600;font-size:.88rem;">{{ 'No Asset' if asset.item_type == 'no_asset' else asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}</div>
           {% if asset.reg %}<div style="font-size:.8rem;color:var(--muted);margin-top:2px;">Rego: {{ asset.reg }}</div>{% endif %}
         </div>
         {% set _rl = repo_lock_map.get(asset.id) %}

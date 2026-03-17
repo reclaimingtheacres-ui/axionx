@@ -97,7 +97,7 @@
   <div class="m-card-header">Assets / Security</div>
   {% for asset in assets %}
   <div class="m-card-body" style="{% if not loop.last %}border-bottom:1px solid var(--line);{% endif %}">
-    <div style="font-weight:600;margin-bottom:6px;">{{ asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}</div>
+    <div style="font-weight:600;margin-bottom:6px;">{{ 'No Asset' if asset.item_type == 'no_asset' else asset.item_type | title }}{% if asset.description %}: {{ asset.description }}{% endif %}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:.82rem;">
       {% if asset.year or asset.make or asset.model %}
       <div><span style="color:var(--muted);">Vehicle: </span>{{ [asset.year, asset.make, asset.model] | select | join(' ') }}</div>

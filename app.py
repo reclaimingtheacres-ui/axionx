@@ -3953,13 +3953,23 @@ def _job_create_inner():
         a_addr   = _al(addresses,   i).strip()
         a_ser    = _al(serials,     i).strip()
         a_note   = _al(asset_notes, i).strip()
+        item_type_val = (a_type or "other").lower().replace(" ", "_")
+        if item_type_val == "no_asset":
+            if not a_desc:
+                continue
+            cur.execute("""
+                INSERT INTO job_items
+                (job_id, item_type, description, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (job_id, "no_asset", a_desc, now))
+            continue
         if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year, a_engine, a_colour]):
             continue
         cur.execute("""
             INSERT INTO job_items
             (job_id, item_type, description, reg, vin, make, model, year, colour, engine_number, property_address, serial_number, notes, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (job_id, (a_type or "other").lower(),
+        """, (job_id, item_type_val,
               a_desc or None, a_rego or None, a_vin or None, a_make or None, a_model or None, a_year or None,
               a_colour or None, a_engine or None, a_addr or None, a_ser or None, a_note or None, now))
 
@@ -4247,7 +4257,7 @@ def job_detail(job_id: int):
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting Advice From Client", "Completed", "Invoiced", "Cancelled"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
     priorities = ["Low", "Normal", "High", "Urgent"]
-    item_types = ["vehicle", "motorcycle", "trailer", "property", "equipment", "other"]
+    item_types = ["no_asset", "vehicle", "motorcycle", "trailer", "property", "equipment", "other"]
     doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
     customer_roles = ["Primary", "Director", "Guarantor", "Borrower", "Spouse", "Other"]
 

@@ -242,7 +242,7 @@
     </div>
 
     <!-- Security / Asset Card -->
-    <div class="nj-card">
+    <div class="nj-card" id="securityCard">
       <div class="nj-card-h">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
         Security / Asset
@@ -250,21 +250,27 @@
           <input type="checkbox" id="asset_same_as_customer"> Use customer address
         </label>
       </div>
+      <div id="noAssetBanner" style="display:none;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);font-size:.82rem;color:var(--muted);display:none;">
+        <span style="font-weight:600;color:var(--text)">Security details not required for this lender.</span>
+        <span style="margin-left:4px;">You can still add a matter description below.</span>
+        <button type="button" class="btn btn-link btn-sm p-0 ms-2" style="font-size:.78rem" onclick="anOverrideNoAsset()">Add asset anyway</button>
+      </div>
       <div class="nj-card-b">
         {% set _sec = autofill.security if autofill else None %}
         <div id="assetsWrap">
           <div class="asset-row">
             <div class="nj-row">
-              <div style="flex:0 0 130px;">
+              <div style="flex:0 0 150px;">
                 <label class="nj-lbl">Type</label>
                 {% set _stype = autofill.security_type if autofill else 'Vehicle' %}
-                <select class="form-select form-select-sm" name="asset_type[]">
-                  <option {% if _stype == 'Vehicle' %}selected{% endif %}>Vehicle</option>
-                  <option {% if _stype == 'Motorcycle' %}selected{% endif %}>Motorcycle</option>
-                  <option {% if _stype == 'Trailer' %}selected{% endif %}>Trailer</option>
-                  <option {% if _stype == 'Property' %}selected{% endif %}>Property</option>
-                  <option {% if _stype == 'Equipment' %}selected{% endif %}>Equipment</option>
-                  <option {% if _stype == 'Other' %}selected{% endif %}>Other</option>
+                <select class="form-select form-select-sm" name="asset_type[]" onchange="anAssetTypeChanged(this)">
+                  <option value="No Asset" {% if _stype == 'No Asset' %}selected{% endif %}>No Asset</option>
+                  <option value="Vehicle" {% if _stype == 'Vehicle' %}selected{% endif %}>Vehicle</option>
+                  <option value="Motorcycle" {% if _stype == 'Motorcycle' %}selected{% endif %}>Motorcycle</option>
+                  <option value="Trailer" {% if _stype == 'Trailer' %}selected{% endif %}>Trailer</option>
+                  <option value="Property" {% if _stype == 'Property' %}selected{% endif %}>Property</option>
+                  <option value="Equipment" {% if _stype == 'Equipment' %}selected{% endif %}>Equipment</option>
+                  <option value="Other" {% if _stype == 'Other' %}selected{% endif %}>Other</option>
                 </select>
               </div>
               <div style="flex:1;min-width:200px;">
@@ -274,6 +280,7 @@
                        value="{% if _sec %}{{ _sec.description or ([_sec.year, _sec.make, _sec.model, _sec.colour] | select | join(' ')) }}{% endif %}">
               </div>
             </div>
+            <div class="asset-security-fields">
             <div id="parsedToggleWrap" style="margin-top:4px;">
               <button type="button" class="nj-parsed-toggle" onclick="toggleParsed(this)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;"><path d="M12 3l1.912 5.813L20 10l-4.794 2.688L14.118 19 12 15.5 9.882 19l-1.088-6.312L4 10l6.088-1.187z"/></svg>
@@ -330,12 +337,13 @@
               <input class="form-control form-control-sm" name="asset_notes[]" placeholder="Rego expiry, status, etc."
                      value="{% if _sec and _sec.reg_expiry %}Rego: {{ _sec.reg_expiry }}{% endif %}{% if _sec and _sec.reg_note %}{% if _sec and _sec.reg_expiry %} | {% endif %}{{ _sec.reg_note }}{% endif %}">
             </div>
+            </div>
             <div class="mt-2 d-flex justify-content-end">
               <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.7rem;" onclick="removeAssetRow(this)">Remove</button>
             </div>
           </div>
         </div>
-        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.72rem;" onclick="addAssetRow()">+ Add Security</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.72rem;" id="addSecurityBtn" onclick="addAssetRow()">+ Add Security</button>
       </div>
     </div>
 
@@ -531,12 +539,72 @@
 
 <!-- ── Asset row JS ─────────────────────────────────────────────────────── -->
 <script>
+var _NO_ASSET_LENDERS = ['harmoney'];
+var _noAssetOverridden = false;
+
+function anAssetTypeChanged(sel) {
+  var row = sel.closest('.asset-row');
+  if (!row) return;
+  var isNoAsset = sel.value === 'No Asset';
+  var secFields = row.querySelector('.asset-security-fields');
+  var descInput = row.querySelector('.asset-description');
+  if (secFields) secFields.style.display = isNoAsset ? 'none' : '';
+  if (descInput) {
+    descInput.placeholder = isNoAsset
+      ? 'e.g. Unsecured personal loan debt, Debt collection only…'
+      : 'e.g. 2019 Ford Ranger XL REG: ABC123 VIN: … ENG: …';
+  }
+  var addBtn = document.getElementById('addSecurityBtn');
+  var wrap = document.getElementById('assetsWrap');
+  var rows = wrap ? wrap.querySelectorAll('.asset-row') : [];
+  if (rows.length === 1 && isNoAsset && addBtn) addBtn.style.display = 'none';
+  else if (addBtn) addBtn.style.display = '';
+}
+
+function anCheckLenderNoAsset() {
+  if (_noAssetOverridden) return;
+  var lender = (document.getElementById('lender_name') || {}).value || '';
+  var isNoAssetLender = _NO_ASSET_LENDERS.indexOf(lender.toLowerCase().trim()) >= 0;
+  var banner = document.getElementById('noAssetBanner');
+  if (banner) banner.style.display = isNoAssetLender ? '' : 'none';
+  if (isNoAssetLender) {
+    var wrap = document.getElementById('assetsWrap');
+    var firstSel = wrap ? wrap.querySelector('select[name="asset_type[]"]') : null;
+    if (firstSel && firstSel.value !== 'No Asset') {
+      firstSel.value = 'No Asset';
+      anAssetTypeChanged(firstSel);
+    }
+  }
+}
+
+function anOverrideNoAsset() {
+  _noAssetOverridden = true;
+  var banner = document.getElementById('noAssetBanner');
+  if (banner) banner.style.display = 'none';
+  var wrap = document.getElementById('assetsWrap');
+  var firstSel = wrap ? wrap.querySelector('select[name="asset_type[]"]') : null;
+  if (firstSel && firstSel.value === 'No Asset') {
+    firstSel.value = 'Vehicle';
+    anAssetTypeChanged(firstSel);
+  }
+}
+
+(function() {
+  var lenderEl = document.getElementById('lender_name');
+  if (lenderEl) {
+    lenderEl.addEventListener('change', function() { _noAssetOverridden = false; anCheckLenderNoAsset(); });
+    lenderEl.addEventListener('input', function() { _noAssetOverridden = false; anCheckLenderNoAsset(); });
+  }
+  document.querySelectorAll('select[name="asset_type[]"]').forEach(function(s) { anAssetTypeChanged(s); });
+  anCheckLenderNoAsset();
+})();
+
 function addAssetRow() {
   var wrap = document.getElementById("assetsWrap");
   var first = wrap.querySelector(".asset-row");
   var clone = first.cloneNode(true);
   clone.querySelectorAll("input").forEach(function(i) { i.value = ""; delete i._pacElement; });
-  clone.querySelectorAll("select").forEach(function(s) { s.selectedIndex = 0; });
+  clone.querySelectorAll("select").forEach(function(s) { s.selectedIndex = 1; });
   clone.querySelectorAll("[data-gmp-bound]").forEach(function(i) { delete i.dataset.gmpBound; });
   clone.querySelectorAll("gmp-place-autocomplete").forEach(function(pac) { pac.remove(); });
   clone.querySelectorAll("input[type='hidden'][name]").forEach(function(i) {
@@ -548,7 +616,13 @@ function addAssetRow() {
   var parsedPanel = clone.querySelector('.nj-parsed-panel');
   if (parsedPanel) parsedPanel.style.display = 'none';
   clone.querySelectorAll('.nj-pv').forEach(function(el) { el.textContent = '\u2014'; });
+  var secFields = clone.querySelector('.asset-security-fields');
+  if (secFields) secFields.style.display = '';
+  var descInput = clone.querySelector('.asset-description');
+  if (descInput) descInput.placeholder = 'e.g. 2019 Ford Ranger XL REG: ABC123 VIN: … ENG: …';
   wrap.appendChild(clone);
+  var addBtn = document.getElementById('addSecurityBtn');
+  if (addBtn) addBtn.style.display = '';
   if (typeof window.axionInitPlaces === "function") window.axionInitPlaces();
   if (typeof window.axionSyncAssets === "function") window.axionSyncAssets();
 }
@@ -558,8 +632,10 @@ function removeAssetRow(btn) {
   var rows = wrap.querySelectorAll(".asset-row");
   if (rows.length <= 1) {
     rows[0].querySelectorAll("input").forEach(function(i) { i.value = ""; });
-    rows[0].querySelectorAll("select").forEach(function(s) { s.selectedIndex = 0; });
+    rows[0].querySelectorAll("select").forEach(function(s) { s.selectedIndex = 1; });
     rows[0].querySelectorAll('.nj-pv').forEach(function(el) { el.textContent = '\u2014'; });
+    var sel = rows[0].querySelector('select[name="asset_type[]"]');
+    if (sel) anAssetTypeChanged(sel);
     return;
   }
   btn.closest(".asset-row").remove();
@@ -1183,13 +1259,14 @@ function toggleParsed(btn) {
             var el = row.querySelector('.' + cls);
             if (el) el.value = val;
           }
-          var typeMap = {'vehicle':'Vehicle','motorcycle':'Motorcycle','trailer':'Trailer','property':'Property','equipment':'Equipment'};
+          var typeMap = {'no_asset':'No Asset','vehicle':'Vehicle','motorcycle':'Motorcycle','trailer':'Trailer','property':'Property','equipment':'Equipment'};
           var typeSel = row.querySelector('select[name="asset_type[]"]');
           if (typeSel) {
             var want = typeMap[a.item_type] || 'Vehicle';
             for (var i=0;i<typeSel.options.length;i++) {
               if (typeSel.options[i].value === want) { typeSel.selectedIndex=i; break; }
             }
+            anAssetTypeChanged(typeSel);
           }
           var descInp = row.querySelector('.asset-description');
           if (descInp) descInp.value = a.description || '';
@@ -1214,6 +1291,7 @@ function toggleParsed(btn) {
     }
 
     document.getElementById('newJobForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    anCheckLenderNoAsset();
   }
 })();
 </script>
@@ -1298,6 +1376,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (prefillAccount && accEl) { accEl._userEdited = true; }
 
   syncContractToAccount();
+  anCheckLenderNoAsset();
 });
 
 /* ── Submit "Add Job" (save & add another) ──────────────────────────── */

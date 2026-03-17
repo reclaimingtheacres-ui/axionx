@@ -582,8 +582,10 @@
               <div class="list-group-item">
                 <div class="d-flex justify-content-between align-items-start">
                   <div>
-                    <span class="badge bg-secondary me-2">{{ item.item_type }}</span>
-                    {% if item.item_type in ('vehicle', 'motorcycle', 'trailer') %}
+                    <span class="badge me-2 {% if item.item_type == 'no_asset' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ 'No Asset' if item.item_type == 'no_asset' else item.item_type }}</span>
+                    {% if item.item_type == 'no_asset' %}
+                      <span class="fw-semibold">{{ item.description or "Unsecured matter" }}</span>
+                    {% elif item.item_type in ('vehicle', 'motorcycle', 'trailer') %}
                       <span class="fw-semibold">{{ item.reg or "No Reg" }}</span>
                       {% if item.make or item.model %}
                         <span class="small" style="color:var(--muted)"> — {{ item.year or "" }} {{ item.make or "" }} {{ item.model or "" }}</span>
@@ -649,7 +651,7 @@
                         <label class="form-label form-label-sm">Type</label>
                         <select class="form-select form-select-sm" name="item_type">
                           {% for t in item_types %}
-                            <option value="{{ t }}" {% if item.item_type == t %}selected{% endif %}>{{ t|capitalize }}</option>
+                            <option value="{{ t }}" {% if item.item_type == t %}selected{% endif %}>{{ 'No Asset' if t == 'no_asset' else t|capitalize }}</option>
                           {% endfor %}
                         </select>
                       </div>
@@ -747,7 +749,7 @@
               <div class="col-12 col-lg-3">
                 <label class="form-label">Security Type</label>
                 <select class="form-select" name="item_type" id="itemTypeSelect" onchange="showItemFields(this.value)">
-                  {% for t in item_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+                  {% for t in item_types %}<option value="{{ t }}">{{ 'No Asset' if t == 'no_asset' else t|capitalize }}</option>{% endfor %}
                 </select>
               </div>
               <div class="col-12 col-lg-9">
@@ -1662,7 +1664,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               {% for item in job_items %}
               <tr>
                 <td>{{ loop.index }}</td>
-                <td>{{ item.item_type|title }}</td>
+                <td>{{ 'No Asset' if item.item_type == 'no_asset' else item.item_type|title }}</td>
                 <td>{{ item.reg or '' }}</td>
                 <td>{{ item.vin or '' }}</td>
                 <td>{{ item.description or '' }}</td>
@@ -1738,7 +1740,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
             </div>
             <div class="fpa-section">
               <div class="fpa-label">Type</div>
-              <div class="fpa-value">{{ vi.item_type|title }}</div>
+              <div class="fpa-value">{{ 'No Asset' if vi.item_type == 'no_asset' else vi.item_type|title }}</div>
             </div>
           </div>
           <div class="fpa-section">
@@ -1869,7 +1871,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
             <tbody>
               {% for item in job_items %}
               <tr>
-                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.description or ('No Asset' if item.item_type == 'no_asset' else item.item_type|title) }}</td>
                 <td>{{ item.reg or '' }}</td>
                 <td>{{ item.vin or item.serial_number or '' }}</td>
               </tr>
@@ -1972,7 +1974,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
             <tbody>
               {% for item in job_items %}
               <tr>
-                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.description or ('No Asset' if item.item_type == 'no_asset' else item.item_type|title) }}</td>
                 <td>{{ item.reg or '' }}</td>
                 <td>{{ item.vin or '' }}</td>
               </tr>
@@ -2056,7 +2058,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
             <tbody>
               {% for item in job_items %}
               <tr>
-                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.description or ('No Asset' if item.item_type == 'no_asset' else item.item_type|title) }}</td>
                 <td>{{ item.reg or '' }}</td>
                 <td>{{ item.vin or item.serial_number or '' }}</td>
               </tr>
@@ -2162,7 +2164,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
             <tbody>
               {% for item in job_items %}
               <tr>
-                <td>{{ item.description or item.item_type|title }}</td>
+                <td>{{ item.description or ('No Asset' if item.item_type == 'no_asset' else item.item_type|title) }}</td>
                 <td>{{ item.reg or '' }}</td>
                 <td>{{ item.vin or item.serial_number or '' }}</td>
               </tr>
@@ -2615,9 +2617,10 @@ window.addEventListener('load', function () {
 <script>
 function showItemFields(type) {
   var vehicleTypes = ['vehicle','motorcycle','trailer'];
+  var isNoAsset = (type === 'no_asset');
   ['vehicle','property','equipment'].forEach(t => {
     const el = document.getElementById('fields-' + t);
-    if (el) el.style.display = (t === type || (t === 'vehicle' && vehicleTypes.indexOf(type) >= 0)) ? '' : 'none';
+    if (el) el.style.display = (!isNoAsset && (t === type || (t === 'vehicle' && vehicleTypes.indexOf(type) >= 0))) ? '' : 'none';
   });
 }
 function axItemEditToggle(itemId) {
@@ -4264,7 +4267,7 @@ function axCopyVin(btn) {
     tp_referral:      {{ (job.tp_referral or '')|tojson }},
     tp_job_number:    {{ (job.tp_job_number or '')|tojson }},
     job_address:      {{ (job.job_address or '')|tojson }},
-    security_type:    {{ ((job_items[0]['item_type']|title) if job_items else '')|tojson }},
+    security_type:    {{ (('No Asset' if job_items[0]['item_type'] == 'no_asset' else job_items[0]['item_type']|title) if job_items else '')|tojson }},
     security_reg:     {{ (job_items[0]['reg'] if job_items and job_items[0]['reg'] else '')|tojson }},
     security_vin:     {{ (job_items[0]['vin'] if job_items and job_items[0]['vin'] else '')|tojson }},
     security_desc:    {{ (job_items[0]['description'] if job_items and job_items[0]['description'] else '')|tojson }},
