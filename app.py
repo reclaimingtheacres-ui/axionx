@@ -189,6 +189,28 @@ def delete_blob_safely(blob_name: str):
         pass
 
 
+def _remove_note_file_from_disk(filename_or_path: str):
+    """Remove a note-file from local disk, checking root, subdirs, and absolute paths."""
+    if not filename_or_path:
+        return
+    if os.path.isabs(filename_or_path):
+        try:
+            os.remove(filename_or_path)
+        except OSError:
+            pass
+        return
+    bn = os.path.basename(filename_or_path)
+    _search_subdirs = ["", "notes/photos", "notes/audio", "update_photos"]
+    for base in [UPLOAD_FOLDER, _LEGACY_UPLOAD_FOLDER]:
+        for sd in _search_subdirs:
+            p = os.path.join(base, sd, bn) if sd else os.path.join(base, bn)
+            try:
+                os.remove(p)
+                return
+            except OSError:
+                pass
+
+
 def _save_bytes_to_storage(data: bytes, blob_name: str,
                             content_type: str = "application/pdf") -> int:
     """Save raw bytes to Azure Blob Storage or local uploads folder. Returns size."""
@@ -5408,8 +5430,7 @@ def delete_job(job_id: int):
         cur.execute("SELECT filename, filepath FROM job_note_files WHERE job_field_note_id = ?", (nid,))
         for f in cur.fetchall():
             delete_blob_safely(f["filename"])
-            try: os.remove(f["filepath"])
-            except OSError: pass
+            _remove_note_file_from_disk(f["filepath"] or f["filename"])
         cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (nid,))
     cur.execute("DELETE FROM job_field_notes WHERE job_id = ?", (job_id,))
 
@@ -8712,8 +8733,7 @@ def delete_job_note(job_id: int, note_id: int):
     files = cur.fetchall()
     for f in files:
         delete_blob_safely(f["filename"])
-        try: os.remove(f["filepath"])
-        except OSError: pass
+        _remove_note_file_from_disk(f["filepath"] or f["filename"])
     cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (note_id,))
     cur.execute("DELETE FROM job_field_notes WHERE id = ?", (note_id,))
     conn.commit()
@@ -8973,6 +8993,13 @@ def serve_upload(filename):
             _log.info("Serving %r from legacy upload path %s", filename, legacy_path)
             return send_from_directory(legacy, filename)
 
+    _subdirs = ["notes/photos", "notes/audio", "update_photos", "pending"]
+    for sd in _subdirs:
+        sub_path = os.path.join(primary, sd, filename)
+        if os.path.isfile(sub_path):
+            _log.info("Serving %r from subdirectory %s", filename, sd)
+            return send_from_directory(os.path.join(primary, sd), filename)
+
     conn = db()
     alt_row = conn.execute(
         "SELECT id, filename, filepath FROM job_note_files WHERE filename=? OR filepath=?",
@@ -8982,12 +9009,20 @@ def serve_upload(filename):
     if alt_row:
         alt_disk = alt_row["filepath"] or alt_row["filename"]
         if alt_disk and alt_disk != filename:
+            if os.path.isabs(alt_disk) and os.path.isfile(alt_disk):
+                _log.info("Serving %r from absolute filepath %s", filename, alt_disk)
+                return send_file(alt_disk)
             bn = os.path.basename(alt_disk)
             for search_dir in [primary, legacy]:
                 alt_path = os.path.join(search_dir, bn)
                 if os.path.isfile(alt_path):
                     _log.info("Serving alt filename %r from %s", bn, search_dir)
                     return send_from_directory(search_dir, bn)
+                for sd in _subdirs:
+                    alt_sub = os.path.join(search_dir, sd, bn)
+                    if os.path.isfile(alt_sub):
+                        _log.info("Serving alt filename %r from %s/%s", bn, search_dir, sd)
+                        return send_from_directory(os.path.join(search_dir, sd), bn)
         _log.warning(
             "Orphan note-file record for %r (id=%s) — file not on disk. "
             "Checked: primary=%s, legacy=%s",
@@ -11942,8 +11977,7 @@ def admin_api_delete_job_ajax():
         cur.execute("SELECT filename, filepath FROM job_note_files WHERE job_field_note_id = ?", (nid,))
         for f in cur.fetchall():
             delete_blob_safely(f["filename"])
-            try: os.remove(f["filepath"])
-            except OSError: pass
+            _remove_note_file_from_disk(f["filepath"] or f["filename"])
         cur.execute("DELETE FROM job_note_files WHERE job_field_note_id = ?", (nid,))
     cur.execute("DELETE FROM job_field_notes WHERE job_id = ?", (job_id,))
 
@@ -15046,17 +15080,14 @@ def m_quick_note_save(job_id):
             conn.close()
             return jsonify({"ok": False, "error": str(_hce)}), 400
         safe_fn      = secure_filename(heic_name or photo_file.filename or "photo.jpg")
-        photo_name   = f"{uuid.uuid4().hex}_{safe_fn}"
-        photo_path   = os.path.join(_NOTE_PHOTO_DIR, photo_name)
-        os.makedirs(_NOTE_PHOTO_DIR, exist_ok=True)
+        photo_name   = f"{job_id}_{note_id}_{uuid.uuid4().hex}_{safe_fn}"
         if was_heic:
-            with open(photo_path, "wb") as _pf:
-                _pf.write(heic_bytes)
+            _save_bytes_to_storage(heic_bytes, photo_name, "image/jpeg")
         else:
-            photo_file.save(photo_path)
+            upload_to_blob(photo_file, photo_name)
         cur.execute(
             "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
-            (note_id, photo_name, photo_path, ts)
+            (note_id, photo_name, photo_name, ts)
         )
         photo_file_id = cur.lastrowid
 
@@ -15092,7 +15123,7 @@ def m_quick_note_save(job_id):
         "agent_name":   username,
         "note_text":    note_text or "",
         "audio_url":    f"/m/note-audio/{note_id}" if audio_filename else None,
-        "photo_url":    f"/m/note-photo/{photo_file_id}" if photo_file_id else None,
+        "photo_url":    f"/uploads/{photo_name}" if photo_file_id else None,
         "note_category": _note_cat,
         "review_status": _rev_stat,
     })
@@ -15123,11 +15154,22 @@ def m_note_audio(note_id):
 @mobile_login_required
 def m_note_photo(file_id):
     conn = db()
-    row = conn.execute("SELECT filepath FROM job_note_files WHERE id=?", (file_id,)).fetchone()
+    row = conn.execute("SELECT filename, filepath FROM job_note_files WHERE id=?", (file_id,)).fetchone()
     conn.close()
-    if not row or not os.path.exists(row["filepath"]):
+    if not row:
         abort(404)
-    return send_file(row["filepath"])
+    fp = row["filepath"] or row["filename"]
+    if os.path.isabs(fp) and os.path.isfile(fp):
+        return send_file(fp)
+    for search_dir in [UPLOAD_FOLDER, _LEGACY_UPLOAD_FOLDER]:
+        candidate = os.path.join(search_dir, fp)
+        if os.path.isfile(candidate):
+            return send_file(candidate)
+        for sd in ["notes/photos", ""]:
+            sub = os.path.join(search_dir, sd, os.path.basename(fp)) if sd else os.path.join(search_dir, os.path.basename(fp))
+            if os.path.isfile(sub):
+                return send_file(sub)
+    abort(404)
 
 
 @app.get("/m/tow-operators")
