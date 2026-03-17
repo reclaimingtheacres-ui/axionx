@@ -116,6 +116,7 @@
   .msg-bubble.other { background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px; }
   .msg-bubble.self { background:var(--accent);color:#fff;border-bottom-right-radius:4px; }
   .msg-bubble.system-msg { background:#e0f2fe;border:1px solid #bae6fd;border-bottom-left-radius:4px;color:#0c4a6e; }
+  .msg-bubble-recip { font-size:.68rem;color:#0369a1;font-style:italic;padding-left:2px; }
 
   .msg-reply-bar {
     background:#fff;border-top:1px solid var(--line);padding:12px 20px;
@@ -261,6 +262,9 @@
             <div class="msg-bubble-avatar{% if is_self %} self-av{% elif is_sys_msg %} system-av{% endif %}">{% if is_sys_msg %}AX{% else %}{{ sinit }}{% endif %}</div>
             <div class="msg-bubble-wrap">
               <div class="msg-bubble-meta">{% if is_sys_msg %}AxionX Admin{% else %}{{ sname }}{% endif %} · {{ m.created_at[5:16].replace('T',' ') if m.created_at else '' }}</div>
+              {% if is_sys_msg and msg_recipients.get(m.id) %}
+              <div class="msg-bubble-recip">Sent to: {{ msg_recipients[m.id] }}</div>
+              {% endif %}
               <div class="msg-bubble {% if is_self %}self{% elif is_sys_msg %}system-msg{% else %}other{% endif %}">{{ m.body }}</div>
             </div>
           </div>

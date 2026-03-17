@@ -20923,6 +20923,70 @@ def _log_message_audit(conn, message_id, actual_sender_id, display_sender,
     conn.commit()
 
 
+def _build_msg_recipients(conn, msgs, system_uid):
+    import json as _json
+    sys_msg_ids = [m["id"] for m in msgs if m["sender_id"] == system_uid]
+    if not sys_msg_ids:
+        return {}
+    placeholders = ",".join("?" * len(sys_msg_ids))
+    audit_rows = conn.execute(
+        f"SELECT message_id, recipients FROM message_audit_log WHERE message_id IN ({placeholders})",
+        sys_msg_ids
+    ).fetchall()
+    all_uids = set()
+    audit_map = {}
+    for row in audit_rows:
+        try:
+            parsed = _json.loads(row["recipients"]) if row["recipients"] else []
+        except (ValueError, TypeError):
+            parsed = []
+        uid_list = [int(x) for x in parsed if isinstance(x, (int, float, str)) and str(x).isdigit()] if isinstance(parsed, list) else []
+        audit_map[row["message_id"]] = uid_list
+        all_uids.update(uid_list)
+    conv_ids_for_fallback = set()
+    missing_ids = [mid for mid in sys_msg_ids if mid not in audit_map]
+    if missing_ids:
+        for m in msgs:
+            if m["id"] in missing_ids:
+                conv_ids_for_fallback.add(m["conversation_id"])
+        if conv_ids_for_fallback:
+            ph_c = ",".join("?" * len(conv_ids_for_fallback))
+            cp_rows = conn.execute(
+                f"""SELECT cp.conversation_id, u.id uid, u.full_name
+                    FROM conversation_participants cp
+                    JOIN users u ON u.id = cp.user_id
+                    WHERE cp.conversation_id IN ({ph_c}) AND cp.user_id != ?""",
+                list(conv_ids_for_fallback) + [system_uid]
+            ).fetchall()
+            conv_parts = {}
+            for r in cp_rows:
+                conv_parts.setdefault(r["conversation_id"], []).append(r["uid"])
+                all_uids.add(r["uid"])
+            for m in msgs:
+                if m["id"] in missing_ids:
+                    audit_map[m["id"]] = conv_parts.get(m["conversation_id"], [])
+    if not all_uids:
+        return {}
+    ph2 = ",".join("?" * len(all_uids))
+    name_rows = conn.execute(
+        f"SELECT id, full_name FROM users WHERE id IN ({ph2})",
+        list(all_uids)
+    ).fetchall()
+    name_map = {r["id"]: r["full_name"] for r in name_rows}
+    result = {}
+    total_active = conn.execute("SELECT COUNT(*) c FROM users WHERE active=1 AND id != ?", (system_uid,)).fetchone()["c"]
+    for mid, uid_list in audit_map.items():
+        if not uid_list:
+            continue
+        if len(uid_list) >= total_active and total_active > 0:
+            result[mid] = "All agents"
+        else:
+            names = [name_map.get(u, "Unknown") for u in uid_list]
+            names = [n.split()[0] if " " in n else n for n in names]
+            result[mid] = ", ".join(sorted(names))
+    return result
+
+
 def _get_or_create_direct_conv(conn, uid_a, uid_b, job_id=None):
     """Return (conv_id, created) for a direct conversation between two users.
     If job_id is provided, look for a job-linked conversation involving both."""
@@ -21142,6 +21206,7 @@ def message_thread(conv_id):
     """, (conv_id,)).fetchall()
     system_uid = _get_system_user_id(conn)
     is_system_conv = any(p["id"] == system_uid for p in participants)
+    msg_recipients = _build_msg_recipients(conn, msgs, system_uid)
     # Full conv list for sidebar
     convs = _get_conv_list(conn, uid)
     users = conn.execute(
@@ -21152,7 +21217,8 @@ def message_thread(conv_id):
     return render_template("message_thread.html",
                            conv=conv, msgs=msgs, participants=participants,
                            convs=convs, users=users, conv_id=conv_id,
-                           is_system_conv=is_system_conv, system_uid=system_uid)
+                           is_system_conv=is_system_conv, system_uid=system_uid,
+                           msg_recipients=msg_recipients)
 
 
 @app.post("/messages/new")
@@ -21387,11 +21453,13 @@ def m_message_thread(conv_id):
     """, (conv_id,)).fetchall()
     system_uid = _get_system_user_id(conn)
     is_system_conv = any(p["id"] == system_uid for p in participants)
+    msg_recipients = _build_msg_recipients(conn, msgs, system_uid)
     conn.close()
     return render_template("mobile/message_thread.html",
                            conv=conv, msgs=msgs, participants=participants,
                            conv_id=conv_id,
-                           is_system_conv=is_system_conv, system_uid=system_uid)
+                           is_system_conv=is_system_conv, system_uid=system_uid,
+                           msg_recipients=msg_recipients)
 
 
 @app.post("/m/messages/new")
