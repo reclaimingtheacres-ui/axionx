@@ -92,10 +92,14 @@ app.config.update(
 
 DB_PATH = os.path.abspath(os.getenv("DB_PATH", "axion.db"))
 
-UPLOAD_FOLDER = "uploads"
+_PERSISTENT_BASE = os.path.dirname(os.path.abspath(os.getenv("DB_PATH", "axion.db")))
+UPLOAD_FOLDER = os.path.join(_PERSISTENT_BASE, "uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv", "heic", "heif"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+_LEGACY_UPLOAD_FOLDER = os.path.abspath("uploads")
+if _LEGACY_UPLOAD_FOLDER != os.path.abspath(UPLOAD_FOLDER):
+    os.makedirs(_LEGACY_UPLOAD_FOLDER, exist_ok=True)
 
 
 @app.after_request
@@ -8926,10 +8930,11 @@ def delete_note_attachment(job_id: int, note_id: int, file_id: int):
         return jsonify({"ok": False, "error": "File not found"}), 404
 
     delete_blob_safely(f["filename"])
-    try:
-        os.remove(os.path.join(UPLOAD_FOLDER, f["filename"]))
-    except OSError:
-        pass
+    for _del_dir in [UPLOAD_FOLDER, _LEGACY_UPLOAD_FOLDER]:
+        try:
+            os.remove(os.path.join(_del_dir, f["filename"]))
+        except OSError:
+            pass
     cur.execute("DELETE FROM job_note_files WHERE id=?", (file_id,))
 
     ts = now_ts()
@@ -8946,6 +8951,9 @@ def delete_note_attachment(job_id: int, note_id: int, file_id: int):
 @login_required
 def serve_upload(filename):
     import logging as _log
+    primary = app.config["UPLOAD_FOLDER"]
+    legacy  = _LEGACY_UPLOAD_FOLDER
+
     if _uploads_container:
         try:
             blob_client = _uploads_container.get_blob_client(filename)
@@ -8954,9 +8962,17 @@ def serve_upload(filename):
             return Response(download.readall(), mimetype=mime)
         except Exception as e:
             _log.warning("Blob fetch failed for %r: %s", filename, e)
-    local_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    if os.path.exists(local_path):
-        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+    primary_path = os.path.join(primary, filename)
+    if os.path.isfile(primary_path):
+        return send_from_directory(primary, filename)
+
+    if os.path.abspath(legacy) != os.path.abspath(primary):
+        legacy_path = os.path.join(legacy, filename)
+        if os.path.isfile(legacy_path):
+            _log.info("Serving %r from legacy upload path %s", filename, legacy_path)
+            return send_from_directory(legacy, filename)
+
     conn = db()
     alt_row = conn.execute(
         "SELECT id, filename, filepath FROM job_note_files WHERE filename=? OR filepath=?",
@@ -8966,16 +8982,28 @@ def serve_upload(filename):
     if alt_row:
         alt_disk = alt_row["filepath"] or alt_row["filename"]
         if alt_disk and alt_disk != filename:
-            alt_path = os.path.join(app.config["UPLOAD_FOLDER"], os.path.basename(alt_disk))
-            if os.path.exists(alt_path):
-                return send_from_directory(app.config["UPLOAD_FOLDER"], os.path.basename(alt_disk))
-        _log.warning("Orphan note-file record for %r (id=%s) — file not in storage", filename, alt_row["id"])
+            bn = os.path.basename(alt_disk)
+            for search_dir in [primary, legacy]:
+                alt_path = os.path.join(search_dir, bn)
+                if os.path.isfile(alt_path):
+                    _log.info("Serving alt filename %r from %s", bn, search_dir)
+                    return send_from_directory(search_dir, bn)
+        _log.warning(
+            "Orphan note-file record for %r (id=%s) — file not on disk. "
+            "Checked: primary=%s, legacy=%s",
+            filename, alt_row["id"], primary_path,
+            os.path.join(legacy, filename) if legacy != primary else "(same)"
+        )
         return render_template("error_500.html",
             error_message="This file is referenced in the database but the actual file data has not been imported into storage yet. "
                           "This typically happens with GeoOp-imported attachments that haven't been backfilled. "
                           "An admin can run the Attachment Backfill from the GeoOp Import page to resolve this.",
             path=f"/uploads/{filename}"), 404
-    _log.warning("File not found locally or in blob: %r", filename)
+    _log.warning(
+        "File not found: %r — checked primary=%s, legacy=%s",
+        filename, primary_path,
+        os.path.join(legacy, filename) if os.path.abspath(legacy) != os.path.abspath(primary) else "(same as primary)"
+    )
     abort(404)
 
 
@@ -9024,12 +9052,15 @@ def download_job_document(job_id: int, doc_id: int):
         except Exception:
             pass
 
-    local_path = os.path.join(app.config["UPLOAD_FOLDER"], stored)
-    if os.path.exists(local_path):
-        audit("job_document", doc_id, "download", f"Document downloaded: {doc['original_filename']}", {"job_id": job_id})
-        conn.close()
-        return send_from_directory(app.config["UPLOAD_FOLDER"], stored, as_attachment=True, download_name=doc["original_filename"])
+    for search_dir in [app.config["UPLOAD_FOLDER"], _LEGACY_UPLOAD_FOLDER]:
+        local_path = os.path.join(search_dir, stored)
+        if os.path.isfile(local_path):
+            audit("job_document", doc_id, "download", f"Document downloaded: {doc['original_filename']}", {"job_id": job_id})
+            conn.close()
+            return send_from_directory(search_dir, stored, as_attachment=True, download_name=doc["original_filename"])
 
+    import logging as _log
+    _log.warning("Document file not found: %r — checked %s and %s", stored, app.config["UPLOAD_FOLDER"], _LEGACY_UPLOAD_FOLDER)
     conn.close()
     abort(404)
 
@@ -9740,7 +9771,7 @@ def update_builder_autosave(job_id: int):
     return jsonify({"ok": True})
 
 
-_UPDATE_PHOTO_DIR = os.path.join("uploads", "update_photos")
+_UPDATE_PHOTO_DIR = os.path.join(UPLOAD_FOLDER, "update_photos")
 os.makedirs(_UPDATE_PHOTO_DIR, exist_ok=True)
 
 _UPDATE_PHOTO_ALLOWED = {"png", "jpg", "jpeg", "webp", "heic", "heif"}
@@ -11509,7 +11540,7 @@ def geoop_repair_diagnostic():
 def geoop_recover_files():
     zip_dir = request.form.get("zip_dir", "").strip()
     if not zip_dir:
-        zip_dir = os.path.join("uploads", "geoop_import")
+        zip_dir = os.path.join(UPLOAD_FOLDER, "geoop_import")
     if not os.path.isdir(zip_dir):
         flash(f"Directory not found: {zip_dir}", "danger")
         return redirect(url_for("geoop_import_page"))
@@ -12669,9 +12700,14 @@ def queue_send_email():
             doc_ids + [int(job_id)]
         ).fetchall()
         for dr in doc_rows:
-            local_path = os.path.join(UPLOAD_FOLDER, dr["stored_filename"])
-            if os.path.exists(local_path):
-                with open(local_path, "rb") as fh:
+            found = None
+            for sd in [UPLOAD_FOLDER, _LEGACY_UPLOAD_FOLDER]:
+                p = os.path.join(sd, dr["stored_filename"])
+                if os.path.isfile(p):
+                    found = p
+                    break
+            if found:
+                with open(found, "rb") as fh:
                     file_attachments.append((dr["original_filename"], fh.read(), dr["mime_type"] or "application/octet-stream"))
 
     conn.close()
@@ -14948,9 +14984,9 @@ def m_update_builder(job_id):
 # ─────────────────────────────────────────────────────────────────────────────
 # Quick Field Note — text / audio / photo (inline, no page reload)
 # ─────────────────────────────────────────────────────────────────────────────
-_PERSISTENT_DATA = os.path.dirname(DB_PATH)
-_NOTE_AUDIO_DIR = os.path.join(_PERSISTENT_DATA, "uploads", "notes", "audio")
-_NOTE_PHOTO_DIR = os.path.join(_PERSISTENT_DATA, "uploads", "notes", "photos")
+_PERSISTENT_DATA = _PERSISTENT_BASE
+_NOTE_AUDIO_DIR = os.path.join(UPLOAD_FOLDER, "notes", "audio")
+_NOTE_PHOTO_DIR = os.path.join(UPLOAD_FOLDER, "notes", "photos")
 
 @app.post("/m/job/<int:job_id>/quick-note")
 @mobile_login_required
