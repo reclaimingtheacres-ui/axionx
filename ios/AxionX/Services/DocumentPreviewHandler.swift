@@ -117,47 +117,23 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
                 return
             }
 
-            print("[DocPreview] File ready at: \(destURL.path)")
+            print("[DocPreview] File ready at: \(destURL.path), ext: \(destURL.pathExtension)")
 
             DispatchQueue.main.async {
-                self?.presentQuickLook(fileURL: destURL, filename: filename)
+                self?.presentDocument(fileURL: destURL, filename: filename)
             }
         }.resume()
     }
 
-    private func presentQuickLook(fileURL: URL, filename: String) {
+    private func presentDocument(fileURL: URL, filename: String) {
         guard let vc = topViewController() else {
             print("[DocPreview] No view controller to present document viewer")
             return
         }
 
-        let coordinator = QLPreviewCoordinator(fileURL: fileURL)
-        let qlController = QLPreviewController()
-        qlController.dataSource = coordinator
-        qlController.delegate = coordinator
-
-        objc_setAssociatedObject(qlController, &AssociatedKeys.coordinator, coordinator, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-
-        let nav = UINavigationController(rootViewController: qlController)
-        nav.modalPresentationStyle = .fullScreen
-
-        let displayName: String
-        if filename.count > 40 {
-            let start = filename.prefix(20)
-            let ext = (filename as NSString).pathExtension
-            displayName = start + "…." + ext
-        } else {
-            displayName = filename
-        }
-        qlController.title = displayName
-
-        qlController.navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: coordinator,
-            action: #selector(QLPreviewCoordinator.dismissViewer)
-        )
-
-        vc.present(nav, animated: true)
+        let viewer = DocumentContainerController(fileURL: fileURL, filename: filename)
+        viewer.modalPresentationStyle = .fullScreen
+        vc.present(viewer, animated: true)
     }
 
     private func showError(_ message: String) {
@@ -176,11 +152,139 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
-private enum AssociatedKeys {
-    static var coordinator: UInt8 = 0
+private final class DocumentContainerController: UIViewController {
+    private let fileURL: URL
+    private let filename: String
+    private var qlController: QLPreviewController?
+    private var coordinator: QLPreviewCoordinator?
+
+    init(fileURL: URL, filename: String) {
+        self.fileURL = fileURL
+        self.filename = filename
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+
+        let bar = UIView()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.backgroundColor = .systemBackground
+
+        let separator = UIView()
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.backgroundColor = .separator
+
+        let displayName: String
+        if filename.count > 35 {
+            let start = filename.prefix(18)
+            let ext = (filename as NSString).pathExtension
+            displayName = start + "…." + ext
+        } else {
+            displayName = filename
+        }
+
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = displayName
+        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.textColor = .label
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+
+        let shareBtn = UIButton(type: .system)
+        shareBtn.translatesAutoresizingMaskIntoConstraints = false
+        shareBtn.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+        shareBtn.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
+        shareBtn.tintColor = .systemBlue
+
+        let doneBtn = UIButton(type: .system)
+        doneBtn.translatesAutoresizingMaskIntoConstraints = false
+        doneBtn.setTitle("Done", for: .normal)
+        doneBtn.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        doneBtn.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
+
+        bar.addSubview(shareBtn)
+        bar.addSubview(titleLabel)
+        bar.addSubview(doneBtn)
+        bar.addSubview(separator)
+        view.addSubview(bar)
+
+        let rowHeight: CGFloat = 44
+
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: view.topAnchor),
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            shareBtn.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 16),
+            shareBtn.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            shareBtn.widthAnchor.constraint(equalToConstant: 28),
+            shareBtn.heightAnchor.constraint(equalToConstant: 28),
+
+            titleLabel.leadingAnchor.constraint(equalTo: shareBtn.trailingAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: doneBtn.leadingAnchor, constant: -12),
+            titleLabel.centerYAnchor.constraint(equalTo: shareBtn.centerYAnchor),
+
+            doneBtn.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -16),
+            doneBtn.centerYAnchor.constraint(equalTo: shareBtn.centerYAnchor),
+
+            bar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: rowHeight),
+
+            separator.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            separator.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
+            separator.heightAnchor.constraint(equalToConstant: 0.5)
+        ])
+
+        let coord = QLPreviewCoordinator(fileURL: fileURL)
+        self.coordinator = coord
+
+        let ql = QLPreviewController()
+        ql.dataSource = coord
+        self.qlController = ql
+
+        addChild(ql)
+        ql.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(ql.view)
+        ql.didMove(toParent: self)
+
+        NSLayoutConstraint.activate([
+            ql.view.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            ql.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            ql.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ql.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        view.bringSubviewToFront(bar)
+    }
+
+    @objc private func doneTapped() {
+        dismiss(animated: true) { [weak self] in
+            guard let self = self else { return }
+            try? FileManager.default.removeItem(at: self.fileURL)
+        }
+    }
+
+    @objc private func shareTapped() {
+        let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: 30, y: 60, width: 1, height: 1)
+        }
+        present(activityVC, animated: true)
+    }
 }
 
-private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
+private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSource {
     let fileURL: URL
 
     init(fileURL: URL) {
@@ -192,24 +296,5 @@ private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSourc
 
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
         fileURL as QLPreviewItem
-    }
-
-    func previewController(_ controller: QLPreviewController, shouldOpen url: URL, for item: QLPreviewItem) -> Bool {
-        return false
-    }
-
-    @objc func dismissViewer() {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = scene.keyWindow else { return }
-        var vc = window.rootViewController
-        while let presented = vc?.presentedViewController { vc = presented }
-        vc?.dismiss(animated: true) { [weak self] in
-            guard let self = self else { return }
-            try? FileManager.default.removeItem(at: self.fileURL)
-        }
-    }
-
-    func previewControllerDidDismiss(_ controller: QLPreviewController) {
-        try? FileManager.default.removeItem(at: fileURL)
     }
 }
