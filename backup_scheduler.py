@@ -12,12 +12,14 @@ from backup_to_azure import backup
 DB_PATH = os.path.abspath(os.environ.get("DB_PATH", "axion.db"))
 ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
 EXCLUDED_STATUSES = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
-BACKUP_HOUR = 2
-MSG_CLEANUP_HOUR = 3
+BACKUP_HOUR = 15
+BACKUP_MINUTE = 30
+MSG_CLEANUP_HOUR = 16
+MSG_CLEANUP_MINUTE = 30
 MSG_READ_RETENTION_DAYS = 7
 
 print(f"Backup scheduler started — DB: {DB_PATH} (exists={os.path.exists(DB_PATH)})", flush=True)
-print(f"  backup daily at {BACKUP_HOUR:02d}:00, msg cleanup at {MSG_CLEANUP_HOUR:02d}:00, geocode every 2 min", flush=True)
+print(f"  backup daily at {BACKUP_HOUR:02d}:{BACKUP_MINUTE:02d} UTC (02:30 AEST), msg cleanup at {MSG_CLEANUP_HOUR:02d}:{MSG_CLEANUP_MINUTE:02d} UTC, geocode every 2 min", flush=True)
 
 last_run_date = None
 last_geocode_time = 0
@@ -193,7 +195,7 @@ while True:
     now = datetime.datetime.now()
     today = now.date()
 
-    if now.hour == BACKUP_HOUR and now.minute == 0 and last_run_date != today:
+    if now.hour == BACKUP_HOUR and now.minute == BACKUP_MINUTE and last_run_date != today:
         print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Running daily backup...", flush=True)
         try:
             backup()
@@ -203,7 +205,7 @@ while True:
             print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Backup failed:", flush=True)
             traceback.print_exc()
 
-    if now.hour == MSG_CLEANUP_HOUR and now.minute == 0 and last_msg_cleanup_date != today:
+    if now.hour == MSG_CLEANUP_HOUR and now.minute == MSG_CLEANUP_MINUTE and last_msg_cleanup_date != today:
         try:
             message_cleanup()
             last_msg_cleanup_date = today
