@@ -903,9 +903,15 @@ function showTab(name) {
   };
 
   window.axNativeDocOpen = function(url, filename) {
-    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview) {
-      window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
-      axMobilePreviewClose();
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview) {
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
+        axMobilePreviewClose();
+      } else {
+        alert('DEBUG: documentPreview handler not available. webkit=' + !!window.webkit + ', handlers=' + !!(window.webkit && window.webkit.messageHandlers));
+      }
+    } catch(e) {
+      alert('DEBUG axNativeDocOpen error: ' + e.message);
     }
   };
 
