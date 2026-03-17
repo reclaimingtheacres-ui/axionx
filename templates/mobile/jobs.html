@@ -298,6 +298,19 @@
               {{ j.assigned_agent_name }}
             </div>
             {% endif %}
+            {% if j.next_booking_type or j.next_scheduled %}
+            <div style="font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              {% if j.next_booking_type %}
+              <span style="background:rgba(37,99,235,.08);color:#2563eb;padding:1px 7px;border-radius:6px;font-weight:600;font-size:.68rem;">{{ j.next_booking_type }}</span>
+              {% endif %}
+              {% if j.next_scheduled %}
+              <span style="display:flex;align-items:center;gap:3px;">
+                <svg viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" fill="none" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                {{ j.next_scheduled[:16].replace('T', ' ') }}
+              </span>
+              {% endif %}
+            </div>
+            {% endif %}
           </div>
           <div class="job-right-col">
             <span class="job-dist hidden" id="dist-{{ j.id }}"></span>

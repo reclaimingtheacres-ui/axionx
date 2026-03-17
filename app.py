@@ -156,6 +156,11 @@ def _save_bytes_to_storage(data: bytes, blob_name: str,
 def favicon():
     return send_from_directory("static", "favicon.ico", mimetype="image/png")
 
+@app.route("/.well-known/apple-app-site-association")
+def apple_app_site_association():
+    return send_from_directory("static/.well-known", "apple-app-site-association",
+                               mimetype="application/json")
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -14112,7 +14117,10 @@ def _mobile_jobs_query(uid, role, params_in):
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
                (SELECT COUNT(*) FROM job_field_notes fn WHERE fn.job_id = j.id) AS note_count,
-               au.full_name AS assigned_agent_name
+               au.full_name AS assigned_agent_name,
+               (SELECT bt.name FROM schedules s JOIN booking_types bt ON bt.id = s.booking_type_id
+                WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0
+                ORDER BY s.scheduled_for LIMIT 1) AS next_booking_type
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients cl ON cl.id = j.client_id
@@ -14428,8 +14436,9 @@ def m_update_builder(job_id):
 # ─────────────────────────────────────────────────────────────────────────────
 # Quick Field Note — text / audio / photo (inline, no page reload)
 # ─────────────────────────────────────────────────────────────────────────────
-_NOTE_AUDIO_DIR = os.path.join("uploads", "notes", "audio")
-_NOTE_PHOTO_DIR = os.path.join("uploads", "notes", "photos")
+_PERSISTENT_DATA = os.path.dirname(DB_PATH)
+_NOTE_AUDIO_DIR = os.path.join(_PERSISTENT_DATA, "uploads", "notes", "audio")
+_NOTE_PHOTO_DIR = os.path.join(_PERSISTENT_DATA, "uploads", "notes", "photos")
 
 @app.post("/m/job/<int:job_id>/quick-note")
 @mobile_login_required
@@ -14514,7 +14523,11 @@ def m_note_audio(note_id):
         abort(404)
     audio_path = os.path.join(_NOTE_AUDIO_DIR, note["audio_filename"])
     if not os.path.exists(audio_path):
-        abort(404)
+        legacy_path = os.path.join("uploads", "notes", "audio", note["audio_filename"])
+        if os.path.exists(legacy_path):
+            audio_path = legacy_path
+        else:
+            abort(404)
     ext      = os.path.splitext(note["audio_filename"])[1].lower().lstrip(".")
     mimetypes_map = {"webm": "audio/webm", "m4a": "audio/mp4", "ogg": "audio/ogg", "wav": "audio/wav"}
     mimetype = mimetypes_map.get(ext, "audio/mpeg")
