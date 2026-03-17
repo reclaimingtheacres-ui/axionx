@@ -3,7 +3,6 @@ import AVFoundation
 import Vision
 import WebKit
 
-@MainActor
 final class PatrolCameraService: NSObject, WKScriptMessageHandler {
 
     static let shared = PatrolCameraService()
@@ -14,15 +13,14 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
     private let outputQueue = DispatchQueue(label: "com.axionx.patrol.camera", qos: .userInteractive)
     private var isRunning = false
 
-    private var lastFrameTime = Date.distantPast
-    private let frameInterval: TimeInterval = 0.6
-
-    private var lastCandidate = ""
-    private var consecutiveCount = 0
+    private let stateLock = NSLock()
+    private var _lastFrameTime = Date.distantPast
+    private var _lastCandidate = ""
+    private var _consecutiveCount = 0
     private let requiredConsecutive = 2
-
-    private var cooldownPlates: [String: Date] = [:]
+    private var _cooldownPlates: [String: Date] = [:]
     private let cooldownSeconds: TimeInterval = 30.0
+    private let frameInterval: TimeInterval = 0.6
 
     func setWebView(_ wv: WKWebView) {
         self.webView = wv
@@ -107,9 +105,13 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
 
         self.session = captureSession
         isRunning = true
-        cooldownPlates.removeAll()
-        lastCandidate = ""
-        consecutiveCount = 0
+
+        stateLock.lock()
+        _cooldownPlates.removeAll()
+        _lastCandidate = ""
+        _consecutiveCount = 0
+        _lastFrameTime = Date.distantPast
+        stateLock.unlock()
 
         outputQueue.async { [weak self] in
             self?.session?.startRunning()
@@ -125,8 +127,11 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
             self?.session?.stopRunning()
         }
         session = nil
-        lastCandidate = ""
-        consecutiveCount = 0
+
+        stateLock.lock()
+        _lastCandidate = ""
+        _consecutiveCount = 0
+        stateLock.unlock()
     }
 
     private func setTorch(_ on: Bool) {
@@ -140,26 +145,38 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
 
     private func sendStatus(_ status: String) {
         let js = "if(window._nativePatrolStatus) window._nativePatrolStatus('\(status)');"
-        webView?.evaluateJavaScript(js, completionHandler: nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
     }
 
     private func sendPlate(_ plate: String) {
         let safe = plate.replacingOccurrences(of: "'", with: "\\'")
         let js = "if(window._nativePatrolPlateDetected) window._nativePatrolPlateDetected('\(safe)');"
-        webView?.evaluateJavaScript(js, completionHandler: nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
     }
 }
 
 extension PatrolCameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
 
-    nonisolated func captureOutput(
+    func captureOutput(
         _ output: AVCaptureOutput,
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
         let now = Date()
-        guard now.timeIntervalSince(lastFrameTime) >= frameInterval else { return }
-        lastFrameTime = now
+
+        stateLock.lock()
+        let lastFrame = _lastFrameTime
+        stateLock.unlock()
+
+        guard now.timeIntervalSince(lastFrame) >= frameInterval else { return }
+
+        stateLock.lock()
+        _lastFrameTime = now
+        stateLock.unlock()
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
@@ -176,29 +193,37 @@ extension PatrolCameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             let source = centred.isEmpty ? observations : centred
 
             guard let plate = PlateCandidateExtractor.bestCandidate(from: source) else {
-                self.lastCandidate = ""
-                self.consecutiveCount = 0
+                self.stateLock.lock()
+                self._lastCandidate = ""
+                self._consecutiveCount = 0
+                self.stateLock.unlock()
                 return
             }
 
-            if plate == self.lastCandidate {
-                self.consecutiveCount += 1
+            self.stateLock.lock()
+            if plate == self._lastCandidate {
+                self._consecutiveCount += 1
             } else {
-                self.lastCandidate = plate
-                self.consecutiveCount = 1
+                self._lastCandidate = plate
+                self._consecutiveCount = 1
             }
+            let count = self._consecutiveCount
+            self.stateLock.unlock()
 
-            guard self.consecutiveCount >= self.requiredConsecutive else { return }
-            self.lastCandidate = ""
-            self.consecutiveCount = 0
+            guard count >= self.requiredConsecutive else { return }
 
-            let cooldownEnd = self.cooldownPlates[plate]
-            if let end = cooldownEnd, now < end { return }
-            self.cooldownPlates[plate] = now.addingTimeInterval(self.cooldownSeconds)
-
-            DispatchQueue.main.async {
-                self.sendPlate(plate)
+            self.stateLock.lock()
+            self._lastCandidate = ""
+            self._consecutiveCount = 0
+            let cooldownEnd = self._cooldownPlates[plate]
+            if let end = cooldownEnd, now < end {
+                self.stateLock.unlock()
+                return
             }
+            self._cooldownPlates[plate] = now.addingTimeInterval(self.cooldownSeconds)
+            self.stateLock.unlock()
+
+            self.sendPlate(plate)
         }
         request.recognitionLevel = .fast
         request.usesLanguageCorrection = false
