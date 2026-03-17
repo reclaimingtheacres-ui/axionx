@@ -2296,10 +2296,27 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">JOB INFO</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
       <span style="color:var(--muted)">Type</span>
-      <span class="fw-semibold">{{ job.job_type }}{% if job.job_type == 'Field Call' and session.get('role') in ('admin', 'both') %}
-        <button type="button" class="btn btn-sm btn-outline-primary ms-1 py-0 px-2" style="font-size:.62rem;line-height:1.5;vertical-align:middle"
-                onclick="upgradeToRepoCollect()">Upgrade to Repo/Collect</button>
-      {% endif %}</span>
+      {% if session.get('role') in ('admin', 'both') %}
+      <span class="fw-semibold" id="sidebar-jtype-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
+            onclick="document.getElementById('sidebar-jtype-edit').style.display='flex';this.style.display='none';">
+        {{ job.job_type }}
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </span>
+      <div id="sidebar-jtype-edit" style="display:none;align-items:center;gap:4px;grid-column:1/-1">
+        <select id="sidebar-jtype-select" class="form-select form-select-sm"
+                style="font-size:.8rem;padding:2px 6px;height:26px;max-width:160px">
+          {% for jt in job_types %}
+          <option value="{{ jt }}" {% if jt == job.job_type %}selected{% endif %}>{{ jt }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-primary btn-sm" style="font-size:.7rem;padding:1px 8px;height:26px"
+                onclick="saveSidebarJobType()">Save</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:1px 6px;height:26px"
+                onclick="document.getElementById('sidebar-jtype-edit').style.display='none';document.getElementById('sidebar-jtype-display').style.display='flex';">Cancel</button>
+      </div>
+      {% else %}
+      <span class="fw-semibold">{{ job.job_type }}</span>
+      {% endif %}
       <span style="color:var(--muted)">Visit</span>
       <span class="fw-semibold">{{ job.visit_type }}</span>
       <span style="color:var(--muted)">Priority</span>
@@ -2498,17 +2515,32 @@ if(ijnInput){
     }
   });
 }
-function upgradeToRepoCollect(){
-  if(!confirm('Convert this job from Field Call to Repo/Collect?')) return;
+function saveSidebarJobType(){
+  var sel = document.getElementById('sidebar-jtype-select');
+  var newType = sel ? sel.value : '';
+  if(!newType) return;
   fetch('/api/jobs/{{ job.id }}/upgrade-job-type', {
     method:'POST',
     headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
-    body:JSON.stringify({job_type:'Repo/Collect'})
+    body:JSON.stringify({job_type: newType})
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
-    if(data.ok){ location.reload(); }
-    else { alert(data.error || 'Error upgrading job type.'); }
+    if(data.ok){
+      var disp = document.getElementById('sidebar-jtype-display');
+      if(disp){
+        disp.childNodes[0].textContent = data.job_type + ' ';
+      }
+      document.getElementById('sidebar-jtype-edit').style.display='none';
+      disp.style.display='flex';
+      var header = document.querySelector('.ax-header-bar .ax-header-ref');
+      if(header){
+        var parts = header.textContent.split(' - ');
+        if(parts.length >= 2){ parts[1] = data.job_type; header.textContent = parts.join(' - '); }
+      }
+    } else {
+      alert(data.error || 'Error updating job type.');
+    }
   })
   .catch(function(){ alert('Network error.'); });
 }
