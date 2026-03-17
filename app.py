@@ -5982,6 +5982,10 @@ def job_edit(job_id: int):
     if client_job_number:
         display_ref = f"{internal} ({client_job_number})"
 
+    _prev_address = cur.execute("SELECT job_address FROM jobs WHERE id=?", (job_id,)).fetchone()
+    _prev_addr_str = (_prev_address["job_address"] or "").strip() if _prev_address else ""
+    _addr_changed = (job_address or "").strip() != _prev_addr_str
+
     cur.execute("""
         UPDATE jobs SET
             client_reference=?, client_job_number=?, display_ref=?,
@@ -5995,6 +5999,9 @@ def job_edit(job_id: int):
           job_type, visit_type, status, priority,
           job_address, description, assigned_user_id,
           now, job_id))
+
+    if _addr_changed:
+        cur.execute("UPDATE jobs SET lat=NULL, lng=NULL, geocode_fail=0 WHERE id=?", (job_id,))
 
     if customer_id:
         cur.execute("SELECT id FROM job_customers WHERE job_id = ? AND role = 'Primary'", (job_id,))
@@ -6014,7 +6021,7 @@ def job_edit(job_id: int):
     conn.commit()
     conn.close()
 
-    if job_address:
+    if job_address and _addr_changed:
         _geocode_job_async(job_id, job_address)
 
     flash("Job updated.", "success")
@@ -13853,18 +13860,26 @@ def _geocode_address(address: str):
 
 
 def _geocode_job_async(job_id: int, address: str):
-    """Fire-and-forget: geocode one job address and persist the result."""
+    """Fire-and-forget: geocode one job address and persist the result.
+    Only writes coordinates if the job address still matches (guards against
+    a second address edit arriving before this geocode completes)."""
     def _worker():
         result = _geocode_address(address)
-        if result:
-            lat, lng = result
-            try:
-                conn = db()
-                conn.execute("UPDATE jobs SET lat=?, lng=? WHERE id=?", (lat, lng, job_id))
-                conn.commit()
-                conn.close()
-            except Exception:
-                pass
+        try:
+            conn = db()
+            if result:
+                lat, lng = result
+                conn.execute(
+                    "UPDATE jobs SET lat=?, lng=?, geocode_fail=0 WHERE id=? AND TRIM(COALESCE(job_address,''))=?",
+                    (lat, lng, job_id, address.strip()))
+            else:
+                conn.execute(
+                    "UPDATE jobs SET geocode_fail=1 WHERE id=? AND TRIM(COALESCE(job_address,''))=?",
+                    (job_id, address.strip()))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
     threading.Thread(target=_worker, daemon=True).start()
 
 
