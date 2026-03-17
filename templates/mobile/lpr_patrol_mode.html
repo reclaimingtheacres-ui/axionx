@@ -344,7 +344,33 @@ function _hasNativePatrolBridge() {
 }
 
 function _startNativePatrol() {
+  var _permissionPhase = true;
+
   window._nativePatrolStatus = function(status) {
+    console.log('[PatrolJS] _nativePatrolStatus: ' + status + ', permissionPhase: ' + _permissionPhase);
+
+    if (_permissionPhase) {
+      if (status === 'permission_granted') {
+        _permissionPhase = false;
+        _setCameraState('init', 'STARTING', 'Permission granted — starting camera…', '#f59e0b', true);
+        window.webkit.messageHandlers.patrolCamera.postMessage({action: 'start'});
+      } else if (status === 'permission_denied') {
+        _permissionPhase = false;
+        _setCameraState('permission_denied', 'CAMERA BLOCKED',
+          'Camera access is turned off. Enable Camera in iPhone Settings → AxionX.',
+          '#ef4444', false, true);
+      } else if (status === 'not_determined') {
+        _setCameraState('init', 'REQUESTING ACCESS',
+          'Please allow camera access when prompted…', '#f59e0b', true);
+      } else {
+        _permissionPhase = false;
+        _setCameraState('init_failed', 'CAMERA ERROR',
+          'Camera permission check failed. Close Patrol Mode and try again.',
+          '#ef4444', false);
+      }
+      return;
+    }
+
     if (status === 'active') {
       _nativePatrolActive = true;
       _scanning = true;
@@ -400,8 +426,9 @@ function _startNativePatrol() {
     .finally(function(){ _fetchInFlight = false; });
   };
 
-  _setCameraState('init', 'STARTING', 'Initialising native camera…', '#f59e0b', true);
-  window.webkit.messageHandlers.patrolCamera.postMessage({action: 'start'});
+  _setCameraState('init', 'STARTING', 'Requesting camera permission…', '#f59e0b', true);
+  console.log('[PatrolJS] Sending requestPermission to native bridge');
+  window.webkit.messageHandlers.patrolCamera.postMessage({action: 'requestPermission'});
 }
 
 function _stopNativePatrol() {

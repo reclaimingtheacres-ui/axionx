@@ -12,6 +12,7 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
     private var session: AVCaptureSession?
     private let outputQueue = DispatchQueue(label: "com.axionx.patrol.camera", qos: .userInteractive)
     private var isRunning = false
+    private var permissionRequested = false
 
     private let stateLock = NSLock()
     private var _lastFrameTime = Date.distantPast
@@ -26,14 +27,32 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         self.webView = wv
     }
 
+    func ensureCameraPermission() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        print("[PatrolCamera] ensureCameraPermission called, status: \(status.rawValue)")
+        if status == .notDetermined && !permissionRequested {
+            permissionRequested = true
+            print("[PatrolCamera] Requesting camera access proactively")
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                print("[PatrolCamera] Proactive permission result: \(granted)")
+            }
+        }
+    }
+
     func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        print("[PatrolCamera] Received message: \(message.body)")
         guard let body = message.body as? [String: Any],
-              let action = body["action"] as? String else { return }
+              let action = body["action"] as? String else {
+            print("[PatrolCamera] Failed to parse message body")
+            return
+        }
 
         switch action {
+        case "requestPermission":
+            handlePermissionRequest()
         case "start":
             startPatrol()
         case "stop":
@@ -42,25 +61,25 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
             let on = body["on"] as? Bool ?? false
             setTorch(on)
         default:
+            print("[PatrolCamera] Unknown action: \(action)")
             break
         }
     }
 
-    private func startPatrol() {
-        guard !isRunning else { return }
-
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+    private func handlePermissionRequest() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        print("[PatrolCamera] handlePermissionRequest, status: \(status.rawValue)")
+        switch status {
         case .authorized:
-            setupAndStart()
+            sendStatus("permission_granted")
         case .notDetermined:
             sendStatus("not_determined")
+            permissionRequested = true
+            print("[PatrolCamera] Calling AVCaptureDevice.requestAccess(for: .video)")
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                print("[PatrolCamera] requestAccess result: \(granted)")
                 DispatchQueue.main.async {
-                    if granted {
-                        self?.setupAndStart()
-                    } else {
-                        self?.sendStatus("permission_denied")
-                    }
+                    self?.sendStatus(granted ? "permission_granted" : "permission_denied")
                 }
             }
         case .denied:
@@ -72,13 +91,52 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         }
     }
 
+    private func startPatrol() {
+        print("[PatrolCamera] startPatrol called, isRunning: \(isRunning)")
+        guard !isRunning else { return }
+
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        print("[PatrolCamera] Camera auth status: \(status.rawValue) (0=notDetermined, 1=restricted, 2=denied, 3=authorized)")
+
+        switch status {
+        case .authorized:
+            print("[PatrolCamera] Authorized — setting up camera")
+            setupAndStart()
+        case .notDetermined:
+            print("[PatrolCamera] Not determined — requesting access")
+            sendStatus("not_determined")
+            permissionRequested = true
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                print("[PatrolCamera] requestAccess callback: granted=\(granted)")
+                DispatchQueue.main.async {
+                    if granted {
+                        self?.setupAndStart()
+                    } else {
+                        self?.sendStatus("permission_denied")
+                    }
+                }
+            }
+        case .denied:
+            print("[PatrolCamera] Denied")
+            sendStatus("permission_denied")
+        case .restricted:
+            print("[PatrolCamera] Restricted")
+            sendStatus("permission_denied")
+        @unknown default:
+            print("[PatrolCamera] Unknown status")
+            sendStatus("error")
+        }
+    }
+
     private func setupAndStart() {
+        print("[PatrolCamera] setupAndStart")
         let captureSession = AVCaptureSession()
         captureSession.beginConfiguration()
         captureSession.sessionPreset = .hd1280x720
 
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             captureSession.commitConfiguration()
+            print("[PatrolCamera] No camera device found")
             sendStatus("no_camera")
             return
         }
@@ -86,6 +144,7 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         guard let input = try? AVCaptureDeviceInput(device: device),
               captureSession.canAddInput(input) else {
             captureSession.commitConfiguration()
+            print("[PatrolCamera] Failed to create camera input")
             sendStatus("setup_failed")
             return
         }
@@ -97,6 +156,7 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
 
         guard captureSession.canAddOutput(output) else {
             captureSession.commitConfiguration()
+            print("[PatrolCamera] Failed to add video output")
             sendStatus("setup_failed")
             return
         }
@@ -114,14 +174,18 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         stateLock.unlock()
 
         outputQueue.async { [weak self] in
+            print("[PatrolCamera] Starting capture session on outputQueue")
             self?.session?.startRunning()
+            print("[PatrolCamera] Capture session running")
         }
 
         sendStatus("active")
+        print("[PatrolCamera] Sent 'active' status")
     }
 
     func stopPatrol() {
         guard isRunning else { return }
+        print("[PatrolCamera] Stopping patrol")
         isRunning = false
         outputQueue.async { [weak self] in
             self?.session?.stopRunning()

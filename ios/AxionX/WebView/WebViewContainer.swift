@@ -342,6 +342,9 @@ struct WebViewContainer: View {
                     if let u = url, !u.path.hasPrefix("/m/lpr/patrol") {
                         PatrolCameraService.shared.stopPatrol()
                     }
+                    if let u = url, u.path.hasPrefix("/m/lpr") {
+                        PatrolCameraService.shared.ensureCameraPermission()
+                    }
                 }
             },
             forKeyPath: #keyPath(WKWebView.url),

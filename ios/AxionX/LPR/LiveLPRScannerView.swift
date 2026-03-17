@@ -373,11 +373,15 @@ final class LPRCameraViewController: UIViewController, AVCaptureVideoDataOutputS
     }
 
     private func checkAuthorizationAndSetup() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        print("[LPRCamera] checkAuthorizationAndSetup, status: \(status.rawValue)")
+        switch status {
         case .authorized:
             setupSession()
         case .notDetermined:
+            print("[LPRCamera] Requesting camera access")
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                print("[LPRCamera] Camera access result: \(granted)")
                 DispatchQueue.main.async {
                     if granted {
                         self?.setupSession()

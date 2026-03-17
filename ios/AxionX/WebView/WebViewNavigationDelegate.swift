@@ -120,10 +120,6 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
 
     // MARK: - Camera permission (iOS 15+)
 
-    /// WKWebView calls this before allowing getUserMedia / camera access from web JS.
-    /// Without this delegate method WKWebView silently denies the request every time.
-    /// We check the OS-level camera permission first: if not yet determined, we trigger
-    /// the native permission dialog so the Camera row appears in iOS Settings.
     @available(iOS 15.0, *)
     func webView(
         _ webView: WKWebView,
@@ -132,6 +128,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         type: WKMediaCaptureType,
         decisionHandler: @escaping (WKPermissionDecision) -> Void
     ) {
+        print("[WebView] requestMediaCapturePermissionFor called, type: \(type.rawValue)")
         let needsCamera = type == .camera || type == .cameraAndMicrophone
         let needsMic    = type == .microphone || type == .cameraAndMicrophone
 
@@ -140,11 +137,14 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             then completion: @escaping (Bool) -> Void
         ) {
             let status = AVCaptureDevice.authorizationStatus(for: mediaType)
+            print("[WebView] \(mediaType == .video ? "Camera" : "Mic") auth status: \(status.rawValue)")
             switch status {
             case .authorized:
                 completion(true)
             case .notDetermined:
+                print("[WebView] Requesting \(mediaType == .video ? "camera" : "mic") access")
                 AVCaptureDevice.requestAccess(for: mediaType) { granted in
+                    print("[WebView] \(mediaType == .video ? "Camera" : "Mic") access result: \(granted)")
                     DispatchQueue.main.async { completion(granted) }
                 }
             case .denied, .restricted:
@@ -172,7 +172,9 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
 
         resolveCamera { cameraOk in
             resolveMic { micOk in
-                decisionHandler((cameraOk && micOk) ? .grant : .deny)
+                let decision: WKPermissionDecision = (cameraOk && micOk) ? .grant : .deny
+                print("[WebView] Media capture decision: \(decision == .grant ? "grant" : "deny")")
+                decisionHandler(decision)
             }
         }
     }
