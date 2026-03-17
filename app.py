@@ -940,6 +940,11 @@ def _migrate_update_builder():
         UPDATE job_field_notes SET review_status='submitted_for_review'
         WHERE review_status='pending_review'
     """)
+    _abs_rows = cur.execute("SELECT id, filepath FROM job_note_files WHERE filepath LIKE '/%'").fetchall()
+    for _ar in _abs_rows:
+        _bn = os.path.basename(_ar["filepath"]) if _ar["filepath"] else ""
+        if _bn:
+            cur.execute("UPDATE job_note_files SET filepath=? WHERE id=?", (_bn, _ar["id"]))
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_updates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1140,6 +1145,11 @@ def _migrate_update_builder():
     """)
     add_column_if_missing(cur, "job_updates", "photos_count", "INTEGER NOT NULL DEFAULT 0")
     add_column_if_missing(cur, "job_updates", "agent_notes", "TEXT DEFAULT ''")
+    _abs_rows2 = cur.execute("SELECT id, filepath FROM job_update_photos WHERE filepath LIKE '/%'").fetchall()
+    for _ar2 in _abs_rows2:
+        _bn2 = os.path.basename(_ar2["filepath"]) if _ar2["filepath"] else ""
+        if _bn2:
+            cur.execute("UPDATE job_update_photos SET filepath=? WHERE id=?", (_bn2, _ar2["id"]))
 
     add_column_if_missing(cur, "jobs", "geoop_assigned_agent", "TEXT")
     _staging_exists = cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='geoop_staging_jobs'").fetchone()
@@ -9207,7 +9217,7 @@ def job_document_upload(job_id: int):
             cur.execute("""
                 INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
                 VALUES (?, ?, ?, ?)
-            """, (note_id, original_filename, stored_filename, ts))
+            """, (note_id, stored_filename, stored_filename, ts))
 
         uploaded += 1
     conn.commit()
@@ -9736,9 +9746,10 @@ def update_builder_save(job_id: int):
 
     if photos_count > 0:
         for p in photos:
+            _pbn = os.path.basename(p["filepath"]) if p["filepath"] else p["filename"]
             cur.execute(
                 "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
-                (note_id, p["filename"], p["filepath"], ts)
+                (note_id, p["filename"], _pbn, ts)
             )
     conn.commit()
 
@@ -9916,18 +9927,16 @@ def update_builder_upload_photo(job_id):
         return jsonify({"ok": False, "error": str(_hce)}), 400
     safe_fn = secure_filename(heic_name or photo.filename)
     stored_name = f"{uuid.uuid4().hex}_{safe_fn}"
-    filepath = os.path.join(_UPDATE_PHOTO_DIR, stored_name)
     if was_heic:
-        with open(filepath, "wb") as _pf:
-            _pf.write(heic_bytes)
+        _save_bytes_to_storage(heic_bytes, stored_name, "image/jpeg")
     else:
-        photo.save(filepath)
+        upload_to_blob(photo, stored_name)
 
     ts = now_ts()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO job_update_photos (job_update_id, job_id, filename, filepath, tag, uploaded_at) VALUES (?,?,?,?,?,?)",
-        (draft_id, job_id, stored_name, filepath, tag, ts)
+        (draft_id, job_id, stored_name, stored_name, tag, ts)
     )
     photo_id = cur.lastrowid
     conn.execute(
@@ -9955,9 +9964,13 @@ def update_builder_delete_photo(job_id, photo_id):
         conn.close()
         return jsonify({"ok": False, "error": "Photo not found"}), 404
 
+    _fp = row["filepath"] or row.get("filename", "")
     try:
-        if os.path.exists(row["filepath"]):
-            os.remove(row["filepath"])
+        if os.path.isabs(_fp) and os.path.exists(_fp):
+            os.remove(_fp)
+        else:
+            _remove_note_file_from_disk(_fp)
+            delete_blob_safely(_fp)
     except OSError:
         pass
 
@@ -9997,9 +10010,25 @@ def update_builder_serve_photo(job_id, photo_id):
             conn.close()
             abort(403)
     conn.close()
-    if not os.path.exists(row["filepath"]):
-        abort(404)
-    return send_file(row["filepath"])
+    _fp = row["filepath"] or ""
+    if os.path.isabs(_fp) and os.path.isfile(_fp):
+        return send_file(_fp)
+    for _sd in [UPLOAD_FOLDER, _LEGACY_UPLOAD_FOLDER]:
+        _candidate = os.path.join(_sd, os.path.basename(_fp))
+        if os.path.isfile(_candidate):
+            return send_file(_candidate)
+        _candidate_sub = os.path.join(_sd, "update_photos", os.path.basename(_fp))
+        if os.path.isfile(_candidate_sub):
+            return send_file(_candidate_sub)
+    if _uploads_container:
+        try:
+            blob_client = _uploads_container.get_blob_client(os.path.basename(_fp))
+            download = blob_client.download_blob()
+            mime = mimetypes.guess_type(_fp)[0] or "application/octet-stream"
+            return Response(download.readall(), mimetype=mime)
+        except Exception:
+            pass
+    abort(404)
 
 
 @app.get("/my/drafts")
@@ -15203,14 +15232,23 @@ def m_note_photo(file_id):
     fp = row["filepath"] or row["filename"]
     if os.path.isabs(fp) and os.path.isfile(fp):
         return send_file(fp)
+    bn = os.path.basename(fp)
     for search_dir in [UPLOAD_FOLDER, _LEGACY_UPLOAD_FOLDER]:
-        candidate = os.path.join(search_dir, fp)
+        candidate = os.path.join(search_dir, bn)
         if os.path.isfile(candidate):
             return send_file(candidate)
-        for sd in ["notes/photos", ""]:
-            sub = os.path.join(search_dir, sd, os.path.basename(fp)) if sd else os.path.join(search_dir, os.path.basename(fp))
+        for sd in ["notes/photos", "update_photos"]:
+            sub = os.path.join(search_dir, sd, bn)
             if os.path.isfile(sub):
                 return send_file(sub)
+    if _uploads_container:
+        try:
+            blob_client = _uploads_container.get_blob_client(bn)
+            download = blob_client.download_blob()
+            mime = mimetypes.guess_type(bn)[0] or "application/octet-stream"
+            return Response(download.readall(), mimetype=mime)
+        except Exception:
+            pass
     abort(404)
 
 
