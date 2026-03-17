@@ -1028,7 +1028,7 @@ function loadDiagnostics() {
                 if (fp.regulation_type) fpText.push('Regulation: ' + fp.regulation_type);
                 if (fp.arrears) fpText.push('Arrears: ' + fp.arrears);
                 if (fp.costs) fpText.push('Costs: ' + fp.costs);
-                if (fp.mmp) fpText.push('MMP: ' + fp.mmp);
+                if (fp.mmp) fpText.push('Installment: ' + fp.mmp);
                 if (fp.due_date) fpText.push('Due Date: ' + fp.due_date);
                 document.getElementById('bfs-fields').textContent = fpText.length ? fpText.join(', ') : '—';
                 var list = document.getElementById('bfs-sample-list');
@@ -1052,7 +1052,7 @@ function loadDiagnostics() {
                   if (s.regulation_type) fields.push('Regulation: ' + s.regulation_type);
                   if (s.arrears) fields.push('Arrears: ' + s.arrears);
                   if (s.costs) fields.push('Costs: ' + s.costs);
-                  if (s.mmp) fields.push('MMP: ' + s.mmp);
+                  if (s.mmp) fields.push('Installment: ' + s.mmp);
                   if (s.due_date) fields.push('Due: ' + s.due_date);
                   if (s.deliver_to) fields.push('Deliver To: ' + s.deliver_to);
                   rows.push(['Structured Fields', fields.length ? fields.join(' · ') : '—']);
@@ -1234,7 +1234,7 @@ function loadDiagnostics() {
         if (fp.regulation_type) fpText.push('Regulation: ' + fp.regulation_type);
         if (fp.arrears) fpText.push('Arrears: ' + fp.arrears);
         if (fp.costs) fpText.push('Costs: ' + fp.costs);
-        if (fp.mmp) fpText.push('MMP: ' + fp.mmp);
+        if (fp.mmp) fpText.push('Installment: ' + fp.mmp);
         if (fp.due_date) fpText.push('Due Date: ' + fp.due_date);
         document.getElementById('bfs-fields').textContent = fpText.length ? fpText.join(', ') : '—';
         var list = document.getElementById('bfs-sample-list');
@@ -1258,7 +1258,7 @@ function loadDiagnostics() {
           if (s.regulation_type) fields.push('Regulation: ' + s.regulation_type);
           if (s.arrears) fields.push('Arrears: ' + s.arrears);
           if (s.costs) fields.push('Costs: ' + s.costs);
-          if (s.mmp) fields.push('MMP: ' + s.mmp);
+          if (s.mmp) fields.push('Installment: ' + s.mmp);
           if (s.due_date) fields.push('Due: ' + s.due_date);
           if (s.deliver_to) fields.push('Deliver To: ' + s.deliver_to);
           rows.push(['Structured Fields', fields.length ? fields.join(' · ') : '—']);

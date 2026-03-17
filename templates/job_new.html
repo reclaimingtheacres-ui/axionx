@@ -206,7 +206,7 @@
           <div style="flex:1;min-width:120px;">
             <label class="nj-lbl">Job Type</label>
             <select class="form-select form-select-sm" name="job_type" id="jobTypeSelect">
-              {% for jt in job_types %}<option value="{{ jt.name }}">{{ jt.name }}</option>{% endfor %}
+              {% for jt in job_types %}<option value="{{ jt.name }}" {% if jt.name == 'Repo/Collect' %}selected{% endif %}>{{ jt.name }}</option>{% endfor %}
             </select>
             {% if session.get('role') == 'admin' %}
             <button class="btn btn-outline-secondary btn-sm mt-1 py-0 px-2" type="button" style="font-size:.68rem;"
@@ -389,7 +389,7 @@
                    value="{{ prefill_costs or '' }}">
           </div>
           <div style="flex:1;">
-            <label class="nj-lbl">MMP</label>
+            <label class="nj-lbl">Installment</label>
             <input class="form-control form-control-sm" name="mmp" placeholder="$0.00">
           </div>
         </div>
@@ -821,6 +821,49 @@ function toggleParsed(btn) {
 
   var _modalTarget = null;
   var _bsModal = null;
+
+  window.addPhoneRow = function() {
+    var container = document.getElementById('phoneRows');
+    if (!container) return;
+    var row = document.createElement('div');
+    row.className = 'd-flex gap-2 align-items-center mb-2 phone-row';
+    row.innerHTML =
+      '<input class="form-control" name="phone_label[]" placeholder="Mobile" style="max-width:88px;font-size:.85rem">' +
+      '<input class="form-control" name="phone_number[]" placeholder="e.g. 0412 345 678" style="font-size:.85rem">' +
+      '<button type="button" class="btn btn-sm btn-outline-danger px-2 flex-shrink-0" onclick="removePhoneRow(this)" title="Remove">&times;</button>';
+    container.appendChild(row);
+  };
+  window.removePhoneRow = function(btn) {
+    var row = btn.closest('.phone-row');
+    var container = document.getElementById('phoneRows');
+    if (container && container.querySelectorAll('.phone-row').length > 1) {
+      row.remove();
+    } else {
+      var inputs = row.querySelectorAll('input');
+      inputs.forEach(function(inp) { inp.value = ''; });
+    }
+  };
+  window.addEmailRow = function() {
+    var container = document.getElementById('emailRows');
+    if (!container) return;
+    var row = document.createElement('div');
+    row.className = 'd-flex gap-2 align-items-center mb-2 email-row';
+    row.innerHTML =
+      '<input class="form-control" name="email_label[]" placeholder="Personal" style="max-width:88px;font-size:.85rem">' +
+      '<input class="form-control" name="email_address[]" type="email" placeholder="e.g. john@example.com" style="font-size:.85rem">' +
+      '<button type="button" class="btn btn-sm btn-outline-danger px-2 flex-shrink-0" onclick="removeEmailRow(this)" title="Remove">&times;</button>';
+    container.appendChild(row);
+  };
+  window.removeEmailRow = function(btn) {
+    var row = btn.closest('.email-row');
+    var container = document.getElementById('emailRows');
+    if (container && container.querySelectorAll('.email-row').length > 1) {
+      row.remove();
+    } else {
+      var inputs = row.querySelectorAll('input');
+      inputs.forEach(function(inp) { inp.value = ''; });
+    }
+  };
 
   window.openEntityModal = function(target, url) {
     _modalTarget = target;

@@ -391,7 +391,7 @@
               <div class="small fw-semibold">{{ cents_to_money(job.costs_cents) }}{% if job.costs2_cents %} <span style="color:var(--muted);font-size:.7em">+{{ cents_to_money(job.costs2_cents) }}</span>{% endif %}</div>
             </div>
             <div class="col-6 col-sm-3">
-              <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">NEXT PMT DUE</div>
+              <div style="font-size:.66rem;color:var(--muted);letter-spacing:.03em">INSTALLMENT</div>
               <div class="small fw-semibold">{{ cents_to_money(job.mmp_cents) }}</div>
             </div>
             <div class="col-6 col-sm-3">
@@ -461,7 +461,7 @@
                   <input class="form-control form-control-sm" name="costs2" value="{{ cents_to_money(job.costs2_cents) if job.costs2_cents else '' }}" placeholder="0.00">
                 </div>
                 <div class="col-6 col-lg-2">
-                  <label class="form-label form-label-sm">Next Pmt Due ($)</label>
+                  <label class="form-label form-label-sm">Installment ($)</label>
                   <input class="form-control form-control-sm" name="mmp" value="{{ cents_to_money(job.mmp_cents) if job.mmp_cents else '' }}" placeholder="0.00">
                 </div>
                 <div class="col-6 col-lg-2">
@@ -1611,7 +1611,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               <div class="fpa-value">{% if job.costs_cents %}${{ "%.2f"|format(job.costs_cents / 100) }}{% endif %}</div>
             </div>
             <div class="fpa-section">
-              <div class="fpa-label">Monthly Payment</div>
+              <div class="fpa-label">Installment</div>
               <div class="fpa-value">{% if job.mmp_cents %}${{ "%.2f"|format(job.mmp_cents / 100) }}{% endif %}</div>
             </div>
           </div>
@@ -1807,7 +1807,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               <div class="fpa-value" contenteditable="true">{% if job.costs_cents %}${{ "%.2f"|format(job.costs_cents / 100) }}{% endif %}</div>
             </div>
             <div class="fpa-section">
-              <div class="fpa-label">Monthly Payment</div>
+              <div class="fpa-label">Installment</div>
               <div class="fpa-value" contenteditable="true">{% if job.mmp_cents %}${{ "%.2f"|format(job.mmp_cents / 100) }}{% endif %}</div>
             </div>
           </div>
@@ -2158,7 +2158,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               ('security_desc',     'Security Description'),
               ('amount_owing',      'Amount Owing'),
               ('costs',             'Costs'),
-              ('monthly_payment',   'Monthly Payment'),
+              ('monthly_payment',   'Installment'),
               ('current_date',      'Current Date'),
             ] %}
             {% for key, label in _fb_fields %}
@@ -2230,7 +2230,10 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">JOB INFO</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
       <span style="color:var(--muted)">Type</span>
-      <span class="fw-semibold">{{ job.job_type }}</span>
+      <span class="fw-semibold">{{ job.job_type }}{% if job.job_type == 'Field Call' and session.get('role') in ('admin', 'both') %}
+        <button type="button" class="btn btn-sm btn-outline-primary ms-1 py-0 px-2" style="font-size:.62rem;line-height:1.5;vertical-align:middle"
+                onclick="upgradeToRepoCollect()">Upgrade to Repo/Collect</button>
+      {% endif %}</span>
       <span style="color:var(--muted)">Visit</span>
       <span class="fw-semibold">{{ job.visit_type }}</span>
       <span style="color:var(--muted)">Priority</span>
@@ -2428,6 +2431,20 @@ if(ijnInput){
       document.getElementById('sidebar-ijn-display').style.display='flex';
     }
   });
+}
+function upgradeToRepoCollect(){
+  if(!confirm('Convert this job from Field Call to Repo/Collect?')) return;
+  fetch('/api/jobs/{{ job.id }}/upgrade-job-type', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body:JSON.stringify({job_type:'Repo/Collect'})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(data.ok){ location.reload(); }
+    else { alert(data.error || 'Error upgrading job type.'); }
+  })
+  .catch(function(){ alert('Network error.'); });
 }
 </script>
 
@@ -4134,7 +4151,7 @@ function axCopyVin(btn) {
     lender_name:'Lender Name', account_number:'Account Number', regulation_type:'Regulation Type',
     job_address:'Job Address', security_type:'Security Type', security_reg:'Security Reg',
     security_vin:'Security VIN', security_desc:'Security Description',
-    amount_owing:'Amount Owing', costs:'Costs', monthly_payment:'Monthly Payment', current_date:'Current Date'
+    amount_owing:'Amount Owing', costs:'Costs', monthly_payment:'Installment', current_date:'Current Date'
   };
 
   var _JOB = {

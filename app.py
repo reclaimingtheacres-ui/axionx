@@ -6056,6 +6056,35 @@ def api_job_internal_number(job_id: int):
     return jsonify({"ok": True, "value": val, "display_ref": display_ref})
 
 
+@app.post("/api/jobs/<int:job_id>/upgrade-job-type")
+@login_required
+@admin_required
+def api_job_upgrade_type(job_id: int):
+    data = request.get_json(silent=True) or {}
+    new_type = (data.get("job_type") or "").strip()
+    if not new_type:
+        return jsonify({"ok": False, "error": "Job type is required."}), 400
+    now = now_ts()
+    conn = db()
+    cur = conn.cursor()
+    job = cur.execute("SELECT job_type FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+    old_type = job["job_type"] or ""
+    if old_type == new_type:
+        conn.close()
+        return jsonify({"ok": True, "job_type": new_type})
+    cur.execute("UPDATE jobs SET job_type=?, updated_at=? WHERE id=?",
+                (new_type, now, job_id))
+    cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (job_id, "System", f"Job type changed from '{old_type}' to '{new_type}'.", now, now))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "job_type": new_type})
+
+
 @app.post("/api/jobs/<int:job_id>/client-reference")
 @login_required
 @admin_required

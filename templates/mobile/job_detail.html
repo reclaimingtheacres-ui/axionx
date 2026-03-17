@@ -257,7 +257,7 @@
 
     {% if job.mmp_cents %}
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;">
-      <div class="m-label" style="margin-bottom:0;min-width:120px;">Next Payment Due</div>
+      <div class="m-label" style="margin-bottom:0;min-width:120px;">Installment</div>
       <div style="font-weight:600;font-size:.9rem;text-align:right;">${{ "%.2f" | format(job.mmp_cents / 100) }}{% if job.mmp_included_in_total %} <span style="font-size:.65rem;color:#92400e;font-weight:600">(included)</span>{% endif %}</div>
     </div>
     {% endif %}
