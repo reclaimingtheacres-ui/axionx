@@ -95,7 +95,10 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }.resume()
     }
 
-    private static let qlNativeExtensions: Set<String> = ["pdf", "png", "jpg", "jpeg", "gif", "heic", "heif", "tiff", "bmp"]
+    private static let qlNativeExtensions: Set<String> = [
+        "pdf", "png", "jpg", "jpeg", "gif", "heic", "heif", "tiff", "bmp",
+        "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "rtf"
+    ]
 
     private func presentDocument(fileURL: URL, filename: String) {
         guard let vc = topViewController() else {
