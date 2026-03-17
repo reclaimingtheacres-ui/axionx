@@ -13,12 +13,15 @@ DB_PATH = os.path.abspath(os.environ.get("DB_PATH", "axion.db"))
 ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
 EXCLUDED_STATUSES = ('Closed', 'Cancelled') + ARCHIVED_STATUSES
 BACKUP_HOUR = 2
+MSG_CLEANUP_HOUR = 3
+MSG_READ_RETENTION_DAYS = 7
 
 print(f"Backup scheduler started — DB: {DB_PATH} (exists={os.path.exists(DB_PATH)})", flush=True)
-print(f"  backup daily at {BACKUP_HOUR:02d}:00, geocode every 2 min", flush=True)
+print(f"  backup daily at {BACKUP_HOUR:02d}:00, msg cleanup at {MSG_CLEANUP_HOUR:02d}:00, geocode every 2 min", flush=True)
 
 last_run_date = None
 last_geocode_time = 0
+last_msg_cleanup_date = None
 
 
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
@@ -103,6 +106,89 @@ def geocode_batch():
     print(f"[{now2}] Geocode batch done: {updated} updated, {failed} failed, {remaining} remaining", flush=True)
 
 
+def message_cleanup():
+    if not os.path.exists(DB_PATH):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    try:
+        tables = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='message_reads'"
+        ).fetchall()]
+        if 'message_reads' not in tables:
+            conn.close()
+            return
+
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=MSG_READ_RETENTION_DAYS)).strftime('%Y-%m-%dT%H:%M:%S')
+
+        system_row = conn.execute(
+            "SELECT id FROM users WHERE email='system@axionx.internal'"
+        ).fetchone()
+        system_uid = system_row[0] if system_row else -1
+
+        stale = conn.execute("""
+            SELECT DISTINCT cp.conversation_id, cp.user_id
+            FROM conversation_participants cp
+            WHERE cp.user_id != ?
+              AND NOT EXISTS (
+                SELECT 1 FROM conversation_participants cp2
+                WHERE cp2.conversation_id = cp.conversation_id AND cp2.user_id = ?
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM messages m
+                WHERE m.conversation_id = cp.conversation_id
+                  AND m.is_deleted = 0
+                  AND m.sender_id != cp.user_id
+                  AND NOT EXISTS (
+                      SELECT 1 FROM message_reads mr
+                      WHERE mr.message_id = m.id AND mr.user_id = cp.user_id
+                  )
+            )
+            AND EXISTS (
+                SELECT 1 FROM messages m2
+                WHERE m2.conversation_id = cp.conversation_id AND m2.is_deleted = 0
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM message_reads mr2
+                JOIN messages m3 ON m3.id = mr2.message_id
+                WHERE m3.conversation_id = cp.conversation_id
+                  AND mr2.user_id = cp.user_id
+                  AND mr2.read_at > ?
+            )
+        """, (system_uid, system_uid, cutoff)).fetchall()
+
+        removed = 0
+        for row in stale:
+            cid, uid = row["conversation_id"], row["user_id"]
+            conn.execute(
+                "DELETE FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+                (cid, uid)
+            )
+            conn.execute(
+                "DELETE FROM message_reads WHERE user_id=? AND message_id IN (SELECT id FROM messages WHERE conversation_id=?)",
+                (uid, cid)
+            )
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM conversation_participants WHERE conversation_id=?",
+                (cid,)
+            ).fetchone()[0]
+            if remaining == 0:
+                conn.execute("DELETE FROM message_reads WHERE message_id IN (SELECT id FROM messages WHERE conversation_id=?)", (cid,))
+                conn.execute("DELETE FROM messages WHERE conversation_id=?", (cid,))
+                conn.execute("DELETE FROM conversations WHERE id=?", (cid,))
+            removed += 1
+
+        conn.commit()
+        print(f"[{now_str}] Message cleanup: removed {removed} stale read conversation participations (retention={MSG_READ_RETENTION_DAYS}d)", flush=True)
+    except Exception:
+        print(f"[{now_str}] Message cleanup failed:", flush=True)
+        traceback.print_exc()
+    finally:
+        conn.close()
+
+
 while True:
     now = datetime.datetime.now()
     today = now.date()
@@ -115,6 +201,14 @@ while True:
             print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Backup completed successfully.", flush=True)
         except Exception:
             print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Backup failed:", flush=True)
+            traceback.print_exc()
+
+    if now.hour == MSG_CLEANUP_HOUR and now.minute == 0 and last_msg_cleanup_date != today:
+        try:
+            message_cleanup()
+            last_msg_cleanup_date = today
+        except Exception:
+            print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Message cleanup failed:", flush=True)
             traceback.print_exc()
 
     elapsed = time.time() - last_geocode_time

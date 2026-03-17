@@ -24,7 +24,9 @@
   .mc-preview { font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px; }
   .mc-job-tag { font-size:.65rem;font-weight:700;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px;margin-left:5px; }
   .mc-broadcast-tag { font-size:.60rem;font-weight:700;background:#ede9fe;color:#6d28d9;border-radius:4px;padding:1px 5px;margin-left:5px;text-transform:uppercase;letter-spacing:.03em; }
+  .mc-system-tag { font-size:.60rem;font-weight:700;background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 5px;margin-left:5px;text-transform:uppercase;letter-spacing:.03em; }
   .mc-avatar.broadcast { background:#7c3aed;font-size:.70rem; }
+  .mc-avatar.system { background:#0ea5e9;font-size:.60rem;letter-spacing:-.02em; }
   .mc-meta { display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0; }
   .mc-time { font-size:.72rem;color:var(--muted); }
   .mc-unread { width:10px;height:10px;background:var(--accent);border-radius:50%;margin-right:2px; }
@@ -53,7 +55,6 @@
   }
   .mc-empty svg { opacity:.2; }
 
-  /* Compose button — in header */
   .mc-compose-btn-header {
     width:38px;height:38px;border-radius:10px;
     background:var(--accent);color:#fff;border:none;
@@ -63,7 +64,6 @@
   }
   .mc-compose-btn-header:active { opacity:.8; transform:scale(.94); }
 
-  /* Compose sheet */
   .mc-sheet-overlay {
     display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;
   }
@@ -94,12 +94,36 @@
     border:none;border-radius:12px;font-size:.9rem;font-weight:700;cursor:pointer;
   }
   .mc-sheet-send:active { opacity:.85; }
+
+  .mc-select-cb {
+    width:22px;height:22px;accent-color:var(--accent);display:none;
+  }
+  .mc-row-wrap.select-mode .mc-select-cb { display:block; }
+  .mc-row-wrap.select-mode .mc-delete-btn { display:none !important; }
+  .mc-row-wrap.select-mode .mc-row { padding-left:44px; }
+  .mc-bulk-bar {
+    display:none;padding:10px 16px;background:#fef3c7;
+    border-bottom:1px solid #fde68a;
+    gap:8px;align-items:center;
+  }
+  .mc-bulk-bar.active { display:flex; }
+  .mc-bulk-bar button {
+    border:none;border-radius:8px;padding:8px 14px;
+    font-size:.82rem;font-weight:700;cursor:pointer;
+  }
+  .mc-bulk-delete-btn { background:#ef4444;color:#fff; }
+  .mc-bulk-cancel-btn { background:#e5e7eb;color:#374151; }
+  .mc-bulk-selectall-btn { background:#3b82f6;color:#fff; }
+  .mc-bulk-count { font-size:.8rem;font-weight:600;color:#92400e;margin-left:auto; }
 </style>
 {% endblock %}
 
 {% block header_title %}Messages{% endblock %}
 {% block header_right %}
 <div style="display:flex;gap:6px;align-items:center">
+  <button class="mc-compose-btn-header" onclick="mcToggleSelectMode()" aria-label="Select messages" id="mcSelectToggle" style="background:#6366f1">
+    <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+  </button>
   <button class="mc-compose-btn-header" onclick="mcMarkAllRead()" aria-label="Mark all read" style="background:#10b981">
     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
   </button>
@@ -121,24 +145,37 @@
   <button class="mc-filter-btn" data-filter="broadcast" onclick="mcFilter('broadcast')">Broadcasts</button>
 </div>
 
+<div class="mc-bulk-bar" id="mcBulkBar">
+  <button class="mc-bulk-selectall-btn" onclick="mcSelectAll()">Select All</button>
+  <button class="mc-bulk-delete-btn" onclick="mcBulkDelete()">Delete Selected</button>
+  <button class="mc-bulk-cancel-btn" onclick="mcToggleSelectMode()">Cancel</button>
+  <span class="mc-bulk-count" id="mcBulkCount"></span>
+</div>
+
 {% if convs %}
   <div class="mc-list" id="mc-conv-list">
     {% for c in convs %}
       {% set is_broadcast = c.type == 'broadcast' %}
+      {% set is_system = c.is_system %}
       {% if is_broadcast %}
         {% set display_name = 'Broadcast' %}
         {% set initials = 'ALL' %}
+      {% elif is_system %}
+        {% set display_name = 'AxionX Admin' %}
+        {% set initials = 'AX' %}
       {% else %}
         {% set display_name = c.others[0].full_name if c.others else 'Unknown' %}
         {% set parts = display_name.split() %}
         {% set initials = (parts[0][0] + (parts[-1][0] if parts|length > 1 else ''))|upper %}
       {% endif %}
       <div class="mc-row-wrap" data-conv-id="{{ c.id }}" data-unread="{{ c.unread }}" data-type="{{ c.type }}">
+        <input type="checkbox" class="mc-select-cb" data-conv-id="{{ c.id }}" onchange="mcUpdateBulkCount()" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);z-index:5;">
         <a href="{{ url_for('m_message_thread', conv_id=c.id) }}" class="mc-row">
-          <div class="mc-avatar{% if is_broadcast %} broadcast{% endif %}">{{ initials }}</div>
+          <div class="mc-avatar{% if is_broadcast %} broadcast{% elif is_system %} system{% endif %}">{{ initials }}</div>
           <div class="mc-body">
             <div class="mc-name">
               {{ display_name }}
+              {% if is_system %}<span class="mc-system-tag">system</span>{% endif %}
               {% if is_broadcast %}<span class="mc-broadcast-tag">broadcast</span>{% endif %}
               {% if c.type == 'job' and c.job_ref %}<span class="mc-job-tag">{{ c.job_ref }}</span>{% endif %}
             </div>
@@ -207,6 +244,91 @@
 
 {% block extra_scripts %}
 <script>
+var _mcSelectMode = false;
+
+function mcToggleSelectMode() {
+  _mcSelectMode = !_mcSelectMode;
+  var bar = document.getElementById('mcBulkBar');
+  bar.classList.toggle('active', _mcSelectMode);
+  document.querySelectorAll('.mc-row-wrap').forEach(function(w){
+    w.classList.toggle('select-mode', _mcSelectMode);
+  });
+  document.querySelectorAll('.mc-row-wrap .mc-row').forEach(function(a){
+    if (_mcSelectMode) {
+      a.addEventListener('click', mcBlockNav);
+    } else {
+      a.removeEventListener('click', mcBlockNav);
+    }
+  });
+  if (!_mcSelectMode) {
+    document.querySelectorAll('.mc-select-cb').forEach(function(cb){ cb.checked = false; });
+    mcUpdateBulkCount();
+  }
+}
+
+function mcBlockNav(e) {
+  e.preventDefault();
+  var wrap = e.currentTarget.closest('.mc-row-wrap');
+  if (wrap) {
+    var cb = wrap.querySelector('.mc-select-cb');
+    if (cb) { cb.checked = !cb.checked; mcUpdateBulkCount(); }
+  }
+}
+
+function mcUpdateBulkCount() {
+  var checked = document.querySelectorAll('.mc-select-cb:checked').length;
+  var el = document.getElementById('mcBulkCount');
+  el.textContent = checked ? checked + ' selected' : '';
+}
+
+function mcSelectAll() {
+  var cbs = document.querySelectorAll('.mc-select-cb');
+  var allChecked = true;
+  cbs.forEach(function(cb){
+    var w = cb.closest('.mc-row-wrap');
+    if (!w.style.display || w.style.display !== 'none') {
+      if (!cb.checked) allChecked = false;
+    }
+  });
+  cbs.forEach(function(cb){
+    var w = cb.closest('.mc-row-wrap');
+    if (!w.style.display || w.style.display !== 'none') {
+      cb.checked = !allChecked;
+    }
+  });
+  mcUpdateBulkCount();
+}
+
+function mcBulkDelete() {
+  var ids = [];
+  document.querySelectorAll('.mc-select-cb:checked').forEach(function(cb){
+    ids.push(parseInt(cb.getAttribute('data-conv-id')));
+  });
+  if (!ids.length) { alert('No conversations selected.'); return; }
+  if (!confirm('Delete ' + ids.length + ' conversation' + (ids.length > 1 ? 's' : '') + '?')) return;
+  fetch('/messages/bulk-delete', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body: JSON.stringify({conv_ids: ids})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (data.ok) {
+      ids.forEach(function(id){
+        var wrap = document.querySelector('.mc-row-wrap[data-conv-id="'+id+'"]');
+        if (wrap) {
+          wrap.style.transition = 'opacity .2s,max-height .2s';
+          wrap.style.opacity = '0';
+          wrap.style.maxHeight = '0';
+          wrap.style.overflow = 'hidden';
+          setTimeout(function(){ wrap.remove(); }, 250);
+        }
+      });
+      mcToggleSelectMode();
+    }
+  });
+}
+
 function openCompose() {
   document.getElementById('composeOverlay').classList.add('open');
   setTimeout(function(){ document.getElementById('cs_recipient').focus(); }, 200);
@@ -271,6 +393,7 @@ function mcDeleteConv(convId, btn) {
 (function(){
   var startX = 0, startY = 0, currentWrap = null, locked = null;
   document.addEventListener('touchstart', function(e){
+    if (_mcSelectMode) return;
     var wrap = e.target.closest('.mc-row-wrap');
     if (!wrap) return;
     startX = e.touches[0].clientX;

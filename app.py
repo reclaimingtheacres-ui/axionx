@@ -17148,20 +17148,26 @@ def _notify_agent_job_assigned(agent_id, job_id, job_ref, job_address):
 
         msg_body = "\n".join(lines)
 
-        admins = conn.execute(
+        system_uid = _get_system_user_id(conn)
+        triggered_by = conn.execute(
             "SELECT id FROM users WHERE role IN ('admin','both') AND active=1 ORDER BY id LIMIT 1"
         ).fetchone()
-        sender_id = admins["id"] if admins else agent_id
-        conv_id, _ = _get_or_create_direct_conv(conn, sender_id, agent_id, job_id=job_id)
+        actual_sender_id = triggered_by["id"] if triggered_by else agent_id
+        conv_id, _ = _get_or_create_direct_conv(conn, system_uid, agent_id, job_id=job_id)
         ts = now_ts()
-        conn.execute(
+        cur2 = conn.execute(
             "INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?,?,?,?)",
-            (conv_id, sender_id, msg_body, ts)
+            (conv_id, system_uid, msg_body, ts)
         )
+        new_msg_id = cur2.lastrowid
+        conn.execute("INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at) VALUES (?,?,?)",
+                     (new_msg_id, system_uid, ts))
         conn.execute(
             "UPDATE conversations SET updated_at=? WHERE id=?", (ts, conv_id)
         )
         conn.commit()
+        _log_message_audit(conn, new_msg_id, actual_sender_id, "AxionX Admin",
+                           [agent_id], job_id, "job_assigned", msg_body[:200])
         _notify_user(agent_id, "New Job Assigned",
                      f"{job_ref} — {suburb}",
                      "job_assigned",
@@ -20683,6 +20689,68 @@ def _ensure_msg_tables(conn):
             FOREIGN KEY(user_id)    REFERENCES users(id)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS message_audit_log (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id      INTEGER,
+            actual_sender_id INTEGER,
+            display_sender  TEXT,
+            recipients      TEXT,
+            job_id          INTEGER,
+            action_type     TEXT    NOT NULL DEFAULT 'system_message',
+            body_preview    TEXT,
+            created_at      TEXT    NOT NULL
+        )
+    """)
+    conn.commit()
+
+
+_system_user_id_cache = None
+_SYSTEM_USER_EMAIL = "system@axionx.internal"
+
+def _get_system_user_id(conn):
+    global _system_user_id_cache
+    if _system_user_id_cache:
+        check = conn.execute("SELECT id FROM users WHERE id=?", (_system_user_id_cache,)).fetchone()
+        if check:
+            return _system_user_id_cache
+    row = conn.execute("SELECT id FROM users WHERE email=?", (_SYSTEM_USER_EMAIL,)).fetchone()
+    if row:
+        _system_user_id_cache = row["id"]
+        return _system_user_id_cache
+    import hashlib
+    ts = now_ts()
+    cur = conn.execute(
+        "INSERT INTO users (email, password, full_name, role, active, created_at) VALUES (?,?,?,?,?,?)",
+        (_SYSTEM_USER_EMAIL, hashlib.sha256(b"__system_no_login__").hexdigest(),
+         "AxionX Admin", "system", 0, ts)
+    )
+    conn.commit()
+    _system_user_id_cache = cur.lastrowid
+    return _system_user_id_cache
+
+
+def _is_system_conversation(conn, conv_id):
+    system_uid = _get_system_user_id(conn)
+    part = conn.execute(
+        "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+        (conv_id, system_uid)
+    ).fetchone()
+    return bool(part)
+
+
+def _log_message_audit(conn, message_id, actual_sender_id, display_sender,
+                       recipient_ids, job_id, action_type, body_preview=""):
+    import json as _json
+    ts = now_ts()
+    recips = _json.dumps(recipient_ids) if recipient_ids else "[]"
+    conn.execute("""
+        INSERT INTO message_audit_log
+            (message_id, actual_sender_id, display_sender, recipients, job_id,
+             action_type, body_preview, created_at)
+        VALUES (?,?,?,?,?,?,?,?)
+    """, (message_id, actual_sender_id, display_sender, recips, job_id,
+          action_type, (body_preview or "")[:200], ts))
     conn.commit()
 
 
@@ -20737,6 +20805,7 @@ def _get_unread_count(conn, user_id):
 
 def _get_conv_list(conn, user_id):
     """Return list of conversations for a user with last message + unread count."""
+    system_uid = _get_system_user_id(conn)
     rows = conn.execute("""
         SELECT c.id, c.type, c.job_id, c.subject, c.updated_at,
                j.display_ref AS job_ref
@@ -20749,25 +20818,24 @@ def _get_conv_list(conn, user_id):
     result = []
     for conv in rows:
         cid = conv["id"]
-        # Last message
         last_msg = conn.execute("""
-            SELECT m.body, m.created_at, u.full_name sender_name
+            SELECT m.body, m.created_at, u.full_name sender_name, m.sender_id
             FROM messages m JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = ? AND m.is_deleted = 0
             ORDER BY m.created_at DESC LIMIT 1
         """, (cid,)).fetchone()
-        # Unread count
         unread = conn.execute("""
             SELECT COUNT(*) c FROM messages m
             WHERE m.conversation_id = ? AND m.sender_id != ? AND m.is_deleted = 0
               AND NOT EXISTS (SELECT 1 FROM message_reads mr WHERE mr.message_id=m.id AND mr.user_id=?)
         """, (cid, user_id, user_id)).fetchone()["c"]
-        # Other participants
         others = conn.execute("""
             SELECT u.id, u.full_name FROM conversation_participants cp
             JOIN users u ON u.id = cp.user_id
             WHERE cp.conversation_id = ? AND cp.user_id != ?
         """, (cid, user_id)).fetchall()
+        has_system = any(o["id"] == system_uid for o in others)
+        is_system_only = has_system and len(others) == 1
         result.append({
             "id": cid, "type": conv["type"], "job_id": conv["job_id"],
             "job_ref": conv["job_ref"], "subject": conv["subject"],
@@ -20775,6 +20843,7 @@ def _get_conv_list(conn, user_id):
             "last_msg": dict(last_msg) if last_msg else None,
             "unread": unread,
             "others": [dict(o) for o in others],
+            "is_system": is_system_only,
         })
     return result
 
@@ -20810,8 +20879,12 @@ def _post_message(conn, conv_id, sender_id, body):
     try:
         _lpr_device_tokens_ensure(conn)
         _ensure_msg_tables(conn)
-        sender = conn.execute("SELECT full_name FROM users WHERE id=?", (sender_id,)).fetchone()
-        sender_name = sender["full_name"] if sender else "Someone"
+        system_uid = _get_system_user_id(conn)
+        if sender_id == system_uid:
+            sender_name = "AxionX Admin"
+        else:
+            sender = conn.execute("SELECT full_name FROM users WHERE id=?", (sender_id,)).fetchone()
+            sender_name = sender["full_name"] if sender else "Someone"
         recipients = conn.execute(
             "SELECT user_id FROM conversation_participants WHERE conversation_id=? AND user_id!=?",
             (conv_id, sender_id)
@@ -20898,6 +20971,8 @@ def message_thread(conv_id):
         JOIN users u ON u.id = cp.user_id
         WHERE cp.conversation_id=?
     """, (conv_id,)).fetchall()
+    system_uid = _get_system_user_id(conn)
+    is_system_conv = any(p["id"] == system_uid for p in participants)
     # Full conv list for sidebar
     convs = _get_conv_list(conn, uid)
     users = conn.execute(
@@ -20907,7 +20982,8 @@ def message_thread(conv_id):
     conn.close()
     return render_template("message_thread.html",
                            conv=conv, msgs=msgs, participants=participants,
-                           convs=convs, users=users, conv_id=conv_id)
+                           convs=convs, users=users, conv_id=conv_id,
+                           is_system_conv=is_system_conv, system_uid=system_uid)
 
 
 @app.post("/messages/new")
@@ -20981,6 +21057,10 @@ def messages_reply(conv_id):
         return redirect(url_for("message_thread", conv_id=conv_id))
     conn = db()
     _ensure_msg_tables(conn)
+    if _is_system_conversation(conn, conv_id):
+        conn.close()
+        flash("Cannot reply to system notifications.", "warning")
+        return redirect(url_for("message_thread", conv_id=conv_id))
     part = conn.execute(
         "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
         (conv_id, uid)
@@ -21051,6 +21131,45 @@ def messages_delete_conv(conv_id):
     return jsonify(ok=True)
 
 
+@app.post("/messages/bulk-delete")
+@login_required
+def messages_bulk_delete():
+    uid = session.get("user_id")
+    conv_ids = request.json.get("conv_ids", []) if request.is_json else []
+    if not conv_ids:
+        return jsonify(error="No conversations selected"), 400
+    conn = db()
+    _ensure_msg_tables(conn)
+    deleted = 0
+    for cid in conv_ids:
+        part = conn.execute(
+            "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+            (cid, uid)
+        ).fetchone()
+        if not part:
+            continue
+        conn.execute(
+            "DELETE FROM conversation_participants WHERE conversation_id=? AND user_id=?",
+            (cid, uid)
+        )
+        conn.execute(
+            "DELETE FROM message_reads WHERE user_id=? AND message_id IN (SELECT id FROM messages WHERE conversation_id=?)",
+            (uid, cid)
+        )
+        remaining = conn.execute(
+            "SELECT COUNT(*) c FROM conversation_participants WHERE conversation_id=?",
+            (cid,)
+        ).fetchone()["c"]
+        if remaining == 0:
+            conn.execute("DELETE FROM message_reads WHERE message_id IN (SELECT id FROM messages WHERE conversation_id=?)", (cid,))
+            conn.execute("DELETE FROM messages WHERE conversation_id=?", (cid,))
+            conn.execute("DELETE FROM conversations WHERE id=?", (cid,))
+        deleted += 1
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True, deleted=deleted)
+
+
 # ── Mobile messaging routes ────────────────────────────────────────────────────
 
 @app.get("/m/messages")
@@ -21097,10 +21216,13 @@ def m_message_thread(conv_id):
         SELECT u.id, u.full_name FROM conversation_participants cp
         JOIN users u ON u.id = cp.user_id WHERE cp.conversation_id=?
     """, (conv_id,)).fetchall()
+    system_uid = _get_system_user_id(conn)
+    is_system_conv = any(p["id"] == system_uid for p in participants)
     conn.close()
     return render_template("mobile/message_thread.html",
                            conv=conv, msgs=msgs, participants=participants,
-                           conv_id=conv_id)
+                           conv_id=conv_id,
+                           is_system_conv=is_system_conv, system_uid=system_uid)
 
 
 @app.post("/m/messages/new")
@@ -21170,6 +21292,9 @@ def m_messages_reply(conv_id):
         return redirect(url_for("m_message_thread", conv_id=conv_id))
     conn = db()
     _ensure_msg_tables(conn)
+    if _is_system_conversation(conn, conv_id):
+        conn.close()
+        return redirect(url_for("m_message_thread", conv_id=conv_id))
     part = conn.execute(
         "SELECT 1 FROM conversation_participants WHERE conversation_id=? AND user_id=?",
         (conv_id, uid)

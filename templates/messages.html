@@ -67,6 +67,13 @@
     margin-left: auto;
   }
   .msg-mark-all-btn:hover { background: #059669; }
+  .msg-select-btn {
+    background: #6366f1; color: #fff; border: none;
+    border-radius: 6px; padding: 4px 10px;
+    font-size: .72rem; font-weight: 700;
+    cursor: pointer; white-space: nowrap;
+  }
+  .msg-select-btn:hover { background: #4f46e5; }
   .msg-conv-list {
     flex: 1;
     overflow-y: auto;
@@ -94,6 +101,7 @@
     text-transform: uppercase;
   }
   .msg-avatar.broadcast { background: #7c3aed; font-size: .65rem; }
+  .msg-avatar.system { background: #0ea5e9; font-size: .55rem; letter-spacing: -.02em; }
   .msg-conv-body { flex: 1; min-width: 0; }
   .msg-conv-name {
     font-size: .85rem; font-weight: 700;
@@ -124,6 +132,14 @@
   .msg-broadcast-tag {
     font-size: .60rem; font-weight: 700;
     background: #ede9fe; color: #6d28d9;
+    border-radius: 4px; padding: 1px 5px;
+    margin-left: 4px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+  .msg-system-tag {
+    font-size: .60rem; font-weight: 700;
+    background: #e0f2fe; color: #0369a1;
     border-radius: 4px; padding: 1px 5px;
     margin-left: 4px;
     text-transform: uppercase;
@@ -172,6 +188,28 @@
   .msg-modal-send { flex: 1; background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px; font-size: .88rem; font-weight: 700; cursor: pointer; }
   .msg-modal-cancel { background: var(--panel2); color: var(--muted); border: none; border-radius: 8px; padding: 10px 16px; font-size: .88rem; font-weight: 700; cursor: pointer; }
 
+  .msg-select-cb {
+    width: 18px; height: 18px; accent-color: var(--accent);
+    flex-shrink: 0; cursor: pointer; display: none;
+  }
+  .msg-conv-wrap.select-mode .msg-select-cb { display: block; }
+  .msg-conv-wrap.select-mode .msg-conv-del { display: none !important; }
+  .msg-bulk-bar {
+    display: none; padding: 8px 14px; background: #fef3c7;
+    border-bottom: 1px solid #fde68a;
+    gap: 8px; align-items: center; flex-shrink: 0;
+  }
+  .msg-bulk-bar.active { display: flex; }
+  .msg-bulk-bar button {
+    border: none; border-radius: 6px; padding: 5px 12px;
+    font-size: .78rem; font-weight: 700; cursor: pointer;
+  }
+  .msg-bulk-delete-btn { background: #ef4444; color: #fff; }
+  .msg-bulk-delete-btn:hover { background: #dc2626; }
+  .msg-bulk-cancel-btn { background: #e5e7eb; color: #374151; }
+  .msg-bulk-selectall-btn { background: #3b82f6; color: #fff; }
+  .msg-bulk-count { font-size: .78rem; font-weight: 600; color: #92400e; margin-left: auto; }
+
   @media (max-width: 768px) {
     .msg-shell { grid-template-columns: 1fr; }
     .msg-main { display: none; }
@@ -183,7 +221,10 @@
     <div class="msg-sidebar-head">
       <div class="msg-sidebar-row1">
         <span class="msg-sidebar-title">Conversations</span>
-        <button class="msg-new-btn" onclick="openNewMsg()">+ New</button>
+        <div style="display:flex;gap:6px">
+          <button class="msg-select-btn" id="msgSelectToggle" onclick="toggleSelectMode()">Select</button>
+          <button class="msg-new-btn" onclick="openNewMsg()">+ New</button>
+        </div>
       </div>
       <div class="msg-sidebar-row2">
         <button class="msg-filter-btn active" data-filter="all" onclick="msgFilter('all')">All</button>
@@ -192,24 +233,36 @@
         <button class="msg-mark-all-btn" onclick="msgMarkAllRead()" title="Mark all conversations as read">Mark All Read</button>
       </div>
     </div>
+    <div class="msg-bulk-bar" id="msgBulkBar">
+      <button class="msg-bulk-selectall-btn" onclick="msgSelectAll()">Select All</button>
+      <button class="msg-bulk-delete-btn" onclick="msgBulkDelete()">Delete Selected</button>
+      <button class="msg-bulk-cancel-btn" onclick="toggleSelectMode()">Cancel</button>
+      <span class="msg-bulk-count" id="msgBulkCount"></span>
+    </div>
     <div class="msg-conv-list">
       {% if convs %}
         {% for c in convs %}
           {% set is_broadcast = c.type == 'broadcast' %}
+          {% set is_system = c.is_system %}
           {% if is_broadcast %}
             {% set display_name = 'Broadcast' %}
             {% set initials = 'ALL' %}
+          {% elif is_system %}
+            {% set display_name = 'AxionX Admin' %}
+            {% set initials = 'AX' %}
           {% else %}
             {% set display_name = c.others[0].full_name if c.others else 'Unknown' %}
             {% set parts = display_name.split() %}
             {% set initials = (parts[0][0] + (parts[-1][0] if parts|length > 1 else ''))|upper %}
           {% endif %}
-          <div class="msg-conv-wrap" data-conv-id="{{ c.id }}" data-unread="{{ c.unread }}" data-type="{{ c.type }}">
+          <div class="msg-conv-wrap" data-conv-id="{{ c.id }}" data-unread="{{ c.unread }}" data-type="{{ c.type }}" data-system="{{ '1' if is_system else '0' }}">
+            <input type="checkbox" class="msg-select-cb" data-conv-id="{{ c.id }}" onchange="updateBulkCount()">
             <a href="{{ url_for('message_thread', conv_id=c.id) }}" class="msg-conv-item">
-              <div class="msg-avatar{% if is_broadcast %} broadcast{% endif %}">{{ initials }}</div>
+              <div class="msg-avatar{% if is_broadcast %} broadcast{% elif is_system %} system{% endif %}">{{ initials }}</div>
               <div class="msg-conv-body">
                 <div class="msg-conv-name">
                   {{ display_name }}
+                  {% if is_system %}<span class="msg-system-tag">system</span>{% endif %}
                   {% if is_broadcast %}<span class="msg-broadcast-tag">broadcast</span>{% endif %}
                   {% if c.type == 'job' and c.job_ref %}<span class="msg-job-tag">{{ c.job_ref }}</span>{% endif %}
                 </div>
@@ -281,6 +334,75 @@
 </div>
 
 <script>
+var _selectMode = false;
+
+function toggleSelectMode() {
+  _selectMode = !_selectMode;
+  var btn = document.getElementById('msgSelectToggle');
+  var bar = document.getElementById('msgBulkBar');
+  btn.textContent = _selectMode ? 'Cancel' : 'Select';
+  bar.classList.toggle('active', _selectMode);
+  document.querySelectorAll('.msg-conv-wrap').forEach(function(w){
+    w.classList.toggle('select-mode', _selectMode);
+  });
+  if (!_selectMode) {
+    document.querySelectorAll('.msg-select-cb').forEach(function(cb){ cb.checked = false; });
+    updateBulkCount();
+  }
+}
+
+function updateBulkCount() {
+  var checked = document.querySelectorAll('.msg-select-cb:checked').length;
+  var el = document.getElementById('msgBulkCount');
+  el.textContent = checked ? checked + ' selected' : '';
+}
+
+function msgSelectAll() {
+  var cbs = document.querySelectorAll('.msg-select-cb');
+  var allChecked = true;
+  cbs.forEach(function(cb){
+    if (!cb.closest('.msg-conv-wrap').style.display || cb.closest('.msg-conv-wrap').style.display !== 'none') {
+      if (!cb.checked) allChecked = false;
+    }
+  });
+  cbs.forEach(function(cb){
+    if (!cb.closest('.msg-conv-wrap').style.display || cb.closest('.msg-conv-wrap').style.display !== 'none') {
+      cb.checked = !allChecked;
+    }
+  });
+  updateBulkCount();
+}
+
+function msgBulkDelete() {
+  var ids = [];
+  document.querySelectorAll('.msg-select-cb:checked').forEach(function(cb){
+    ids.push(parseInt(cb.getAttribute('data-conv-id')));
+  });
+  if (!ids.length) { alert('No conversations selected.'); return; }
+  if (!confirm('Delete ' + ids.length + ' conversation' + (ids.length > 1 ? 's' : '') + '? This removes them from your inbox only.')) return;
+  fetch('/messages/bulk-delete', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body: JSON.stringify({conv_ids: ids})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (data.ok) {
+      ids.forEach(function(id){
+        var wrap = document.querySelector('.msg-conv-wrap[data-conv-id="'+id+'"]');
+        if (wrap) {
+          wrap.style.transition = 'opacity .2s,max-height .2s';
+          wrap.style.opacity = '0';
+          wrap.style.maxHeight = '0';
+          wrap.style.overflow = 'hidden';
+          setTimeout(function(){ wrap.remove(); }, 250);
+        }
+      });
+      toggleSelectMode();
+    }
+  });
+}
+
 function openNewMsg() {
   document.getElementById('newMsgModal').classList.add('open');
 }
