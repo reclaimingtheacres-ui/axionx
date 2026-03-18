@@ -863,120 +863,29 @@ function showTab(name) {
       '</div></div>';
   }
 
-  function _pdfDebug(lines) {
-    var msg = lines.join('\n');
-    console.log('[DOC-PREVIEW-DEBUG]\n' + msg);
-    var old = document.getElementById('axPdfDebugWrap');
-    if (old) old.remove();
-    var wrap = document.createElement('div');
-    wrap.id = 'axPdfDebugWrap';
-    wrap.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;';
-    var box = document.createElement('div');
-    box.style.cssText = 'background:#1a1a2e;color:#0f0;font:11px/1.6 monospace;padding:16px;border-radius:12px;' +
-      'width:calc(100% - 32px);max-height:80vh;overflow:auto;box-shadow:0 4px 24px rgba(0,0,0,.6);';
-    var pre = document.createElement('pre');
-    pre.id = 'axPdfDebugText';
-    pre.style.cssText = 'margin:0 0 12px;white-space:pre-wrap;word-break:break-all;';
-    pre.textContent = msg;
-    box.appendChild(pre);
-    var bar = document.createElement('div');
-    bar.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
-    var copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy';
-    copyBtn.style.cssText = 'background:#2563eb;color:#fff;border:0;padding:8px 18px;border-radius:8px;font:13px/1 system-ui;font-weight:600;cursor:pointer;';
-    copyBtn.onclick = function() {
-      var t = document.getElementById('axPdfDebugText');
-      if (t && navigator.clipboard) { navigator.clipboard.writeText(t.textContent); copyBtn.textContent = 'Copied'; }
-      else if (t) { var r = document.createRange(); r.selectNodeContents(t); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); copyBtn.textContent = 'Copied'; }
-    };
-    var closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.cssText = 'background:#dc2626;color:#fff;border:0;padding:8px 18px;border-radius:8px;font:13px/1 system-ui;font-weight:600;cursor:pointer;';
-    closeBtn.onclick = function() { wrap.remove(); };
-    bar.appendChild(copyBtn);
-    bar.appendChild(closeBtn);
-    box.appendChild(bar);
-    wrap.appendChild(box);
-    document.body.appendChild(wrap);
-  }
-
-  window._axPdfDebugAppend = function(line) {
-    console.log('[DOC-PREVIEW-NATIVE] ' + line);
-    var pre = document.getElementById('axPdfDebugText');
-    if (pre) {
-      pre.textContent += '\n[NATIVE] ' + line;
-    }
-  };
+  window._axPdfDebugAppend = function() {};
 
   window.axMobilePreview = function(url, filename) {
-    console.log('[DOC-PREVIEW] STEP 1: PDF tap detected');
-    console.log('[DOC-PREVIEW] url=' + url);
-    console.log('[DOC-PREVIEW] filename=' + filename);
     _curUrl = url; _curFilename = filename;
     var ext = (filename.split('.').pop() || '').toLowerCase();
     var body = document.getElementById('mFilePreviewBody');
     var title = document.getElementById('mFilePreviewTitle');
     var dl = document.getElementById('mFileDownloadBtn');
-
-    var hasWebkit = !!window.webkit;
-    var hasHandlers = !!(window.webkit && window.webkit.messageHandlers);
-    var hasDocPreview = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
-    var hasNative = hasDocPreview;
+    var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
 
     title.textContent = filename;
     dl.href = url; dl.download = filename;
     body.innerHTML = '';
 
-    console.log('[DOC-PREVIEW] STEP 2: environment detected');
-    console.log('[DOC-PREVIEW]   ext=' + ext);
-    console.log('[DOC-PREVIEW]   window.webkit=' + hasWebkit);
-    console.log('[DOC-PREVIEW]   messageHandlers=' + hasHandlers);
-    console.log('[DOC-PREVIEW]   documentPreview=' + hasDocPreview);
-    console.log('[DOC-PREVIEW]   native_ios_app=' + hasNative);
-
     if (ext === 'pdf') {
-      var dbg = [
-        '=== PDF PREVIEW DEBUG ===',
-        'STEP 1: PDF tap detected',
-        'filename: ' + filename,
-        'ext: ' + ext,
-        'url: ' + url,
-        '',
-        'STEP 2: environment',
-        'window.webkit: ' + hasWebkit,
-        'messageHandlers: ' + hasHandlers,
-        'documentPreview: ' + hasDocPreview,
-        'native_ios_app: ' + hasNative
-      ];
-
       if (hasNative) {
-        dbg.push('', 'STEP 3: selected_path = NATIVE_PREVIEW');
-        dbg.push('calling documentPreview.postMessage...');
-        console.log('[DOC-PREVIEW] STEP 3: selected_path=native_preview');
-        console.log('[DOC-PREVIEW] calling documentPreview.postMessage({url, filename})');
         try {
           window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
-          dbg.push('postMessage: SUCCESS (no throw)');
-          dbg.push('native_callback: called');
-          console.log('[DOC-PREVIEW] STEP 4: postMessage succeeded');
         } catch(e) {
-          dbg.push('postMessage: THREW ' + e.name + ': ' + e.message);
-          dbg.push('fallback: window.open');
-          console.log('[DOC-PREVIEW] STEP 4: postMessage THREW: ' + e.name + ': ' + e.message);
           window.open(url, '_blank');
         }
-        _pdfDebug(dbg);
         return;
       }
-
-      dbg.push('', 'STEP 3: selected_path = BROWSER_VIEWER');
-      dbg.push('reason: native handler not available');
-      if (!hasWebkit) dbg.push('  - window.webkit missing');
-      if (hasWebkit && !hasHandlers) dbg.push('  - messageHandlers missing');
-      if (hasHandlers && !hasDocPreview) dbg.push('  - documentPreview handler missing');
-      dbg.push('action: window.location.href = ' + url);
-      console.log('[DOC-PREVIEW] STEP 3: selected_path=browser_viewer (no native handler)');
-      _pdfDebug(dbg);
       window.location.href = url;
       return;
     }
