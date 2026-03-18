@@ -813,47 +813,34 @@ function showTab(name) {
        style="position:absolute;top:0;left:0;right:0;bottom:0;
               background:#fff;
               display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;">
-    {# Header #}
+    {# Header: Close (left) — Title (center) — Share (right) #}
     <div id="mFilePreviewHeader"
          style="display:flex;align-items:center;justify-content:space-between;
-                padding:max(env(safe-area-inset-top,8px),8px) 16px 10px;border-bottom:1px solid #e5e7eb;
+                padding:max(env(safe-area-inset-top,8px),8px) 12px 10px;border-bottom:1px solid #e5e7eb;
                 -webkit-flex-shrink:0;flex-shrink:0;">
-      <span id="mFilePreviewTitle"
-            style="font-size:.88rem;font-weight:700;color:#111;
-                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:10px;"></span>
       <button type="button" onclick="axMobilePreviewClose()"
-              style="background:none;border:0;padding:6px 2px;font-size:.92rem;font-weight:600;color:#2563eb;
-                     cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;">Done</button>
-    </div>
-    {# Content area #}
-    <div id="mFilePreviewBody"
-         style="-webkit-flex:1 1 0%;flex:1 1 0%;overflow:auto;-webkit-overflow-scrolling:touch;
-                position:relative;"></div>
-    {# Footer toolbar #}
-    <div style="display:flex;align-items:center;justify-content:space-between;
-                padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));
-                border-top:1px solid #e5e7eb;flex-shrink:0;">
-      <button id="mFileShareBtn" type="button" onclick="axMobileShare()"
-         style="background:none;border:0;padding:8px;cursor:pointer;color:#2563eb;
-                display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;"
-         title="Share">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              style="background:none;border:0;padding:6px 4px;font-size:.92rem;font-weight:600;color:#2563eb;
+                     cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent;min-width:50px;text-align:left;">Done</button>
+      <span id="mFilePreviewTitle"
+            style="font-size:.82rem;font-weight:700;color:#111;
+                   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:center;margin:0 8px;"></span>
+      <button type="button" onclick="axMobileShare()"
+              style="background:none;border:0;padding:6px 4px;cursor:pointer;color:#2563eb;
+                     flex-shrink:0;-webkit-tap-highlight-color:transparent;min-width:50px;display:flex;align-items:center;justify-content:flex-end;"
+              title="Share">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
           <polyline points="16 6 12 2 8 6"/>
           <line x1="12" y1="2" x2="12" y2="15"/>
         </svg>
       </button>
-      <a id="mFileDownloadBtn" href="#" download
-         style="background:none;border:0;padding:8px;cursor:pointer;color:#2563eb;
-                display:flex;align-items:center;justify-content:center;text-decoration:none;-webkit-tap-highlight-color:transparent;"
-         title="Download">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </a>
     </div>
+    {# Content area #}
+    <div id="mFilePreviewBody"
+         style="-webkit-flex:1 1 0%;flex:1 1 0%;overflow:auto;-webkit-overflow-scrolling:touch;
+                position:relative;"></div>
+    {# Download link (hidden, used by share/download logic) #}
+    <a id="mFileDownloadBtn" href="#" download style="display:none;"></a>
   </div>
 </div>
 
@@ -903,8 +890,13 @@ function showTab(name) {
         }
         return;
       }
-      console.log('[DOC-PREVIEW] PDF non-native: navigating directly to PDF URL');
-      window.location.href = url;
+      console.log('[DOC-PREVIEW] PDF non-native: loading in preview overlay');
+      body.style.padding = '0'; body.style.overflow = 'hidden';
+      var pdfFrame = document.createElement('iframe');
+      pdfFrame.src = url;
+      pdfFrame.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;';
+      body.appendChild(pdfFrame);
+      document.getElementById('mFilePreviewOverlay').style.display = 'flex';
       return;
     }
 
