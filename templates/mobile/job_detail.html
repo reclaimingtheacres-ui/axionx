@@ -609,6 +609,7 @@ function showTab(name) {
    ══════════════════════════════════════════════════════════ #}
 <style>
 @keyframes recpulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+@keyframes axspin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
 </style>
 
 <div id="noteSheetOverlay"
@@ -907,16 +908,51 @@ function showTab(name) {
   };
 
   window.axNativeDocOpen = function(url, filename) {
-    try {
-      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview) {
-        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
-        axMobilePreviewClose();
-      } else {
-        alert('DEBUG: documentPreview handler not available. webkit=' + !!window.webkit + ', handlers=' + !!(window.webkit && window.webkit.messageHandlers));
-      }
-    } catch(e) {
-      alert('DEBUG axNativeDocOpen error: ' + e.message);
+    var body = document.getElementById('mFilePreviewBody');
+    if (body) {
+      body.innerHTML = '<div style="text-align:center;padding:40px 20px;">' +
+        '<div style="width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:axspin 1s linear infinite;margin:0 auto 16px;"></div>' +
+        '<div style="font-size:.9rem;font-weight:600;color:#374151;">Opening document…</div>' +
+        '</div>';
     }
+
+    fetch('/api/doc-token', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({type: 'note_file', filename: filename, original_filename: filename})
+    })
+    .then(function(r) {
+      if (r.redirected || r.url.indexOf('/login') !== -1) {
+        throw new Error('SESSION_EXPIRED');
+      }
+      return r.json();
+    })
+    .then(function(data) {
+      if (!data.ok) {
+        if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">' + (data.error || 'Could not prepare document.') + '</div>';
+        return;
+      }
+      var tokenUrl = data.download_url;
+      var hasNative = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
+      if (hasNative) {
+        try {
+          window.webkit.messageHandlers.documentPreview.postMessage({url: tokenUrl, filename: data.filename || filename});
+          axMobilePreviewClose();
+        } catch(e) {
+          if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">Native preview failed: ' + e.message + '</div>';
+        }
+      } else {
+        window.open(tokenUrl, '_blank');
+        axMobilePreviewClose();
+      }
+    })
+    .catch(function(err) {
+      var msg = err && err.message === 'SESSION_EXPIRED'
+        ? 'Your session has expired. Please log in again.'
+        : 'Network error. Please check your connection.';
+      if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">' + msg + '</div>';
+    });
   };
 
   window.axMobileShare = async function() {

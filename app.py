@@ -9163,6 +9163,171 @@ def download_job_document(job_id: int, doc_id: int):
     abort(404)
 
 
+_doc_tokens: dict = {}
+_DOC_TOKEN_TTL = 600
+_doc_token_lock = threading.Lock()
+
+def _clean_doc_tokens():
+    import time as _t
+    now = _t.time()
+    expired = [k for k, v in _doc_tokens.items() if v["exp"] < now]
+    for k in expired:
+        del _doc_tokens[k]
+
+@app.post("/api/doc-token")
+@login_required
+def api_doc_token():
+    import time as _t
+    data = request.get_json(silent=True) or {}
+    file_type = data.get("type", "")
+    filename = data.get("filename", "")
+
+    if not filename:
+        return jsonify({"ok": False, "error": "Missing filename"}), 400
+
+    uid = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+
+    if file_type == "note_file":
+        row = conn.execute(
+            """SELECT nf.id, nf.filename, nf.filepath, nf.job_field_note_id,
+                      fn.job_id, fn.created_by_user_id
+               FROM job_note_files nf
+               JOIN job_field_notes fn ON fn.id = nf.job_field_note_id
+               WHERE nf.filename = ?""", (filename,)
+        ).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"ok": False, "error": "File not found"}), 404
+        if role == "agent" and row["created_by_user_id"] != uid:
+            job_access = conn.execute(
+                """SELECT 1 FROM jobs WHERE id=? AND (
+                   assigned_user_id=? OR EXISTS (
+                     SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                     AND status NOT IN ('Cancelled') AND hidden = 0))""",
+                (row["job_id"], uid, row["job_id"], uid)
+            ).fetchone()
+            if not job_access:
+                conn.close()
+                return jsonify({"ok": False, "error": "Access denied"}), 403
+        stored = row["filename"]
+        mime = mimetypes.guess_type(stored)[0] or "application/octet-stream"
+        size = None
+        for sd in [app.config["UPLOAD_FOLDER"], _LEGACY_UPLOAD_FOLDER]:
+            fp = os.path.join(sd, stored)
+            if os.path.isfile(fp):
+                size = os.path.getsize(fp)
+                break
+            for sub in ["notes/photos", "notes/audio", "update_photos", "pending"]:
+                fp2 = os.path.join(sd, sub, stored)
+                if os.path.isfile(fp2):
+                    size = os.path.getsize(fp2)
+                    break
+            if size is not None:
+                break
+
+    elif file_type == "job_doc":
+        try:
+            doc_id_int = int(data.get("doc_id", ""))
+            job_id_int = int(data.get("job_id", ""))
+        except (ValueError, TypeError):
+            conn.close()
+            return jsonify({"ok": False, "error": "Missing or invalid doc_id/job_id"}), 400
+        row = conn.execute(
+            "SELECT id, job_id, original_filename, stored_filename, mime_type, file_size FROM job_documents WHERE id=? AND job_id=?",
+            (doc_id_int, job_id_int)
+        ).fetchone()
+        if not row:
+            conn.close()
+            return jsonify({"ok": False, "error": "Document not found"}), 404
+        if role == "agent":
+            job_access = conn.execute(
+                """SELECT 1 FROM jobs WHERE id=? AND (
+                   assigned_user_id=? OR EXISTS (
+                     SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                     AND status NOT IN ('Cancelled') AND hidden = 0))""",
+                (row["job_id"], uid, row["job_id"], uid)
+            ).fetchone()
+            if not job_access:
+                conn.close()
+                return jsonify({"ok": False, "error": "Access denied"}), 403
+        stored = row["stored_filename"]
+        mime = row["mime_type"] or mimetypes.guess_type(stored)[0] or "application/octet-stream"
+        size = row["file_size"]
+    else:
+        conn.close()
+        return jsonify({"ok": False, "error": "Unsupported file type parameter"}), 400
+
+    conn.close()
+
+    with _doc_token_lock:
+        _clean_doc_tokens()
+        token = secrets.token_urlsafe(32)
+        _doc_tokens[token] = {
+            "filename": stored,
+            "original": data.get("original_filename", filename),
+            "mime": mime,
+            "uid": uid,
+            "exp": _t.time() + _DOC_TOKEN_TTL,
+        }
+
+    return jsonify({
+        "ok": True,
+        "token": token,
+        "filename": data.get("original_filename", filename),
+        "mime_type": mime,
+        "size": size,
+        "expires_in": _DOC_TOKEN_TTL,
+        "download_url": f"/api/doc-download/{token}",
+    })
+
+
+@app.get("/api/doc-download/<token>")
+def api_doc_download(token: str):
+    import time as _t, logging as _log
+    with _doc_token_lock:
+        _clean_doc_tokens()
+        entry = _doc_tokens.pop(token, None)
+
+    if not entry:
+        return jsonify({"ok": False, "error": "Token expired or invalid"}), 403
+
+    if entry["exp"] < _t.time():
+        return jsonify({"ok": False, "error": "Download link expired"}), 403
+
+    stored = entry["filename"]
+    mime = entry["mime"]
+    original = entry["original"]
+
+    if _uploads_container:
+        try:
+            blob_data = _uploads_container.get_blob_client(stored).download_blob().readall()
+            resp = make_response(blob_data)
+            resp.headers["Content-Type"] = mime
+            resp.headers["Content-Disposition"] = f'attachment; filename="{original}"'
+            return resp
+        except Exception as e:
+            _log.warning("Blob fetch failed for token download %r: %s", stored, e)
+
+    primary = app.config["UPLOAD_FOLDER"]
+    for search_dir in [primary, _LEGACY_UPLOAD_FOLDER]:
+        local_path = os.path.join(search_dir, stored)
+        if os.path.isfile(local_path):
+            return send_from_directory(search_dir, stored,
+                                      as_attachment=True,
+                                      download_name=original)
+        for sub in ["notes/photos", "notes/audio", "update_photos", "pending"]:
+            sub_path = os.path.join(search_dir, sub, stored)
+            if os.path.isfile(sub_path):
+                return send_from_directory(os.path.join(search_dir, sub), stored,
+                                          as_attachment=True,
+                                          download_name=original)
+
+    _log.warning("Token download file not found: %r", stored)
+    return jsonify({"ok": False, "error": "File not found on server"}), 404
+
+
 @app.post("/jobs/<int:job_id>/documents/upload")
 @login_required
 @admin_required
