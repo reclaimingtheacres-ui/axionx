@@ -899,18 +899,12 @@ function showTab(name) {
           window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
         } catch(e) {
           console.log('[DOC-PREVIEW] PDF native error: ' + e.message);
-          body.innerHTML = _fallback(url, filename, '&#128196;', 'Open Document');
-          document.getElementById('mFilePreviewOverlay').style.display = 'flex';
+          window.location.href = url;
         }
         return;
       }
-      body.style.padding = '0'; body.style.overflow = 'hidden';
-      body.innerHTML =
-        '<object data="' + url + '" type="application/pdf" ' +
-          'style="position:absolute;top:0;left:0;width:100%;height:100%;display:block;">' +
-          _fallback(url, filename, '&#128196;', 'Open Document') +
-        '</object>';
-      document.getElementById('mFilePreviewOverlay').style.display = 'flex';
+      console.log('[DOC-PREVIEW] PDF non-native: navigating directly to PDF URL');
+      window.location.href = url;
       return;
     }
 

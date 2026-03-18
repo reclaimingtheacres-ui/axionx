@@ -9553,6 +9553,28 @@ p {{ margin:0 0 10px; }}
     return Response(page, mimetype="text/html")
 
 
+@app.get("/debug/test-pdf")
+def debug_test_pdf():
+    """Temporary debug endpoint: serves a known-good PDF with no auth.
+    Used to isolate whether the PDF rendering issue is backend or frontend."""
+    import logging as _log
+    test_path = os.path.join(app.config["UPLOAD_FOLDER"],
+                             "2_1_1773817721_35021_PPSR-Search-Certificate-35021-1.pdf")
+    if not os.path.isfile(test_path):
+        _log.warning("[DEBUG-PDF] test file not found: %s", test_path)
+        return "Test PDF not found", 404
+    file_size = os.path.getsize(test_path)
+    resp = send_from_directory(os.path.dirname(test_path),
+                               os.path.basename(test_path),
+                               mimetype="application/pdf")
+    resp.headers["X-AX-Allow-Embed"] = "1"
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="test.pdf"'
+    resp.headers["Cache-Control"] = "no-cache"
+    _log.info("[DEBUG-PDF] Serving test PDF: path=%s  size=%s  content_type=application/pdf  raw_bytes=yes", test_path, file_size)
+    return resp
+
+
 @app.get("/m/documents/<int:file_id>/preview")
 @login_required
 def m_documents_preview(file_id: int):
