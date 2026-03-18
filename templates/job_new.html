@@ -1168,10 +1168,15 @@ function toggleParsed(btn) {
     return html;
   }
 
-  document.getElementById('cloneConfirmBtn').addEventListener('click', function () {
-    if (!_cloneData) return;
-    if (_cloneBs) _cloneBs.hide();
-    applyClone(_cloneData);
+  document.addEventListener('DOMContentLoaded', function() {
+    var cloneBtn = document.getElementById('cloneConfirmBtn');
+    if (cloneBtn) {
+      cloneBtn.addEventListener('click', function () {
+        if (!_cloneData) return;
+        if (_cloneBs) _cloneBs.hide();
+        applyClone(_cloneData);
+      });
+    }
   });
 
   /* ── applyClone — populate the form ───────────────────────────────── */
