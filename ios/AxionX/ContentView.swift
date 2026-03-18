@@ -40,10 +40,12 @@ struct ContentView: View {
             }
         }
         .ignoresSafeArea()
-        .task { await resolveAuthState() }
+        .task { resolveAuthState() }
         .onReceive(
             NotificationCenter.default.publisher(for: .axionSessionExpired)
         ) { _ in
+            print("[Startup] Session expired notification received")
+            LoginService.markSessionInactive()
             BiometricAuthService.clearSession()
             withAnimation(.easeInOut(duration: 0.35)) {
                 authState = .unauthenticated
@@ -52,42 +54,51 @@ struct ContentView: View {
     }
 
     @MainActor
-    private func resolveAuthState() async {
+    private func resolveAuthState() {
         print("[Startup] resolveAuthState: begin")
 
         if BiometricAuthService.hasSavedToken && BiometricAuthService.isOptedIn {
-            print("[Startup] resolveAuthState: attempting biometric auto-login")
-            do {
-                try await BiometricAuthService.authenticate(
-                    reason: "Sign in to AxionX"
-                )
-                print("[Startup] resolveAuthState: biometric auth succeeded, injecting session")
-                let injected = await BiometricAuthService.loadAndInjectSession()
-                if injected {
-                    print("[Startup] resolveAuthState: session injected -> authenticated")
-                    withAnimation(.easeInOut(duration: 0.35)) { authState = .authenticated }
-                    return
-                }
-                print("[Startup] resolveAuthState: session injection failed, clearing")
-                BiometricAuthService.clearSession()
-            } catch BiometricError.cancelled {
-                print("[Startup] resolveAuthState: biometric cancelled by user")
-            } catch {
-                print("[Startup] resolveAuthState: biometric failed: \(error)")
+            print("[Startup] resolveAuthState: biometric token saved + opted in, will attempt biometric")
+            Task {
+                await doBiometricAuth()
             }
-
-            withAnimation(.easeInOut(duration: 0.25)) { authState = .unauthenticated }
-            print("[Startup] resolveAuthState: -> unauthenticated (biometric path)")
             return
         }
 
-        print("[Startup] resolveAuthState: checking web session cookies")
-        let hasWebSession = await LoginService.hasValidSession()
-        print("[Startup] resolveAuthState: hasValidSession=\(hasWebSession)")
+        let hasSession = LoginService.hasActiveSessionFlag()
+        print("[Startup] resolveAuthState: hasActiveSessionFlag=\(hasSession)")
         withAnimation(.easeInOut(duration: 0.25)) {
-            authState = hasWebSession ? .authenticated : .unauthenticated
+            authState = hasSession ? .authenticated : .unauthenticated
         }
-        print("[Startup] resolveAuthState: -> \(hasWebSession ? "authenticated" : "unauthenticated")")
+        print("[Startup] resolveAuthState: -> \(hasSession ? "authenticated" : "unauthenticated")")
+    }
+
+    @MainActor
+    private func doBiometricAuth() async {
+        print("[Startup] doBiometricAuth: attempting biometric authentication")
+        do {
+            try await BiometricAuthService.authenticate(
+                reason: "Sign in to AxionX"
+            )
+            print("[Startup] doBiometricAuth: biometric auth succeeded, injecting session")
+            let injected = await BiometricAuthService.loadAndInjectSession()
+            if injected {
+                LoginService.markSessionActive()
+                print("[Startup] doBiometricAuth: session injected -> authenticated")
+                withAnimation(.easeInOut(duration: 0.35)) { authState = .authenticated }
+                return
+            }
+            print("[Startup] doBiometricAuth: session injection failed, clearing")
+            LoginService.markSessionInactive()
+            BiometricAuthService.clearSession()
+        } catch BiometricError.cancelled {
+            print("[Startup] doBiometricAuth: biometric cancelled by user")
+        } catch {
+            print("[Startup] doBiometricAuth: biometric failed: \(error)")
+        }
+
+        withAnimation(.easeInOut(duration: 0.25)) { authState = .unauthenticated }
+        print("[Startup] doBiometricAuth: -> unauthenticated")
     }
 }
 

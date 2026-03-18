@@ -24,21 +24,25 @@ struct LoginResult {
     let authToken: String?
 }
 
-private final class OnceGate<T>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var resumed = false
-
-    func tryResume(continuation: CheckedContinuation<T, Never>, with value: T) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !resumed else { return false }
-        resumed = true
-        continuation.resume(returning: value)
-        return true
-    }
-}
-
 enum LoginService {
+
+    private static let sessionActiveKey = "axionx_session_active"
+
+    static func markSessionActive() {
+        UserDefaults.standard.set(true, forKey: sessionActiveKey)
+        print("[LoginService] Session marked active")
+    }
+
+    static func markSessionInactive() {
+        UserDefaults.standard.removeObject(forKey: sessionActiveKey)
+        print("[LoginService] Session marked inactive")
+    }
+
+    static func hasActiveSessionFlag() -> Bool {
+        let active = UserDefaults.standard.bool(forKey: sessionActiveKey)
+        print("[LoginService] hasActiveSessionFlag: \(active)")
+        return active
+    }
 
     static func login(email: String, password: String) async throws -> [HTTPCookie] {
         guard let url = URL(string: AppConfig.currentBaseURL + "/m/login") else {
@@ -75,6 +79,7 @@ enum LoginService {
     static func loginAndPersist(email: String, password: String, requestToken: Bool = false) async throws -> LoginResult {
         let cookies = try await login(email: email, password: password)
         await injectCookies(cookies)
+        markSessionActive()
 
         var authToken: String? = nil
         if requestToken {
@@ -95,36 +100,6 @@ enum LoginService {
             }
         }
         print("[LoginService] injectCookies: done")
-    }
-
-    @MainActor
-    static func hasValidSession() async -> Bool {
-        print("[LoginService] hasValidSession: starting cookie check")
-
-        let gate = OnceGate<Bool>()
-        let result: Bool = await withCheckedContinuation { cont in
-            let timer = DispatchSource.makeTimerSource(queue: .main)
-            timer.schedule(deadline: .now() + 5.0)
-            timer.setEventHandler {
-                timer.cancel()
-                print("[LoginService] hasValidSession: timeout reached, returning false")
-                _ = gate.tryResume(continuation: cont, with: false)
-            }
-            timer.resume()
-
-            WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
-                timer.cancel()
-                let valid = cookies.contains {
-                    $0.name == "session" &&
-                    ($0.expiresDate == nil || $0.expiresDate! > Date())
-                }
-                print("[LoginService] hasValidSession: found \(cookies.count) cookie(s), valid=\(valid)")
-                _ = gate.tryResume(continuation: cont, with: valid)
-            }
-        }
-
-        print("[LoginService] hasValidSession: returning \(result)")
-        return result
     }
 
     static func revokeExistingTokens(cookies: [HTTPCookie]) async {

@@ -262,8 +262,10 @@ struct LoginView: View {
             try await BiometricAuthService.authenticate(reason: "Sign in to AxionX")
             let injected = await BiometricAuthService.loadAndInjectSession()
             if injected {
+                LoginService.markSessionActive()
                 withAnimation(.easeInOut(duration: 0.35)) { onLoginSuccess() }
             } else {
+                LoginService.markSessionInactive()
                 BiometricAuthService.clearSession()
                 errorMessage = "Your session has expired. Please sign in again."
             }
