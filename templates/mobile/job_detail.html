@@ -890,6 +890,11 @@ function showTab(name) {
         }
         return;
       }
+      if (window.self !== window.top) {
+        console.log('[DOC-PREVIEW] PDF inside iframe context, opening in new tab');
+        window.open(url, '_blank');
+        return;
+      }
       console.log('[DOC-PREVIEW] PDF non-native: loading in preview overlay');
       body.style.padding = '0'; body.style.overflow = 'hidden';
       var pdfFrame = document.createElement('iframe');
