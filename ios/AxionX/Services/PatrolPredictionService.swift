@@ -209,6 +209,7 @@ final class PatrolPredictionService {
         return comps.url
     }
 
+    @MainActor
     private func cookieHeader(webView: WKWebView, url: URL) async -> String {
         let all  = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
         let host = url.host ?? ""

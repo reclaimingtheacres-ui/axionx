@@ -80,7 +80,8 @@ final class CameraCaptureService: NSObject, WKScriptMessageHandler {
         picker.cameraCaptureMode = .photo
         picker.mediaTypes = ["public.image"]
         picker.allowsEditing = false
-        picker.modalPresentationStyle = .fullScreen
+        picker.modalPresentationStyle = .overFullScreen
+        picker.isModalInPresentation = true
         picker.delegate = self
 
         activePicker = picker

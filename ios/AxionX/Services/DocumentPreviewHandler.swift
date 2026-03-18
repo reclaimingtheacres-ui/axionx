@@ -77,19 +77,27 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: sharedCookies)
             return
         }
-        let cookieStore = wv.configuration.websiteDataStore.httpCookieStore
 
-        cookieStore.getAllCookies { [weak self] allCookies in
-            let host = remoteURL.host ?? "nil"
-            print("[DocPreview] Total cookies in WK store: \(allCookies.count), target host: '\(host)'")
-            let relevantCookies = allCookies.filter { host.hasSuffix($0.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))) || $0.domain == host }
-            print("[DocPreview] Relevant cookies for host: \(relevantCookies.count)")
-            for c in relevantCookies {
-                print("[DocPreview]   cookie: name='\(c.name)' domain='\(c.domain)' path='\(c.path)' secure=\(c.isSecure)")
+        let getCookies = { [weak self] in
+            let cookieStore = wv.configuration.websiteDataStore.httpCookieStore
+            cookieStore.getAllCookies { allCookies in
+                let host = remoteURL.host ?? "nil"
+                print("[DocPreview] Total cookies in WK store: \(allCookies.count), target host: '\(host)'")
+                let relevantCookies = allCookies.filter { host.hasSuffix($0.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))) || $0.domain == host }
+                print("[DocPreview] Relevant cookies for host: \(relevantCookies.count)")
+                for c in relevantCookies {
+                    print("[DocPreview]   cookie: name='\(c.name)' domain='\(c.domain)' path='\(c.path)' secure=\(c.isSecure)")
+                }
+                DispatchQueue.main.async {
+                    self?.downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: allCookies)
+                }
             }
-            DispatchQueue.main.async {
-                self?.downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: allCookies)
-            }
+        }
+
+        if Thread.isMainThread {
+            getCookies()
+        } else {
+            DispatchQueue.main.async { getCookies() }
         }
     }
 

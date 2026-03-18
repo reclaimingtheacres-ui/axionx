@@ -91,60 +91,66 @@ enum LPRAPIClient {
     /// Authenticated GET returning the parsed JSON dict, or nil on failure.
     static func getJSON(path: String, webView: WKWebView,
                         completion: @escaping ([String: Any]?) -> Void) {
-        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-            guard let base = AppConfig.entryURL.host else { completion(nil); return }
-            var comps    = URLComponents()
-            comps.scheme = AppConfig.entryURL.scheme
-            comps.host   = base
-            comps.path   = path
-            guard let url = comps.url else { completion(nil); return }
+        let fetchCookies = {
+            webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+                guard let base = AppConfig.entryURL.host else { completion(nil); return }
+                var comps    = URLComponents()
+                comps.scheme = AppConfig.entryURL.scheme
+                comps.host   = base
+                comps.path   = path
+                guard let url = comps.url else { completion(nil); return }
 
-            var req = URLRequest(url: url)
-            req.setValue("AxionXiOS/1.0", forHTTPHeaderField: "User-Agent")
+                var req = URLRequest(url: url)
+                req.setValue("AxionXiOS/1.0", forHTTPHeaderField: "User-Agent")
 
-            let cookieHeader = cookies
-                .filter { $0.domain.hasSuffix(base) || base.hasSuffix($0.domain.hasPrefix(".") ? String($0.domain.dropFirst()) : $0.domain) }
-                .map    { "\($0.name)=\($0.value)" }
-                .joined(separator: "; ")
-            if !cookieHeader.isEmpty { req.setValue(cookieHeader, forHTTPHeaderField: "Cookie") }
+                let cookieHeader = cookies
+                    .filter { $0.domain.hasSuffix(base) || base.hasSuffix($0.domain.hasPrefix(".") ? String($0.domain.dropFirst()) : $0.domain) }
+                    .map    { "\($0.name)=\($0.value)" }
+                    .joined(separator: "; ")
+                if !cookieHeader.isEmpty { req.setValue(cookieHeader, forHTTPHeaderField: "Cookie") }
 
-            URLSession.shared.dataTask(with: req) { data, _, _ in
-                let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-                DispatchQueue.main.async { completion(json) }
-            }.resume()
+                URLSession.shared.dataTask(with: req) { data, _, _ in
+                    let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                    DispatchQueue.main.async { completion(json) }
+                }.resume()
+            }
         }
+        if Thread.isMainThread { fetchCookies() } else { DispatchQueue.main.async { fetchCookies() } }
     }
 
     private static func request(path: String, body: [String: Any],
                                  webView: WKWebView,
                                  completion: @escaping ([String: Any]?) -> Void) {
-        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-            guard let base = AppConfig.entryURL.host else { completion(nil); return }
-            var comps      = URLComponents()
-            comps.scheme   = AppConfig.entryURL.scheme
-            comps.host     = base
-            comps.path     = path
-            guard let url  = comps.url else { completion(nil); return }
+        let fetchCookies = {
+            webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+                guard let base = AppConfig.entryURL.host else { completion(nil); return }
+                var comps      = URLComponents()
+                comps.scheme   = AppConfig.entryURL.scheme
+                comps.host     = base
+                comps.path     = path
+                guard let url  = comps.url else { completion(nil); return }
 
-            var req            = URLRequest(url: url)
-            req.httpMethod     = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.setValue("AxionXiOS/1.0",    forHTTPHeaderField: "User-Agent")
-            req.httpBody       = try? JSONSerialization.data(withJSONObject: body)
+                var req            = URLRequest(url: url)
+                req.httpMethod     = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.setValue("AxionXiOS/1.0",    forHTTPHeaderField: "User-Agent")
+                req.httpBody       = try? JSONSerialization.data(withJSONObject: body)
 
-            let cookieHeader = cookies
-                .filter { $0.domain.hasSuffix(base) || base.hasSuffix($0.domain.hasPrefix(".") ? String($0.domain.dropFirst()) : $0.domain) }
-                .map    { "\($0.name)=\($0.value)" }
-                .joined(separator: "; ")
-            if !cookieHeader.isEmpty {
-                req.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+                let cookieHeader = cookies
+                    .filter { $0.domain.hasSuffix(base) || base.hasSuffix($0.domain.hasPrefix(".") ? String($0.domain.dropFirst()) : $0.domain) }
+                    .map    { "\($0.name)=\($0.value)" }
+                    .joined(separator: "; ")
+                if !cookieHeader.isEmpty {
+                    req.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+                }
+
+                URLSession.shared.dataTask(with: req) { data, _, _ in
+                    let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                    DispatchQueue.main.async { completion(json) }
+                }.resume()
             }
-
-            URLSession.shared.dataTask(with: req) { data, _, _ in
-                let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-                DispatchQueue.main.async { completion(json) }
-            }.resume()
         }
+        if Thread.isMainThread { fetchCookies() } else { DispatchQueue.main.async { fetchCookies() } }
     }
 }
 
