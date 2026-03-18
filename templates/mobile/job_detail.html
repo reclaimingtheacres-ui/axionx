@@ -879,18 +879,23 @@ function showTab(name) {
     console.log('[DOC-PREVIEW] ext=' + ext + ' hasNative=' + hasNative);
 
     if (ext === 'pdf') {
-      console.log('[DOC-PREVIEW] PDF path: loading raw PDF stream');
+      console.log('[DOC-PREVIEW] PDF path: hasNative=' + hasNative);
+      console.log('[DOC-PREVIEW] webkit=' + !!window.webkit
+        + ' handlers=' + !!(window.webkit && window.webkit.messageHandlers)
+        + ' docPreview=' + !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview));
       if (hasNative) {
-        console.log('[DOC-PREVIEW] PDF native handoff');
+        console.log('[DOC-PREVIEW] PDF mode=native, calling documentPreview handler');
+        console.log('[DOC-PREVIEW] postMessage payload: url=' + url + ' filename=' + filename);
         try {
           window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
+          console.log('[DOC-PREVIEW] postMessage succeeded (no throw)');
         } catch(e) {
-          console.log('[DOC-PREVIEW] PDF native error: ' + e.message);
-          window.location.href = url;
+          console.log('[DOC-PREVIEW] postMessage THREW: ' + e.name + ': ' + e.message);
+          window.open(url, '_blank');
         }
         return;
       }
-      console.log('[DOC-PREVIEW] PDF non-native: navigating directly to PDF URL');
+      console.log('[DOC-PREVIEW] PDF mode=browser, navigating to URL');
       window.location.href = url;
       return;
     }

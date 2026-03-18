@@ -60,6 +60,14 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
 
+        if AllowedDomains.isTrusted(url) && Self.isDocumentPreviewPath(url) {
+            let filename = url.lastPathComponent
+            print("[NavDelegate]   → CANCEL (document preview route: \(url.path))")
+            DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
+            decisionHandler(.cancel)
+            return
+        }
+
         if AllowedDomains.isTrusted(url),
            url.path.hasPrefix("/m/login") || url.path == "/login" {
             print("[NavDelegate]   → CANCEL (login redirect detected)")
@@ -118,7 +126,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             let ext = url.pathExtension.lowercased()
             print("[NavDelegate] createWebViewWith (window.open): \(url.absoluteString) ext='\(ext)'")
             if AllowedDomains.isTrusted(url) {
-                if Self.documentExtensions.contains(ext) {
+                if Self.documentExtensions.contains(ext) || Self.isDocumentPreviewPath(url) {
                     let filename = url.lastPathComponent
                     print("[NavDelegate]   → document preview: \(filename)")
                     DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
@@ -137,6 +145,13 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     private static let documentExtensions: Set<String> = [
         "pdf", "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx", "rtf"
     ]
+
+    private static func isDocumentPreviewPath(_ url: URL) -> Bool {
+        let path = url.path
+        let pattern = "/m/documents/"
+        let suffix = "/preview"
+        return path.hasPrefix(pattern) && path.hasSuffix(suffix)
+    }
 
     /// Native alert() support so JS dialogs work inside the WebView.
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,

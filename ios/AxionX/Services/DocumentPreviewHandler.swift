@@ -91,6 +91,42 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
     }
 
+    private static func extractFilename(from contentDisposition: String) -> String? {
+        let patterns = [
+            "filename\\*=(?:UTF-8''|utf-8'')(.+)",
+            "filename=\"([^\"]+)\"",
+            "filename=([^;\\s]+)"
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: contentDisposition, range: NSRange(contentDisposition.startIndex..., in: contentDisposition)),
+               match.numberOfRanges > 1,
+               let range = Range(match.range(at: 1), in: contentDisposition) {
+                let raw = String(contentDisposition[range])
+                return raw.removingPercentEncoding ?? raw
+            }
+        }
+        return nil
+    }
+
+    private static func extensionForMIME(_ mime: String) -> String? {
+        let lower = mime.lowercased().trimmingCharacters(in: .whitespaces)
+        let map: [String: String] = [
+            "application/pdf": "pdf",
+            "application/msword": "doc",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+            "application/vnd.ms-excel": "xls",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+            "text/csv": "csv",
+            "image/jpeg": "jpg",
+            "image/png": "png"
+        ]
+        for (key, ext) in map {
+            if lower.hasPrefix(key) { return ext }
+        }
+        return nil
+    }
+
     private lazy var noRedirectSession: URLSession = {
         let config = URLSessionConfiguration.default
         let delegate = NoRedirectDelegate()
@@ -202,6 +238,18 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
                 return
             }
 
+            var resolvedFilename = filename
+            if let cdFilename = Self.extractFilename(from: contentDisposition), !cdFilename.isEmpty {
+                print("[DocPreview] Using filename from Content-Disposition: '\(cdFilename)'")
+                resolvedFilename = cdFilename
+            } else if URL(fileURLWithPath: filename).pathExtension.isEmpty {
+                let mimeExt = Self.extensionForMIME(contentType)
+                if let ext = mimeExt {
+                    resolvedFilename = filename + "." + ext
+                    print("[DocPreview] Appended extension from MIME: '\(resolvedFilename)'")
+                }
+            }
+
             let tmpDir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("docpreview", isDirectory: true)
             do {
@@ -210,7 +258,7 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
                 print("[DocPreview] Failed to create temp directory: \(error)")
             }
 
-            let destURL = tmpDir.appendingPathComponent(filename)
+            let destURL = tmpDir.appendingPathComponent(resolvedFilename)
             print("[DocPreview] Destination path: \(destURL.path)")
             print("[DocPreview] Destination extension: \(destURL.pathExtension)")
 
