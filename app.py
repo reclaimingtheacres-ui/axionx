@@ -9480,6 +9480,76 @@ def api_doc_download(token: str):
     return jsonify({"ok": False, "error": "File not found on server"}), 404
 
 
+@app.get("/api/doc-preview/<path:filename>")
+@login_required
+def api_doc_preview(filename):
+    import logging as _log
+    filename = os.path.basename(filename)
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ('.doc', '.docx'):
+        return "Unsupported file type", 400
+
+    file_path = None
+    primary = app.config["UPLOAD_FOLDER"]
+    for search_dir in [primary, _LEGACY_UPLOAD_FOLDER]:
+        candidate = os.path.join(search_dir, filename)
+        if os.path.isfile(candidate):
+            file_path = candidate
+            break
+        for sub in ["notes/photos", "notes/audio", "update_photos", "pending"]:
+            candidate = os.path.join(search_dir, sub, filename)
+            if os.path.isfile(candidate):
+                file_path = candidate
+                break
+        if file_path:
+            break
+
+    if not file_path:
+        return "File not found", 404
+
+    html_content = ""
+    if ext == '.docx':
+        try:
+            import mammoth
+            with open(file_path, "rb") as f:
+                result = mammoth.convert_to_html(f)
+                html_content = result.value
+        except Exception as e:
+            _log.warning("mammoth conversion failed for %r: %s", filename, e)
+            return f"Could not convert document: {e}", 500
+    elif ext == '.doc':
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["antiword", file_path],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                text = result.stdout
+                import html as _html
+                html_content = "<pre style='white-space:pre-wrap;word-wrap:break-word;font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;'>" + _html.escape(text) + "</pre>"
+            else:
+                _log.warning("antiword failed for %r: %s", filename, result.stderr)
+                return f"Could not convert document", 500
+        except FileNotFoundError:
+            return "Document converter not available", 500
+        except Exception as e:
+            _log.warning("antiword error for %r: %s", filename, e)
+            return f"Could not convert document: {e}", 500
+
+    page = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body {{ margin:0; padding:16px 20px; font-family:system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.6; color:#111; background:#fff; }}
+img {{ max-width:100%; height:auto; }}
+table {{ border-collapse:collapse; width:100%; margin:12px 0; }}
+td, th {{ border:1px solid #d1d5db; padding:6px 10px; text-align:left; }}
+th {{ background:#f3f4f6; font-weight:600; }}
+p {{ margin:0 0 10px; }}
+</style></head><body>{html_content}</body></html>"""
+    return Response(page, mimetype="text/html")
+
+
 @app.post("/jobs/<int:job_id>/documents/upload")
 @login_required
 @admin_required

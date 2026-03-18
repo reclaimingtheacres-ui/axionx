@@ -896,22 +896,45 @@ function showTab(name) {
         '<audio controls preload="none" style="width:100%;margin-bottom:6px"><source src="' + url + '"></audio>' +
         '</div>';
     } else {
-      body.style.padding = '24px 16px';
-      var icon = ext === 'doc' || ext === 'docx' ? '📄' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv' ? '📊' : '📎');
+      var isWord = (ext === 'doc' || ext === 'docx');
+      var icon = isWord ? '📄' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv' ? '📊' : '📎');
       var hasNativePreview = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
-      var openAction = hasNativePreview
-        ? 'onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')"'
-        : 'href="' + url + '" target="_blank" rel="noopener"';
-      var tag = hasNativePreview ? 'button' : 'a';
-      var extraStyle = hasNativePreview ? 'border:0;cursor:pointer;' : 'text-decoration:none;';
-      body.innerHTML = '<div style="text-align:center;">' +
-        '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
-        '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-        '<' + tag + ' ' + openAction + ' ' +
-          'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-          'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;' + extraStyle + '">' +
-          'Open</' + tag + '>' +
-        '</div>';
+
+      if (isWord && !hasNativePreview) {
+        body.style.padding = '0';
+        body.innerHTML =
+          '<iframe src="/api/doc-preview/' + encodeURIComponent(filename) + '" ' +
+            'style="width:100%;height:60vh;border:0;display:block;" ' +
+            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"></iframe>' +
+          '<div style="display:none;text-align:center;padding:40px 20px;">' +
+            '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
+            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+            '<a href="' + url + '" target="_blank" rel="noopener" ' +
+              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
+              'Download</a>' +
+          '</div>';
+      } else if (hasNativePreview) {
+        body.style.padding = '24px 16px';
+        body.innerHTML = '<div style="text-align:center;">' +
+          '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
+          '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+          '<button onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')" ' +
+            'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+            'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;border:0;cursor:pointer;">' +
+            'Open</button>' +
+          '</div>';
+      } else {
+        body.style.padding = '24px 16px';
+        body.innerHTML = '<div style="text-align:center;">' +
+          '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
+          '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+          '<a href="' + url + '" target="_blank" rel="noopener" ' +
+            'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+            'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
+            'Open</a>' +
+          '</div>';
+      }
     }
 
     var ov = document.getElementById('mFilePreviewOverlay');
