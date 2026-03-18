@@ -345,7 +345,7 @@
     <span style="font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;" id="notesCountLabel">
       {{ notes|length }} Note{{ 's' if notes|length != 1 else '' }}
     </span>
-    <button type="button" onclick="{% if session.get('role') not in ('admin', 'both') %}openNotePicker(){% else %}openNoteSheet(){% endif %}"
+    <button type="button" onclick="openNotePicker()"
             style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;
                    background:var(--accent);color:#fff;border:none;border-radius:9px;
                    font-size:.82rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
@@ -522,20 +522,6 @@
     {% endif %}
   </div>
 
-  {% if session.get('role') in ('admin', 'both') %}
-  {# Secondary CTA: full attendance update (admin only) #}
-  <div style="margin-top:10px;padding-bottom:4px;">
-    <a href="{{ url_for('m_update_builder', job_id=job.id) }}"
-       style="display:flex;align-items:center;justify-content:center;gap:8px;
-              padding:13px 16px;background:#f7f8fa;border:1.5px solid var(--line);
-              border-radius:12px;font-size:.88rem;font-weight:600;color:#374151;text-decoration:none;">
-      <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-      </svg>
-      Full Attendance Update
-    </a>
-  </div>
-  {% endif %}
 
 </div>{# /tabpanel-notes #}
 
@@ -725,16 +711,14 @@ function showTab(name) {
               style="width:100%;padding:14px;background:var(--accent);color:#fff;
                      border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
                      -webkit-tap-highlight-color:transparent;">
-        {% if session.get('role') in ('admin', 'both') %}Save as File Note{% else %}Save as Field Note{% endif %}
+        Save as Field Note
       </button>
-      {% if session.get('role') not in ('admin', 'both') %}
       <button type="button" id="noteSubmitBtn" onclick="saveQuickNote(true)"
               style="width:100%;padding:14px;background:#16a34a;color:#fff;
                      border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
                      -webkit-tap-highlight-color:transparent;">
         Submit Note for Review
       </button>
-      {% endif %}
       <button type="button" onclick="closeNoteSheet()"
               style="width:100%;padding:13px;border:none;border-radius:12px;
                      background:#f3f4f6;font-size:.9rem;font-weight:600;color:var(--muted);
@@ -765,8 +749,7 @@ function showTab(name) {
   </div>
 </div>
 
-{% if session.get('role') not in ('admin', 'both') %}
-{# Note type picker (agents only) #}
+{# Note type picker (all roles) #}
 <div id="notePickerOverlay"
      style="display:none;position:fixed;inset:0;z-index:9550;background:rgba(0,0,0,0);
             align-items:flex-end;justify-content:center;transition:background .2s;"
@@ -812,7 +795,6 @@ function showTab(name) {
     </div>
   </div>
 </div>
-{% endif %}
 
 {# Photo preview lightbox (shared) #}
 <div id="notePhotoLightbox"
@@ -1621,8 +1603,8 @@ window.closeNotePicker = function() {
 
 // ── Open / close sheet ──────────────────────────────────
 var _editNoteId = 0;
-var _noteDefaultTitle = {{ ('"Add File Note"' if session.get('role') in ('admin', 'both') else '"Add Field Note"') | safe }};
-var _noteDefaultSaveLabel = {{ ('"Save as File Note"' if session.get('role') in ('admin', 'both') else '"Save as Field Note"') | safe }};
+var _noteDefaultTitle = "Add Field Note";
+var _noteDefaultSaveLabel = "Save as Field Note";
 
 window.mNoteFilter = function(cat, btn) {
   document.querySelectorAll('.m-note-filter-btn').forEach(function(b){

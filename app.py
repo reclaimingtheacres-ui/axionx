@@ -105,7 +105,10 @@ if _LEGACY_UPLOAD_FOLDER != os.path.abspath(UPLOAD_FOLDER):
 @app.after_request
 def add_security_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
-    resp.headers["X-Frame-Options"] = "DENY"
+    if not resp.headers.get("X-AX-Allow-Embed"):
+        resp.headers["X-Frame-Options"] = "DENY"
+    else:
+        resp.headers.pop("X-AX-Allow-Embed", None)
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     resp.headers["Content-Security-Policy"] = (
         "default-src 'self' https: data:; "
@@ -9596,7 +9599,7 @@ def m_documents_preview(file_id: int):
         mime = "application/pdf"
 
     def _strip_frame_headers(resp):
-        resp.headers.pop("X-Frame-Options", None)
+        resp.headers["X-AX-Allow-Embed"] = "1"
         resp.headers["Content-Type"] = mime
         resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
         resp.headers["Cache-Control"] = "private, max-age=300"
@@ -15695,11 +15698,8 @@ def m_quick_note_save(job_id):
 
     ts  = now_ts()
     _is_admin = session.get("role") in ("admin", "both")
-    submit_for_review = request.form.get("submit_for_review") == "1" and not _is_admin
-    if _is_admin:
-        _note_cat = "file_note"
-        _rev_stat = "published"
-    elif submit_for_review:
+    submit_for_review = request.form.get("submit_for_review") == "1"
+    if submit_for_review:
         _note_cat = "field_note"
         _rev_stat = "submitted_for_review"
     else:
