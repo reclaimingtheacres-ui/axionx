@@ -9591,20 +9591,29 @@ def m_documents_preview(file_id: int):
     original = row["filepath"] if row["filepath"] else stored
     mime = mimetypes.guess_type(stored)[0] or "application/octet-stream"
 
+    ext = os.path.splitext(stored)[1].lower()
+    if ext == '.pdf':
+        mime = "application/pdf"
+
+    def _strip_frame_headers(resp):
+        resp.headers.pop("X-Frame-Options", None)
+        resp.headers["Content-Type"] = mime
+        resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
+        resp.headers["Cache-Control"] = "private, max-age=300"
+        return resp
+
     if _uploads_container:
         try:
             blob_data = _uploads_container.get_blob_client(stored).download_blob().readall()
             content_len = len(blob_data)
             resp = make_response(blob_data)
-            resp.headers["Content-Type"] = mime
-            resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
             resp.headers["Content-Length"] = str(content_len)
-            resp.headers["Cache-Control"] = "private, max-age=300"
-            _log.info("[DOC-PREVIEW] id=%s  filename=%s  source=blob  status=200  content_type=%s  content_disposition=inline  content_length=%s  raw_bytes=yes",
-                      file_id, stored, mime, content_len)
+            resp = _strip_frame_headers(resp)
+            _log.info("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=blob  status=200  content_type=%s  content_disposition=inline  content_length=%s  raw_bytes=yes  redirect=no",
+                      file_id, stored, ext, mime, content_len)
             return resp
         except Exception as e:
-            _log.warning("[DOC-PREVIEW] id=%s  filename=%s  source=blob  RESULT=blob_error  error=%s", file_id, stored, e)
+            _log.warning("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=blob  RESULT=blob_error  error=%s", file_id, stored, ext, e)
 
     local_path = _find_upload_file(stored)
     if local_path:
@@ -9612,13 +9621,12 @@ def m_documents_preview(file_id: int):
         directory = os.path.dirname(local_path)
         basename = os.path.basename(local_path)
         resp = send_from_directory(directory, basename, mimetype=mime)
-        resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
-        resp.headers["Cache-Control"] = "private, max-age=300"
-        _log.info("[DOC-PREVIEW] id=%s  filename=%s  source=local  path=%s  status=200  content_type=%s  content_disposition=inline  content_length=%s  raw_bytes=yes",
-                  file_id, stored, local_path, mime, file_size)
+        resp = _strip_frame_headers(resp)
+        _log.info("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=local  path=%s  status=200  content_type=%s  content_disposition=inline  content_length=%s  raw_bytes=yes  redirect=no",
+                  file_id, stored, ext, local_path, mime, file_size)
         return resp
 
-    _log.warning("[DOC-PREVIEW] id=%s  filename=%s  source=none  RESULT=file_not_found_on_disk", file_id, stored)
+    _log.warning("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=none  RESULT=file_not_found_on_disk  db_match=yes  file_exists=no", file_id, stored, ext)
     return b'', 404
 
 

@@ -907,6 +907,31 @@ function showTab(name) {
     dl.href = url; dl.download = filename;
     body.innerHTML = '';
 
+    console.log('[DOC-PREVIEW] ext=' + ext + ' hasNative=' + hasNative);
+
+    if (ext === 'pdf') {
+      console.log('[DOC-PREVIEW] PDF path: loading raw PDF stream');
+      if (hasNative) {
+        console.log('[DOC-PREVIEW] PDF native handoff');
+        try {
+          window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
+        } catch(e) {
+          console.log('[DOC-PREVIEW] PDF native error: ' + e.message);
+          body.innerHTML = _fallback(url, filename, '&#128196;', 'Open Document');
+          document.getElementById('mFilePreviewOverlay').style.display = 'flex';
+        }
+        return;
+      }
+      body.style.padding = '0'; body.style.overflow = 'hidden';
+      body.innerHTML =
+        '<object data="' + url + '" type="application/pdf" ' +
+          'style="position:absolute;top:0;left:0;width:100%;height:100%;display:block;">' +
+          _fallback(url, filename, '&#128196;', 'Open Document') +
+        '</object>';
+      document.getElementById('mFilePreviewOverlay').style.display = 'flex';
+      return;
+    }
+
     if (IMAGE_EXT.indexOf(ext) !== -1) {
       body.style.padding = '0'; body.style.overflow = 'hidden';
       body.innerHTML =
