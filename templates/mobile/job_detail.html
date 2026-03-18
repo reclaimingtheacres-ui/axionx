@@ -863,39 +863,88 @@ function showTab(name) {
       '</div></div>';
   }
 
+  function _pdfDebug(lines) {
+    var msg = lines.join('\n');
+    console.log('[DOC-PREVIEW-DEBUG]\n' + msg);
+    var d = document.createElement('div');
+    d.id = 'axPdfDebug';
+    d.style.cssText = 'position:fixed;top:60px;left:10px;right:10px;z-index:99999;' +
+      'background:#1a1a2e;color:#0f0;font:11px/1.5 monospace;padding:14px;border-radius:10px;' +
+      'white-space:pre-wrap;word-break:break-all;max-height:60vh;overflow:auto;box-shadow:0 4px 24px rgba(0,0,0,.5);';
+    d.textContent = msg;
+    document.body.appendChild(d);
+    setTimeout(function(){ var el = document.getElementById('axPdfDebug'); if(el) el.remove(); }, 12000);
+  }
+
   window.axMobilePreview = function(url, filename) {
-    console.log('[DOC-PREVIEW] open: url=' + url + ' file=' + filename);
+    console.log('[DOC-PREVIEW] STEP 1: PDF tap detected');
+    console.log('[DOC-PREVIEW] url=' + url);
+    console.log('[DOC-PREVIEW] filename=' + filename);
     _curUrl = url; _curFilename = filename;
     var ext = (filename.split('.').pop() || '').toLowerCase();
     var body = document.getElementById('mFilePreviewBody');
     var title = document.getElementById('mFilePreviewTitle');
     var dl = document.getElementById('mFileDownloadBtn');
-    var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+
+    var hasWebkit = !!window.webkit;
+    var hasHandlers = !!(window.webkit && window.webkit.messageHandlers);
+    var hasDocPreview = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+    var hasNative = hasDocPreview;
 
     title.textContent = filename;
     dl.href = url; dl.download = filename;
     body.innerHTML = '';
 
-    console.log('[DOC-PREVIEW] ext=' + ext + ' hasNative=' + hasNative);
+    console.log('[DOC-PREVIEW] STEP 2: environment detected');
+    console.log('[DOC-PREVIEW]   ext=' + ext);
+    console.log('[DOC-PREVIEW]   window.webkit=' + hasWebkit);
+    console.log('[DOC-PREVIEW]   messageHandlers=' + hasHandlers);
+    console.log('[DOC-PREVIEW]   documentPreview=' + hasDocPreview);
+    console.log('[DOC-PREVIEW]   native_ios_app=' + hasNative);
 
     if (ext === 'pdf') {
-      console.log('[DOC-PREVIEW] PDF path: hasNative=' + hasNative);
-      console.log('[DOC-PREVIEW] webkit=' + !!window.webkit
-        + ' handlers=' + !!(window.webkit && window.webkit.messageHandlers)
-        + ' docPreview=' + !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview));
+      var dbg = [
+        '=== PDF PREVIEW DEBUG ===',
+        'STEP 1: PDF tap detected',
+        'filename: ' + filename,
+        'ext: ' + ext,
+        'url: ' + url,
+        '',
+        'STEP 2: environment',
+        'window.webkit: ' + hasWebkit,
+        'messageHandlers: ' + hasHandlers,
+        'documentPreview: ' + hasDocPreview,
+        'native_ios_app: ' + hasNative
+      ];
+
       if (hasNative) {
-        console.log('[DOC-PREVIEW] PDF mode=native, calling documentPreview handler');
-        console.log('[DOC-PREVIEW] postMessage payload: url=' + url + ' filename=' + filename);
+        dbg.push('', 'STEP 3: selected_path = NATIVE_PREVIEW');
+        dbg.push('calling documentPreview.postMessage...');
+        console.log('[DOC-PREVIEW] STEP 3: selected_path=native_preview');
+        console.log('[DOC-PREVIEW] calling documentPreview.postMessage({url, filename})');
         try {
           window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
-          console.log('[DOC-PREVIEW] postMessage succeeded (no throw)');
+          dbg.push('postMessage: SUCCESS (no throw)');
+          dbg.push('native_callback: called');
+          console.log('[DOC-PREVIEW] STEP 4: postMessage succeeded');
         } catch(e) {
-          console.log('[DOC-PREVIEW] postMessage THREW: ' + e.name + ': ' + e.message);
+          dbg.push('postMessage: THREW ' + e.name + ': ' + e.message);
+          dbg.push('fallback: window.open');
+          console.log('[DOC-PREVIEW] STEP 4: postMessage THREW: ' + e.name + ': ' + e.message);
           window.open(url, '_blank');
         }
+        _pdfDebug(dbg);
         return;
       }
-      console.log('[DOC-PREVIEW] PDF mode=browser, navigating to URL');
+
+      dbg.push('', 'STEP 3: selected_path = BROWSER_VIEWER');
+      dbg.push('reason: native handler not available');
+      if (!hasWebkit) dbg.push('  - window.webkit missing');
+      if (hasWebkit && !hasHandlers) dbg.push('  - messageHandlers missing');
+      if (hasHandlers && !hasDocPreview) dbg.push('  - documentPreview handler missing');
+      dbg.push('action: window.location.href = ' + url);
+      console.log('[DOC-PREVIEW] STEP 3: selected_path=browser_viewer (no native handler)');
+      _pdfDebug(dbg);
       window.location.href = url;
       return;
     }
