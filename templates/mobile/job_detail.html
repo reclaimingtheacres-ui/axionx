@@ -345,7 +345,7 @@
     <span style="font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;" id="notesCountLabel">
       {{ notes|length }} Note{{ 's' if notes|length != 1 else '' }}
     </span>
-    <button type="button" onclick="openNoteSheet()"
+    <button type="button" onclick="{% if session.get('role') not in ('admin', 'both') %}openNotePicker(){% else %}openNoteSheet(){% endif %}"
             style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;
                    background:var(--accent);color:#fff;border:none;border-radius:9px;
                    font-size:.82rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
@@ -522,7 +522,8 @@
     {% endif %}
   </div>
 
-  {# Secondary CTA: full attendance update #}
+  {% if session.get('role') in ('admin', 'both') %}
+  {# Secondary CTA: full attendance update (admin only) #}
   <div style="margin-top:10px;padding-bottom:4px;">
     <a href="{{ url_for('m_update_builder', job_id=job.id) }}"
        style="display:flex;align-items:center;justify-content:center;gap:8px;
@@ -534,6 +535,7 @@
       Full Attendance Update
     </a>
   </div>
+  {% endif %}
 
 </div>{# /tabpanel-notes #}
 
@@ -730,7 +732,7 @@ function showTab(name) {
               style="width:100%;padding:14px;background:#16a34a;color:#fff;
                      border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
                      -webkit-tap-highlight-color:transparent;">
-        Submit as File Update for Admin Review
+        Submit Note for Review
       </button>
       {% endif %}
       <button type="button" onclick="closeNoteSheet()"
@@ -762,6 +764,55 @@ function showTab(name) {
 
   </div>
 </div>
+
+{% if session.get('role') not in ('admin', 'both') %}
+{# Note type picker (agents only) #}
+<div id="notePickerOverlay"
+     style="display:none;position:fixed;inset:0;z-index:9550;background:rgba(0,0,0,0);
+            align-items:flex-end;justify-content:center;transition:background .2s;"
+     onclick="if(event.target===this)closeNotePicker()">
+  <div id="notePickerPanel"
+       style="width:100%;max-width:480px;background:#fff;border-radius:22px 22px 0 0;
+              padding:8px 16px calc(16px + env(safe-area-inset-bottom,0px));
+              box-shadow:0 -4px 32px rgba(0,0,0,.14);
+              transform:translateY(100%);transition:transform .28s cubic-bezier(.32,.72,0,1);">
+    <div style="width:40px;height:4px;background:#d1d5db;border-radius:2px;margin:0 auto 16px;"></div>
+    <div style="font-weight:700;font-size:1rem;margin-bottom:14px;color:#111;">Add Note</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button type="button" onclick="closeNotePicker();openNoteSheet()"
+              style="width:100%;padding:14px;background:var(--accent);color:#fff;
+                     border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
+                     display:flex;align-items:center;justify-content:center;gap:8px;
+                     -webkit-tap-highlight-color:transparent;">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2">
+          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+        Add Manual Note
+      </button>
+      <a href="{{ url_for('m_update_builder', job_id=job.id) }}"
+         style="width:100%;padding:14px;background:#7c3aed;color:#fff;
+                border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;
+                display:flex;align-items:center;justify-content:center;gap:8px;
+                text-decoration:none;-webkit-tap-highlight-color:transparent;">
+        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2">
+          <path d="M12 2a4 4 0 014 4c0 2-2 3-2 6H10c0-3-2-4-2-6a4 4 0 014-4z"/>
+          <line x1="10" y1="16" x2="14" y2="16"/>
+          <line x1="10" y1="19" x2="14" y2="19"/>
+          <line x1="11" y1="22" x2="13" y2="22"/>
+        </svg>
+        AI Assisted Note
+      </a>
+      <button type="button" onclick="closeNotePicker()"
+              style="width:100%;padding:13px;border:none;border-radius:12px;
+                     background:#f3f4f6;font-size:.9rem;font-weight:600;color:var(--muted);
+                     cursor:pointer;-webkit-tap-highlight-color:transparent;">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {# Photo preview lightbox (shared) #}
 <div id="notePhotoLightbox"
@@ -1622,6 +1673,30 @@ var _noteRecorder    = null;
 var _noteRecTimer    = null;
 var _noteRecSec      = 0;
 
+// ── Note picker (agents: manual vs AI) ──────────────────
+var _notePickerCloseTimer = null;
+window.openNotePicker = function() {
+  var ov = document.getElementById('notePickerOverlay');
+  if (!ov) { openNoteSheet(); return; }
+  if (_notePickerCloseTimer) { clearTimeout(_notePickerCloseTimer); _notePickerCloseTimer = null; }
+  ov.style.display = 'flex';
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){
+      ov.style.background = 'rgba(0,0,0,.45)';
+      document.getElementById('notePickerPanel').style.transform = 'translateY(0)';
+    });
+  });
+};
+window.closeNotePicker = function() {
+  var ov = document.getElementById('notePickerOverlay');
+  if (!ov) return;
+  var panel = document.getElementById('notePickerPanel');
+  ov.style.background = 'rgba(0,0,0,0)';
+  if (panel) panel.style.transform = 'translateY(100%)';
+  if (_notePickerCloseTimer) clearTimeout(_notePickerCloseTimer);
+  _notePickerCloseTimer = setTimeout(function(){ ov.style.display = 'none'; _notePickerCloseTimer = null; }, 300);
+};
+
 // ── Open / close sheet ──────────────────────────────────
 var _editNoteId = 0;
 var _noteDefaultTitle = {{ ('"Add File Note"' if session.get('role') in ('admin', 'both') else '"Add Field Note"') | safe }};
@@ -1978,7 +2053,7 @@ window.saveQuickNote = function(submitForReview) {
     .finally(function(){
       btn.disabled    = false;
       btn.textContent = _noteDefaultSaveLabel;
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit as File Update for Admin Review'; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Submit Note for Review'; }
     });
 };
 
