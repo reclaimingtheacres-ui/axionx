@@ -22,10 +22,14 @@ struct FieldStatusView: View {
                 }
             }
         }
-        .background(.regularMaterial)
+        .background {
+            Capsule()
+                .fill(.regularMaterial)
+        }
         .clipShape(Capsule())
         .overlay(Capsule().stroke(Color(white: 0.85), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.12), radius: 5, x: 0, y: 2)
+        .fixedSize()
     }
 
     @ViewBuilder

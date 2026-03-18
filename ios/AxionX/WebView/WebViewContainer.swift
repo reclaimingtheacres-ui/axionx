@@ -110,14 +110,14 @@ struct WebViewContainer: View {
 
             // Field Status Control — bottom centre, shown on LPR pages
             if isOnLPRPage && !isOffline {
-                VStack {
-                    Spacer()
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
                     FieldStatusView()
-                        .padding(.bottom, syncManager.pendingCount + syncManager.failedCount > 0 ? 56 : 24)
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .allowsHitTesting(true)
+                .padding(.bottom, syncManager.pendingCount + syncManager.failedCount > 0 ? 56 : 24)
+                .frame(maxWidth: .infinity)
                 .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(true)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                 .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
             }
