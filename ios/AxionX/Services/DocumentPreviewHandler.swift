@@ -43,22 +43,31 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     }
 
     private func fetchCookiesAndDownload(remoteURL: URL, filename: String) {
-        guard let cookieStore = webView?.configuration.websiteDataStore.httpCookieStore else {
-            downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: [])
+        guard let wv = webView else {
+            print("[DocPreview] WARNING: webView is nil — falling back to shared cookie storage")
+            let sharedCookies = HTTPCookieStorage.shared.cookies ?? []
+            print("[DocPreview] Shared cookie storage has \(sharedCookies.count) cookies")
+            downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: sharedCookies)
             return
         }
+        let cookieStore = wv.configuration.websiteDataStore.httpCookieStore
 
         cookieStore.getAllCookies { [weak self] allCookies in
-            let relevant = allCookies.filter { cookie in
-                guard let host = remoteURL.host else { return false }
-                let cookieDomain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
-                return host == cookieDomain || host.hasSuffix("." + cookieDomain)
+            print("[DocPreview] Total cookies in store: \(allCookies.count), target host: '\(remoteURL.host ?? "nil")'")
+            for c in allCookies {
+                print("[DocPreview]   cookie: name='\(c.name)' domain='\(c.domain)' path='\(c.path)'")
             }
             DispatchQueue.main.async {
-                self?.downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: relevant)
+                self?.downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: allCookies)
             }
         }
     }
+
+    private lazy var noRedirectSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        let delegate = NoRedirectDelegate()
+        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+    }()
 
     private func downloadAndPreview(remoteURL: URL, filename: String, cookies: [HTTPCookie]) {
         var request = URLRequest(url: remoteURL)
@@ -67,7 +76,8 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        URLSession.shared.downloadTask(with: request) { [weak self] tempURL, response, error in
+        print("[DocPreview] Starting download: \(remoteURL.absoluteString), cookies attached: \(cookies.count)")
+        noRedirectSession.downloadTask(with: request) { [weak self] tempURL, response, error in
             guard let tempURL = tempURL, error == nil else {
                 print("[DocPreview] Download failed: \(error?.localizedDescription ?? "unknown")")
                 DispatchQueue.main.async {
@@ -78,7 +88,22 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
 
             if let httpResponse = response as? HTTPURLResponse {
                 let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown"
-                print("[DocPreview] HTTP \(httpResponse.statusCode), Content-Type: \(contentType), URL: \(remoteURL.absoluteString)")
+                let finalURL = httpResponse.url?.absoluteString ?? "nil"
+                print("[DocPreview] HTTP \(httpResponse.statusCode), Content-Type: \(contentType), finalURL: \(finalURL), requestURL: \(remoteURL.absoluteString)")
+
+                if (300...399).contains(httpResponse.statusCode) {
+                    let location = httpResponse.value(forHTTPHeaderField: "Location") ?? "unknown"
+                    print("[DocPreview] Redirect detected → \(location)")
+                    let isLoginRedirect = location.contains("/login") || location.contains("/m/login")
+                    DispatchQueue.main.async {
+                        if isLoginRedirect {
+                            self?.showError("Your session has expired. Please close this screen, log in again, and retry opening the document.")
+                        } else {
+                            self?.showError("The server redirected the request. The file may have been moved or is not accessible.")
+                        }
+                    }
+                    return
+                }
 
                 if !(200...299).contains(httpResponse.statusCode) {
                     print("[DocPreview] Server returned status \(httpResponse.statusCode)")
@@ -307,5 +332,17 @@ private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSourc
 
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
         fileURL as QLPreviewItem
+    }
+}
+
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
