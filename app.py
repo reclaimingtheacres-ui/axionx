@@ -702,6 +702,47 @@ def init_db():
     """)
 
     cur.execute("""
+        CREATE TABLE IF NOT EXISTS customer_companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            company_name TEXT NOT NULL,
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(customer_id) REFERENCES customers(id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cc_cust ON customer_companies(customer_id)")
+
+    cur.execute("""
+        INSERT OR IGNORE INTO customer_companies (customer_id, company_name, is_primary, created_at)
+        SELECT id, company, 1, COALESCE(created_at, datetime('now'))
+        FROM customers
+        WHERE company IS NOT NULL AND TRIM(company) != ''
+          AND id NOT IN (SELECT customer_id FROM customer_companies)
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS customer_addresses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            address TEXT NOT NULL,
+            label TEXT NOT NULL DEFAULT 'Primary',
+            is_primary INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(customer_id) REFERENCES customers(id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ca_cust ON customer_addresses(customer_id)")
+
+    cur.execute("""
+        INSERT OR IGNORE INTO customer_addresses (customer_id, address, label, is_primary, created_at)
+        SELECT id, address, 'Primary', 1, COALESCE(created_at, datetime('now'))
+        FROM customers
+        WHERE address IS NOT NULL AND TRIM(address) != ''
+          AND id NOT IN (SELECT customer_id FROM customer_addresses)
+    """)
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS tow_operators (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company_name TEXT NOT NULL,
@@ -7016,8 +7057,16 @@ def customer_detail(customer_id: int):
     """, (customer_id,))
     emails = cur.fetchall()
 
+    companies = cur.execute(
+        "SELECT * FROM customer_companies WHERE customer_id = ? ORDER BY is_primary DESC, id", (customer_id,)
+    ).fetchall()
+    addresses = cur.execute(
+        "SELECT * FROM customer_addresses WHERE customer_id = ? ORDER BY is_primary DESC, id", (customer_id,)
+    ).fetchall()
+
     conn.close()
-    return render_template("customer_detail.html", customer=customer, jobs=jobs, phones=phones, emails=emails)
+    return render_template("customer_detail.html", customer=customer, jobs=jobs,
+                           phones=phones, emails=emails, companies=companies, addresses=addresses)
 
 
 @app.get("/customers/<int:customer_id>/edit")
@@ -7043,8 +7092,17 @@ def customer_edit(customer_id: int):
         ORDER BY id
     """, (customer_id,))
     emails = cur.fetchall()
+
+    companies = cur.execute(
+        "SELECT * FROM customer_companies WHERE customer_id = ? ORDER BY is_primary DESC, id", (customer_id,)
+    ).fetchall()
+    addresses = cur.execute(
+        "SELECT * FROM customer_addresses WHERE customer_id = ? ORDER BY is_primary DESC, id", (customer_id,)
+    ).fetchall()
+
     conn.close()
-    return render_template("customer_edit.html", customer=customer, phones=phones, emails=emails)
+    return render_template("customer_edit.html", customer=customer, phones=phones, emails=emails,
+                           companies=companies, addresses=addresses)
 
 
 @app.post("/customers/<int:customer_id>/edit")
@@ -7133,8 +7191,74 @@ def customer_edit_post(customer_id: int):
                 VALUES ('customer', ?, ?, ?, ?)
             """, (customer_id, label, em, ts))
 
+    cur.execute("DELETE FROM customer_companies WHERE customer_id = ?", (customer_id,))
+    company_names = request.form.getlist("company_names[]")
+    company_primary_idx = request.form.get("company_primary", "0")
+    try:
+        company_primary_idx = int(company_primary_idx)
+    except (ValueError, TypeError):
+        company_primary_idx = 0
+    _first_company = None
+    _any_primary_set = False
+    _inserted_company_ids = []
+    for ci, cn in enumerate(company_names):
+        cn = cn.strip()
+        if cn:
+            if _first_company is None:
+                _first_company = cn
+            is_p = 1 if ci == company_primary_idx else 0
+            if is_p:
+                _first_company = cn
+                _any_primary_set = True
+            cur.execute(
+                "INSERT INTO customer_companies (customer_id, company_name, is_primary, created_at) VALUES (?,?,?,?)",
+                (customer_id, cn, is_p, ts)
+            )
+            _inserted_company_ids.append(cur.lastrowid)
+    if _inserted_company_ids and not _any_primary_set:
+        cur.execute("UPDATE customer_companies SET is_primary = 1 WHERE id = ?", (_inserted_company_ids[0],))
+        _first_company = cur.execute("SELECT company_name FROM customer_companies WHERE id = ?", (_inserted_company_ids[0],)).fetchone()[0]
+    if _first_company:
+        cur.execute("UPDATE customers SET company = ? WHERE id = ?", (_first_company, customer_id))
+    elif not _inserted_company_ids:
+        cur.execute("UPDATE customers SET company = NULL WHERE id = ?", (customer_id,))
+
+    cur.execute("DELETE FROM customer_addresses WHERE customer_id = ?", (customer_id,))
+    addr_values = request.form.getlist("addresses[]")
+    addr_labels = request.form.getlist("address_labels[]")
+    addr_primary_idx = request.form.get("address_primary", "0")
+    try:
+        addr_primary_idx = int(addr_primary_idx)
+    except (ValueError, TypeError):
+        addr_primary_idx = 0
+    _primary_address = None
+    _any_addr_primary_set = False
+    _inserted_addr_ids = []
+    for ai, av in enumerate(addr_values):
+        av = av.strip()
+        if av:
+            lbl = (addr_labels[ai].strip() if ai < len(addr_labels) else "Primary") or "Primary"
+            is_p = 1 if ai == addr_primary_idx else 0
+            if is_p:
+                _primary_address = av
+                _any_addr_primary_set = True
+            elif _primary_address is None:
+                _primary_address = av
+            cur.execute(
+                "INSERT INTO customer_addresses (customer_id, address, label, is_primary, created_at) VALUES (?,?,?,?,?)",
+                (customer_id, av, lbl, is_p, ts)
+            )
+            _inserted_addr_ids.append(cur.lastrowid)
+    if _inserted_addr_ids and not _any_addr_primary_set:
+        cur.execute("UPDATE customer_addresses SET is_primary = 1 WHERE id = ?", (_inserted_addr_ids[0],))
+        _primary_address = cur.execute("SELECT address FROM customer_addresses WHERE id = ?", (_inserted_addr_ids[0],)).fetchone()[0]
+    if _primary_address:
+        cur.execute("UPDATE customers SET address = ? WHERE id = ?", (_primary_address, customer_id))
+    elif not _inserted_addr_ids:
+        cur.execute("UPDATE customers SET address = NULL WHERE id = ?", (customer_id,))
+
     old_address = (existing["old_address"] or "").strip() if existing else ""
-    new_address = (address or "").strip()
+    new_address = (_primary_address or address or "").strip()
     _synced_job_ids = []
     if new_address and new_address != old_address:
         _active_jobs = cur.execute("""

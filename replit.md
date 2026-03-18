@@ -13,7 +13,7 @@ Axion Prototype is a Flask-based field operations management application designe
 
 ### Core Technologies
 - **Backend**: Python 3.11 with Flask 3.0.3
-- **Database**: SQLite (`axion.db`)
+- **Database**: SQLite (`axion.db`). Customer multi-company/address tables: `customer_companies(id, customer_id, company_name, is_primary, created_at)` and `customer_addresses(id, customer_id, address, label, is_primary, created_at)`. Primary company/address synced back to `customers.company`/`customers.address` for backward compatibility.
 - **Frontend**: Jinja2 templates, Bootstrap 5.3.3, and custom JavaScript.
 - **Mobile Wrapper**: Native iOS application (SwiftUI, WKWebView) for mobile web routes.
 

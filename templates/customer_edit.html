@@ -17,8 +17,9 @@
           <input class="form-control" name="last_name" value="{{ customer.last_name }}" required>
         </div>
         <div class="col-12 col-md-4">
-          <label class="form-label">Company</label>
-          <input class="form-control" name="company" value="{{ customer.company or '' }}">
+          <label class="form-label">Company <small class="text-muted">(primary)</small></label>
+          <input class="form-control" name="company" value="{{ customer.company or '' }}" readonly style="background:#f8f9fa" tabindex="-1">
+          <small class="text-muted">Managed below — edit companies list</small>
         </div>
         <div class="col-12 col-md-4">
           <label class="form-label">Role</label>
@@ -72,11 +73,67 @@
         </div>
       </div>
 
-      <div class="row g-2 mt-3">
-        <div class="col-12 col-lg-6">
-          <label class="form-label">Address</label>
-          <input class="form-control ax-address" name="address" value="{{ customer.address or '' }}" autocomplete="off" spellcheck="false">
+      <div class="mt-3">
+        <label class="form-label fw-semibold">Companies</label>
+        <div id="companyList">
+          {% if companies %}
+            {% for cc in companies %}
+            <div class="d-flex gap-2 align-items-center mb-2 company-row">
+              <input class="form-control" name="company_names[]" value="{{ cc.company_name }}" placeholder="Company name">
+              <label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">
+                <input type="radio" name="company_primary" value="{{ loop.index0 }}" {% if cc.is_primary %}checked{% endif %}> Primary
+              </label>
+              <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.company-row').remove();axReindexPrimary('companyList','company_primary')" title="Remove">&times;</button>
+            </div>
+            {% endfor %}
+          {% elif customer.company %}
+            <div class="d-flex gap-2 align-items-center mb-2 company-row">
+              <input class="form-control" name="company_names[]" value="{{ customer.company }}" placeholder="Company name">
+              <label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">
+                <input type="radio" name="company_primary" value="0" checked> Primary
+              </label>
+              <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.company-row').remove();axReindexPrimary('companyList','company_primary')" title="Remove">&times;</button>
+            </div>
+          {% endif %}
         </div>
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="axAddCompanyRow()">+ Add Company</button>
+      </div>
+
+      <div class="mt-3">
+        <label class="form-label fw-semibold">Addresses</label>
+        <div id="addressList">
+          {% if addresses %}
+            {% for ca in addresses %}
+            <div class="d-flex gap-2 align-items-center mb-2 address-row">
+              <input class="form-control ax-address" name="addresses[]" value="{{ ca.address }}" placeholder="Address" autocomplete="off" spellcheck="false" style="flex:2">
+              <select class="form-select" name="address_labels[]" style="max-width:130px">
+                {% for lbl in ['Primary','Business','Home','Other'] %}
+                <option value="{{ lbl }}" {% if ca.label == lbl %}selected{% endif %}>{{ lbl }}</option>
+                {% endfor %}
+              </select>
+              <label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">
+                <input type="radio" name="address_primary" value="{{ loop.index0 }}" {% if ca.is_primary %}checked{% endif %}> Primary
+              </label>
+              <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.address-row').remove();axReindexPrimary('addressList','address_primary')" title="Remove">&times;</button>
+            </div>
+            {% endfor %}
+          {% elif customer.address %}
+            <div class="d-flex gap-2 align-items-center mb-2 address-row">
+              <input class="form-control ax-address" name="addresses[]" value="{{ customer.address }}" placeholder="Address" autocomplete="off" spellcheck="false" style="flex:2">
+              <select class="form-select" name="address_labels[]" style="max-width:130px">
+                <option value="Primary" selected>Primary</option>
+                <option value="Business">Business</option>
+                <option value="Home">Home</option>
+                <option value="Other">Other</option>
+              </select>
+              <label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">
+                <input type="radio" name="address_primary" value="0" checked> Primary
+              </label>
+              <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.address-row').remove();axReindexPrimary('addressList','address_primary')" title="Remove">&times;</button>
+            </div>
+          {% endif %}
+        </div>
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="axAddAddressRow()">+ Add Address</button>
       </div>
 
       <div class="mt-3">
@@ -105,4 +162,50 @@
     </form>
   </div>
 </div>
+
+<script>
+function axAddCompanyRow() {
+  var list = document.getElementById('companyList');
+  var idx = list.querySelectorAll('.company-row').length;
+  var div = document.createElement('div');
+  div.className = 'd-flex gap-2 align-items-center mb-2 company-row';
+  div.innerHTML =
+    '<input class="form-control" name="company_names[]" placeholder="Company name">' +
+    '<label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">' +
+      '<input type="radio" name="company_primary" value="' + idx + '"> Primary' +
+    '</label>' +
+    '<button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.company-row\').remove();axReindexPrimary(\'companyList\',\'company_primary\')" title="Remove">&times;</button>';
+  list.appendChild(div);
+  div.querySelector('input[name="company_names[]"]').focus();
+}
+
+function axAddAddressRow() {
+  var list = document.getElementById('addressList');
+  var idx = list.querySelectorAll('.address-row').length;
+  var div = document.createElement('div');
+  div.className = 'd-flex gap-2 align-items-center mb-2 address-row';
+  div.innerHTML =
+    '<input class="form-control ax-address" name="addresses[]" placeholder="Address" autocomplete="off" spellcheck="false" style="flex:2">' +
+    '<select class="form-select" name="address_labels[]" style="max-width:130px">' +
+      '<option value="Primary">Primary</option>' +
+      '<option value="Business">Business</option>' +
+      '<option value="Home">Home</option>' +
+      '<option value="Other">Other</option>' +
+    '</select>' +
+    '<label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">' +
+      '<input type="radio" name="address_primary" value="' + idx + '"> Primary' +
+    '</label>' +
+    '<button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.address-row\').remove();axReindexPrimary(\'addressList\',\'address_primary\')" title="Remove">&times;</button>';
+  list.appendChild(div);
+  div.querySelector('input[name="addresses[]"]').focus();
+}
+
+function axReindexPrimary(listId, radioName) {
+  var rows = document.getElementById(listId).querySelectorAll('input[type="radio"]');
+  rows.forEach(function(r, i) { r.value = i; });
+  if (rows.length && !document.querySelector('input[name="' + radioName + '"]:checked')) {
+    rows[0].checked = true;
+  }
+}
+</script>
 {% endblock %}
