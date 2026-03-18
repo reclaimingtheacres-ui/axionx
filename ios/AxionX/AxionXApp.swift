@@ -30,11 +30,13 @@ final class AxionAppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        print("[Startup] didFinishLaunchingWithOptions: app launch start")
         UNUserNotificationCenter.current().delegate = self
 
-        // Push notifications
         Task { @MainActor in
+            print("[Startup] Requesting notification permission")
             PushNotificationService.shared.requestPermissionAndRegister()
+            print("[Startup] Notification permission request sent")
         }
 
         // Restore field status and start location service

@@ -24,6 +24,20 @@ struct LoginResult {
     let authToken: String?
 }
 
+private final class OnceGate<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var resumed = false
+
+    func tryResume(continuation: CheckedContinuation<T, Never>, with value: T) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resumed else { return false }
+        resumed = true
+        continuation.resume(returning: value)
+        return true
+    }
+}
+
 enum LoginService {
 
     static func login(email: String, password: String) async throws -> [HTTPCookie] {
@@ -71,25 +85,46 @@ enum LoginService {
         return LoginResult(cookies: cookies, authToken: authToken)
     }
 
+    @MainActor
     static func injectCookies(_ cookies: [HTTPCookie]) async {
+        print("[LoginService] injectCookies: injecting \(cookies.count) cookie(s)")
         let store = WKWebsiteDataStore.default().httpCookieStore
         for cookie in cookies {
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 store.setCookie(cookie) { cont.resume() }
             }
         }
+        print("[LoginService] injectCookies: done")
     }
 
+    @MainActor
     static func hasValidSession() async -> Bool {
-        await withCheckedContinuation { cont in
+        print("[LoginService] hasValidSession: starting cookie check")
+
+        let gate = OnceGate<Bool>()
+        let result: Bool = await withCheckedContinuation { cont in
+            let timer = DispatchSource.makeTimerSource(queue: .main)
+            timer.schedule(deadline: .now() + 5.0)
+            timer.setEventHandler {
+                timer.cancel()
+                print("[LoginService] hasValidSession: timeout reached, returning false")
+                _ = gate.tryResume(continuation: cont, with: false)
+            }
+            timer.resume()
+
             WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+                timer.cancel()
                 let valid = cookies.contains {
                     $0.name == "session" &&
                     ($0.expiresDate == nil || $0.expiresDate! > Date())
                 }
-                cont.resume(returning: valid)
+                print("[LoginService] hasValidSession: found \(cookies.count) cookie(s), valid=\(valid)")
+                _ = gate.tryResume(continuation: cont, with: valid)
             }
         }
+
+        print("[LoginService] hasValidSession: returning \(result)")
+        return result
     }
 
     static func revokeExistingTokens(cookies: [HTTPCookie]) async {

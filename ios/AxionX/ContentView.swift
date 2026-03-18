@@ -26,6 +26,7 @@ struct ContentView: View {
 
             case .unauthenticated:
                 LoginView(onLoginSuccess: {
+                    print("[Startup] Login success callback fired")
                     withAnimation(.easeInOut(duration: 0.35)) {
                         authState = .authenticated
                     }
@@ -35,6 +36,7 @@ struct ContentView: View {
             case .authenticated:
                 WebViewContainer()
                     .transition(.opacity)
+                    .onAppear { print("[Startup] WebViewContainer visible") }
             }
         }
         .ignoresSafeArea()
@@ -51,32 +53,41 @@ struct ContentView: View {
 
     @MainActor
     private func resolveAuthState() async {
+        print("[Startup] resolveAuthState: begin")
 
         if BiometricAuthService.hasSavedToken && BiometricAuthService.isOptedIn {
+            print("[Startup] resolveAuthState: attempting biometric auto-login")
             do {
                 try await BiometricAuthService.authenticate(
                     reason: "Sign in to AxionX"
                 )
+                print("[Startup] resolveAuthState: biometric auth succeeded, injecting session")
                 let injected = await BiometricAuthService.loadAndInjectSession()
                 if injected {
+                    print("[Startup] resolveAuthState: session injected -> authenticated")
                     withAnimation(.easeInOut(duration: 0.35)) { authState = .authenticated }
                     return
                 }
+                print("[Startup] resolveAuthState: session injection failed, clearing")
                 BiometricAuthService.clearSession()
             } catch BiometricError.cancelled {
-                // User tapped Cancel — show LoginView with biometric button
+                print("[Startup] resolveAuthState: biometric cancelled by user")
             } catch {
-                // Scan failed — show LoginView with biometric button
+                print("[Startup] resolveAuthState: biometric failed: \(error)")
             }
 
             withAnimation(.easeInOut(duration: 0.25)) { authState = .unauthenticated }
+            print("[Startup] resolveAuthState: -> unauthenticated (biometric path)")
             return
         }
 
+        print("[Startup] resolveAuthState: checking web session cookies")
         let hasWebSession = await LoginService.hasValidSession()
+        print("[Startup] resolveAuthState: hasValidSession=\(hasWebSession)")
         withAnimation(.easeInOut(duration: 0.25)) {
             authState = hasWebSession ? .authenticated : .unauthenticated
         }
+        print("[Startup] resolveAuthState: -> \(hasWebSession ? "authenticated" : "unauthenticated")")
     }
 }
 
