@@ -777,12 +777,14 @@ function showTab(name) {
      style="display:none;position:fixed;inset:0;z-index:9800;background:rgba(0,0,0,.55);"
      onclick="if(event.target===this)axMobilePreviewClose()">
   <div id="mFilePreviewSheet"
-       style="position:absolute;inset:0;
+       style="position:absolute;top:0;left:0;right:0;bottom:0;
               background:#fff;
-              display:flex;flex-direction:column;">
+              display:-webkit-flex;display:flex;-webkit-flex-direction:column;flex-direction:column;">
     {# Header #}
-    <div style="display:flex;align-items:center;justify-content:space-between;
-                padding:max(env(safe-area-inset-top,8px),8px) 16px 10px;border-bottom:1px solid #e5e7eb;flex-shrink:0;">
+    <div id="mFilePreviewHeader"
+         style="display:flex;align-items:center;justify-content:space-between;
+                padding:max(env(safe-area-inset-top,8px),8px) 16px 10px;border-bottom:1px solid #e5e7eb;
+                -webkit-flex-shrink:0;flex-shrink:0;">
       <span id="mFilePreviewTitle"
             style="font-size:.88rem;font-weight:700;color:#111;
                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;margin-right:10px;"></span>
@@ -792,7 +794,8 @@ function showTab(name) {
     </div>
     {# Content area #}
     <div id="mFilePreviewBody"
-         style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;min-height:0;"></div>
+         style="-webkit-flex:1 1 0%;flex:1 1 0%;overflow:auto;-webkit-overflow-scrolling:touch;
+                position:relative;"></div>
     {# Footer toolbar #}
     <div style="display:flex;align-items:center;justify-content:space-between;
                 padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));
@@ -845,7 +848,7 @@ function showTab(name) {
       body.style.padding = '0';
       body.style.overflow = 'hidden';
       body.innerHTML =
-        '<div id="mImgZoomWrap" style="width:100%;height:100%;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:center;justify-content:center;">' +
+        '<div id="mImgZoomWrap" style="position:absolute;top:0;left:0;right:0;bottom:0;overflow:auto;-webkit-overflow-scrolling:touch;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
           '<img src="' + url + '" alt="' + filename + '" ' +
           'style="max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;transition:transform .2s;" ' +
           'ondblclick="this.style.transform=this.style.transform===\'scale(2)\'?\'scale(1)\':\'scale(2)\'">' +
@@ -853,19 +856,19 @@ function showTab(name) {
     } else if (PDF_EXT.includes(ext)) {
       var hasNativePreview = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
       if (hasNativePreview) {
-        body.style.padding = '24px 16px';
-        body.innerHTML = '<div style="text-align:center;">' +
-          '<div style="font-size:3.5rem;margin-bottom:10px;">📄</div>' +
-          '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-          '<button onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')" ' +
-            'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-            'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;border:0;cursor:pointer;">' +
-            'Open</button>' +
-          '</div>';
+        body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
+          '<div style="text-align:center;padding:24px 16px;">' +
+            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
+            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+            '<button onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')" ' +
+              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;border:0;cursor:pointer;">' +
+              'Open</button>' +
+          '</div></div>';
       } else {
         body.style.padding = '0';
         body.innerHTML =
-          '<iframe src="' + url + '" style="width:100%;height:100%;border:0;display:block;" ' +
+          '<iframe src="' + url + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;" ' +
             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"></iframe>' +
           '<div style="display:none;text-align:center;padding:40px 20px;">' +
             '<div style="font-size:3.5rem;margin-bottom:10px;">📄</div>' +
@@ -888,12 +891,12 @@ function showTab(name) {
         };
       }
     } else if (AUDIO_EXT.includes(ext)) {
-      body.style.padding = '24px 16px';
-      body.innerHTML = '<div style="text-align:center;width:100%">' +
+      body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;padding:24px 16px;">' +
+        '<div style="text-align:center;width:100%">' +
         '<div style="font-size:3rem;margin-bottom:10px;">&#127911;</div>' +
         '<div style="font-size:.92rem;font-weight:600;color:#111;margin-bottom:10px;word-break:break-all;">' + filename + '</div>' +
         '<audio controls preload="none" style="width:100%;margin-bottom:6px"><source src="' + url + '"></audio>' +
-        '</div>';
+        '</div></div>';
     } else {
       var isWord = (ext === 'doc' || ext === 'docx');
       var icon = isWord ? '📄' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv' ? '📊' : '📎');
@@ -903,10 +906,10 @@ function showTab(name) {
         body.style.padding = '0';
         body.innerHTML =
           '<iframe src="/api/doc-preview/' + encodeURIComponent(filename) + '" ' +
-            'style="width:100%;height:100%;border:0;display:block;" ' +
+            'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;" ' +
             'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"></iframe>' +
           '<div style="display:none;text-align:center;padding:40px 20px;">' +
-            '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
+            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
             '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
             '<a href="' + url + '" target="_blank" rel="noopener" ' +
               'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
@@ -914,25 +917,25 @@ function showTab(name) {
               'Download</a>' +
           '</div>';
       } else if (hasNativePreview) {
-        body.style.padding = '24px 16px';
-        body.innerHTML = '<div style="text-align:center;">' +
-          '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
-          '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-          '<button onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')" ' +
-            'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-            'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;border:0;cursor:pointer;">' +
-            'Open</button>' +
-          '</div>';
+        body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
+          '<div style="text-align:center;padding:24px 16px;">' +
+            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
+            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+            '<button onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')" ' +
+              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;border:0;cursor:pointer;">' +
+              'Open</button>' +
+          '</div></div>';
       } else {
-        body.style.padding = '24px 16px';
-        body.innerHTML = '<div style="text-align:center;">' +
-          '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
-          '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-          '<a href="' + url + '" target="_blank" rel="noopener" ' +
-            'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-            'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
-            'Open</a>' +
-          '</div>';
+        body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
+          '<div style="text-align:center;padding:24px 16px;">' +
+            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
+            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+            '<a href="' + url + '" target="_blank" rel="noopener" ' +
+              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
+              'Open</a>' +
+          '</div></div>';
       }
     }
 
@@ -948,10 +951,11 @@ function showTab(name) {
   window.axNativeDocOpen = function(url, filename) {
     var body = document.getElementById('mFilePreviewBody');
     if (body) {
-      body.innerHTML = '<div style="text-align:center;padding:40px 20px;">' +
-        '<div style="width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:axspin 1s linear infinite;margin:0 auto 16px;"></div>' +
-        '<div style="font-size:.9rem;font-weight:600;color:#374151;">Opening document…</div>' +
-        '</div>';
+      body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
+        '<div style="text-align:center;padding:40px 20px;">' +
+          '<div style="width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:axspin 1s linear infinite;margin:0 auto 16px;"></div>' +
+          '<div style="font-size:.9rem;font-weight:600;color:#374151;">Opening document…</div>' +
+        '</div></div>';
     }
 
     fetch('/api/doc-token', {
