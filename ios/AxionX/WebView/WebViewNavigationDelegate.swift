@@ -82,6 +82,53 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         decisionHandler(.allow)
     }
 
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse,
+        decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+    ) {
+        guard let http = navigationResponse.response as? HTTPURLResponse,
+              let mime = http.mimeType?.lowercased(),
+              let url = http.url else {
+            decisionHandler(.allow)
+            return
+        }
+
+        let isDoc = mime == "application/pdf"
+            || mime == "application/msword"
+            || mime.contains("officedocument")
+
+        if isDoc && AllowedDomains.isTrusted(url) {
+            print("[NavDelegate] response intercept: \(mime) at \(url.absoluteString) → native preview")
+            let cd = http.value(forHTTPHeaderField: "Content-Disposition") ?? ""
+            var filename = url.lastPathComponent
+            if let cdName = Self.extractContentDispositionFilename(cd) {
+                filename = cdName
+            }
+            decisionHandler(.cancel)
+            DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
+            return
+        }
+
+        decisionHandler(.allow)
+    }
+
+    private static func extractContentDispositionFilename(_ cd: String) -> String? {
+        let patterns = [
+            "filename=\"([^\"]+)\"",
+            "filename=([^;\\s]+)"
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: cd, range: NSRange(cd.startIndex..., in: cd)),
+               match.numberOfRanges > 1,
+               let range = Range(match.range(at: 1), in: cd) {
+                return String(cd[range]).removingPercentEncoding ?? String(cd[range])
+            }
+        }
+        return nil
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         onLoadSuccess?()
         // Ensure page background stays white (prevents grey flash on overscroll)

@@ -319,6 +319,8 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }.resume()
     }
 
+    private var previewCoordinator: QLPreviewCoordinator?
+
     private func presentDocument(fileURL: URL, filename: String) {
         guard !isPresentingDocument else {
             print("[DocPreview] ABORT presentDocument: already presenting (guard)")
@@ -331,20 +333,28 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
 
         print("[DocPreview] topViewController: \(type(of: vc))")
-        print("[DocPreview] presenting DocumentContainerController for: \(fileURL.lastPathComponent)")
+        print("[DocPreview] presenting QLPreviewController directly for: \(fileURL.lastPathComponent)")
 
         isPresentingDocument = true
 
-        jsDebug("QLPreviewController present() attempted=YES, topVC=\(type(of: vc))")
+        let coord = QLPreviewCoordinator(fileURL: fileURL)
+        self.previewCoordinator = coord
 
-        let viewer = DocumentContainerController(fileURL: fileURL, filename: filename) { [weak self] in
-            print("[DocPreview] Document viewer dismissed (onDismiss callback)")
+        let ql = QLPreviewController()
+        ql.dataSource = coord
+        ql.delegate = coord
+        coord.onDismiss = { [weak self] in
+            print("[DocPreview] QLPreviewController dismissed")
             self?.isPresentingDocument = false
+            self?.previewCoordinator = nil
         }
-        viewer.modalPresentationStyle = .fullScreen
-        vc.present(viewer, animated: true) { [weak self] in
-            print("[DocPreview] Document viewer presented successfully")
-            self?.jsDebug("QLPreviewController visible=YES")
+
+        vc.present(ql, animated: true) {
+            print("[DocPreview] QLPreviewController presented successfully")
+            print("[DocPreview] QL visible=\(ql.view.window != nil)")
+            print("[DocPreview] QL navigationItem.leftBarButtonItems=\(ql.navigationItem.leftBarButtonItems?.count ?? 0)")
+            print("[DocPreview] QL navigationItem.rightBarButtonItems=\(ql.navigationItem.rightBarButtonItems?.count ?? 0)")
+            print("[DocPreview] QL navigationController=\(ql.navigationController != nil)")
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
@@ -352,6 +362,7 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             if self.isPresentingDocument, vc.presentedViewController == nil {
                 print("[DocPreview] WARNING: presentation appears to have failed — resetting isPresentingDocument")
                 self.isPresentingDocument = false
+                self.previewCoordinator = nil
             }
         }
     }
@@ -556,6 +567,7 @@ private final class DocumentContainerController: UIViewController {
 
 private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
     let fileURL: URL
+    var onDismiss: (() -> Void)?
 
     init(fileURL: URL) {
         self.fileURL = fileURL
@@ -579,6 +591,8 @@ private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSourc
 
     func previewControllerDidDismiss(_ controller: QLPreviewController) {
         print("[DocPreview] QLPreview dismissed by system")
+        try? FileManager.default.removeItem(at: fileURL)
+        onDismiss?()
     }
 }
 
