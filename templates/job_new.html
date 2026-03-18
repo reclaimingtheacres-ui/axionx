@@ -1539,6 +1539,7 @@ window.submitAddJob = function() {
   var draftBar = document.getElementById('draftBar');
   var draftStatus = document.getElementById('draftStatus');
   var form = document.getElementById('newJobForm');
+  if (!form) return;
   var _lastSavedJson = '';
   var _draftTimer = null;
   var _lastSaveTime = null;
