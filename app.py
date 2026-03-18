@@ -9185,22 +9185,35 @@ def serve_upload(filename):
         except Exception as e:
             _log.warning("Blob fetch failed for %r: %s", filename, e)
 
+    _inline_exts = {'.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp', '.avif'}
+    _fn_ext = os.path.splitext(filename)[1].lower()
+    _force_inline = _fn_ext in _inline_exts
+
     primary_path = os.path.join(primary, filename)
     if os.path.isfile(primary_path):
-        return send_from_directory(primary, filename)
+        resp = send_from_directory(primary, filename)
+        if _force_inline:
+            resp.headers["Content-Disposition"] = "inline"
+        return resp
 
     if os.path.abspath(legacy) != os.path.abspath(primary):
         legacy_path = os.path.join(legacy, filename)
         if os.path.isfile(legacy_path):
             _log.info("Serving %r from legacy upload path %s", filename, legacy_path)
-            return send_from_directory(legacy, filename)
+            resp = send_from_directory(legacy, filename)
+            if _force_inline:
+                resp.headers["Content-Disposition"] = "inline"
+            return resp
 
     _subdirs = ["notes/photos", "notes/audio", "update_photos", "pending"]
     for sd in _subdirs:
         sub_path = os.path.join(primary, sd, filename)
         if os.path.isfile(sub_path):
             _log.info("Serving %r from subdirectory %s", filename, sd)
-            return send_from_directory(os.path.join(primary, sd), filename)
+            resp = send_from_directory(os.path.join(primary, sd), filename)
+            if _force_inline:
+                resp.headers["Content-Disposition"] = "inline"
+            return resp
 
     conn = db()
     alt_row = conn.execute(

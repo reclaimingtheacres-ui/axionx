@@ -865,11 +865,28 @@ function showTab(name) {
           '</div>';
       } else {
         body.style.padding = '0';
-        var embed = document.createElement('embed');
-        embed.src = url;
-        embed.type = 'application/pdf';
-        embed.style.cssText = 'width:100%;height:60vh;border:0;display:block;';
-        body.appendChild(embed);
+        body.innerHTML =
+          '<iframe src="' + url + '" style="width:100%;height:60vh;border:0;display:block;" ' +
+            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"></iframe>' +
+          '<div style="display:none;text-align:center;padding:40px 20px;">' +
+            '<div style="font-size:3.5rem;margin-bottom:10px;">📄</div>' +
+            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+            '<a href="' + url + '" target="_blank" rel="noopener" ' +
+              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
+              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
+              'Open PDF</a>' +
+          '</div>';
+        var _pdfIframe = body.querySelector('iframe');
+        _pdfIframe.onload = function() {
+          try {
+            var ct = '';
+            try { ct = _pdfIframe.contentDocument && _pdfIframe.contentDocument.contentType; } catch(e) {}
+            if (ct && ct.indexOf('html') !== -1) {
+              _pdfIframe.style.display = 'none';
+              _pdfIframe.nextElementSibling.style.display = 'block';
+            }
+          } catch(e) {}
+        };
       }
     } else if (AUDIO_EXT.includes(ext)) {
       body.style.padding = '24px 16px';
