@@ -212,7 +212,7 @@
     {% set bar_color = '#9ca3af' %}
   {% endif %}
   {% set phone = j.customer_phone or '' %}
-  {% set addr  = j.customer_address or j.job_address or '' %}
+  {% set addr  = j.job_address or j.customer_address or '' %}
 
   <div class="job-row-wrap"
        data-id="{{ j.id }}"

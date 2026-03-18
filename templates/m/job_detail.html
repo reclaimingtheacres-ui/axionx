@@ -82,7 +82,7 @@
     </div>
     {% endif %}
     <div>
-      <div class="m-label">Job Address</div>
+      <div class="m-label">Job Location to attend</div>
       <div>{{ job.job_address }}</div>
       {% if job.job_address %}
       <a href="maps:?q={{ job.job_address | urlencode }}" style="font-size:.8rem;color:var(--accent);display:inline-block;margin-top:4px;">Open in Maps</a>

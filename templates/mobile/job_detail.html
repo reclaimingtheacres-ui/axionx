@@ -57,7 +57,7 @@
    ═══════════════════════════════════════════ #}
 <div id="tabpanel-detail">
 
-{% set _display_addr = (customer.address if customer and customer.address else '') or job.job_address or '' %}
+{% set _display_addr = job.job_address or (customer.address if customer and customer.address else '') or '' %}
 {% set _has_addr = _display_addr %}
 
 {# ── 1. Customer card: name · address · phone · email · account ── #}
@@ -1039,7 +1039,7 @@ function showTab(name) {
 </script>
 
 {# ── Navigation Chooser Bottom Sheet ── #}
-{% set _nav_addr = (customer.address if customer and customer.address else '') or job.job_address or '' %}
+{% set _nav_addr = job.job_address or (customer.address if customer and customer.address else '') or '' %}
 {% if _nav_addr %}
 {% set _enc_addr = _nav_addr | urlencode %}
 {% set _coords_match = job.lat and job.lng and (job.job_address|trim == _nav_addr|trim) %}

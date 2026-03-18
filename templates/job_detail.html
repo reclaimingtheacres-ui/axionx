@@ -279,7 +279,7 @@
                   Add Customer
                 </button>
               {% endif %}
-              {% set _resolved_map_addr = (job_linked_customers[0].address if job_linked_customers and job_linked_customers[0].address else '') or job.job_address %}
+              {% set _resolved_map_addr = job.job_address or (job_linked_customers[0].address if job_linked_customers and job_linked_customers[0].address else '') %}
               {% if _resolved_map_addr %}
                 <a class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:2px 8px"
                    target="_blank"
@@ -297,7 +297,7 @@
                     <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.68rem;font-weight:600">{{ lc.role }}</span>
                     {% if lc.company %}<div class="fw-semibold small">{{ lc.company }}</div>{% endif %}
                     <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
-                    {% if lc.address or job.job_address %}<div class="small" style="color:var(--muted)">{{ lc.address or job.job_address }}</div>{% endif %}
+                    {% if job.job_address or lc.address %}<div class="small" style="color:var(--muted)">{{ job.job_address or lc.address }}</div>{% endif %}
                     {% if lc.primary_phone %}
                       <div class="small mt-1">
                         <span class="ax-ph" onclick="axPhone('{{ lc.primary_phone }}',event)">{{ lc.primary_phone }}</span>
@@ -1645,7 +1645,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
             </div>
           </div>
           <div class="fpa-section">
-            <div class="fpa-label">Job Address</div>
+            <div class="fpa-label">Job Location to attend</div>
             <div class="fpa-value" contenteditable="true" id="ws-address">{{ job.job_address or '' }}</div>
           </div>
           <hr class="fpa-divider">
@@ -2225,7 +2225,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
               ('regulation_type',   'Regulation Type'),
               ('tp_referral',       'Third Party Referral'),
               ('tp_job_number',     'Third Party Job #'),
-              ('job_address',       'Job Address'),
+              ('job_address',       'Job Location to attend'),
               ('security_type',     'Security Type'),
               ('security_reg',      'Security Reg'),
               ('security_vin',      'Security VIN'),
@@ -3077,7 +3077,7 @@ document.addEventListener('click', function(e) {
             </select>
           </div>
           <div class="col-12 col-md-8">
-            <label class="form-label">Job Address</label>
+            <label class="form-label">Job Location to attend</label>
             <input class="form-control" name="job_address" value="{{ job.job_address or '' }}"
                    placeholder="Street, Suburb, State, Postcode">
           </div>
@@ -4375,7 +4375,7 @@ function axCopyVin(btn) {
     customer_name:'Customer Name', customer_address:'Customer Address', customer_phone:'Customer Phone',
     lender_name:'Lender Name', account_number:'Account Number', regulation_type:'Regulation Type',
     tp_referral:'Third Party Referral', tp_job_number:'Third Party Job #',
-    job_address:'Job Address', security_type:'Security Type', security_reg:'Security Reg',
+    job_address:'Job Location to attend', security_type:'Security Type', security_reg:'Security Reg',
     security_vin:'Security VIN', security_desc:'Security Description',
     amount_owing:'Amount Owing', costs:'Costs', monthly_payment:'Installment', current_date:'Current Date'
   };

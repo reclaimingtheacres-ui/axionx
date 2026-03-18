@@ -185,7 +185,7 @@
         </div>
         <div class="nj-row">
           <div style="flex:1;">
-            <label class="nj-lbl">Job Address</label>
+            <label class="nj-lbl">Job Location to attend</label>
             <input class="form-control form-control-sm ax-address" id="job_address" name="job_address" placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false">
             <label style="display:flex;gap:.4rem;align-items:center;margin-top:3px;color:var(--muted);font-size:.72rem;cursor:pointer;">
               <input type="checkbox" id="job_same_as_customer" checked> Use customer address
@@ -1136,7 +1136,7 @@ function toggleParsed(btn) {
       ['Visit Type', escHtml(d.visit_type)],
       ['Status', escHtml(d.status)],
       ['Priority', escHtml(d.priority)],
-      ['Address', escHtml(d.job_address)],
+      ['Location to attend', escHtml(d.job_address)],
       ['Description', '<span style="white-space:pre-wrap">' + escHtml(d.description) + '</span>'],
     ];
     if (d.lender_name) {
