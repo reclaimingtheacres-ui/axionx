@@ -8637,6 +8637,21 @@ def m_forms():
 @app.post("/jobs/<int:job_id>/notes/new")
 @login_required
 def add_job_note(job_id: int):
+    uid = session.get("user_id")
+    role = session.get("role", "")
+    if role == "agent":
+        _conn_chk = db()
+        _job_access = _conn_chk.execute(
+            """SELECT 1 FROM jobs WHERE id=? AND (
+               assigned_user_id=? OR EXISTS (
+                 SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                 AND status NOT IN ('Cancelled') AND hidden = 0))""",
+            (job_id, uid, job_id, uid)
+        ).fetchone()
+        _conn_chk.close()
+        if not _job_access:
+            abort(403)
+
     note_text = request.form.get("note_text", "").strip()
     barcode   = request.form.get("barcode", "").strip()
     files = request.files.getlist("attachments")

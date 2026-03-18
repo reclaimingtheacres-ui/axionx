@@ -1015,6 +1015,14 @@
   <div style="position:sticky;top:0;z-index:50;background:var(--bg);padding:10px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     <button type="button" class="btn btn-primary btn-sm"
             onclick="axOpenAddNote()">+ Add Note</button>
+    <a href="/jobs/{{ job.id }}/update-builder"
+       class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1"
+       style="font-weight:600">
+      <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" style="flex-shrink:0">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      </svg>
+      Full Attendance Update
+    </a>
     <div class="btn-group btn-group-sm" role="group" style="margin-left:auto">
       <button type="button" class="btn btn-outline-secondary active" onclick="axNoteFilter('all',this)">All</button>
       <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('field_note',this)">Field Notes</button>
@@ -2800,7 +2808,7 @@ document.addEventListener('DOMContentLoaded', function(){
     var editIdEl = document.getElementById('an_edit_note_id');
     if (editIdEl) editIdEl.value = '';
     var titleEl = document.getElementById('addNoteModalTitle');
-    if (titleEl) titleEl.textContent = 'Add Note/File';
+    if (titleEl) titleEl.textContent = titleEl.getAttribute('data-default-title') || 'Add Note';
     var dotEl = document.getElementById('addNoteModalDot');
     if (dotEl) dotEl.style.background = '#22c55e';
     var wrap = document.getElementById('an_save_add_wrap');
@@ -3392,7 +3400,7 @@ document.addEventListener('click', function(e) {
     <div class="modal-content" id="addNoteContent" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;resize:both;overflow:auto;min-width:340px;min-height:320px;max-width:95vw;max-height:90vh">
       <div class="modal-header" style="border-bottom:1px solid var(--line);gap:.5rem;cursor:default;user-select:none">
         <span id="addNoteModalDot" style="width:22px;height:22px;border-radius:50%;background:#22c55e;display:inline-block;flex-shrink:0"></span>
-        <h6 class="modal-title mb-0" id="addNoteModalTitle" style="color:var(--text);flex:1">Add Note/File</h6>
+        <h6 class="modal-title mb-0" id="addNoteModalTitle" data-default-title="{{ 'Add Note/File' if session.get('role') in ('admin', 'both') else 'Add Field Note' }}" style="color:var(--text);flex:1">{{ 'Add Note/File' if session.get('role') in ('admin', 'both') else 'Add Field Note' }}</h6>
         <button type="button" class="btn btn-sm px-1 py-0" id="anMaxBtn" onclick="anToggleMax()" title="Maximise / Restore" style="border:0;background:none;font-size:1.1rem;line-height:1;color:var(--muted)">&#x26F6;</button>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
@@ -3476,22 +3484,32 @@ document.addEventListener('click', function(e) {
           <div class="an-row">
             <div class="an-label">Note Type:</div>
             <div class="d-flex gap-2 align-items-center">
+              {% if session.get('role') in ('admin', 'both') %}
               <div class="btn-group btn-group-sm" role="group" id="an_cat_group">
                 <input type="radio" class="btn-check" name="note_category" id="an_cat_file" value="file_note" autocomplete="off" checked>
                 <label class="btn btn-outline-success" for="an_cat_file" style="font-size:.78rem;padding:3px 12px">File Note</label>
                 <input type="radio" class="btn-check" name="note_category" id="an_cat_field" value="field_note" autocomplete="off">
                 <label class="btn btn-outline-primary" for="an_cat_field" style="font-size:.78rem;padding:3px 12px">Field Note</label>
               </div>
+              {% else %}
+              <input type="hidden" name="note_category" value="field_note">
+              <span class="badge bg-primary" style="font-size:.78rem;padding:5px 12px">Field Note</span>
+              {% endif %}
               <small class="text-muted" id="an_cat_hint" style="font-size:.7rem"></small>
             </div>
           </div>
 
         </div>
         <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem;flex-wrap:wrap">
+          {% if session.get('role') in ('admin', 'both') %}
           <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save">Save</button>
           <span id="an_save_add_wrap"><button type="submit" class="btn btn-primary btn-sm" name="_action" value="save_add" id="an_save_add">Save and Add</button></span>
           <button type="submit" class="btn btn-warning btn-sm" name="_action" value="submit_review" id="an_submit_review"
                   style="display:none" title="Save as Field Note and submit for admin review">Submit for Review</button>
+          {% else %}
+          <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save" title="Save to your scratch pad">Save as Field Note</button>
+          <button type="submit" class="btn btn-warning btn-sm" name="_action" value="submit_review" title="Submit for admin review">Submit for Review</button>
+          {% endif %}
           <button type="button" class="btn btn-outline-secondary btn-sm" onclick="anClear()">Clear</button>
         </div>
       </form>
@@ -3546,7 +3564,10 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
   var _anFieldRe = /\b(attended|attendance|spoke\s+with|telephoned|voicemail|left\s+a?\s*message|sms\s+sent|call(?:ed)?|contact(?:ed)?|door\s*knock|no\s+answer|site\s+visit)\b/i;
   var _anUserOverride = false;
 
+  var _anHasCatToggle = !!document.getElementById('an_cat_field');
+
   function anDetectCategory() {
+    if (!_anHasCatToggle) return;
     if (_anUserOverride) return;
     var text = (document.getElementById('an_text').value || '').trim();
     var fileEl = document.getElementById('an_file');
@@ -3575,6 +3596,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
   var _anFileEl = document.getElementById('an_file');
   if (_anFileEl) _anFileEl.addEventListener('change', anDetectCategory);
   function anUpdateReviewBtn() {
+    if (!_anHasCatToggle) return;
     var isField = document.getElementById('an_cat_field').checked;
     var btn = document.getElementById('an_submit_review');
     if (btn) btn.style.display = isField ? '' : 'none';
@@ -3588,7 +3610,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     document.getElementById('an_barcode').value = '';
     var fileEl = document.getElementById('an_file');
     if (fileEl) { fileEl.value = ''; }
-    document.getElementById('an_cat_file').checked = true;
+    if (_anHasCatToggle) document.getElementById('an_cat_file').checked = true;
     _anUserOverride = false;
     var h = document.getElementById('an_cat_hint'); if (h) h.textContent = '';
     anSetNow();
