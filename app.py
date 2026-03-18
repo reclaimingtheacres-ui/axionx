@@ -9550,6 +9550,216 @@ p {{ margin:0 0 10px; }}
     return Response(page, mimetype="text/html")
 
 
+@app.get("/m/doc-preview-render/note-file/<int:file_id>")
+@login_required
+def m_doc_preview_render_note_file(file_id: int):
+    import logging as _log
+    uid = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    row = conn.execute(
+        """SELECT nf.id, nf.filename, nf.filepath, nf.job_field_note_id,
+                  fn.job_id, fn.created_by_user_id
+           FROM job_note_files nf
+           JOIN job_field_notes fn ON fn.id = nf.job_field_note_id
+           WHERE nf.id = ?""", (file_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "File not found"}), 404
+    if role == "agent" and row["created_by_user_id"] != uid:
+        job_access = conn.execute(
+            """SELECT 1 FROM jobs WHERE id=? AND (
+               assigned_user_id=? OR EXISTS (
+                 SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                 AND status NOT IN ('Cancelled') AND hidden = 0))""",
+            (row["job_id"], uid, row["job_id"], uid)
+        ).fetchone()
+        if not job_access:
+            conn.close()
+            return jsonify({"ok": False, "error": "Access denied"}), 403
+    conn.close()
+
+    stored = row["filename"]
+    ext = os.path.splitext(stored)[1].lower()
+    if ext not in ('.doc', '.docx'):
+        return jsonify({"ok": False, "error": "Not a Word document"}), 400
+
+    file_path = _find_upload_file(stored)
+    if not file_path:
+        return jsonify({"ok": False, "error": "File not found on server"}), 404
+
+    html_content = ""
+    if ext == '.docx':
+        try:
+            import mammoth
+            with open(file_path, "rb") as f:
+                result = mammoth.convert_to_html(f)
+                html_content = result.value
+        except Exception as e:
+            _log.warning("mammoth conversion failed for %r: %s", stored, e)
+            return f"Could not convert document: {e}", 500
+    elif ext == '.doc':
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["antiword", file_path],
+                capture_output=True, text=True, timeout=15
+            )
+            if result.returncode == 0:
+                text = result.stdout
+                import html as _html
+                html_content = "<pre style='white-space:pre-wrap;word-wrap:break-word;font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;'>" + _html.escape(text) + "</pre>"
+            else:
+                _log.warning("antiword failed for %r: %s", stored, result.stderr)
+                return "Could not convert document", 500
+        except FileNotFoundError:
+            return "Document converter not available", 500
+        except Exception as e:
+            _log.warning("antiword error for %r: %s", stored, e)
+            return f"Could not convert document: {e}", 500
+
+    page = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body {{ margin:0; padding:16px 20px; font-family:system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.6; color:#111; background:#fff; }}
+img {{ max-width:100%; height:auto; }}
+table {{ border-collapse:collapse; width:100%; margin:12px 0; }}
+td, th {{ border:1px solid #d1d5db; padding:6px 10px; text-align:left; }}
+th {{ background:#f3f4f6; font-weight:600; }}
+p {{ margin:0 0 10px; }}
+</style></head><body>{html_content}</body></html>"""
+    return Response(page, mimetype="text/html")
+
+
+def _find_upload_file(stored_name):
+    primary = app.config["UPLOAD_FOLDER"]
+    for search_dir in [primary, _LEGACY_UPLOAD_FOLDER]:
+        candidate = os.path.join(search_dir, stored_name)
+        if os.path.isfile(candidate):
+            return candidate
+        for sub in ["notes/photos", "notes/audio", "update_photos", "pending"]:
+            candidate = os.path.join(search_dir, sub, stored_name)
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+
+@app.get("/m/doc-stream/note-file/<int:file_id>")
+@login_required
+def m_doc_stream_note_file(file_id: int):
+    import logging as _log
+    uid = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    row = conn.execute(
+        """SELECT nf.id, nf.filename, nf.filepath, nf.job_field_note_id,
+                  fn.job_id, fn.created_by_user_id
+           FROM job_note_files nf
+           JOIN job_field_notes fn ON fn.id = nf.job_field_note_id
+           WHERE nf.id = ?""", (file_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "File not found"}), 404
+
+    if role == "agent" and row["created_by_user_id"] != uid:
+        job_access = conn.execute(
+            """SELECT 1 FROM jobs WHERE id=? AND (
+               assigned_user_id=? OR EXISTS (
+                 SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                 AND status NOT IN ('Cancelled') AND hidden = 0))""",
+            (row["job_id"], uid, row["job_id"], uid)
+        ).fetchone()
+        if not job_access:
+            conn.close()
+            return jsonify({"ok": False, "error": "Access denied"}), 403
+    conn.close()
+
+    stored = row["filename"]
+    original = row["filepath"] if row["filepath"] else stored
+    mime = mimetypes.guess_type(stored)[0] or "application/octet-stream"
+
+    if _uploads_container:
+        try:
+            blob_data = _uploads_container.get_blob_client(stored).download_blob().readall()
+            resp = make_response(blob_data)
+            resp.headers["Content-Type"] = mime
+            resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
+            resp.headers["Cache-Control"] = "private, max-age=300"
+            return resp
+        except Exception as e:
+            _log.warning("Blob fetch failed for note-file stream %r: %s", stored, e)
+
+    local_path = _find_upload_file(stored)
+    if local_path:
+        directory = os.path.dirname(local_path)
+        basename = os.path.basename(local_path)
+        resp = send_from_directory(directory, basename, mimetype=mime)
+        resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
+        resp.headers["Cache-Control"] = "private, max-age=300"
+        return resp
+
+    _log.warning("Note-file stream: file not found on disk: %r", stored)
+    return jsonify({"ok": False, "error": "File not found on server"}), 404
+
+
+@app.get("/m/doc-stream/job-doc/<int:doc_id>")
+@login_required
+def m_doc_stream_job_doc(doc_id: int):
+    import logging as _log
+    uid = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    row = conn.execute(
+        "SELECT id, job_id, original_filename, stored_filename, mime_type FROM job_documents WHERE id=?",
+        (doc_id,)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Document not found"}), 404
+
+    if role == "agent":
+        job_access = conn.execute(
+            """SELECT 1 FROM jobs WHERE id=? AND (
+               assigned_user_id=? OR EXISTS (
+                 SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                 AND status NOT IN ('Cancelled') AND hidden = 0))""",
+            (row["job_id"], uid, row["job_id"], uid)
+        ).fetchone()
+        if not job_access:
+            conn.close()
+            return jsonify({"ok": False, "error": "Access denied"}), 403
+    conn.close()
+
+    stored = row["stored_filename"]
+    original = row["original_filename"] or stored
+    mime = row["mime_type"] or mimetypes.guess_type(stored)[0] or "application/octet-stream"
+
+    if _uploads_container:
+        try:
+            blob_data = _uploads_container.get_blob_client(stored).download_blob().readall()
+            resp = make_response(blob_data)
+            resp.headers["Content-Type"] = mime
+            resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
+            resp.headers["Cache-Control"] = "private, max-age=300"
+            return resp
+        except Exception as e:
+            _log.warning("Blob fetch failed for job-doc stream %r: %s", stored, e)
+
+    local_path = _find_upload_file(stored)
+    if local_path:
+        directory = os.path.dirname(local_path)
+        basename = os.path.basename(local_path)
+        resp = send_from_directory(directory, basename, mimetype=mime)
+        resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
+        resp.headers["Cache-Control"] = "private, max-age=300"
+        return resp
+
+    _log.warning("Job-doc stream: file not found on disk: %r", stored)
+    return jsonify({"ok": False, "error": "File not found on server"}), 404
+
+
 @app.post("/jobs/<int:job_id>/documents/upload")
 @login_required
 @admin_required
@@ -15607,7 +15817,7 @@ def m_quick_note_save(job_id):
         "agent_name":   username,
         "note_text":    note_text or "",
         "audio_url":    f"/m/note-audio/{note_id}" if audio_filename else None,
-        "photo_url":    f"/uploads/{photo_name}" if photo_file_id else None,
+        "photo_url":    f"/m/doc-stream/note-file/{photo_file_id}" if photo_file_id else None,
         "note_category": _note_cat,
         "review_status": _rev_stat,
     })

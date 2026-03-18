@@ -448,9 +448,9 @@
           {% if ns_imgs %}
             <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:{% if ns_docs %}4px{% else %}0{% endif %};">
               {% for f in ns_imgs %}
-                <div onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
+                <div onclick="axMobilePreview('/m/doc-stream/note-file/{{ f.id }}','{{ f.filename }}')"
                      style="flex-shrink:0;border-radius:10px;overflow:hidden;border:1.5px solid #e5e7eb;cursor:pointer;max-width:200px;">
-                  <img src="/uploads/{{ f.filename }}" alt="" loading="lazy"
+                  <img src="/m/doc-stream/note-file/{{ f.id }}" alt="" loading="lazy"
                        style="display:block;width:auto;height:130px;max-width:200px;object-fit:cover;">
                 </div>
               {% endfor %}
@@ -467,12 +467,12 @@
             {% if is_audio %}
             <div style="margin-bottom:4px;margin-top:4px;">
               <audio controls preload="none" style="width:100%;height:36px;">
-                <source src="/uploads/{{ f.filename }}">
+                <source src="/m/doc-stream/note-file/{{ f.id }}">
               </audio>
               <div style="font-size:.68rem;color:#6b7280;margin-top:2px;">{{ disp }}</div>
             </div>
             {% else %}
-            <div onclick="axMobilePreview('/uploads/{{ f.filename }}','{{ f.filename }}')"
+            <div onclick="axMobilePreview('/m/doc-stream/note-file/{{ f.id }}','{{ f.filename }}')"
                  style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:4px;
                         background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;">
               {% if is_pdf %}
@@ -890,14 +890,26 @@ function showTab(name) {
     var body = document.getElementById('mFilePreviewBody');
     var title = document.getElementById('mFilePreviewTitle');
     var dl = document.getElementById('mFileDownloadBtn');
-
-    var hasNP = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
-    console.log('[axPreview] ext=' + ext + ' hasNativePreview=' + !!hasNP);
+    var hasNative = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
+    console.log('[axPreview] ext=' + ext + ' hasNativePreview=' + !!hasNative);
 
     title.textContent = filename;
     dl.href = url;
     dl.download = filename;
     body.innerHTML = '';
+
+    var _fallbackHtml = function(icon, label) {
+      return '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
+        '<div style="text-align:center;padding:24px 16px;">' +
+          '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
+          '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+          '<div style="font-size:.78rem;color:#6b7280;margin-bottom:12px;">Preview unavailable. Tap to open document.</div>' +
+          '<a href="' + url + '" target="_blank" rel="noopener" ' +
+            'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;' +
+            'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
+            label + '</a>' +
+        '</div></div>';
+    };
 
     if (IMAGE_EXT.includes(ext)) {
       body.style.padding = '0';
@@ -906,45 +918,30 @@ function showTab(name) {
         '<div id="mImgZoomWrap" style="position:absolute;top:0;left:0;right:0;bottom:0;overflow:auto;-webkit-overflow-scrolling:touch;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
           '<img src="' + url + '" alt="' + filename + '" ' +
           'style="max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;transition:transform .2s;" ' +
+          'onerror="this.parentElement.innerHTML=\'<div style=padding:40px;text-align:center;color:#ef4444;font-weight:600>Could not load image.</div>\'" ' +
           'ondblclick="this.style.transform=this.style.transform===\'scale(2)\'?\'scale(1)\':\'scale(2)\'">' +
         '</div>';
     } else if (PDF_EXT.includes(ext)) {
-      var hasNativePreview = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
-      if (hasNativePreview) {
-        body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
-          '<div style="text-align:center;padding:24px 16px;">' +
-            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
-            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-            '<button onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')" ' +
-              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;border:0;cursor:pointer;">' +
-              'Open</button>' +
-          '</div></div>';
-      } else {
-        body.style.padding = '0';
-        body.innerHTML =
-          '<iframe src="' + url + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;" ' +
-            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"></iframe>' +
-          '<div style="display:none;text-align:center;padding:40px 20px;">' +
-            '<div style="font-size:3.5rem;margin-bottom:10px;">📄</div>' +
-            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-            '<a href="' + url + '" target="_blank" rel="noopener" ' +
-              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
-              'Open PDF</a>' +
-          '</div>';
-        var _pdfIframe = body.querySelector('iframe');
-        _pdfIframe.onload = function() {
-          try {
-            var ct = '';
-            try { ct = _pdfIframe.contentDocument && _pdfIframe.contentDocument.contentType; } catch(e) {}
-            if (ct && ct.indexOf('html') !== -1) {
-              _pdfIframe.style.display = 'none';
-              _pdfIframe.nextElementSibling.style.display = 'block';
-            }
-          } catch(e) {}
-        };
+      if (hasNative) {
+        axNativeDocOpen(url, filename);
+        return;
       }
+      body.style.padding = '0';
+      body.innerHTML =
+        '<iframe src="' + url + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;"></iframe>';
+      var _pdfIframe = body.querySelector('iframe');
+      _pdfIframe.onerror = function() {
+        body.innerHTML = _fallbackHtml('&#128196;', 'Open PDF');
+      };
+      _pdfIframe.onload = function() {
+        try {
+          var ct = '';
+          try { ct = _pdfIframe.contentDocument && _pdfIframe.contentDocument.contentType; } catch(e) {}
+          if (ct && ct.indexOf('html') !== -1) {
+            body.innerHTML = _fallbackHtml('&#128196;', 'Open PDF');
+          }
+        } catch(e) {}
+      };
     } else if (AUDIO_EXT.includes(ext)) {
       body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;padding:24px 16px;">' +
         '<div style="text-align:center;width:100%">' +
@@ -954,43 +951,35 @@ function showTab(name) {
         '</div></div>';
     } else {
       var isWord = (ext === 'doc' || ext === 'docx');
-      var icon = isWord ? '📄' : (ext === 'xls' || ext === 'xlsx' || ext === 'csv' ? '📊' : '📎');
-      var hasNativePreview = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
-
-      if (isWord && !hasNativePreview) {
+      if (hasNative) {
+        axNativeDocOpen(url, filename);
+        return;
+      }
+      if (isWord) {
+        var renderUrl = url.replace('/doc-stream/', '/doc-preview-render/');
         body.style.padding = '0';
         body.innerHTML =
-          '<iframe src="/api/doc-preview/' + encodeURIComponent(filename) + '" ' +
-            'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;" ' +
-            'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"></iframe>' +
-          '<div style="display:none;text-align:center;padding:40px 20px;">' +
-            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
-            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-            '<a href="' + url + '" target="_blank" rel="noopener" ' +
-              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
-              'Download</a>' +
-          '</div>';
-      } else if (hasNativePreview) {
-        body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
-          '<div style="text-align:center;padding:24px 16px;">' +
-            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
-            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-            '<button onclick="axNativeDocOpen(\'' + url.replace(/'/g, "\\'") + '\',\'' + filename.replace(/'/g, "\\'") + '\')" ' +
-              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;border:0;cursor:pointer;">' +
-              'Open</button>' +
-          '</div></div>';
+          '<iframe src="' + renderUrl + '" ' +
+            'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;"></iframe>';
+        var _docIframe = body.querySelector('iframe');
+        _docIframe.onerror = function() {
+          body.innerHTML = _fallbackHtml('&#128196;', 'Download');
+        };
+        _docIframe.onload = function() {
+          try {
+            var ct = '';
+            try { ct = _docIframe.contentDocument && _docIframe.contentDocument.contentType; } catch(e) {}
+            if (ct && (ct.indexOf('json') !== -1 || ct.indexOf('html') !== -1)) {
+              var bodyText = '';
+              try { bodyText = _docIframe.contentDocument.body.textContent || ''; } catch(e2) {}
+              if (bodyText.indexOf('"ok"') !== -1 && bodyText.indexOf('false') !== -1) {
+                body.innerHTML = _fallbackHtml('&#128196;', 'Download');
+              }
+            }
+          } catch(e) {}
+        };
       } else {
-        body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
-          '<div style="text-align:center;padding:24px 16px;">' +
-            '<div style="font-size:3.5rem;margin-bottom:10px;">&#128196;</div>' +
-            '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-            '<a href="' + url + '" target="_blank" rel="noopener" ' +
-              'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;margin-top:10px;' +
-              'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
-              'Open</a>' +
-          '</div></div>';
+        body.innerHTML = _fallbackHtml('&#128196;', 'Open Document');
       }
     }
 
@@ -1003,64 +992,28 @@ function showTab(name) {
     document.getElementById('mFilePreviewBody').innerHTML = '';
   };
 
-  window.axNativeDocOpen = function(url, filename) {
-    console.log('[axPreview] axNativeDocOpen called: url=' + url + ' filename=' + filename);
+  window.axNativeDocOpen = function(streamUrl, filename) {
+    console.log('[axPreview] axNativeDocOpen called: streamUrl=' + streamUrl + ' filename=' + filename);
     var body = document.getElementById('mFilePreviewBody');
-    if (body) {
-      body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
-        '<div style="text-align:center;padding:40px 20px;">' +
-          '<div style="width:36px;height:36px;border:3px solid #e5e7eb;border-top-color:#2563eb;border-radius:50%;animation:axspin 1s linear infinite;margin:0 auto 16px;"></div>' +
-          '<div style="font-size:.9rem;font-weight:600;color:#374151;">Opening document…</div>' +
-        '</div></div>';
-    }
+    var hasNative = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
+    console.log('[axPreview] hasNative=' + !!hasNative);
 
-    console.log('[axPreview] Fetching /api/doc-token for type=note_file filename=' + filename);
-    fetch('/api/doc-token', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      credentials: 'same-origin',
-      body: JSON.stringify({type: 'note_file', filename: filename, original_filename: filename})
-    })
-    .then(function(r) {
-      console.log('[axPreview] doc-token response: status=' + r.status + ' redirected=' + r.redirected + ' url=' + r.url);
-      if (r.redirected || r.url.indexOf('/login') !== -1) {
-        throw new Error('SESSION_EXPIRED');
-      }
-      return r.json();
-    })
-    .then(function(data) {
-      console.log('[axPreview] doc-token data: ok=' + data.ok + ' download_url=' + (data.download_url || 'none') + ' filename=' + (data.filename || 'none') + ' error=' + (data.error || 'none'));
-      if (!data.ok) {
-        if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">' + (data.error || 'Could not prepare document.') + '</div>';
-        return;
-      }
-      var tokenUrl = data.download_url;
-      var hasNative = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
-      console.log('[axPreview] tokenUrl=' + tokenUrl + ' hasNative=' + !!hasNative);
-      if (hasNative) {
-        try {
-          var msgPayload = {url: tokenUrl, filename: data.filename || filename};
-          console.log('[axPreview] Posting to documentPreview handler: ' + JSON.stringify(msgPayload));
-          window.webkit.messageHandlers.documentPreview.postMessage(msgPayload);
-          axMobilePreviewClose();
-          console.log('[axPreview] Message posted, overlay closed');
-        } catch(e) {
-          console.log('[axPreview] Native postMessage failed: ' + e.message);
-          if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">Native preview failed: ' + e.message + '</div>';
-        }
-      } else {
-        console.log('[axPreview] No native handler, opening in new window');
-        window.open(tokenUrl, '_blank');
+    if (hasNative) {
+      try {
+        var msgPayload = {url: streamUrl, filename: filename};
+        console.log('[axPreview] Posting to documentPreview handler: ' + JSON.stringify(msgPayload));
+        window.webkit.messageHandlers.documentPreview.postMessage(msgPayload);
         axMobilePreviewClose();
+        console.log('[axPreview] Message posted, overlay closed');
+      } catch(e) {
+        console.log('[axPreview] Native postMessage failed: ' + e.message);
+        if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">Native preview failed: ' + e.message + '</div>';
       }
-    })
-    .catch(function(err) {
-      console.log('[axPreview] doc-token fetch error: ' + (err ? err.message : 'unknown'));
-      var msg = err && err.message === 'SESSION_EXPIRED'
-        ? 'Your session has expired. Please log in again.'
-        : 'Network error. Please check your connection.';
-      if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">' + msg + '</div>';
-    });
+    } else {
+      console.log('[axPreview] No native handler, opening in new window');
+      window.open(streamUrl, '_blank');
+      axMobilePreviewClose();
+    }
   };
 
   window.axMobileShare = async function() {

@@ -3,12 +3,12 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/add-job-layouts/SinglePage.tsx": () => import("../components/mockups/add-job-layouts/SinglePage.tsx"),
   "./components/mockups/add-job-layouts/TwoColumn.tsx": () => import("../components/mockups/add-job-layouts/TwoColumn.tsx"),
-  "./components/mockups/dashboard-layouts/ActivityFeed.tsx": () => import("../components/mockups/dashboard-layouts/ActivityFeed.tsx"),
-  "./components/mockups/dashboard-layouts/CleanList.tsx": () => import("../components/mockups/dashboard-layouts/CleanList.tsx"),
-  "./components/mockups/dashboard-layouts/TabbedView.tsx": () => import("../components/mockups/dashboard-layouts/TabbedView.tsx"),
   "./components/mockups/job-detail-layouts/CardDashboard.tsx": () => import("../components/mockups/job-detail-layouts/CardDashboard.tsx"),
   "./components/mockups/job-detail-layouts/CondensedHeader.tsx": () => import("../components/mockups/job-detail-layouts/CondensedHeader.tsx"),
   "./components/mockups/job-detail-layouts/SidePanel.tsx": () => import("../components/mockups/job-detail-layouts/SidePanel.tsx"),
+  "./components/mockups/dashboard-layouts/ActivityFeed.tsx": () => import("../components/mockups/dashboard-layouts/ActivityFeed.tsx"),
+  "./components/mockups/dashboard-layouts/CleanList.tsx": () => import("../components/mockups/dashboard-layouts/CleanList.tsx"),
+  "./components/mockups/dashboard-layouts/TabbedView.tsx": () => import("../components/mockups/dashboard-layouts/TabbedView.tsx"),
   "./components/mockups/jobs-layouts/CardGrid.tsx": () => import("../components/mockups/jobs-layouts/CardGrid.tsx"),
   "./components/mockups/jobs-layouts/CompactTable.tsx": () => import("../components/mockups/jobs-layouts/CompactTable.tsx"),
   "./components/mockups/jobs-layouts/StreamlinedList.tsx": () => import("../components/mockups/jobs-layouts/StreamlinedList.tsx")
