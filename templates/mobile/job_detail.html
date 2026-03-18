@@ -448,9 +448,9 @@
           {% if ns_imgs %}
             <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:{% if ns_docs %}4px{% else %}0{% endif %};">
               {% for f in ns_imgs %}
-                <div onclick="axMobilePreview('/m/doc-stream/note-file/{{ f.id }}','{{ f.filename }}')"
+                <div onclick="axMobilePreview('/m/documents/{{ f.id }}/preview','{{ f.filename }}')"
                      style="flex-shrink:0;border-radius:10px;overflow:hidden;border:1.5px solid #e5e7eb;cursor:pointer;max-width:200px;">
-                  <img src="/m/doc-stream/note-file/{{ f.id }}" alt="" loading="lazy"
+                  <img src="/m/documents/{{ f.id }}/preview" alt="" loading="lazy"
                        style="display:block;width:auto;height:130px;max-width:200px;object-fit:cover;">
                 </div>
               {% endfor %}
@@ -467,12 +467,12 @@
             {% if is_audio %}
             <div style="margin-bottom:4px;margin-top:4px;">
               <audio controls preload="none" style="width:100%;height:36px;">
-                <source src="/m/doc-stream/note-file/{{ f.id }}">
+                <source src="/m/documents/{{ f.id }}/preview">
               </audio>
               <div style="font-size:.68rem;color:#6b7280;margin-top:2px;">{{ disp }}</div>
             </div>
             {% else %}
-            <div onclick="axMobilePreview('/m/doc-stream/note-file/{{ f.id }}','{{ f.filename }}')"
+            <div onclick="axMobilePreview('/m/documents/{{ f.id }}/preview','{{ f.filename }}')"
                  style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:4px;
                         background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;">
               {% if is_pdf %}
@@ -878,113 +878,73 @@ function showTab(name) {
 <script>
 (function(){
   var IMAGE_EXT = ['jpg','jpeg','png','gif','webp','heic','heif','bmp','avif','jfif'];
-  var PDF_EXT   = ['pdf'];
   var AUDIO_EXT = ['m4a','wav','mp3','ogg','aac','wma'];
   var _curUrl = '', _curFilename = '';
 
+  function _fallback(url, filename, icon, label) {
+    return '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;">' +
+      '<div style="text-align:center;padding:24px 16px;">' +
+        '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
+        '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
+        '<div style="font-size:.78rem;color:#6b7280;margin-bottom:12px;">Preview unavailable. Open document.</div>' +
+        '<a href="' + url + '" target="_blank" rel="noopener" ' +
+          'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;' +
+          'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
+          label + '</a>' +
+      '</div></div>';
+  }
+
   window.axMobilePreview = function(url, filename) {
-    console.log('[axPreview] axMobilePreview called: url=' + url + ' filename=' + filename);
-    _curUrl = url;
-    _curFilename = filename;
+    console.log('[DOC-PREVIEW] open: url=' + url + ' file=' + filename);
+    _curUrl = url; _curFilename = filename;
     var ext = (filename.split('.').pop() || '').toLowerCase();
     var body = document.getElementById('mFilePreviewBody');
     var title = document.getElementById('mFilePreviewTitle');
     var dl = document.getElementById('mFileDownloadBtn');
-    var hasNative = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
-    console.log('[axPreview] ext=' + ext + ' hasNativePreview=' + !!hasNative);
+    var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
 
     title.textContent = filename;
-    dl.href = url;
-    dl.download = filename;
+    dl.href = url; dl.download = filename;
     body.innerHTML = '';
 
-    var _fallbackHtml = function(icon, label) {
-      return '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
-        '<div style="text-align:center;padding:24px 16px;">' +
-          '<div style="font-size:3.5rem;margin-bottom:10px;">' + icon + '</div>' +
-          '<div style="font-size:.95rem;font-weight:700;color:#111;margin-bottom:6px;word-break:break-all;">' + filename + '</div>' +
-          '<div style="font-size:.78rem;color:#6b7280;margin-bottom:12px;">Preview unavailable. Tap to open document.</div>' +
-          '<a href="' + url + '" target="_blank" rel="noopener" ' +
-            'style="display:inline-flex;align-items:center;gap:6px;padding:12px 24px;' +
-            'border-radius:12px;background:#2563eb;color:#fff;font-size:.9rem;font-weight:700;text-decoration:none;">' +
-            label + '</a>' +
-        '</div></div>';
-    };
-
-    if (IMAGE_EXT.includes(ext)) {
-      body.style.padding = '0';
-      body.style.overflow = 'hidden';
+    if (IMAGE_EXT.indexOf(ext) !== -1) {
+      body.style.padding = '0'; body.style.overflow = 'hidden';
       body.innerHTML =
-        '<div id="mImgZoomWrap" style="position:absolute;top:0;left:0;right:0;bottom:0;overflow:auto;-webkit-overflow-scrolling:touch;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
+        '<div style="position:absolute;top:0;left:0;right:0;bottom:0;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:center;justify-content:center;">' +
           '<img src="' + url + '" alt="' + filename + '" ' +
-          'style="max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;transition:transform .2s;" ' +
-          'onerror="this.parentElement.innerHTML=\'<div style=padding:40px;text-align:center;color:#ef4444;font-weight:600>Could not load image.</div>\'" ' +
-          'ondblclick="this.style.transform=this.style.transform===\'scale(2)\'?\'scale(1)\':\'scale(2)\'">' +
+          'style="max-width:100%;max-height:100%;object-fit:contain;display:block;margin:auto;" ' +
+          'onerror="this.parentElement.innerHTML=\'' + _fallback(url, filename, '&#128247;', 'Open Document').replace(/'/g, "\\'") + '\'">' +
         '</div>';
-    } else if (PDF_EXT.includes(ext)) {
-      if (hasNative) {
-        axNativeDocOpen(url, filename);
-        return;
-      }
-      body.style.padding = '0';
-      body.innerHTML =
-        '<iframe src="' + url + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;"></iframe>';
-      var _pdfIframe = body.querySelector('iframe');
-      _pdfIframe.onerror = function() {
-        body.innerHTML = _fallbackHtml('&#128196;', 'Open PDF');
-      };
-      _pdfIframe.onload = function() {
-        try {
-          var ct = '';
-          try { ct = _pdfIframe.contentDocument && _pdfIframe.contentDocument.contentType; } catch(e) {}
-          if (ct && ct.indexOf('html') !== -1) {
-            body.innerHTML = _fallbackHtml('&#128196;', 'Open PDF');
-          }
-        } catch(e) {}
-      };
-    } else if (AUDIO_EXT.includes(ext)) {
-      body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;padding:24px 16px;">' +
+      document.getElementById('mFilePreviewOverlay').style.display = 'flex';
+      return;
+    }
+
+    if (AUDIO_EXT.indexOf(ext) !== -1) {
+      body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;padding:24px 16px;">' +
         '<div style="text-align:center;width:100%">' +
         '<div style="font-size:3rem;margin-bottom:10px;">&#127911;</div>' +
         '<div style="font-size:.92rem;font-weight:600;color:#111;margin-bottom:10px;word-break:break-all;">' + filename + '</div>' +
         '<audio controls preload="none" style="width:100%;margin-bottom:6px"><source src="' + url + '"></audio>' +
         '</div></div>';
-    } else {
-      var isWord = (ext === 'doc' || ext === 'docx');
-      if (hasNative) {
-        axNativeDocOpen(url, filename);
-        return;
-      }
-      if (isWord) {
-        var renderUrl = url.replace('/doc-stream/', '/doc-preview-render/');
-        body.style.padding = '0';
-        body.innerHTML =
-          '<iframe src="' + renderUrl + '" ' +
-            'style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;display:block;"></iframe>';
-        var _docIframe = body.querySelector('iframe');
-        _docIframe.onerror = function() {
-          body.innerHTML = _fallbackHtml('&#128196;', 'Download');
-        };
-        _docIframe.onload = function() {
-          try {
-            var ct = '';
-            try { ct = _docIframe.contentDocument && _docIframe.contentDocument.contentType; } catch(e) {}
-            if (ct && (ct.indexOf('json') !== -1 || ct.indexOf('html') !== -1)) {
-              var bodyText = '';
-              try { bodyText = _docIframe.contentDocument.body.textContent || ''; } catch(e2) {}
-              if (bodyText.indexOf('"ok"') !== -1 && bodyText.indexOf('false') !== -1) {
-                body.innerHTML = _fallbackHtml('&#128196;', 'Download');
-              }
-            }
-          } catch(e) {}
-        };
-      } else {
-        body.innerHTML = _fallbackHtml('&#128196;', 'Open Document');
-      }
+      document.getElementById('mFilePreviewOverlay').style.display = 'flex';
+      return;
     }
 
-    var ov = document.getElementById('mFilePreviewOverlay');
-    ov.style.display = 'flex';
+    if (hasNative) {
+      console.log('[DOC-PREVIEW] native handoff: ' + url);
+      try {
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
+      } catch(e) {
+        console.log('[DOC-PREVIEW] native postMessage error: ' + e.message);
+        body.innerHTML = _fallback(url, filename, '&#128196;', 'Open Document');
+        document.getElementById('mFilePreviewOverlay').style.display = 'flex';
+      }
+      return;
+    }
+
+    console.log('[DOC-PREVIEW] no native handler, showing fallback for ext=' + ext);
+    body.innerHTML = _fallback(url, filename, '&#128196;', 'Open Document');
+    document.getElementById('mFilePreviewOverlay').style.display = 'flex';
   };
 
   window.axMobilePreviewClose = function() {
@@ -992,27 +952,13 @@ function showTab(name) {
     document.getElementById('mFilePreviewBody').innerHTML = '';
   };
 
-  window.axNativeDocOpen = function(streamUrl, filename) {
-    console.log('[axPreview] axNativeDocOpen called: streamUrl=' + streamUrl + ' filename=' + filename);
-    var body = document.getElementById('mFilePreviewBody');
-    var hasNative = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
-    console.log('[axPreview] hasNative=' + !!hasNative);
-
+  window.axNativeDocOpen = function(url, filename) {
+    console.log('[DOC-PREVIEW] axNativeDocOpen: ' + url);
+    var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
     if (hasNative) {
-      try {
-        var msgPayload = {url: streamUrl, filename: filename};
-        console.log('[axPreview] Posting to documentPreview handler: ' + JSON.stringify(msgPayload));
-        window.webkit.messageHandlers.documentPreview.postMessage(msgPayload);
-        axMobilePreviewClose();
-        console.log('[axPreview] Message posted, overlay closed');
-      } catch(e) {
-        console.log('[axPreview] Native postMessage failed: ' + e.message);
-        if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">Native preview failed: ' + e.message + '</div>';
-      }
+      try { window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename}); } catch(e) { window.open(url, '_blank'); }
     } else {
-      console.log('[axPreview] No native handler, opening in new window');
-      window.open(streamUrl, '_blank');
-      axMobilePreviewClose();
+      window.open(url, '_blank');
     }
   };
 
@@ -1034,9 +980,7 @@ function showTab(name) {
         await navigator.share({files:[file], title: _curFilename});
         return;
       }
-    } catch(e) {
-      if (useFileShare) return;
-    }
+    } catch(e) { if (useFileShare) return; }
     try { await navigator.share({title:_curFilename, url:fileUrl}); } catch(e) {}
   };
 })();
