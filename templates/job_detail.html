@@ -3078,8 +3078,8 @@ document.addEventListener('click', function(e) {
           </div>
           <div class="col-12 col-md-8">
             <label class="form-label">Job Location to attend</label>
-            <input class="form-control" name="job_address" value="{{ job.job_address or '' }}"
-                   placeholder="Street, Suburb, State, Postcode">
+            <input class="form-control ax-address" name="job_address" value="{{ job.job_address or '' }}"
+                   placeholder="Street, Suburb, State, Postcode" autocomplete="off" spellcheck="false">
           </div>
         </div>
 

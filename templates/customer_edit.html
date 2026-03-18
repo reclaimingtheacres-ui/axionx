@@ -197,6 +197,7 @@ function axAddAddressRow() {
     '</label>' +
     '<button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.address-row\').remove();axReindexPrimary(\'addressList\',\'address_primary\')" title="Remove">&times;</button>';
   list.appendChild(div);
+  if (typeof attachAddressAutocomplete === 'function') attachAddressAutocomplete(div);
   div.querySelector('input[name="addresses[]"]').focus();
 }
 
