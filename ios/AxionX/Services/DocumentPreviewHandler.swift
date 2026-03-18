@@ -30,6 +30,8 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         print("[DocPreview] urlString='\(urlString)', filename='\(filename)'")
         print("[DocPreview] webView nil=\(webView == nil), webView.url=\(webView?.url?.absoluteString ?? "nil")")
 
+        jsDebug("DocumentPreviewHandler: called=YES, url=\(urlString), filename=\(filename)")
+
         guard !isPresentingDocument else {
             print("[DocPreview] ABORT: already presenting a document (isPresentingDocument=true)")
             return
@@ -91,6 +93,16 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
     }
 
+    private func jsDebug(_ msg: String) {
+        let escaped = msg.replacingOccurrences(of: "\\", with: "\\\\")
+                         .replacingOccurrences(of: "'", with: "\\'")
+                         .replacingOccurrences(of: "\n", with: "\\n")
+        let js = "if(window._axPdfDebugAppend) window._axPdfDebugAppend('\(escaped)');"
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
     private static func extractFilename(from contentDisposition: String) -> String? {
         let patterns = [
             "filename\\*=(?:UTF-8''|utf-8'')(.+)",
@@ -145,10 +157,12 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
+        jsDebug("download started, url=\(remoteURL.absoluteString)")
         noRedirectSession.downloadTask(with: request) { [weak self] tempURL, response, error in
             if let error = error {
                 let nsError = error as NSError
                 print("[DocPreview] DOWNLOAD FAILED: domain=\(nsError.domain) code=\(nsError.code) desc=\(nsError.localizedDescription)")
+                self?.jsDebug("DOWNLOAD FAILED: \(nsError.localizedDescription)")
                 DispatchQueue.main.async {
                     self?.showError("Could not download the document. Error: \(nsError.localizedDescription)")
                 }
@@ -297,9 +311,10 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
                 return
             }
 
+            self?.jsDebug("file_downloaded=YES, size=\(finalSize)bytes, ext=\(destURL.pathExtension)")
             DispatchQueue.main.async {
                 print("[DocPreview] ── presenting document ──")
-                self?.presentDocument(fileURL: destURL, filename: filename)
+                self?.presentDocument(fileURL: destURL, filename: resolvedFilename)
             }
         }.resume()
     }
@@ -320,13 +335,16 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
 
         isPresentingDocument = true
 
+        jsDebug("QLPreviewController present() attempted=YES, topVC=\(type(of: vc))")
+
         let viewer = DocumentContainerController(fileURL: fileURL, filename: filename) { [weak self] in
             print("[DocPreview] Document viewer dismissed (onDismiss callback)")
             self?.isPresentingDocument = false
         }
         viewer.modalPresentationStyle = .fullScreen
-        vc.present(viewer, animated: true) {
+        vc.present(viewer, animated: true) { [weak self] in
             print("[DocPreview] Document viewer presented successfully")
+            self?.jsDebug("QLPreviewController visible=YES")
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in

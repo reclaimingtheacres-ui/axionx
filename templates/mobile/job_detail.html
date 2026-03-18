@@ -866,15 +866,47 @@ function showTab(name) {
   function _pdfDebug(lines) {
     var msg = lines.join('\n');
     console.log('[DOC-PREVIEW-DEBUG]\n' + msg);
-    var d = document.createElement('div');
-    d.id = 'axPdfDebug';
-    d.style.cssText = 'position:fixed;top:60px;left:10px;right:10px;z-index:99999;' +
-      'background:#1a1a2e;color:#0f0;font:11px/1.5 monospace;padding:14px;border-radius:10px;' +
-      'white-space:pre-wrap;word-break:break-all;max-height:60vh;overflow:auto;box-shadow:0 4px 24px rgba(0,0,0,.5);';
-    d.textContent = msg;
-    document.body.appendChild(d);
-    setTimeout(function(){ var el = document.getElementById('axPdfDebug'); if(el) el.remove(); }, 12000);
+    var old = document.getElementById('axPdfDebugWrap');
+    if (old) old.remove();
+    var wrap = document.createElement('div');
+    wrap.id = 'axPdfDebugWrap';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#1a1a2e;color:#0f0;font:11px/1.6 monospace;padding:16px;border-radius:12px;' +
+      'width:calc(100% - 32px);max-height:80vh;overflow:auto;box-shadow:0 4px 24px rgba(0,0,0,.6);';
+    var pre = document.createElement('pre');
+    pre.id = 'axPdfDebugText';
+    pre.style.cssText = 'margin:0 0 12px;white-space:pre-wrap;word-break:break-all;';
+    pre.textContent = msg;
+    box.appendChild(pre);
+    var bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;';
+    var copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy';
+    copyBtn.style.cssText = 'background:#2563eb;color:#fff;border:0;padding:8px 18px;border-radius:8px;font:13px/1 system-ui;font-weight:600;cursor:pointer;';
+    copyBtn.onclick = function() {
+      var t = document.getElementById('axPdfDebugText');
+      if (t && navigator.clipboard) { navigator.clipboard.writeText(t.textContent); copyBtn.textContent = 'Copied'; }
+      else if (t) { var r = document.createRange(); r.selectNodeContents(t); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); copyBtn.textContent = 'Copied'; }
+    };
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.style.cssText = 'background:#dc2626;color:#fff;border:0;padding:8px 18px;border-radius:8px;font:13px/1 system-ui;font-weight:600;cursor:pointer;';
+    closeBtn.onclick = function() { wrap.remove(); };
+    bar.appendChild(copyBtn);
+    bar.appendChild(closeBtn);
+    box.appendChild(bar);
+    wrap.appendChild(box);
+    document.body.appendChild(wrap);
   }
+
+  window._axPdfDebugAppend = function(line) {
+    console.log('[DOC-PREVIEW-NATIVE] ' + line);
+    var pre = document.getElementById('axPdfDebugText');
+    if (pre) {
+      pre.textContent += '\n[NATIVE] ' + line;
+    }
+  };
 
   window.axMobilePreview = function(url, filename) {
     console.log('[DOC-PREVIEW] STEP 1: PDF tap detected');
