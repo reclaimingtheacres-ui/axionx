@@ -62,7 +62,8 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
 
         if AllowedDomains.isTrusted(url) && Self.isDocumentPreviewPath(url) {
             let filename = url.lastPathComponent
-            print("[NavDelegate]   → CANCEL (document preview route: \(url.path))")
+            print("[NavDelegate]   → CANCEL (document preview route: \(url.path)) navType=\(navType.rawValue)")
+            print("[NavDelegate]   PDF_REQUEST_INTERCEPT = YES")
             DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
             decisionHandler(.cancel)
             return
@@ -87,29 +88,61 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        guard let http = navigationResponse.response as? HTTPURLResponse,
-              let mime = http.mimeType?.lowercased(),
-              let url = http.url else {
+        let responseURL = navigationResponse.response.url
+        let mime = (navigationResponse.response as? HTTPURLResponse)?.mimeType ?? navigationResponse.response.mimeType ?? "unknown"
+        let statusCode = (navigationResponse.response as? HTTPURLResponse)?.statusCode ?? -1
+        let isMainFrame = navigationResponse.isForMainFrame
+
+        print("[NavDelegate] ── decidePolicyFor RESPONSE ──")
+        print("[NavDelegate]   url=\(responseURL?.absoluteString ?? "nil")")
+        print("[NavDelegate]   mime=\(mime)")
+        print("[NavDelegate]   status=\(statusCode)")
+        print("[NavDelegate]   isMainFrame=\(isMainFrame)")
+
+        if let http = navigationResponse.response as? HTTPURLResponse {
+            let cd = http.value(forHTTPHeaderField: "Content-Disposition") ?? "none"
+            let ct = http.value(forHTTPHeaderField: "Content-Type") ?? "none"
+            print("[NavDelegate]   Content-Type header=\(ct)")
+            print("[NavDelegate]   Content-Disposition=\(cd)")
+        }
+
+        guard let url = responseURL else {
+            print("[NavDelegate]   → ALLOW (no URL)")
             decisionHandler(.allow)
             return
         }
 
-        let isDoc = mime == "application/pdf"
-            || mime == "application/msword"
-            || mime.contains("officedocument")
+        let isTrusted = AllowedDomains.isTrusted(url)
+        let isPreviewRoute = Self.isDocumentPreviewPath(url)
+        let mimeLower = mime.lowercased()
+        let isDocMime = mimeLower == "application/pdf"
+            || mimeLower == "application/msword"
+            || mimeLower.contains("officedocument")
+            || mimeLower == "application/octet-stream"
 
-        if isDoc && AllowedDomains.isTrusted(url) {
-            print("[NavDelegate] response intercept: \(mime) at \(url.absoluteString) → native preview")
-            let cd = http.value(forHTTPHeaderField: "Content-Disposition") ?? ""
+        print("[NavDelegate]   isTrusted=\(isTrusted)")
+        print("[NavDelegate]   isPreviewRoute=\(isPreviewRoute)")
+        print("[NavDelegate]   isDocMime=\(isDocMime)")
+
+        if isTrusted && (isPreviewRoute || isDocMime) && isMainFrame {
+            print("[NavDelegate]   ╔══════════════════════════════════════╗")
+            print("[NavDelegate]   ║  PDF_INTERCEPT_ACTIVE = YES          ║")
+            print("[NavDelegate]   ╚══════════════════════════════════════╝")
+
+            let cd = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? ""
             var filename = url.lastPathComponent
             if let cdName = Self.extractContentDispositionFilename(cd) {
                 filename = cdName
             }
+            print("[NavDelegate]   resolved filename=\(filename)")
+            print("[NavDelegate]   calling decisionHandler(.cancel)")
             decisionHandler(.cancel)
+            print("[NavDelegate]   calling DocumentPreviewHandler.previewFile")
             DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
             return
         }
 
+        print("[NavDelegate]   → ALLOW")
         decisionHandler(.allow)
     }
 
