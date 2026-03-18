@@ -9,6 +9,7 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     private override init() { super.init() }
 
     private weak var webView: WKWebView?
+    private var isPresentingDocument = false
 
     func setWebView(_ wv: WKWebView) {
         self.webView = wv
@@ -18,27 +19,51 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        print("[DocPreview] Handler fired, body type: \(type(of: message.body))")
+        print("[DocPreview] ── JS message received ──")
+        print("[DocPreview] body type: \(type(of: message.body))")
         guard let body = message.body as? [String: Any],
               let urlString = body["url"] as? String,
               let filename = body["filename"] as? String else {
-            print("[DocPreview] Guard failed: could not parse body")
+            print("[DocPreview] ABORT: could not parse body — body=\(message.body)")
             return
         }
-        print("[DocPreview] urlString=\(urlString), filename=\(filename), webView nil=\(webView == nil)")
+        print("[DocPreview] urlString='\(urlString)', filename='\(filename)'")
+        print("[DocPreview] webView nil=\(webView == nil), webView.url=\(webView?.url?.absoluteString ?? "nil")")
 
-        guard let baseURL = webView?.url,
-              let docURL = URL(string: urlString, relativeTo: baseURL)?.absoluteURL ?? URL(string: urlString) else {
-            print("[DocPreview] Guard failed: baseURL=\(String(describing: webView?.url)), could not build docURL from '\(urlString)'")
+        guard !isPresentingDocument else {
+            print("[DocPreview] ABORT: already presenting a document (isPresentingDocument=true)")
             return
         }
 
-        print("[DocPreview] Opening: \(docURL.absoluteString), filename: \(filename)")
+        let docURL: URL
+        if let absolute = URL(string: urlString), absolute.scheme != nil {
+            docURL = absolute
+            print("[DocPreview] urlString is absolute: \(docURL.absoluteString)")
+        } else if let baseURL = webView?.url,
+                  let resolved = URL(string: urlString, relativeTo: baseURL)?.absoluteURL {
+            docURL = resolved
+            print("[DocPreview] resolved relative URL against baseURL=\(baseURL.absoluteString)")
+        } else if let fallback = URL(string: urlString) {
+            docURL = fallback
+            print("[DocPreview] fallback URL parse: \(docURL.absoluteString)")
+        } else {
+            print("[DocPreview] ABORT: could not build docURL from '\(urlString)' baseURL=\(webView?.url?.absoluteString ?? "nil")")
+            return
+        }
+
+        print("[DocPreview] resolved docURL=\(docURL.absoluteString)")
         fetchCookiesAndDownload(remoteURL: docURL, filename: filename)
     }
 
     func previewFile(at url: URL, filename: String) {
-        print("[DocPreview] previewFile: \(url.absoluteString), filename: \(filename)")
+        print("[DocPreview] ── previewFile called ──")
+        print("[DocPreview] url=\(url.absoluteString), filename=\(filename)")
+
+        guard !isPresentingDocument else {
+            print("[DocPreview] ABORT: already presenting a document")
+            return
+        }
+
         fetchCookiesAndDownload(remoteURL: url, filename: filename)
     }
 
@@ -53,9 +78,12 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         let cookieStore = wv.configuration.websiteDataStore.httpCookieStore
 
         cookieStore.getAllCookies { [weak self] allCookies in
-            print("[DocPreview] Total cookies in store: \(allCookies.count), target host: '\(remoteURL.host ?? "nil")'")
-            for c in allCookies {
-                print("[DocPreview]   cookie: name='\(c.name)' domain='\(c.domain)' path='\(c.path)'")
+            let host = remoteURL.host ?? "nil"
+            print("[DocPreview] Total cookies in WK store: \(allCookies.count), target host: '\(host)'")
+            let relevantCookies = allCookies.filter { host.hasSuffix($0.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))) || $0.domain == host }
+            print("[DocPreview] Relevant cookies for host: \(relevantCookies.count)")
+            for c in relevantCookies {
+                print("[DocPreview]   cookie: name='\(c.name)' domain='\(c.domain)' path='\(c.path)' secure=\(c.isSecure)")
             }
             DispatchQueue.main.async {
                 self?.downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: allCookies)
@@ -70,63 +98,104 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     }()
 
     private func downloadAndPreview(remoteURL: URL, filename: String, cookies: [HTTPCookie]) {
+        print("[DocPreview] ── download started ──")
+        print("[DocPreview] URL: \(remoteURL.absoluteString)")
+        print("[DocPreview] filename: \(filename)")
+        print("[DocPreview] cookies attached: \(cookies.count)")
+
         var request = URLRequest(url: remoteURL)
         let headers = HTTPCookie.requestHeaderFields(with: cookies)
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        print("[DocPreview] Starting download: \(remoteURL.absoluteString), cookies attached: \(cookies.count)")
         noRedirectSession.downloadTask(with: request) { [weak self] tempURL, response, error in
-            guard let tempURL = tempURL, error == nil else {
-                print("[DocPreview] Download failed: \(error?.localizedDescription ?? "unknown")")
+            if let error = error {
+                let nsError = error as NSError
+                print("[DocPreview] DOWNLOAD FAILED: domain=\(nsError.domain) code=\(nsError.code) desc=\(nsError.localizedDescription)")
                 DispatchQueue.main.async {
-                    self?.showError("Could not download the document. Please check your connection and try again.")
+                    self?.showError("Could not download the document. Error: \(nsError.localizedDescription)")
                 }
                 return
             }
 
-            if let httpResponse = response as? HTTPURLResponse {
-                let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown"
-                let finalURL = httpResponse.url?.absoluteString ?? "nil"
-                print("[DocPreview] HTTP \(httpResponse.statusCode), Content-Type: \(contentType), finalURL: \(finalURL), requestURL: \(remoteURL.absoluteString)")
-
-                if (300...399).contains(httpResponse.statusCode) {
-                    let location = httpResponse.value(forHTTPHeaderField: "Location") ?? "unknown"
-                    print("[DocPreview] Redirect detected → \(location)")
-                    let isLoginRedirect = location.contains("/login") || location.contains("/m/login")
-                    DispatchQueue.main.async {
-                        if isLoginRedirect {
-                            self?.showError("Your session has expired. Please close this screen, log in again, and retry opening the document.")
-                        } else {
-                            self?.showError("The server redirected the request. The file may have been moved or is not accessible.")
-                        }
-                    }
-                    return
+            guard let tempURL = tempURL else {
+                print("[DocPreview] DOWNLOAD FAILED: tempURL is nil (no error reported)")
+                DispatchQueue.main.async {
+                    self?.showError("Download completed but no file was received.")
                 }
-
-                if !(200...299).contains(httpResponse.statusCode) {
-                    print("[DocPreview] Server returned status \(httpResponse.statusCode)")
-                    DispatchQueue.main.async {
-                        self?.showError("The server returned an error (\(httpResponse.statusCode)). The file may have been removed or is not accessible.")
-                    }
-                    return
-                }
-
-                if contentType.contains("text/html") {
-                    let snippet = (try? String(contentsOf: tempURL, encoding: .utf8))?.prefix(200) ?? ""
-                    print("[DocPreview] WARNING: Server returned HTML instead of a document. Body preview: \(snippet)")
-                    DispatchQueue.main.async {
-                        self?.showError("The server returned a web page instead of the document file. The file may be missing or require re-upload.")
-                    }
-                    return
-                }
+                return
             }
 
-            let fileSize = (try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? Int) ?? 0
-            print("[DocPreview] Downloaded \(fileSize) bytes for \(filename)")
+            print("[DocPreview] tempURL: \(tempURL.path)")
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("[DocPreview] WARNING: response is not HTTPURLResponse — type: \(type(of: response))")
+                DispatchQueue.main.async {
+                    self?.showError("Unexpected server response type.")
+                }
+                return
+            }
+
+            let statusCode = httpResponse.statusCode
+            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown"
+            let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length") ?? "unknown"
+            let contentDisposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition") ?? "none"
+            let finalURL = httpResponse.url?.absoluteString ?? "nil"
+
+            print("[DocPreview] HTTP status: \(statusCode)")
+            print("[DocPreview] Content-Type: \(contentType)")
+            print("[DocPreview] Content-Length: \(contentLength)")
+            print("[DocPreview] Content-Disposition: \(contentDisposition)")
+            print("[DocPreview] Final URL: \(finalURL)")
+            print("[DocPreview] Request URL: \(remoteURL.absoluteString)")
+
+            if (300...399).contains(statusCode) {
+                let location = httpResponse.value(forHTTPHeaderField: "Location") ?? "unknown"
+                print("[DocPreview] REDIRECT detected → \(location)")
+                let isLoginRedirect = location.contains("/login") || location.contains("/m/login")
+                DispatchQueue.main.async {
+                    if isLoginRedirect {
+                        self?.showError("Your session has expired. Please close this screen, log in again, and retry opening the document.")
+                    } else {
+                        self?.showError("The server redirected the request to: \(location)")
+                    }
+                }
+                return
+            }
+
+            if !(200...299).contains(statusCode) {
+                let bodySnippet = (try? String(contentsOf: tempURL, encoding: .utf8))?.prefix(300) ?? "(unreadable)"
+                print("[DocPreview] SERVER ERROR: status=\(statusCode), body preview: \(bodySnippet)")
+                DispatchQueue.main.async {
+                    self?.showError("The server returned an error (\(statusCode)). The file may have been removed or is not accessible.")
+                }
+                return
+            }
+
+            if contentType.contains("text/html") {
+                let snippet = (try? String(contentsOf: tempURL, encoding: .utf8))?.prefix(500) ?? ""
+                print("[DocPreview] WARNING: Server returned HTML instead of document file")
+                print("[DocPreview] HTML body preview: \(snippet)")
+                DispatchQueue.main.async {
+                    self?.showError("The server returned a web page instead of the document file. This usually means the download token has expired or the session is invalid.")
+                }
+                return
+            }
+
+            let fileSize: Int
+            do {
+                let attrs = try FileManager.default.attributesOfItem(atPath: tempURL.path)
+                fileSize = (attrs[.size] as? Int) ?? 0
+            } catch {
+                print("[DocPreview] Could not read file attributes: \(error)")
+                fileSize = 0
+            }
+
+            print("[DocPreview] Downloaded file size: \(fileSize) bytes")
+
             if fileSize == 0 {
-                print("[DocPreview] Downloaded file is empty")
+                print("[DocPreview] ABORT: Downloaded file is empty (0 bytes)")
                 DispatchQueue.main.async {
                     self?.showError("The downloaded document is empty (0 bytes). Please contact an admin to check this attachment.")
                 }
@@ -135,42 +204,98 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
 
             let tmpDir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("docpreview", isDirectory: true)
-            try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            do {
+                try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            } catch {
+                print("[DocPreview] Failed to create temp directory: \(error)")
+            }
 
             let destURL = tmpDir.appendingPathComponent(filename)
+            print("[DocPreview] Destination path: \(destURL.path)")
+            print("[DocPreview] Destination extension: \(destURL.pathExtension)")
+
             try? FileManager.default.removeItem(at: destURL)
 
             do {
                 try FileManager.default.moveItem(at: tempURL, to: destURL)
             } catch {
-                print("[DocPreview] Failed to move file: \(error)")
+                print("[DocPreview] FAILED to move file: \(error)")
                 DispatchQueue.main.async {
-                    self?.showError("Could not prepare the document for viewing.")
+                    self?.showError("Could not prepare the document for viewing: \(error.localizedDescription)")
                 }
                 return
             }
 
-            print("[DocPreview] File ready at: \(destURL.path), ext: \(destURL.pathExtension)")
+            let fileExists = FileManager.default.fileExists(atPath: destURL.path)
+            let finalSize: Int
+            do {
+                let attrs = try FileManager.default.attributesOfItem(atPath: destURL.path)
+                finalSize = (attrs[.size] as? Int) ?? 0
+            } catch {
+                finalSize = 0
+            }
+
+            print("[DocPreview] ── pre-preview checks ──")
+            print("[DocPreview] File exists at dest: \(fileExists)")
+            print("[DocPreview] File size at dest: \(finalSize) bytes")
+            print("[DocPreview] File extension: \(destURL.pathExtension)")
+            print("[DocPreview] File URL: \(destURL.absoluteString)")
+
+            guard fileExists && finalSize > 0 else {
+                print("[DocPreview] ABORT: file missing or empty after move")
+                DispatchQueue.main.async {
+                    self?.showError("Document file is missing or empty after save.")
+                }
+                return
+            }
 
             DispatchQueue.main.async {
+                print("[DocPreview] ── presenting document ──")
                 self?.presentDocument(fileURL: destURL, filename: filename)
             }
         }.resume()
     }
 
     private func presentDocument(fileURL: URL, filename: String) {
-        guard let vc = topViewController() else {
-            print("[DocPreview] No view controller to present document viewer")
+        guard !isPresentingDocument else {
+            print("[DocPreview] ABORT presentDocument: already presenting (guard)")
             return
         }
 
-        let viewer = DocumentContainerController(fileURL: fileURL, filename: filename)
+        guard let vc = topViewController() else {
+            print("[DocPreview] ABORT presentDocument: no topViewController found")
+            return
+        }
+
+        print("[DocPreview] topViewController: \(type(of: vc))")
+        print("[DocPreview] presenting DocumentContainerController for: \(fileURL.lastPathComponent)")
+
+        isPresentingDocument = true
+
+        let viewer = DocumentContainerController(fileURL: fileURL, filename: filename) { [weak self] in
+            print("[DocPreview] Document viewer dismissed (onDismiss callback)")
+            self?.isPresentingDocument = false
+        }
         viewer.modalPresentationStyle = .fullScreen
-        vc.present(viewer, animated: true)
+        vc.present(viewer, animated: true) {
+            print("[DocPreview] Document viewer presented successfully")
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self = self else { return }
+            if self.isPresentingDocument, vc.presentedViewController == nil {
+                print("[DocPreview] WARNING: presentation appears to have failed — resetting isPresentingDocument")
+                self.isPresentingDocument = false
+            }
+        }
     }
 
     private func showError(_ message: String) {
-        guard let vc = topViewController() else { return }
+        print("[DocPreview] SHOWING ERROR ALERT: \(message)")
+        guard let vc = topViewController() else {
+            print("[DocPreview] Cannot show error — no topViewController")
+            return
+        }
         let alert = UIAlertController(title: "Document Error", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         vc.present(alert, animated: true)
@@ -190,10 +315,12 @@ private final class DocumentContainerController: UIViewController {
     private let filename: String
     private var qlController: QLPreviewController?
     private var coordinator: QLPreviewCoordinator?
+    private let onDismiss: () -> Void
 
-    init(fileURL: URL, filename: String) {
+    init(fileURL: URL, filename: String, onDismiss: @escaping () -> Void) {
         self.fileURL = fileURL
         self.filename = filename
+        self.onDismiss = onDismiss
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -203,6 +330,8 @@ private final class DocumentContainerController: UIViewController {
 
     deinit {
         try? FileManager.default.removeItem(at: fileURL)
+        onDismiss()
+        print("[DocPreview] DocumentContainerController deinit — cleaned up \(fileURL.lastPathComponent)")
     }
 
     override func viewDidLoad() {
@@ -278,11 +407,15 @@ private final class DocumentContainerController: UIViewController {
             separator.heightAnchor.constraint(equalToConstant: 0.5)
         ])
 
+        print("[DocPreview] Setting up QLPreviewController for: \(fileURL.path)")
+        print("[DocPreview] File exists: \(FileManager.default.fileExists(atPath: fileURL.path))")
+
         let coord = QLPreviewCoordinator(fileURL: fileURL)
         self.coordinator = coord
 
         let ql = QLPreviewController()
         ql.dataSource = coord
+        ql.delegate = coord
         self.qlController = ql
 
         let nav = UINavigationController(rootViewController: ql)
@@ -307,6 +440,7 @@ private final class DocumentContainerController: UIViewController {
         dismiss(animated: true) { [weak self] in
             guard let self = self else { return }
             try? FileManager.default.removeItem(at: self.fileURL)
+            self.onDismiss()
         }
     }
 
@@ -320,7 +454,7 @@ private final class DocumentContainerController: UIViewController {
     }
 }
 
-private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSource {
+private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
     let fileURL: URL
 
     init(fileURL: URL) {
@@ -328,10 +462,23 @@ private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSourc
         super.init()
     }
 
-    func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+        print("[DocPreview] QLPreview numberOfPreviewItems called → 1")
+        return 1
+    }
 
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-        fileURL as QLPreviewItem
+        print("[DocPreview] QLPreview previewItemAt \(index) → \(fileURL.path)")
+        print("[DocPreview] File exists: \(FileManager.default.fileExists(atPath: fileURL.path))")
+        return fileURL as QLPreviewItem
+    }
+
+    func previewController(_ controller: QLPreviewController, didUpdateContentsOf previewItem: QLPreviewItem) {
+        print("[DocPreview] QLPreview didUpdateContents")
+    }
+
+    func previewControllerDidDismiss(_ controller: QLPreviewController) {
+        print("[DocPreview] QLPreview dismissed by system")
     }
 }
 
@@ -343,6 +490,8 @@ private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
         newRequest request: URLRequest,
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
+        let location = response.value(forHTTPHeaderField: "Location") ?? "unknown"
+        print("[DocPreview] NoRedirect: blocked redirect to \(location)")
         completionHandler(nil)
     }
 }

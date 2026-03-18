@@ -832,12 +832,16 @@ function showTab(name) {
   var _curUrl = '', _curFilename = '';
 
   window.axMobilePreview = function(url, filename) {
+    console.log('[axPreview] axMobilePreview called: url=' + url + ' filename=' + filename);
     _curUrl = url;
     _curFilename = filename;
     var ext = (filename.split('.').pop() || '').toLowerCase();
     var body = document.getElementById('mFilePreviewBody');
     var title = document.getElementById('mFilePreviewTitle');
     var dl = document.getElementById('mFileDownloadBtn');
+
+    var hasNP = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
+    console.log('[axPreview] ext=' + ext + ' hasNativePreview=' + !!hasNP);
 
     title.textContent = filename;
     dl.href = url;
@@ -949,6 +953,7 @@ function showTab(name) {
   };
 
   window.axNativeDocOpen = function(url, filename) {
+    console.log('[axPreview] axNativeDocOpen called: url=' + url + ' filename=' + filename);
     var body = document.getElementById('mFilePreviewBody');
     if (body) {
       body.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:-webkit-flex;display:flex;-webkit-align-items:center;align-items:center;-webkit-justify-content:center;justify-content:center;">' +
@@ -958,6 +963,7 @@ function showTab(name) {
         '</div></div>';
     }
 
+    console.log('[axPreview] Fetching /api/doc-token for type=note_file filename=' + filename);
     fetch('/api/doc-token', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -965,31 +971,40 @@ function showTab(name) {
       body: JSON.stringify({type: 'note_file', filename: filename, original_filename: filename})
     })
     .then(function(r) {
+      console.log('[axPreview] doc-token response: status=' + r.status + ' redirected=' + r.redirected + ' url=' + r.url);
       if (r.redirected || r.url.indexOf('/login') !== -1) {
         throw new Error('SESSION_EXPIRED');
       }
       return r.json();
     })
     .then(function(data) {
+      console.log('[axPreview] doc-token data: ok=' + data.ok + ' download_url=' + (data.download_url || 'none') + ' filename=' + (data.filename || 'none') + ' error=' + (data.error || 'none'));
       if (!data.ok) {
         if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">' + (data.error || 'Could not prepare document.') + '</div>';
         return;
       }
       var tokenUrl = data.download_url;
       var hasNative = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview;
+      console.log('[axPreview] tokenUrl=' + tokenUrl + ' hasNative=' + !!hasNative);
       if (hasNative) {
         try {
-          window.webkit.messageHandlers.documentPreview.postMessage({url: tokenUrl, filename: data.filename || filename});
+          var msgPayload = {url: tokenUrl, filename: data.filename || filename};
+          console.log('[axPreview] Posting to documentPreview handler: ' + JSON.stringify(msgPayload));
+          window.webkit.messageHandlers.documentPreview.postMessage(msgPayload);
           axMobilePreviewClose();
+          console.log('[axPreview] Message posted, overlay closed');
         } catch(e) {
+          console.log('[axPreview] Native postMessage failed: ' + e.message);
           if (body) body.innerHTML = '<div style="text-align:center;padding:40px 20px;color:#ef4444;font-weight:600;">Native preview failed: ' + e.message + '</div>';
         }
       } else {
+        console.log('[axPreview] No native handler, opening in new window');
         window.open(tokenUrl, '_blank');
         axMobilePreviewClose();
       }
     })
     .catch(function(err) {
+      console.log('[axPreview] doc-token fetch error: ' + (err ? err.message : 'unknown'));
       var msg = err && err.message === 'SESSION_EXPIRED'
         ? 'Your session has expired. Please log in again.'
         : 'Network error. Please check your connection.';

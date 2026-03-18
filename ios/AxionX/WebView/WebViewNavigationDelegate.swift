@@ -23,32 +23,38 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
 
-        // tel:, sms:, facetime: → system app
-        if AllowedDomains.isNativeScheme(url) {
-            UIApplication.shared.open(url)
-            decisionHandler(.cancel)
-            return
-        }
-
-        // maps.apple.com / maps.google.com → Apple Maps
-        if AllowedDomains.isMapsURL(url) {
-            UIApplication.shared.open(url)
-            decisionHandler(.cancel)
-            return
-        }
-
-        // External http/https → Safari
-        if AllowedDomains.isExternalWeb(url) {
-            UIApplication.shared.open(url)
-            decisionHandler(.cancel)
-            return
-        }
-
         let ext = url.pathExtension.lowercased()
+        let navType = navigationAction.navigationType
+        let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
+        print("[NavDelegate] decidePolicyFor: \(url.absoluteString)")
+        print("[NavDelegate]   ext='\(ext)' navType=\(navType.rawValue) isMainFrame=\(isMainFrame)")
+
+        if AllowedDomains.isNativeScheme(url) {
+            print("[NavDelegate]   → CANCEL (native scheme)")
+            UIApplication.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        if AllowedDomains.isMapsURL(url) {
+            print("[NavDelegate]   → CANCEL (maps URL)")
+            UIApplication.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        if AllowedDomains.isExternalWeb(url) {
+            print("[NavDelegate]   → CANCEL (external web)")
+            UIApplication.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
         if Self.documentExtensions.contains(ext)
             && AllowedDomains.isTrusted(url)
-            && navigationAction.navigationType == .linkActivated {
+            && navType == .linkActivated {
             let filename = url.lastPathComponent
+            print("[NavDelegate]   → CANCEL (document link: \(filename))")
             DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
             decisionHandler(.cancel)
             return
@@ -56,6 +62,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
 
         if AllowedDomains.isTrusted(url),
            url.path.hasPrefix("/m/login") || url.path == "/login" {
+            print("[NavDelegate]   → CANCEL (login redirect detected)")
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .axionSessionExpired, object: nil)
             }
@@ -63,6 +70,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
 
+        print("[NavDelegate]   → ALLOW")
         decisionHandler(.allow)
     }
 
@@ -77,16 +85,23 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        let nsError = error as NSError
+        print("[NavDelegate] didFail: domain=\(nsError.domain) code=\(nsError.code) desc=\(nsError.localizedDescription)")
         handleError(error)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let nsError = error as NSError
+        print("[NavDelegate] didFailProvisional: domain=\(nsError.domain) code=\(nsError.code) desc=\(nsError.localizedDescription)")
         handleError(error)
     }
 
     private func handleError(_ error: Error) {
         let code = (error as NSError).code
-        guard code != NSURLErrorCancelled else { return }  // Ignore user-cancelled loads
+        guard code != NSURLErrorCancelled else {
+            print("[NavDelegate] Ignoring cancelled navigation (code -999)")
+            return
+        }
         onLoadFailed?()
     }
 
@@ -100,15 +115,19 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let url = navigationAction.request.url {
+            let ext = url.pathExtension.lowercased()
+            print("[NavDelegate] createWebViewWith (window.open): \(url.absoluteString) ext='\(ext)'")
             if AllowedDomains.isTrusted(url) {
-                let ext = url.pathExtension.lowercased()
                 if Self.documentExtensions.contains(ext) {
                     let filename = url.lastPathComponent
+                    print("[NavDelegate]   → document preview: \(filename)")
                     DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
                 } else {
+                    print("[NavDelegate]   → loading in webview")
                     webView.load(navigationAction.request)
                 }
             } else {
+                print("[NavDelegate]   → opening externally")
                 UIApplication.shared.open(url)
             }
         }
