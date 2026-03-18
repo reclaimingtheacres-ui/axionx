@@ -400,13 +400,34 @@ private final class DocumentContainerController: UIViewController {
         print("[DocPreview] DocumentContainerController deinit — cleaned up \(fileURL.lastPathComponent)")
     }
 
+    private var toolbarView: UIView?
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
 
+        print("[DocPreview][Layout] viewDidLoad START")
+        print("[DocPreview][Layout] fileURL=\(fileURL.path)")
+        print("[DocPreview][Layout] file exists=\(FileManager.default.fileExists(atPath: fileURL.path))")
+
+        let coord = QLPreviewCoordinator(fileURL: fileURL)
+        self.coordinator = coord
+
+        let ql = QLPreviewController()
+        ql.dataSource = coord
+        ql.delegate = coord
+        self.qlController = ql
+
+        addChild(ql)
+        ql.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(ql.view)
+        ql.didMove(toParent: self)
+
         let bar = UIView()
         bar.translatesAutoresizingMaskIntoConstraints = false
         bar.backgroundColor = .systemBackground
+        bar.layer.zPosition = 9999
+        self.toolbarView = bar
 
         let separator = UIView()
         separator.translatesAutoresizingMaskIntoConstraints = false
@@ -427,12 +448,7 @@ private final class DocumentContainerController: UIViewController {
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
         titleLabel.textColor = .label
         titleLabel.lineBreakMode = .byTruncatingMiddle
-
-        let shareBtn = UIButton(type: .system)
-        shareBtn.translatesAutoresizingMaskIntoConstraints = false
-        shareBtn.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
-        shareBtn.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
-        shareBtn.tintColor = .systemBlue
+        titleLabel.textAlignment = .center
 
         let doneBtn = UIButton(type: .system)
         doneBtn.translatesAutoresizingMaskIntoConstraints = false
@@ -440,9 +456,15 @@ private final class DocumentContainerController: UIViewController {
         doneBtn.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         doneBtn.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
 
-        bar.addSubview(shareBtn)
-        bar.addSubview(titleLabel)
+        let shareBtn = UIButton(type: .system)
+        shareBtn.translatesAutoresizingMaskIntoConstraints = false
+        shareBtn.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
+        shareBtn.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
+        shareBtn.tintColor = .systemBlue
+
         bar.addSubview(doneBtn)
+        bar.addSubview(titleLabel)
+        bar.addSubview(shareBtn)
         bar.addSubview(separator)
         view.addSubview(bar)
 
@@ -452,54 +474,61 @@ private final class DocumentContainerController: UIViewController {
             bar.topAnchor.constraint(equalTo: view.topAnchor),
             bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: rowHeight),
 
-            shareBtn.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 16),
-            shareBtn.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            doneBtn.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 16),
+            doneBtn.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -8),
+            doneBtn.heightAnchor.constraint(equalToConstant: 28),
+
+            titleLabel.centerXAnchor.constraint(equalTo: bar.centerXAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: doneBtn.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: doneBtn.trailingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: shareBtn.leadingAnchor, constant: -8),
+
+            shareBtn.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -16),
+            shareBtn.centerYAnchor.constraint(equalTo: doneBtn.centerYAnchor),
             shareBtn.widthAnchor.constraint(equalToConstant: 28),
             shareBtn.heightAnchor.constraint(equalToConstant: 28),
-
-            titleLabel.leadingAnchor.constraint(equalTo: shareBtn.trailingAnchor, constant: 12),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: doneBtn.leadingAnchor, constant: -12),
-            titleLabel.centerYAnchor.constraint(equalTo: shareBtn.centerYAnchor),
-
-            doneBtn.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -16),
-            doneBtn.centerYAnchor.constraint(equalTo: shareBtn.centerYAnchor),
-
-            bar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: rowHeight),
 
             separator.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
             separator.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
-            separator.heightAnchor.constraint(equalToConstant: 0.5)
-        ])
+            separator.heightAnchor.constraint(equalToConstant: 0.5),
 
-        print("[DocPreview] Setting up QLPreviewController for: \(fileURL.path)")
-        print("[DocPreview] File exists: \(FileManager.default.fileExists(atPath: fileURL.path))")
-
-        let coord = QLPreviewCoordinator(fileURL: fileURL)
-        self.coordinator = coord
-
-        let ql = QLPreviewController()
-        ql.dataSource = coord
-        ql.delegate = coord
-        self.qlController = ql
-
-        let nav = UINavigationController(rootViewController: ql)
-        nav.isNavigationBarHidden = true
-
-        addChild(nav)
-        nav.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(nav.view)
-        nav.didMove(toParent: self)
-
-        NSLayoutConstraint.activate([
-            nav.view.topAnchor.constraint(equalTo: bar.bottomAnchor),
-            nav.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            nav.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            nav.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ql.view.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            ql.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            ql.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ql.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
         view.bringSubviewToFront(bar)
+
+        print("[DocPreview][Layout] viewDidLoad COMPLETE — bar, QL child added")
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if let bar = toolbarView {
+            view.bringSubviewToFront(bar)
+            let frame = bar.frame
+            print("[DocPreview][Layout] viewDidAppear — bar frame=\(frame)")
+            print("[DocPreview][Layout] bar.isHidden=\(bar.isHidden) alpha=\(bar.alpha)")
+            print("[DocPreview][Layout] bar subview count=\(bar.subviews.count)")
+            for (i, sv) in bar.subviews.enumerated() {
+                print("[DocPreview][Layout]   subview[\(i)] \(type(of: sv)) frame=\(sv.frame) hidden=\(sv.isHidden) alpha=\(sv.alpha)")
+            }
+        }
+        if let ql = qlController {
+            print("[DocPreview][Layout] QLPreviewController visible=\(ql.isViewLoaded && ql.view.window != nil)")
+            print("[DocPreview][Layout] QLPreviewController view frame=\(ql.view.frame)")
+            print("[DocPreview][Layout] QL navigationController=\(ql.navigationController != nil)")
+            if let nav = ql.navigationController {
+                print("[DocPreview][Layout] QL navBar hidden=\(nav.isNavigationBarHidden)")
+                print("[DocPreview][Layout] QL navBar frame=\(nav.navigationBar.frame)")
+            }
+        }
+        print("[DocPreview][Layout] self.view frame=\(view.frame)")
+        print("[DocPreview][Layout] self.presentingViewController=\(presentingViewController != nil)")
     }
 
     @objc private func doneTapped() {
