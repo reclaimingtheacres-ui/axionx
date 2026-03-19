@@ -252,6 +252,12 @@ def _mark_file_orphaned(table: str, record_id: int):
         _log.warning("[ORPHAN] Marked %s id=%s as missing_orphaned — file not in blob or disk", table, record_id)
 
 
+def _is_file_missing(file_status_val) -> bool:
+    """Return True if file_status indicates the file is missing/unavailable."""
+    s = (file_status_val or "ok").lower()
+    return s.startswith("missing")
+
+
 def _save_bytes_to_storage(data: bytes, blob_name: str,
                             content_type: str = "application/pdf") -> int:
     """Save raw bytes to Azure Blob Storage or local uploads folder. Returns size."""
@@ -9112,7 +9118,7 @@ def edit_job_note(job_id: int, note_id: int):
     cur.execute("SELECT created_at, updated_at FROM job_field_notes WHERE id=?", (note_id,))
     updated = cur.fetchone()
 
-    cur.execute("SELECT id, filename, uploaded_at FROM job_note_files WHERE job_field_note_id=?", (note_id,))
+    cur.execute("SELECT id, filename, uploaded_at, file_status FROM job_note_files WHERE job_field_note_id=?", (note_id,))
     all_files = [dict(r) for r in cur.fetchall()]
     conn.close()
 
@@ -9152,7 +9158,7 @@ def note_detail_api(job_id: int, note_id: int):
         if ub:
             updated_by_name = ub["full_name"]
 
-    cur.execute("SELECT id, filename, uploaded_at FROM job_note_files WHERE job_field_note_id=? ORDER BY id", (note_id,))
+    cur.execute("SELECT id, filename, uploaded_at, file_status FROM job_note_files WHERE job_field_note_id=? ORDER BY id", (note_id,))
     files = [dict(r) for r in cur.fetchall()]
     conn.close()
 
@@ -9223,7 +9229,7 @@ def add_note_attachments(job_id: int, note_id: int):
                 (ts, caller_id, note_id))
     conn.commit()
 
-    cur.execute("SELECT id, filename, uploaded_at FROM job_note_files WHERE job_field_note_id=? ORDER BY id", (note_id,))
+    cur.execute("SELECT id, filename, uploaded_at, file_status FROM job_note_files WHERE job_field_note_id=? ORDER BY id", (note_id,))
     all_files = [dict(r) for r in cur.fetchall()]
     conn.close()
 
@@ -9286,11 +9292,7 @@ def serve_upload(filename):
     ).fetchone()
     conn.close()
 
-    if alt_row and (alt_row["file_status"] or "ok") == "missing_orphaned":
-        orphan_key = f"job_note_files:{alt_row['id']}"
-        if orphan_key not in _warned_orphan_ids:
-            _warned_orphan_ids.add(orphan_key)
-            _log.warning("[ORPHAN] Skipping fetch for known orphan note-file id=%s filename=%r", alt_row["id"], filename)
+    if alt_row and _is_file_missing(alt_row["file_status"]):
         return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
     if _uploads_container:
@@ -9391,12 +9393,8 @@ def download_job_document(job_id: int, doc_id: int):
         conn.close()
         return ("Not found", 404)
 
-    if (doc["file_status"] or "ok") == "missing_orphaned":
+    if _is_file_missing(doc["file_status"]):
         conn.close()
-        orphan_key = f"job_documents:{doc_id}"
-        if orphan_key not in _warned_orphan_ids:
-            _warned_orphan_ids.add(orphan_key)
-            _log.warning("[ORPHAN] Skipping download for known orphan job-doc id=%s", doc_id)
         return jsonify({"ok": False, "error": "File unavailable"}), 410
 
     stored = doc["stored_filename"]
@@ -9464,7 +9462,7 @@ def api_doc_token():
         if not row:
             conn.close()
             return jsonify({"ok": False, "error": "File not found"}), 404
-        if (row["file_status"] or "ok") == "missing_orphaned":
+        if _is_file_missing(row["file_status"]):
             conn.close()
             return jsonify({"ok": False, "error": "File unavailable"}), 410
         if role == "agent" and row["created_by_user_id"] != uid:
@@ -9508,7 +9506,7 @@ def api_doc_token():
         if not row:
             conn.close()
             return jsonify({"ok": False, "error": "Document not found"}), 404
-        if (row["file_status"] or "ok") == "missing_orphaned":
+        if _is_file_missing(row["file_status"]):
             conn.close()
             return jsonify({"ok": False, "error": "File unavailable"}), 410
         if role == "agent":
@@ -9573,6 +9571,18 @@ def api_doc_download(token: str):
     stored = entry["filename"]
     mime = entry["mime"]
     original = entry["original"]
+
+    orphan_table = entry.get("_orphan_table")
+    orphan_id = entry.get("_orphan_id")
+    if orphan_table and orphan_id:
+        conn = db()
+        if orphan_table == "job_note_files":
+            _fs_row = conn.execute("SELECT file_status FROM job_note_files WHERE id=?", (orphan_id,)).fetchone()
+        else:
+            _fs_row = conn.execute("SELECT file_status FROM job_documents WHERE id=?", (orphan_id,)).fetchone()
+        conn.close()
+        if _fs_row and _is_file_missing(_fs_row["file_status"]):
+            return jsonify({"ok": False, "error": "File unavailable"}), 410
 
     if _uploads_container:
         try:
@@ -9722,12 +9732,8 @@ def m_documents_preview(file_id: int):
         _log.warning("[DOC-PREVIEW] id=%s  RESULT=not_found  user=%s", file_id, uid)
         return b'', 404
 
-    if (row["file_status"] or "ok") == "missing_orphaned":
+    if _is_file_missing(row["file_status"]):
         conn.close()
-        orphan_key = f"job_note_files:{file_id}"
-        if orphan_key not in _warned_orphan_ids:
-            _warned_orphan_ids.add(orphan_key)
-            _log.warning("[DOC-PREVIEW] id=%s  RESULT=orphaned  filename=%s", file_id, row["filename"])
         return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
     if role == "agent" and row["created_by_user_id"] != uid:
@@ -9826,12 +9832,8 @@ def m_doc_stream_job_doc(doc_id: int):
         conn.close()
         return jsonify({"ok": False, "error": "Document not found"}), 404
 
-    if (row["file_status"] or "ok") == "missing_orphaned":
+    if _is_file_missing(row["file_status"]):
         conn.close()
-        orphan_key = f"job_documents:{doc_id}"
-        if orphan_key not in _warned_orphan_ids:
-            _warned_orphan_ids.add(orphan_key)
-            _log.warning("[ORPHAN] Skipping fetch for known orphan job-doc id=%s stored=%r", doc_id, row["stored_filename"])
         return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
     if role == "agent":
@@ -12990,7 +12992,7 @@ def admin_orphaned_files():
         FROM job_note_files nf
         JOIN job_field_notes fn ON fn.id = nf.job_field_note_id
         LEFT JOIN jobs j ON j.id = fn.job_id
-        WHERE nf.file_status = 'missing_orphaned'
+        WHERE nf.file_status LIKE 'missing%'
         ORDER BY nf.id DESC
         LIMIT 500
     """).fetchall()
@@ -13000,15 +13002,15 @@ def admin_orphaned_files():
                j.display_ref AS job_ref
         FROM job_documents d
         LEFT JOIN jobs j ON j.id = d.job_id
-        WHERE d.file_status = 'missing_orphaned'
+        WHERE d.file_status LIKE 'missing%'
         ORDER BY d.id DESC
         LIMIT 500
     """).fetchall()
     nf_total = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM job_note_files WHERE file_status='missing_orphaned'"
+        "SELECT COUNT(*) AS cnt FROM job_note_files WHERE file_status LIKE 'missing%'"
     ).fetchone()["cnt"]
     doc_total = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM job_documents WHERE file_status='missing_orphaned'"
+        "SELECT COUNT(*) AS cnt FROM job_documents WHERE file_status LIKE 'missing%'"
     ).fetchone()["cnt"]
     conn.close()
     return jsonify({
@@ -13061,13 +13063,13 @@ def admin_orphaned_files_cleanup():
         return jsonify({"ok": False, "error": "Invalid action"}), 400
     conn = db()
     nf_count = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM job_note_files WHERE file_status='missing_orphaned'"
+        "SELECT COUNT(*) AS cnt FROM job_note_files WHERE file_status LIKE 'missing%'"
     ).fetchone()["cnt"]
     doc_count = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM job_documents WHERE file_status='missing_orphaned'"
+        "SELECT COUNT(*) AS cnt FROM job_documents WHERE file_status LIKE 'missing%'"
     ).fetchone()["cnt"]
-    conn.execute("DELETE FROM job_note_files WHERE file_status='missing_orphaned'")
-    conn.execute("DELETE FROM job_documents WHERE file_status='missing_orphaned'")
+    conn.execute("DELETE FROM job_note_files WHERE file_status LIKE 'missing%'")
+    conn.execute("DELETE FROM job_documents WHERE file_status LIKE 'missing%'")
     conn.commit()
     conn.close()
     total = nf_count + doc_count

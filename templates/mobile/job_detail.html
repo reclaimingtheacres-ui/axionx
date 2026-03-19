@@ -440,7 +440,7 @@
           {% set ns_imgs = [] %}
           {% set ns_docs = [] %}
           {% for f in n_files %}
-            {% if (f.file_status or 'ok') == 'missing_orphaned' %}
+            {% if (f.file_status or 'ok').startswith('missing') %}
               {% set _ = ns_orphaned.append(f) %}
             {% else %}
               {% set fext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else '' %}

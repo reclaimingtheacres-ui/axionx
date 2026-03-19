@@ -1181,7 +1181,7 @@
                   {% if entry.files %}
                     <div class="d-flex flex-wrap gap-2 mt-2" style="align-items:flex-start">
                       {% for f in entry.files %}
-                        {% if (f.file_status or 'ok') == 'missing_orphaned' %}
+                        {% if (f.file_status or 'ok').startswith('missing') %}
                         <div title="File unavailable" style="display:flex;flex-direction:column;align-items:center;gap:4px;width:72px;flex-shrink:0;opacity:.5">
                           <span style="width:48px;height:58px;display:flex;align-items:center;justify-content:center">
                             <svg width="40" height="48" viewBox="0 0 40 48" fill="none"><rect width="40" height="48" rx="5" fill="#f1f5f9"/><rect x="4" y="4" width="32" height="40" rx="3" fill="#e2e8f0"/><rect x="8" y="8" width="24" height="32" rx="2" fill="#fff"/><line x1="14" y1="18" x2="26" y2="30" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/><line x1="26" y1="18" x2="14" y2="30" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/></svg>
@@ -3801,13 +3801,21 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     }
     files.forEach(function(f) {
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;';
-      row.innerHTML =
-        '<span style="width:36px;text-align:center">' + fileIcon(f.filename) + '</span>' +
-        '<span style="flex:1;font-size:.8rem;word-break:break-all">' + displayName(f.filename) + '</span>' +
-        '<span style="font-size:.7rem;color:var(--muted);white-space:nowrap">' + fmtDate(f.uploaded_at) + '</span>' +
-        '<a href="/uploads/' + encodeURIComponent(f.filename) + '" target="_blank" title="Download" style="color:var(--accent);text-decoration:none;font-size:.85rem">&#8681;</a>' +
-        '<button type="button" onclick="axDeleteNoteFile(' + f.id + ')" title="Remove" style="background:none;border:0;color:#ef4444;font-size:.85rem;cursor:pointer;padding:0 2px">&#10005;</button>';
+      var isMissing = f.file_status && f.file_status.indexOf('missing') === 0;
+      if (isMissing) {
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;opacity:.6;';
+        row.innerHTML =
+          '<span style="width:36px;text-align:center;color:#9ca3af">&#10005;</span>' +
+          '<span style="flex:1;font-size:.8rem;color:#6b7280">File unavailable</span>';
+      } else {
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--card);border:1px solid var(--line);border-radius:8px;';
+        row.innerHTML =
+          '<span style="width:36px;text-align:center">' + fileIcon(f.filename) + '</span>' +
+          '<span style="flex:1;font-size:.8rem;word-break:break-all">' + displayName(f.filename) + '</span>' +
+          '<span style="font-size:.7rem;color:var(--muted);white-space:nowrap">' + fmtDate(f.uploaded_at) + '</span>' +
+          '<a href="/uploads/' + encodeURIComponent(f.filename) + '" target="_blank" title="Download" style="color:var(--accent);text-decoration:none;font-size:.85rem">&#8681;</a>' +
+          '<button type="button" onclick="axDeleteNoteFile(' + f.id + ')" title="Remove" style="background:none;border:0;color:#ef4444;font-size:.85rem;cursor:pointer;padding:0 2px">&#10005;</button>';
+      }
       list.appendChild(row);
     });
   }
