@@ -97,18 +97,13 @@
     {# Address — tappable for navigation #}
     <div style="margin-bottom:12px;">
       <div class="m-label">Address</div>
-      <!-- AX-NAV-V3 -->
       {% if _has_addr %}
-      <button type="button" id="addrTapTarget"
-         onclick="console.log('[ADDR] tapped');var nc=document.getElementById('navChooser');if(nc){nc.style.display='flex';console.log('[ADDR] chooser shown')}else{console.log('[ADDR] navChooser NOT FOUND')}"
-         style="font-size:.9rem;line-height:1.5;color:var(--accent);cursor:pointer;
-                display:inline-flex;align-items:flex-start;gap:6px;margin-top:2px;
-                background:none;border:none;padding:0;text-align:left;font-family:inherit;
-                -webkit-tap-highlight-color:rgba(37,99,235,.15);
-                -webkit-appearance:none;appearance:none;">
+      <div onclick="document.getElementById('navChooser').style.display='flex'"
+           style="font-size:.9rem;line-height:1.5;color:var(--accent);cursor:pointer;
+                  display:inline-flex;align-items:flex-start;gap:6px;margin-top:2px;">
         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" style="flex-shrink:0;margin-top:3px;"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
         {{ _display_addr }}
-      </button>
+      </div>
       {% else %}
       <div style="font-size:.9rem;line-height:1.5;color:var(--text);">—</div>
       {% endif %}
@@ -1012,33 +1007,30 @@ function showTab(name) {
     <div style="font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;
                 letter-spacing:.07em;text-align:center;margin-bottom:14px;">Open directions with</div>
     <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
-      <button type="button"
-         onclick="console.log('[NAV] Waze');document.getElementById('navChooser').style.display='none';window.location.href='{{ _waze_url }}';"
+      <a href="{{ _waze_url }}" target="_blank" rel="noopener"
+         onclick="document.getElementById('navChooser').style.display='none'"
          style="display:flex;align-items:center;gap:14px;padding:14px 16px;
                 background:#f0f7ff;border:1.5px solid #bfdbfe;border-radius:12px;
-                font-weight:600;font-size:.95rem;color:#1d4ed8;cursor:pointer;
-                -webkit-appearance:none;appearance:none;width:100%;text-align:left;">
+                font-weight:600;font-size:.95rem;color:#1d4ed8;text-decoration:none;">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         Waze
-      </button>
-      <button type="button"
-         onclick="console.log('[NAV] Google Maps');document.getElementById('navChooser').style.display='none';window.location.href='{{ _gmaps_url }}';"
+      </a>
+      <a href="{{ _gmaps_url }}" target="_blank" rel="noopener"
+         onclick="document.getElementById('navChooser').style.display='none'"
          style="display:flex;align-items:center;gap:14px;padding:14px 16px;
                 background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;
-                font-weight:600;font-size:.95rem;color:#166534;cursor:pointer;
-                -webkit-appearance:none;appearance:none;width:100%;text-align:left;">
+                font-weight:600;font-size:.95rem;color:#166534;text-decoration:none;">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
         Google Maps
-      </button>
-      <button type="button"
-         onclick="console.log('[NAV] Apple Maps');document.getElementById('navChooser').style.display='none';window.location.href='{{ _apple_url }}';"
+      </a>
+      <a href="{{ _apple_url }}" target="_blank" rel="noopener"
+         onclick="document.getElementById('navChooser').style.display='none'"
          style="display:flex;align-items:center;gap:14px;padding:14px 16px;
                 background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;
-                font-weight:600;font-size:.95rem;color:#374151;cursor:pointer;
-                -webkit-appearance:none;appearance:none;width:100%;text-align:left;">
+                font-weight:600;font-size:.95rem;color:#374151;text-decoration:none;">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a7 7 0 017 7c0 5.25-7 13-7 13S5 14.25 5 9a7 7 0 017-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
         Apple Maps
-      </button>
+      </a>
     </div>
     <button type="button" onclick="document.getElementById('navChooser').style.display='none'"
             style="width:100%;padding:13px;border:none;border-radius:12px;background:#f3f4f6;
