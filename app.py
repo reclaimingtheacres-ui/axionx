@@ -327,6 +327,32 @@ def _raw_db():
                 raise
 
 
+def _schema_is_current():
+    import time as _t
+    for attempt in range(3):
+        conn = None
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=10)
+            conn.row_factory = sqlite3.Row
+            tbl = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_aliases'"
+            ).fetchone()
+            if not tbl:
+                return False
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+            return "geoop_assigned_agent" in cols
+        except Exception:
+            if attempt < 2:
+                _t.sleep(0.3 + attempt * 0.3)
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    return False
+
+
 def _lazy_init():
     global _db_initialized, _db_init_fail_until
     if _db_initialized:
@@ -343,11 +369,16 @@ def _lazy_init():
         if _t.time() < _db_init_fail_until:
             raise sqlite3.OperationalError(f"DB init on cooldown (failed recently). DB_PATH={DB_PATH}")
         try:
+            if _schema_is_current():
+                _db_initialized = True
+                import logging as _log
+                _log.info("[DB-INIT] Schema already current — skipped DDL. DB_PATH=%s", DB_PATH)
+                return
             init_db()
             _migrate_update_builder()
             _db_initialized = True
             import logging as _log
-            _log.info("[DB-INIT] Database initialized successfully. DB_PATH=%s", DB_PATH)
+            _log.info("[DB-INIT] Database initialized (full DDL). DB_PATH=%s", DB_PATH)
         except Exception:
             _db_init_fail_until = _t.time() + 15
             import logging as _log
