@@ -323,8 +323,10 @@ Axion Prototype is a Flask-based field operations management application designe
 **Customer Edit Modal (Job Detail):**
 - Admin-only modal on job detail page allows editing customer details without leaving the job.
 - Button: "Update Customer Details" in customer info section, calls `axOpenEditCustomer(custId)`.
-- AJAX load: `GET /api/customers/<id>/edit-data` returns customer, phones, emails, companies, addresses.
+- AJAX load: `GET /api/customers/<id>/edit-data?job_id=N` returns customer, phones, emails, companies, addresses, and `job_address` (the current job's operational location).
 - AJAX save: `POST /customers/<id>/edit?return_job=<job_id>` with `X-Requested-With: XMLHttpRequest` returns JSON `{"ok": true, "synced_jobs": N}`.
+- Includes "Job Location to Attend" field (`ec_job_address`) — the operational address used on web & mobile for attendance/navigation. Saved to `jobs.job_address` with geocode reset. This field is independent of the customer address and excluded from customer-address sync to prevent double-update conflicts.
+- Compact layout: `form-control-sm` inputs, `mb-2` spacing, `max-height:70vh` scrollable body. Internal Notes defaults to 1 row. All fields including file chooser stay within modal bounds.
 - Modal resets form state (including file input, dynamic rows) on close.
 - Handles non-JSON error responses gracefully.
 

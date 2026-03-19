@@ -7209,6 +7209,12 @@ def api_customer_edit_data(customer_id: int):
         "SELECT address, label, is_primary FROM customer_addresses WHERE customer_id=? ORDER BY is_primary DESC, id",
         (customer_id,)
     ).fetchall()
+    job_id = request.args.get("job_id", type=int)
+    job_address = ""
+    if job_id:
+        jr = cur.execute("SELECT job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if jr:
+            job_address = jr["job_address"] or ""
     conn.close()
     pm = {r["label"]: r["phone_number"] for r in phones_raw}
     em = {r["label"]: r["email"] for r in emails_raw}
@@ -7230,6 +7236,7 @@ def api_customer_edit_data(customer_id: int):
         "emails": {"personal": em.get("Personal", "") or customer["email"] or "", "work": em.get("Work", ""), "other": em.get("Other", "")},
         "companies": [{"name": c["company_name"], "is_primary": bool(c["is_primary"])} for c in companies],
         "addresses": [{"address": a["address"], "label": a["label"], "is_primary": bool(a["is_primary"])} for a in addresses],
+        "job_address": job_address,
     })
 
 
@@ -7421,6 +7428,15 @@ def customer_edit_post(customer_id: int):
     elif not _inserted_addr_ids:
         cur.execute("UPDATE customers SET address = NULL WHERE id = ?", (customer_id,))
 
+    _ec_job_address = request.form.get("job_address", "").strip()
+    _ec_job_id = request.form.get("job_id", "").strip()
+    _ec_jid = None
+    if _ec_job_id:
+        try:
+            _ec_jid = int(_ec_job_id)
+        except (ValueError, TypeError):
+            pass
+
     old_address = (existing["old_address"] or "").strip() if existing else ""
     new_address = (_primary_address or address or "").strip()
     _synced_job_ids = []
@@ -7432,6 +7448,8 @@ def customer_edit_post(customer_id: int):
               AND j.lifecycle_status = 'active'
         """, (customer_id, customer_id)).fetchall()
         for _aj in _active_jobs:
+            if _ec_jid and _aj["id"] == _ec_jid:
+                continue
             if (_aj["job_address"] or "").strip() != new_address:
                 cur.execute("UPDATE jobs SET job_address = ?, lat = NULL, lng = NULL, geocode_fail = 0, updated_at = ? WHERE id = ?",
                             (new_address, ts, _aj["id"]))
@@ -7442,15 +7460,26 @@ def customer_edit_post(customer_id: int):
         WHERE id IN (SELECT job_id FROM job_customers WHERE customer_id = ?)
     """, (ts, customer_id))
 
+    _job_addr_updated = False
+    if _ec_jid:
+        _old_ja = cur.execute("SELECT job_address FROM jobs WHERE id = ?", (_ec_jid,)).fetchone()
+        if _old_ja and (_old_ja["job_address"] or "") != _ec_job_address:
+            cur.execute("UPDATE jobs SET job_address = ?, lat = NULL, lng = NULL, geocode_fail = 0, updated_at = ? WHERE id = ?",
+                        (_ec_job_address or None, ts, _ec_jid))
+            _job_addr_updated = True
+
     conn.commit()
     conn.close()
 
     for _sjid in _synced_job_ids:
         _geocode_job_async(_sjid, new_address)
+    if _job_addr_updated and _ec_job_address:
+        _geocode_job_async(_ec_jid, _ec_job_address)
 
     audit("customer", customer_id, "update", "Customer details updated",
           {"id_image_updated": bool(id_image and id_image.filename),
-           "address_synced_jobs": len(_synced_job_ids)})
+           "address_synced_jobs": len(_synced_job_ids),
+           "job_address_updated": _job_addr_updated})
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({"ok": True, "synced_jobs": len(_synced_job_ids)})

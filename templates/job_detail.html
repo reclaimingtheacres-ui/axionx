@@ -5718,21 +5718,22 @@ document.addEventListener('DOMContentLoaded', function() {
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form id="editCustomerForm" enctype="multipart/form-data">
-        <div class="modal-body" id="editCustomerBody" style="max-height:75vh;overflow-y:auto">
+        <input type="hidden" name="job_id" id="ec_job_id" value="{{ job.id }}">
+        <div class="modal-body" id="editCustomerBody" style="max-height:70vh;overflow-y:auto;padding:12px 16px">
           <div class="text-center py-4" id="ecLoading"><div class="spinner-border spinner-border-sm text-primary"></div> Loading...</div>
           <div id="ecFields" style="display:none">
-            <div class="row g-2 mb-3">
+            <div class="row g-2 mb-2">
               <div class="col-12 col-md-4">
-                <label class="form-label small fw-semibold">First name *</label>
-                <input class="form-control" name="first_name" id="ec_first_name" required>
+                <label class="form-label small fw-semibold mb-0">First name *</label>
+                <input class="form-control form-control-sm" name="first_name" id="ec_first_name" required>
               </div>
               <div class="col-12 col-md-4">
-                <label class="form-label small fw-semibold">Last name *</label>
-                <input class="form-control" name="last_name" id="ec_last_name" required>
+                <label class="form-label small fw-semibold mb-0">Last name *</label>
+                <input class="form-control form-control-sm" name="last_name" id="ec_last_name" required>
               </div>
               <div class="col-12 col-md-4">
-                <label class="form-label small fw-semibold">Role</label>
-                <select class="form-select" name="role" id="ec_role">
+                <label class="form-label small fw-semibold mb-0">Role</label>
+                <select class="form-select form-select-sm" name="role" id="ec_role">
                   <option value="">— None —</option>
                   <option value="Primary">Primary</option>
                   <option value="Director">Director</option>
@@ -5743,50 +5744,56 @@ document.addEventListener('DOMContentLoaded', function() {
                 </select>
               </div>
               <div class="col-12 col-md-4">
-                <label class="form-label small fw-semibold">Date of Birth</label>
-                <input class="form-control" name="dob" id="ec_dob" placeholder="YYYY-MM-DD">
+                <label class="form-label small fw-semibold mb-0">Date of Birth</label>
+                <input class="form-control form-control-sm" name="dob" id="ec_dob" placeholder="YYYY-MM-DD">
               </div>
             </div>
 
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Email Addresses</label>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold mb-0">Email Addresses</label>
               <div class="row g-2">
-                <div class="col-12 col-md-4"><input class="form-control" name="email_personal" id="ec_email_personal" type="email" placeholder="Personal"></div>
-                <div class="col-12 col-md-4"><input class="form-control" name="email_work" id="ec_email_work" type="email" placeholder="Work"></div>
-                <div class="col-12 col-md-4"><input class="form-control" name="email_other" id="ec_email_other" type="email" placeholder="Other"></div>
+                <div class="col-12 col-md-4"><input class="form-control form-control-sm" name="email_personal" id="ec_email_personal" type="email" placeholder="Personal"></div>
+                <div class="col-12 col-md-4"><input class="form-control form-control-sm" name="email_work" id="ec_email_work" type="email" placeholder="Work"></div>
+                <div class="col-12 col-md-4"><input class="form-control form-control-sm" name="email_other" id="ec_email_other" type="email" placeholder="Other"></div>
               </div>
             </div>
 
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Phone Numbers</label>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold mb-0">Phone Numbers</label>
               <div class="row g-2">
-                <div class="col-6 col-lg-3"><input class="form-control" name="phone_mobile" id="ec_phone_mobile" placeholder="Mobile"></div>
-                <div class="col-6 col-lg-3"><input class="form-control" name="phone_home" id="ec_phone_home" placeholder="Home"></div>
-                <div class="col-6 col-lg-3"><input class="form-control" name="phone_work" id="ec_phone_work" placeholder="Work"></div>
-                <div class="col-6 col-lg-3"><input class="form-control" name="phone_other" id="ec_phone_other" placeholder="Other"></div>
+                <div class="col-6 col-lg-3"><input class="form-control form-control-sm" name="phone_mobile" id="ec_phone_mobile" placeholder="Mobile"></div>
+                <div class="col-6 col-lg-3"><input class="form-control form-control-sm" name="phone_home" id="ec_phone_home" placeholder="Home"></div>
+                <div class="col-6 col-lg-3"><input class="form-control form-control-sm" name="phone_work" id="ec_phone_work" placeholder="Work"></div>
+                <div class="col-6 col-lg-3"><input class="form-control form-control-sm" name="phone_other" id="ec_phone_other" placeholder="Other"></div>
               </div>
             </div>
 
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Companies</label>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold mb-0">Companies</label>
               <div id="ecCompanyList"></div>
-              <button type="button" class="btn btn-outline-primary btn-sm" onclick="ecAddCompanyRow()">+ Add Company</button>
+              <button type="button" class="btn btn-outline-primary btn-sm py-0" style="font-size:.78rem" onclick="ecAddCompanyRow()">+ Add Company</button>
             </div>
 
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Addresses</label>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold mb-0">Customer Address</label>
               <div id="ecAddressList"></div>
-              <button type="button" class="btn btn-outline-primary btn-sm" onclick="ecAddAddressRow()">+ Add Address</button>
+              <button type="button" class="btn btn-outline-primary btn-sm py-0" style="font-size:.78rem" onclick="ecAddAddressRow()">+ Add Address</button>
             </div>
 
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Internal Notes</label>
-              <textarea class="form-control" name="notes" id="ec_notes" rows="3"></textarea>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold mb-0">Job Location to Attend</label>
+              <input class="form-control form-control-sm ax-address" name="job_address" id="ec_job_address" placeholder="Address for attendance / navigation" autocomplete="off" spellcheck="false">
+              <div class="form-text" style="font-size:.72rem;margin-top:2px;color:var(--muted)">The operational address shown on web &amp; mobile for this job. Can differ from the customer address.</div>
             </div>
 
-            <div class="mb-3">
-              <label class="form-label small fw-semibold">Customer ID Image (PNG, JPG, PDF)</label>
-              <input class="form-control" type="file" name="id_image" accept=".png,.jpg,.jpeg,.pdf">
+            <div class="mb-2">
+              <label class="form-label small fw-semibold mb-0">Internal Notes</label>
+              <textarea class="form-control form-control-sm" name="notes" id="ec_notes" rows="1"></textarea>
+            </div>
+
+            <div class="mb-2">
+              <label class="form-label small fw-semibold mb-0">Customer ID Image (PNG, JPG, PDF)</label>
+              <input class="form-control form-control-sm" type="file" name="id_image" accept=".png,.jpg,.jpeg,.pdf">
               <div id="ecIdImageInfo" class="small mt-1" style="color:var(--muted)"></div>
             </div>
           </div>
@@ -5813,7 +5820,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('ecSaveStatus').textContent = '';
     _ecModal.show();
 
-    fetch('/api/customers/' + custId + '/edit-data', {credentials: 'include'})
+    var jobId = document.getElementById('ec_job_id').value;
+    fetch('/api/customers/' + custId + '/edit-data?job_id=' + encodeURIComponent(jobId), {credentials: 'include'})
       .then(function(r){ return r.json(); })
       .then(function(d){
         if (!d.ok) { alert(d.error || 'Failed to load customer'); _ecModal.hide(); return; }
@@ -5830,6 +5838,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('ec_phone_work').value = d.phones.work;
         document.getElementById('ec_phone_other').value = d.phones.other;
         document.getElementById('ec_notes').value = c.notes;
+        document.getElementById('ec_job_address').value = d.job_address || '';
 
         var compList = document.getElementById('ecCompanyList');
         compList.innerHTML = '';
