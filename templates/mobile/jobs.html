@@ -15,11 +15,21 @@
   outline: none; -webkit-appearance: none;
 }
 .jobs-search:focus { border-color: #2563eb; background: #fff; }
+.jobs-search::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
 .search-icon {
   position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
   pointer-events: none; color: #9ca3af;
 }
+.search-icon.has-text { display: none; }
 .search-wrap { position: relative; flex: 1; }
+.search-clear {
+  display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; border: none; border-radius: 50%; background: #d1d5db;
+  color: #fff; font-size: 0; line-height: 0; cursor: pointer; padding: 0;
+  -webkit-tap-highlight-color: rgba(0,0,0,.1);
+  align-items: center; justify-content: center;
+}
+.search-clear.visible { display: flex; }
 .filter-btn {
   flex-shrink: 0; background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 10px;
   padding: 9px 13px; font-size: .82rem; font-weight: 600; color: #374151; cursor: pointer;
@@ -168,11 +178,14 @@
 {# ── Search + filter bar ── #}
 <div class="jobs-bar">
   <div class="search-wrap">
-    <svg class="search-icon" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <svg class="search-icon" id="search-icon" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" fill="none" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input type="search" class="jobs-search" id="search-box"
            placeholder="Search jobs, names, rego…"
            value="{{ prefs.q or '' }}"
            autocomplete="off" autocorrect="off" spellcheck="false">
+    <button type="button" class="search-clear" id="search-clear" aria-label="Clear search">
+      <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   </div>
   <button type="button" class="filter-btn" id="filter-btn"
           onclick="document.getElementById('filterSheet').classList.add('open')">
@@ -551,19 +564,45 @@ if(navigator.geolocation){
 
 // ── Search ──
 const searchBox = document.getElementById('search-box');
+const searchClearBtn = document.getElementById('search-clear');
+const searchIcon = document.getElementById('search-icon');
 let searchQ = (searchBox.value||'').toLowerCase().trim();
 let _searchTimer = null;
 let _searchAbort = null;
 const _loadedJobIds = new Set(cards.map(c=>c.dataset.id));
 
+function _toggleSearchClear(){
+  var has = searchBox.value.length > 0;
+  searchClearBtn.classList.toggle('visible', has);
+  searchIcon.classList.toggle('has-text', has);
+}
+_toggleSearchClear();
+
 searchBox.addEventListener('input', function(){
   searchQ = this.value.toLowerCase().trim();
+  _toggleSearchClear();
   removeServerResults();
   applySortAndFilter();
   clearTimeout(_searchTimer);
   if(searchQ.length >= 2){
     _searchTimer = setTimeout(()=>{ serverSearch(searchQ); }, 350);
   }
+});
+
+searchClearBtn.addEventListener('click', function(e){
+  e.preventDefault();
+  searchBox.value = '';
+  searchQ = '';
+  _toggleSearchClear();
+  removeServerResults();
+  applySortAndFilter();
+  clearTimeout(_searchTimer);
+  if(_searchAbort){ _searchAbort.abort(); _searchAbort = null; }
+  searchBox.focus();
+});
+
+searchBox.addEventListener('keydown', function(e){
+  if(e.key === 'Escape'){ searchClearBtn.click(); }
 });
 
 function removeServerResults(){
