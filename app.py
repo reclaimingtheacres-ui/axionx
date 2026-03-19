@@ -7309,12 +7309,12 @@ def customer_edit_post(customer_id: int):
             LEFT JOIN job_customers jc ON jc.job_id = j.id
             WHERE (jc.customer_id = ? OR j.customer_id = ?)
               AND j.lifecycle_status = 'active'
-              AND (j.job_address IS NULL OR j.job_address = '' OR j.job_address = ?)
-        """, (customer_id, customer_id, old_address)).fetchall()
+        """, (customer_id, customer_id)).fetchall()
         for _aj in _active_jobs:
-            cur.execute("UPDATE jobs SET job_address = ?, lat = NULL, lng = NULL, geocode_fail = 0, updated_at = ? WHERE id = ?",
-                        (new_address, ts, _aj["id"]))
-            _synced_job_ids.append(_aj["id"])
+            if (_aj["job_address"] or "").strip() != new_address:
+                cur.execute("UPDATE jobs SET job_address = ?, lat = NULL, lng = NULL, geocode_fail = 0, updated_at = ? WHERE id = ?",
+                            (new_address, ts, _aj["id"]))
+                _synced_job_ids.append(_aj["id"])
 
     cur.execute("""
         UPDATE jobs SET updated_at = ?
