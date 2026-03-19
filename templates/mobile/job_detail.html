@@ -98,12 +98,20 @@
     <div style="margin-bottom:12px;">
       <div class="m-label">Address</div>
       {% if _has_addr %}
-      <div onclick="document.getElementById('navChooser').style.display='flex'"
-           style="font-size:.9rem;line-height:1.5;color:var(--accent);cursor:pointer;
-                  display:inline-flex;align-items:flex-start;gap:6px;margin-top:2px;">
+      <a href="#" id="addrTapTarget"
+         style="font-size:.9rem;line-height:1.5;color:var(--accent);cursor:pointer;
+                display:inline-flex;align-items:flex-start;gap:6px;margin-top:2px;
+                text-decoration:none;-webkit-tap-highlight-color:rgba(37,99,235,.15);">
         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2" style="flex-shrink:0;margin-top:3px;"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
         {{ _display_addr }}
-      </div>
+      </a>
+      <script>
+      document.getElementById('addrTapTarget').addEventListener('click', function(e) {
+        e.preventDefault();
+        var nc = document.getElementById('navChooser');
+        if (nc) nc.style.display = 'flex';
+      });
+      </script>
       {% else %}
       <div style="font-size:.9rem;line-height:1.5;color:var(--text);">—</div>
       {% endif %}
@@ -986,8 +994,8 @@ function showTab(name) {
 {% set _nav_addr = _display_addr %}
 {% if _nav_addr %}
 {% set _enc_addr = _nav_addr | urlencode %}
-{% set _coords_match = job.lat and job.lng and (job.job_address|trim == _nav_addr|trim) %}
-{% if _coords_match %}
+{% set _has_coords = job.lat and job.lng %}
+{% if _has_coords %}
   {% set _waze_url   = "https://waze.com/ul?ll=" ~ job.lat ~ "," ~ job.lng ~ "&navigate=yes" %}
   {% set _gmaps_url  = "https://www.google.com/maps/dir/?api=1&destination=" ~ job.lat ~ "," ~ job.lng %}
   {% set _apple_url  = "http://maps.apple.com/?daddr=" ~ job.lat ~ "," ~ job.lng ~ "&dirflg=d" %}
