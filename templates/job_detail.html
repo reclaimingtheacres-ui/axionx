@@ -309,7 +309,7 @@
                   </div>
                   <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
                     {% if session.get('role') in ('admin', 'both') %}
-                      <a href="/customers/{{ lc.customer_id }}/edit" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px">Edit</a>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenEditCustomer({{ lc.customer_id }})">Update Customer Details</button>
                     {% endif %}
                     {% if session.get('role') in ('admin', 'both') and job_linked_customers|length > 1 %}
                       <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
@@ -3257,6 +3257,20 @@ document.addEventListener('click', function(e) {
     window.location.href = 'sms:?body=' + msg;
   });
 
+  var _previewHistoryPushed = false;
+  window.addEventListener('popstate', function(e) {
+    if (_previewHistoryPushed && _previewModal) {
+      _previewHistoryPushed = false;
+      _previewModal.hide();
+    }
+  });
+  document.getElementById('filePreviewModal').addEventListener('hidden.bs.modal', function() {
+    if (_previewHistoryPushed) {
+      _previewHistoryPushed = false;
+      history.back();
+    }
+  });
+
   window.axPreviewFile = function (url, filename) {
     if (!_previewModal) _previewModal = new bootstrap.Modal(document.getElementById('filePreviewModal'));
     var ext = (filename.split('.').pop() || '').toLowerCase();
@@ -3267,6 +3281,11 @@ document.addEventListener('click', function(e) {
 
     _currentUrl = url;
     _currentFilename = filename;
+
+    if (!_previewHistoryPushed) {
+      history.pushState({axPreview: true}, '', location.href);
+      _previewHistoryPushed = true;
+    }
 
     title.textContent = filename;
     dl.href   = url;
@@ -5678,6 +5697,267 @@ document.addEventListener('DOMContentLoaded', function() {
       tab.show();
     }
   }
+})();
+</script>
+{% endif %}
+
+{% if session.get('role') in ('admin', 'both') %}
+<div class="modal fade" id="editCustomerModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content" style="background:var(--panel);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title" style="color:var(--text)">Update Customer Details</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="editCustomerForm" enctype="multipart/form-data">
+        <div class="modal-body" id="editCustomerBody" style="max-height:75vh;overflow-y:auto">
+          <div class="text-center py-4" id="ecLoading"><div class="spinner-border spinner-border-sm text-primary"></div> Loading...</div>
+          <div id="ecFields" style="display:none">
+            <div class="row g-2 mb-3">
+              <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold">First name *</label>
+                <input class="form-control" name="first_name" id="ec_first_name" required>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold">Last name *</label>
+                <input class="form-control" name="last_name" id="ec_last_name" required>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold">Role</label>
+                <select class="form-select" name="role" id="ec_role">
+                  <option value="">— None —</option>
+                  <option value="Primary">Primary</option>
+                  <option value="Director">Director</option>
+                  <option value="Guarantor">Guarantor</option>
+                  <option value="Borrower">Borrower</option>
+                  <option value="Spouse">Spouse</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold">Date of Birth</label>
+                <input class="form-control" name="dob" id="ec_dob" placeholder="YYYY-MM-DD">
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Email Addresses</label>
+              <div class="row g-2">
+                <div class="col-12 col-md-4"><input class="form-control" name="email_personal" id="ec_email_personal" type="email" placeholder="Personal"></div>
+                <div class="col-12 col-md-4"><input class="form-control" name="email_work" id="ec_email_work" type="email" placeholder="Work"></div>
+                <div class="col-12 col-md-4"><input class="form-control" name="email_other" id="ec_email_other" type="email" placeholder="Other"></div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Phone Numbers</label>
+              <div class="row g-2">
+                <div class="col-6 col-lg-3"><input class="form-control" name="phone_mobile" id="ec_phone_mobile" placeholder="Mobile"></div>
+                <div class="col-6 col-lg-3"><input class="form-control" name="phone_home" id="ec_phone_home" placeholder="Home"></div>
+                <div class="col-6 col-lg-3"><input class="form-control" name="phone_work" id="ec_phone_work" placeholder="Work"></div>
+                <div class="col-6 col-lg-3"><input class="form-control" name="phone_other" id="ec_phone_other" placeholder="Other"></div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Companies</label>
+              <div id="ecCompanyList"></div>
+              <button type="button" class="btn btn-outline-primary btn-sm" onclick="ecAddCompanyRow()">+ Add Company</button>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Addresses</label>
+              <div id="ecAddressList"></div>
+              <button type="button" class="btn btn-outline-primary btn-sm" onclick="ecAddAddressRow()">+ Add Address</button>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Internal Notes</label>
+              <textarea class="form-control" name="notes" id="ec_notes" rows="3"></textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Customer ID Image (PNG, JPG, PDF)</label>
+              <input class="form-control" type="file" name="id_image" accept=".png,.jpg,.jpeg,.pdf">
+              <div id="ecIdImageInfo" class="small mt-1" style="color:var(--muted)"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid var(--line)">
+          <span id="ecSaveStatus" style="font-size:.82rem;color:var(--muted);margin-right:auto"></span>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="ecSaveBtn">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var _ecModal = null;
+  var _ecCustomerId = null;
+
+  window.axOpenEditCustomer = function(custId) {
+    _ecCustomerId = custId;
+    if (!_ecModal) _ecModal = new bootstrap.Modal(document.getElementById('editCustomerModal'));
+    document.getElementById('ecLoading').style.display = '';
+    document.getElementById('ecFields').style.display = 'none';
+    document.getElementById('ecSaveStatus').textContent = '';
+    _ecModal.show();
+
+    fetch('/api/customers/' + custId + '/edit-data', {credentials: 'include'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d.ok) { alert(d.error || 'Failed to load customer'); _ecModal.hide(); return; }
+        var c = d.customer;
+        document.getElementById('ec_first_name').value = c.first_name;
+        document.getElementById('ec_last_name').value = c.last_name;
+        document.getElementById('ec_role').value = c.role;
+        document.getElementById('ec_dob').value = c.dob;
+        document.getElementById('ec_email_personal').value = d.emails.personal;
+        document.getElementById('ec_email_work').value = d.emails.work;
+        document.getElementById('ec_email_other').value = d.emails.other;
+        document.getElementById('ec_phone_mobile').value = d.phones.mobile;
+        document.getElementById('ec_phone_home').value = d.phones.home;
+        document.getElementById('ec_phone_work').value = d.phones.work;
+        document.getElementById('ec_phone_other').value = d.phones.other;
+        document.getElementById('ec_notes').value = c.notes;
+
+        var compList = document.getElementById('ecCompanyList');
+        compList.innerHTML = '';
+        if (d.companies.length) {
+          d.companies.forEach(function(co, i){ _ecAddCompanyRowData(co.name, co.is_primary, i); });
+        } else if (c.company) {
+          _ecAddCompanyRowData(c.company, true, 0);
+        }
+
+        var addrList = document.getElementById('ecAddressList');
+        addrList.innerHTML = '';
+        if (d.addresses.length) {
+          d.addresses.forEach(function(a, i){ _ecAddAddressRowData(a.address, a.label, a.is_primary, i); });
+        } else if (c.address) {
+          _ecAddAddressRowData(c.address, 'Primary', true, 0);
+        }
+
+        var idInfo = document.getElementById('ecIdImageInfo');
+        if (c.id_image_path) {
+          idInfo.textContent = 'Current ID on file — ';
+          var a = document.createElement('a');
+          a.href = '/uploads/' + encodeURI(c.id_image_path);
+          a.target = '_blank';
+          a.style.color = 'var(--accent)';
+          a.textContent = 'View';
+          idInfo.appendChild(a);
+          idInfo.appendChild(document.createTextNode(' (uploading replaces it)'));
+        } else {
+          idInfo.textContent = 'No ID on file yet.';
+        }
+
+        document.getElementById('ecLoading').style.display = 'none';
+        document.getElementById('ecFields').style.display = '';
+        if (typeof attachAddressAutocomplete === 'function') attachAddressAutocomplete(document.getElementById('ecFields'));
+      })
+      .catch(function(){ alert('Error loading customer data'); _ecModal.hide(); });
+  };
+
+  function _ecAddCompanyRowData(name, isPrimary, idx) {
+    var list = document.getElementById('ecCompanyList');
+    var div = document.createElement('div');
+    div.className = 'd-flex gap-2 align-items-center mb-2 ec-company-row';
+    div.innerHTML =
+      '<input class="form-control" name="company_names[]" value="' + _escAttr(name) + '" placeholder="Company name">' +
+      '<label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">' +
+        '<input type="radio" name="company_primary" value="' + idx + '"' + (isPrimary ? ' checked' : '') + '> Primary' +
+      '</label>' +
+      '<button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.ec-company-row\').remove();ecReindex(\'ecCompanyList\',\'company_primary\')" title="Remove">&times;</button>';
+    list.appendChild(div);
+  }
+
+  function _ecAddAddressRowData(addr, label, isPrimary, idx) {
+    var list = document.getElementById('ecAddressList');
+    var div = document.createElement('div');
+    div.className = 'd-flex gap-2 align-items-center mb-2 ec-address-row';
+    div.innerHTML =
+      '<input class="form-control ax-address" name="addresses[]" value="' + _escAttr(addr) + '" placeholder="Address" autocomplete="off" spellcheck="false" style="flex:2">' +
+      '<select class="form-select" name="address_labels[]" style="max-width:130px">' +
+        ['Primary','Business','Home','Other'].map(function(l){ return '<option value="'+l+'"'+(l===label?' selected':'')+'>'+l+'</option>'; }).join('') +
+      '</select>' +
+      '<label class="d-flex align-items-center gap-1 text-nowrap" style="font-size:.82rem;cursor:pointer">' +
+        '<input type="radio" name="address_primary" value="' + idx + '"' + (isPrimary ? ' checked' : '') + '> Primary' +
+      '</label>' +
+      '<button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.ec-address-row\').remove();ecReindex(\'ecAddressList\',\'address_primary\')" title="Remove">&times;</button>';
+    list.appendChild(div);
+  }
+
+  function _escAttr(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;'); }
+
+  window.ecAddCompanyRow = function() {
+    var idx = document.getElementById('ecCompanyList').querySelectorAll('.ec-company-row').length;
+    _ecAddCompanyRowData('', false, idx);
+    document.getElementById('ecCompanyList').querySelector('.ec-company-row:last-child input[name="company_names[]"]').focus();
+  };
+
+  window.ecAddAddressRow = function() {
+    var idx = document.getElementById('ecAddressList').querySelectorAll('.ec-address-row').length;
+    _ecAddAddressRowData('', 'Primary', false, idx);
+    var newRow = document.getElementById('ecAddressList').querySelector('.ec-address-row:last-child');
+    if (typeof attachAddressAutocomplete === 'function') attachAddressAutocomplete(newRow);
+    newRow.querySelector('input[name="addresses[]"]').focus();
+  };
+
+  window.ecReindex = function(listId, radioName) {
+    var rows = document.getElementById(listId).querySelectorAll('input[type="radio"]');
+    rows.forEach(function(r, i){ r.value = i; });
+    if (rows.length && !document.querySelector('#' + listId + ' input[name="' + radioName + '"]:checked')) rows[0].checked = true;
+  };
+
+  document.getElementById('editCustomerModal').addEventListener('hidden.bs.modal', function() {
+    var form = document.getElementById('editCustomerForm');
+    form.reset();
+    document.getElementById('ecCompanyList').innerHTML = '';
+    document.getElementById('ecAddressList').innerHTML = '';
+    document.getElementById('ecIdImageInfo').textContent = '';
+    document.getElementById('ecSaveStatus').textContent = '';
+    document.getElementById('ecSaveBtn').disabled = false;
+  });
+
+  document.getElementById('editCustomerForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('ecSaveBtn');
+    var status = document.getElementById('ecSaveStatus');
+    btn.disabled = true;
+    status.textContent = 'Saving...';
+    status.style.color = 'var(--muted)';
+    var fd = new FormData(this);
+    fetch('/customers/' + _ecCustomerId + '/edit?return_job={{ job.id }}', {
+      method: 'POST',
+      body: fd,
+      credentials: 'include',
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+    .then(function(r){
+      if (!r.ok && r.headers.get('content-type') && r.headers.get('content-type').indexOf('json') === -1) {
+        throw new Error('Server error');
+      }
+      return r.json();
+    })
+    .then(function(d){
+      btn.disabled = false;
+      if (d.ok) {
+        status.textContent = '';
+        _ecModal.hide();
+        location.reload();
+      } else {
+        status.textContent = d.error || 'Save failed';
+        status.style.color = '#ef4444';
+      }
+    })
+    .catch(function(){
+      btn.disabled = false;
+      status.textContent = 'Save failed — please try again';
+      status.style.color = '#ef4444';
+    });
+  });
 })();
 </script>
 {% endif %}

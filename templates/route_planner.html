@@ -99,7 +99,10 @@
       <div id="rp-suburb-tags" class="rp-suburb-tags"></div>
       <div style="margin-top:8px">
         <div class="rp-lbl">Search</div>
-        <input id="rp-search" class="rp-input" placeholder="Customer, address, reference...">
+        <div class="ax-search-wrap">
+          <input id="rp-search" class="rp-input" placeholder="Customer, address, reference..." style="padding-right:28px;width:100%">
+          <button type="button" class="ax-search-clear" onclick="var i=this.previousElementSibling;i.value='';i.classList.remove('has-value');i.dispatchEvent(new Event('input'))" aria-label="Clear search">&times;</button>
+        </div>
       </div>
     </div>
 

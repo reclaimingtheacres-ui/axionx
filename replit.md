@@ -320,6 +320,23 @@ Axion Prototype is a Flask-based field operations management application designe
 - `job_detail.html`: Linked customer rows show primary phone with Call + SMS buttons. Client phone shows Call button.
 - Mobile: Already had Call/SMS on job detail; now consistent across all platforms.
 
+**Customer Edit Modal (Job Detail):**
+- Admin-only modal on job detail page allows editing customer details without leaving the job.
+- Button: "Update Customer Details" in customer info section, calls `axOpenEditCustomer(custId)`.
+- AJAX load: `GET /api/customers/<id>/edit-data` returns customer, phones, emails, companies, addresses.
+- AJAX save: `POST /customers/<id>/edit?return_job=<job_id>` with `X-Requested-With: XMLHttpRequest` returns JSON `{"ok": true, "synced_jobs": N}`.
+- Modal resets form state (including file input, dynamic rows) on close.
+- Handles non-JSON error responses gracefully.
+
+**Search Clear Buttons:**
+- All search inputs on jobs.html, archive.html, index.html, route_planner.html have an × clear button.
+- Uses CSS `.ax-search-wrap` container with `.ax-search-clear` button, shown via `:not(:placeholder-shown)` and `.has-value` class.
+
+**Document Viewer Browser History Fix:**
+- `filePreviewModal` pushes a history state on first open (once per modal session, not per file).
+- Browser back button closes the modal via `popstate` listener instead of navigating away.
+- Modal close (`hidden.bs.modal`) calls `history.back()` to clean up the pushed state.
+
 ## Infrastructure & Deployment
 
 - **Database**: SQLite. Both `app.py` and `geoop_import.py` resolve to the same absolute path via `os.path.abspath(os.getenv("DB_PATH", "axion.db"))`. On Azure, `startup.sh` exports `DB_PATH=/home/site/data/axion.db` (persistent mounted storage) before launching gunicorn, since Oryx extracts the app to a temporary `/tmp/` path. On Replit, defaults to `./axion.db`. All connections use WAL mode, `synchronous=NORMAL`, and `busy_timeout=60000`.

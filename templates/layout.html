@@ -258,6 +258,11 @@
     .ax-search{ border-radius: 14px 0 0 14px !important; background: #ffffff; border-color: rgba(0,0,0,.15); color: var(--text); }
     .ax-search:focus{ background: #ffffff; border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
     .ax-search-btn{ border-radius: 0 14px 14px 0 !important; }
+    .ax-search-wrap{position:relative;display:flex;flex:1}
+    .ax-search-wrap .ax-search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:0;font-size:1.1rem;line-height:1;color:#9ca3af;cursor:pointer;padding:2px 6px;display:none;z-index:2}
+    .ax-search-wrap .ax-search-clear:hover{color:#374151}
+    .ax-search-wrap input:not(:placeholder-shown) ~ .ax-search-clear,
+    .ax-search-wrap input.has-value ~ .ax-search-clear{display:block}
     .badge{
       border-radius: 999px;
       padding: 4px 10px;

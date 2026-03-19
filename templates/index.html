@@ -89,8 +89,11 @@
 
 <form method="get" action="/jobs" class="mb-4">
   <div class="input-group input-group-lg">
-    <input type="text" name="q" class="form-control ax-search"
-           placeholder="Search jobs, customer, rego, VIN..." autocomplete="off">
+    <div class="ax-search-wrap" style="flex:1">
+      <input type="text" name="q" class="form-control ax-search"
+             placeholder="Search jobs, customer, rego, VIN..." autocomplete="off" style="padding-right:32px;border-radius:14px 0 0 14px!important">
+      <button type="button" class="ax-search-clear" onclick="var i=this.previousElementSibling;i.value='';i.classList.remove('has-value');i.focus()" aria-label="Clear search">&times;</button>
+    </div>
     <button class="btn btn-primary ax-search-btn" type="submit">Search</button>
   </div>
 </form>

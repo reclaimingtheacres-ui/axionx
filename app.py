@@ -7112,6 +7112,57 @@ def customer_detail(customer_id: int):
                            phones=phones, emails=emails, companies=companies, addresses=addresses)
 
 
+@app.get("/api/customers/<int:customer_id>/edit-data")
+@login_required
+@admin_required
+def api_customer_edit_data(customer_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM customers WHERE id = ?", (customer_id,))
+    customer = cur.fetchone()
+    if not customer:
+        conn.close()
+        return jsonify({"ok": False, "error": "Customer not found"}), 404
+    phones_raw = cur.execute(
+        "SELECT label, phone_number FROM contact_phone_numbers WHERE entity_type='customer' AND entity_id=? ORDER BY id",
+        (customer_id,)
+    ).fetchall()
+    emails_raw = cur.execute(
+        "SELECT label, email FROM contact_emails WHERE entity_type='customer' AND entity_id=? ORDER BY id",
+        (customer_id,)
+    ).fetchall()
+    companies = cur.execute(
+        "SELECT company_name, is_primary FROM customer_companies WHERE customer_id=? ORDER BY is_primary DESC, id",
+        (customer_id,)
+    ).fetchall()
+    addresses = cur.execute(
+        "SELECT address, label, is_primary FROM customer_addresses WHERE customer_id=? ORDER BY is_primary DESC, id",
+        (customer_id,)
+    ).fetchall()
+    conn.close()
+    pm = {r["label"]: r["phone_number"] for r in phones_raw}
+    em = {r["label"]: r["email"] for r in emails_raw}
+    return jsonify({
+        "ok": True,
+        "customer": {
+            "id": customer["id"],
+            "first_name": customer["first_name"] or "",
+            "last_name": customer["last_name"] or "",
+            "company": customer["company"] or "",
+            "role": customer["role"] or "",
+            "dob": customer["dob"] or "",
+            "email": customer["email"] or "",
+            "notes": customer["notes"] or "",
+            "address": customer["address"] or "",
+            "id_image_path": customer["id_image_path"] or "",
+        },
+        "phones": {"mobile": pm.get("Mobile", ""), "home": pm.get("Home", ""), "work": pm.get("Work", ""), "other": pm.get("Other", "")},
+        "emails": {"personal": em.get("Personal", "") or customer["email"] or "", "work": em.get("Work", ""), "other": em.get("Other", "")},
+        "companies": [{"name": c["company_name"], "is_primary": bool(c["is_primary"])} for c in companies],
+        "addresses": [{"address": a["address"], "label": a["label"], "is_primary": bool(a["is_primary"])} for a in addresses],
+    })
+
+
 @app.get("/customers/<int:customer_id>/edit")
 @login_required
 @admin_required
@@ -7331,7 +7382,16 @@ def customer_edit_post(customer_id: int):
           {"id_image_updated": bool(id_image and id_image.filename),
            "address_synced_jobs": len(_synced_job_ids)})
 
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "synced_jobs": len(_synced_job_ids)})
+
     flash("Customer updated.", "success")
+    return_job = request.args.get("return_job") or request.form.get("return_job")
+    if return_job:
+        try:
+            return redirect(url_for("job_detail", job_id=int(return_job)))
+        except (ValueError, TypeError):
+            pass
     return redirect(url_for("customer_detail", customer_id=customer_id))
 
 
