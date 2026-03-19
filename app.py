@@ -376,7 +376,10 @@ def _schema_is_current():
             if not tbl:
                 return False
             cols = [r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
-            return "geoop_assigned_agent" in cols
+            if "geoop_assigned_agent" not in cols:
+                return False
+            nf_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_note_files)").fetchall()]
+            return "file_status" in nf_cols
         except Exception:
             if attempt < 2:
                 _t.sleep(0.3 + attempt * 0.3)
