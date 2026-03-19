@@ -79,6 +79,7 @@ enum LPRAPIClient {
     }
 
     /// Generic authenticated POST; returns true when the server responds with {"ok": true}.
+    @MainActor
     static func postAction(path: String, body: [String: Any],
                            webView: WKWebView) async -> Bool {
         return await withCheckedContinuation { cont in
