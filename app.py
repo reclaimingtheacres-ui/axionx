@@ -3401,7 +3401,9 @@ def _jobs_list_inner():
             ORDER BY s.scheduled_for ASC LIMIT 1) AS next_booking_type,
            (SELECT s.id FROM schedules s
             WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
-            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id
+            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id,
+           (SELECT COUNT(*) FROM job_field_notes fn
+            WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count
     """
 
     from_where = """
@@ -15714,7 +15716,9 @@ def _mobile_jobs_query(uid, role, params_in):
                cu.address AS customer_address,
                (SELECT bt.name FROM schedules s JOIN booking_types bt ON bt.id = s.booking_type_id
                 WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0
-                ORDER BY s.scheduled_for LIMIT 1) AS next_booking_type
+                ORDER BY s.scheduled_for LIMIT 1) AS next_booking_type,
+               (SELECT COUNT(*) FROM job_field_notes fn
+                WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients cl ON cl.id = j.client_id
@@ -15800,7 +15804,9 @@ def m_api_jobs_search():
                 WHERE cpn.entity_type='customer' AND cpn.entity_id=j.customer_id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS customer_phone,
                au.full_name AS assigned_agent_name,
-               cu.address AS customer_address
+               cu.address AS customer_address,
+               (SELECT COUNT(*) FROM job_field_notes fn
+                WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients c ON c.id = j.client_id
@@ -15839,6 +15845,7 @@ def m_api_jobs_search():
             "next_scheduled": r["next_scheduled"] or "",
             "customer_phone": r["customer_phone"] or "",
             "assigned_agent_name": r["assigned_agent_name"] or "" if is_admin else "",
+            "pending_review_count": r["pending_review_count"] or 0,
         })
     return jsonify({"jobs": results})
 

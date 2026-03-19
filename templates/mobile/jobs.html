@@ -310,6 +310,7 @@
             <div style="font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:4px;">
               <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               {{ j.assigned_agent_name }}
+              {% if j.pending_review_count %}<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#d97706;color:#fff;font-size:.5rem;font-weight:700;flex-shrink:0;letter-spacing:.02em;line-height:1">PR</span>{% endif %}
             </div>
             {% endif %}
             {% if j.next_booking_type or j.next_scheduled %}
@@ -687,6 +688,12 @@ function serverSearch(q){
           agDiv.style.cssText = 'font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:4px;';
           agDiv.innerHTML = '<svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
           agDiv.appendChild(document.createTextNode(j.assigned_agent_name));
+          if(j.pending_review_count){
+            const pr = document.createElement('span');
+            pr.textContent = 'PR';
+            pr.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#d97706;color:#fff;font-size:.5rem;font-weight:700;flex-shrink:0;letter-spacing:.02em;line-height:1';
+            agDiv.appendChild(pr);
+          }
           main.appendChild(agDiv);
         }
         content.appendChild(main);
