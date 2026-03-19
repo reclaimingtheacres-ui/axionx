@@ -289,10 +289,22 @@ def allowed_file(filename):
 
 _db_initialized = False
 _db_init_lock = threading.Lock()
+_db_init_fail_until = 0.0
+
+import logging as _startup_log
+_db_dir = os.path.dirname(DB_PATH) or "."
+try:
+    os.makedirs(_db_dir, exist_ok=True)
+except OSError as _mke:
+    _startup_log.error("[DB-STARTUP] Cannot create DB dir %s: %s", _db_dir, _mke)
+_startup_log.warning(
+    "[DB-STARTUP] DB_PATH=%s  dir=%s  dir_exists=%s  file_exists=%s  cwd=%s",
+    DB_PATH, _db_dir, os.path.isdir(_db_dir), os.path.isfile(DB_PATH), os.getcwd()
+)
 
 
 def _raw_db():
-    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    import time as _t
     last_err = None
     for attempt in range(5):
         try:
@@ -305,21 +317,42 @@ def _raw_db():
         except sqlite3.OperationalError as e:
             last_err = e
             if attempt < 4:
-                import time
-                time.sleep(1 + attempt)
+                _t.sleep(0.5 + attempt * 0.5)
             else:
+                import logging as _log
+                _log.error(
+                    "[DB-CONNECT] Failed after 5 attempts: %s  DB_PATH=%s  dir_exists=%s  file_exists=%s",
+                    e, DB_PATH, os.path.isdir(os.path.dirname(DB_PATH) or "."), os.path.isfile(DB_PATH)
+                )
                 raise
 
 
 def _lazy_init():
-    global _db_initialized
+    global _db_initialized, _db_init_fail_until
     if _db_initialized:
         return
+    import time as _t
+    now = _t.time()
+    if now < _db_init_fail_until:
+        raise sqlite3.OperationalError(
+            f"DB init on cooldown until {_db_init_fail_until:.0f} (failed recently). DB_PATH={DB_PATH}"
+        )
     with _db_init_lock:
-        if not _db_initialized:
+        if _db_initialized:
+            return
+        if _t.time() < _db_init_fail_until:
+            raise sqlite3.OperationalError(f"DB init on cooldown (failed recently). DB_PATH={DB_PATH}")
+        try:
             init_db()
             _migrate_update_builder()
             _db_initialized = True
+            import logging as _log
+            _log.info("[DB-INIT] Database initialized successfully. DB_PATH=%s", DB_PATH)
+        except Exception:
+            _db_init_fail_until = _t.time() + 15
+            import logging as _log
+            _log.exception("[DB-INIT] init_db() FAILED — cooldown 15s. DB_PATH=%s", DB_PATH)
+            raise
 
 
 def db():
