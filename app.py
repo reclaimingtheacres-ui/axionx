@@ -303,6 +303,44 @@ _startup_log.warning(
 )
 
 
+_wal_set = False
+_wal_lock = threading.Lock()
+
+def _ensure_wal_once():
+    global _wal_set
+    if _wal_set:
+        return
+    with _wal_lock:
+        if _wal_set:
+            return
+        import time as _t
+        for attempt in range(3):
+            conn = None
+            try:
+                conn = sqlite3.connect(DB_PATH, timeout=30)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+                conn.close()
+                conn = None
+                _wal_set = True
+                import logging as _log
+                _log.info("[DB-WAL] journal_mode=WAL set successfully. DB_PATH=%s", DB_PATH)
+                return
+            except Exception as e:
+                import logging as _log
+                _log.warning("[DB-WAL] attempt %d failed: %s", attempt + 1, e)
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                if attempt < 2:
+                    _t.sleep(0.5 + attempt * 0.5)
+        _wal_set = True
+        import logging as _log
+        _log.warning("[DB-WAL] Could not set WAL after 3 attempts — proceeding with default journal mode. DB_PATH=%s", DB_PATH)
+
+
 def _raw_db():
     import time as _t
     last_err = None
@@ -310,8 +348,6 @@ def _raw_db():
         try:
             conn = sqlite3.connect(DB_PATH, timeout=30)
             conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute("PRAGMA busy_timeout=60000")
             return conn
         except sqlite3.OperationalError as e:
@@ -369,6 +405,7 @@ def _lazy_init():
         if _t.time() < _db_init_fail_until:
             raise sqlite3.OperationalError(f"DB init on cooldown (failed recently). DB_PATH={DB_PATH}")
         try:
+            _ensure_wal_once()
             if _schema_is_current():
                 _db_initialized = True
                 import logging as _log

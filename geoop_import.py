@@ -146,11 +146,43 @@ os.makedirs(GEOOP_IMPORT_DIR, exist_ok=True)
 _DB_PATH = os.path.abspath(os.getenv("DB_PATH", "axion.db"))
 
 
+_geoop_wal_set = False
+_geoop_wal_lock = __import__('threading').Lock()
+
+def _ensure_geoop_wal_once(db_path=None):
+    global _geoop_wal_set
+    if _geoop_wal_set:
+        return
+    with _geoop_wal_lock:
+        if _geoop_wal_set:
+            return
+        target = db_path or _DB_PATH
+        for attempt in range(3):
+            conn = None
+            try:
+                conn = sqlite3.connect(target, timeout=30)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+                conn.close()
+                conn = None
+                _geoop_wal_set = True
+                return
+            except Exception:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                if attempt < 2:
+                    import time
+                    time.sleep(0.5 + attempt * 0.5)
+        _geoop_wal_set = True
+
+
 def _db(db_path=None):
+    _ensure_geoop_wal_once(db_path)
     conn = sqlite3.connect(db_path or _DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA busy_timeout=60000")
     return conn
 
