@@ -214,6 +214,44 @@ def _remove_note_file_from_disk(filename_or_path: str):
                 pass
 
 
+_warned_orphan_ids: set = set()
+
+def _file_exists_in_storage(stored_name: str) -> bool:
+    if _uploads_container:
+        try:
+            _uploads_container.get_blob_client(stored_name).get_blob_properties()
+            return True
+        except Exception:
+            pass
+    primary = UPLOAD_FOLDER
+    for search_dir in [primary, _LEGACY_UPLOAD_FOLDER]:
+        candidate = os.path.join(search_dir, stored_name)
+        if os.path.isfile(candidate):
+            return True
+        for sub in ["notes/photos", "notes/audio", "update_photos", "pending"]:
+            candidate = os.path.join(search_dir, sub, stored_name)
+            if os.path.isfile(candidate):
+                return True
+    return False
+
+
+def _mark_file_orphaned(table: str, record_id: int):
+    import logging as _log
+    if table not in ("job_note_files", "job_documents"):
+        return
+    try:
+        conn = db()
+        conn.execute(f"UPDATE {table} SET file_status='missing_orphaned' WHERE id=?", (record_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        _log.warning("[ORPHAN] Failed to mark %s id=%s as orphaned: %s", table, record_id, e)
+    orphan_key = f"{table}:{record_id}"
+    if orphan_key not in _warned_orphan_ids:
+        _warned_orphan_ids.add(orphan_key)
+        _log.warning("[ORPHAN] Marked %s id=%s as missing_orphaned — file not in blob or disk", table, record_id)
+
+
 def _save_bytes_to_storage(data: bytes, blob_name: str,
                             content_type: str = "application/pdf") -> int:
     """Save raw bytes to Azure Blob Storage or local uploads folder. Returns size."""
@@ -984,6 +1022,8 @@ def _migrate_update_builder():
         UPDATE job_field_notes SET review_status='submitted_for_review'
         WHERE review_status='pending_review'
     """)
+    add_column_if_missing(cur, "job_note_files", "file_status", "TEXT DEFAULT 'ok'")
+    add_column_if_missing(cur, "job_documents", "file_status", "TEXT DEFAULT 'ok'")
     _abs_rows = cur.execute("SELECT id, filepath FROM job_note_files WHERE filepath LIKE '/%'").fetchall()
     for _ar in _abs_rows:
         _bn = os.path.basename(_ar["filepath"]) if _ar["filepath"] else ""
@@ -9179,6 +9219,20 @@ def serve_upload(filename):
     primary = app.config["UPLOAD_FOLDER"]
     legacy  = _LEGACY_UPLOAD_FOLDER
 
+    conn = db()
+    alt_row = conn.execute(
+        "SELECT id, filename, filepath, file_status FROM job_note_files WHERE filename=? OR filepath=?",
+        (filename, filename)
+    ).fetchone()
+    conn.close()
+
+    if alt_row and (alt_row["file_status"] or "ok") == "missing_orphaned":
+        orphan_key = f"job_note_files:{alt_row['id']}"
+        if orphan_key not in _warned_orphan_ids:
+            _warned_orphan_ids.add(orphan_key)
+            _log.warning("[ORPHAN] Skipping fetch for known orphan note-file id=%s filename=%r", alt_row["id"], filename)
+        return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
+
     if _uploads_container:
         try:
             blob_client = _uploads_container.get_blob_client(filename)
@@ -9218,12 +9272,6 @@ def serve_upload(filename):
                 resp.headers["Content-Disposition"] = "inline"
             return resp
 
-    conn = db()
-    alt_row = conn.execute(
-        "SELECT id, filename, filepath FROM job_note_files WHERE filename=? OR filepath=?",
-        (filename, filename)
-    ).fetchone()
-    conn.close()
     if alt_row:
         alt_disk = alt_row["filepath"] or alt_row["filename"]
         if alt_disk and alt_disk != filename:
@@ -9241,17 +9289,9 @@ def serve_upload(filename):
                     if os.path.isfile(alt_sub):
                         _log.info("Serving alt filename %r from %s/%s", bn, search_dir, sd)
                         return send_from_directory(os.path.join(search_dir, sd), bn)
-        _log.warning(
-            "Orphan note-file record for %r (id=%s) — file not on disk. "
-            "Checked: primary=%s, legacy=%s",
-            filename, alt_row["id"], primary_path,
-            os.path.join(legacy, filename) if legacy != primary else "(same)"
-        )
-        return render_template("error_500.html",
-            error_message="This file is referenced in the database but the actual file data has not been imported into storage yet. "
-                          "This typically happens with GeoOp-imported attachments that haven't been backfilled. "
-                          "An admin can run the Attachment Backfill from the GeoOp Import page to resolve this.",
-            path=f"/uploads/{filename}"), 404
+        _mark_file_orphaned("job_note_files", alt_row["id"])
+        return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
+
     _log.warning(
         "File not found: %r — checked primary=%s, legacy=%s",
         filename, primary_path,
@@ -9263,6 +9303,7 @@ def serve_upload(filename):
 @app.get("/jobs/<int:job_id>/documents/<int:doc_id>/download")
 @login_required
 def download_job_document(job_id: int, doc_id: int):
+    import logging as _log
     conn = db()
     cur = conn.cursor()
 
@@ -9282,13 +9323,21 @@ def download_job_document(job_id: int, doc_id: int):
             return ("Not found", 404)
 
     cur.execute(
-        "SELECT original_filename, stored_filename, mime_type FROM job_documents WHERE id=? AND job_id=?",
+        "SELECT original_filename, stored_filename, mime_type, file_status FROM job_documents WHERE id=? AND job_id=?",
         (doc_id, job_id),
     )
     doc = cur.fetchone()
     if not doc:
         conn.close()
         return ("Not found", 404)
+
+    if (doc["file_status"] or "ok") == "missing_orphaned":
+        conn.close()
+        orphan_key = f"job_documents:{doc_id}"
+        if orphan_key not in _warned_orphan_ids:
+            _warned_orphan_ids.add(orphan_key)
+            _log.warning("[ORPHAN] Skipping download for known orphan job-doc id=%s", doc_id)
+        return jsonify({"ok": False, "error": "File unavailable"}), 410
 
     stored = doc["stored_filename"]
     mime = doc["mime_type"] or mimetypes.guess_type(stored)[0] or "application/octet-stream"
@@ -9312,10 +9361,9 @@ def download_job_document(job_id: int, doc_id: int):
             conn.close()
             return send_from_directory(search_dir, stored, as_attachment=True, download_name=doc["original_filename"])
 
-    import logging as _log
-    _log.warning("Document file not found: %r — checked %s and %s", stored, app.config["UPLOAD_FOLDER"], _LEGACY_UPLOAD_FOLDER)
     conn.close()
-    abort(404)
+    _mark_file_orphaned("job_documents", doc_id)
+    return jsonify({"ok": False, "error": "File unavailable"}), 410
 
 
 _doc_tokens: dict = {}
@@ -9347,6 +9395,7 @@ def api_doc_token():
     if file_type == "note_file":
         row = conn.execute(
             """SELECT nf.id, nf.filename, nf.filepath, nf.job_field_note_id,
+                      nf.file_status,
                       fn.job_id, fn.created_by_user_id
                FROM job_note_files nf
                JOIN job_field_notes fn ON fn.id = nf.job_field_note_id
@@ -9355,6 +9404,9 @@ def api_doc_token():
         if not row:
             conn.close()
             return jsonify({"ok": False, "error": "File not found"}), 404
+        if (row["file_status"] or "ok") == "missing_orphaned":
+            conn.close()
+            return jsonify({"ok": False, "error": "File unavailable"}), 410
         if role == "agent" and row["created_by_user_id"] != uid:
             job_access = conn.execute(
                 """SELECT 1 FROM jobs WHERE id=? AND (
@@ -9390,12 +9442,15 @@ def api_doc_token():
             conn.close()
             return jsonify({"ok": False, "error": "Missing or invalid doc_id/job_id"}), 400
         row = conn.execute(
-            "SELECT id, job_id, original_filename, stored_filename, mime_type, file_size FROM job_documents WHERE id=? AND job_id=?",
+            "SELECT id, job_id, original_filename, stored_filename, mime_type, file_size, file_status FROM job_documents WHERE id=? AND job_id=?",
             (doc_id_int, job_id_int)
         ).fetchone()
         if not row:
             conn.close()
             return jsonify({"ok": False, "error": "Document not found"}), 404
+        if (row["file_status"] or "ok") == "missing_orphaned":
+            conn.close()
+            return jsonify({"ok": False, "error": "File unavailable"}), 410
         if role == "agent":
             job_access = conn.execute(
                 """SELECT 1 FROM jobs WHERE id=? AND (
@@ -9419,12 +9474,16 @@ def api_doc_token():
     with _doc_token_lock:
         _clean_doc_tokens()
         token = secrets.token_urlsafe(32)
+        orphan_table = "job_note_files" if file_type == "note_file" else "job_documents"
+        orphan_rec_id = row["id"]
         _doc_tokens[token] = {
             "filename": stored,
             "original": data.get("original_filename", filename),
             "mime": mime,
             "uid": uid,
             "exp": _t.time() + _DOC_TOKEN_TTL,
+            "_orphan_table": orphan_table,
+            "_orphan_id": orphan_rec_id,
         }
 
     return jsonify({
@@ -9479,8 +9538,12 @@ def api_doc_download(token: str):
                                           as_attachment=True,
                                           download_name=original)
 
-    _log.warning("Token download file not found: %r", stored)
-    return jsonify({"ok": False, "error": "File not found on server"}), 404
+    orphan_table = entry.get("_orphan_table")
+    orphan_id = entry.get("_orphan_id")
+    if orphan_table and orphan_id:
+        _mark_file_orphaned(orphan_table, orphan_id)
+    _log.warning("Token download file not found (marked orphaned): %r", stored)
+    return jsonify({"ok": False, "error": "File unavailable"}), 410
 
 
 @app.get("/api/doc-preview/<path:filename>")
@@ -9588,6 +9651,7 @@ def m_documents_preview(file_id: int):
     conn = db()
     row = conn.execute(
         """SELECT nf.id, nf.filename, nf.filepath, nf.job_field_note_id,
+                  nf.file_status,
                   fn.job_id, fn.created_by_user_id
            FROM job_note_files nf
            JOIN job_field_notes fn ON fn.id = nf.job_field_note_id
@@ -9597,6 +9661,14 @@ def m_documents_preview(file_id: int):
         conn.close()
         _log.warning("[DOC-PREVIEW] id=%s  RESULT=not_found  user=%s", file_id, uid)
         return b'', 404
+
+    if (row["file_status"] or "ok") == "missing_orphaned":
+        conn.close()
+        orphan_key = f"job_note_files:{file_id}"
+        if orphan_key not in _warned_orphan_ids:
+            _warned_orphan_ids.add(orphan_key)
+            _log.warning("[DOC-PREVIEW] id=%s  RESULT=orphaned  filename=%s", file_id, row["filename"])
+        return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
     if role == "agent" and row["created_by_user_id"] != uid:
         job_access = conn.execute(
@@ -9651,8 +9723,8 @@ def m_documents_preview(file_id: int):
                   file_id, stored, ext, local_path, mime, file_size)
         return resp
 
-    _log.warning("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=none  RESULT=file_not_found_on_disk  db_match=yes  file_exists=no", file_id, stored, ext)
-    return b'', 404
+    _mark_file_orphaned("job_note_files", file_id)
+    return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
 
 def _find_upload_file(stored_name):
@@ -9687,12 +9759,20 @@ def m_doc_stream_job_doc(doc_id: int):
     role = session.get("role", "")
     conn = db()
     row = conn.execute(
-        "SELECT id, job_id, original_filename, stored_filename, mime_type FROM job_documents WHERE id=?",
+        "SELECT id, job_id, original_filename, stored_filename, mime_type, file_status FROM job_documents WHERE id=?",
         (doc_id,)
     ).fetchone()
     if not row:
         conn.close()
         return jsonify({"ok": False, "error": "Document not found"}), 404
+
+    if (row["file_status"] or "ok") == "missing_orphaned":
+        conn.close()
+        orphan_key = f"job_documents:{doc_id}"
+        if orphan_key not in _warned_orphan_ids:
+            _warned_orphan_ids.add(orphan_key)
+            _log.warning("[ORPHAN] Skipping fetch for known orphan job-doc id=%s stored=%r", doc_id, row["stored_filename"])
+        return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
     if role == "agent":
         job_access = conn.execute(
@@ -9731,8 +9811,8 @@ def m_doc_stream_job_doc(doc_id: int):
         resp.headers["Cache-Control"] = "private, max-age=300"
         return resp
 
-    _log.warning("Job-doc stream: file not found on disk: %r", stored)
-    return jsonify({"ok": False, "error": "File not found on server"}), 404
+    _mark_file_orphaned("job_documents", doc_id)
+    return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
 
 @app.post("/jobs/<int:job_id>/documents/upload")
@@ -12836,6 +12916,105 @@ def purge_archived_scratch():
           f"Purge archived scratch: {total} field notes permanently deleted",
           {"count": total, "user_id": session.get("user_id")})
     return jsonify({"ok": True, "count": total})
+
+
+@app.get("/admin/orphaned-files")
+@admin_required
+def admin_orphaned_files():
+    import logging as _log
+    conn = db()
+    nf_orphans = conn.execute("""
+        SELECT nf.id, nf.filename, nf.filepath, nf.uploaded_at, nf.file_status,
+               nf.job_field_note_id, fn.job_id,
+               j.display_ref AS job_ref
+        FROM job_note_files nf
+        JOIN job_field_notes fn ON fn.id = nf.job_field_note_id
+        LEFT JOIN jobs j ON j.id = fn.job_id
+        WHERE nf.file_status = 'missing_orphaned'
+        ORDER BY nf.id DESC
+        LIMIT 500
+    """).fetchall()
+    doc_orphans = conn.execute("""
+        SELECT d.id, d.stored_filename, d.original_filename, d.uploaded_at,
+               d.file_status, d.job_id, d.doc_type,
+               j.display_ref AS job_ref
+        FROM job_documents d
+        LEFT JOIN jobs j ON j.id = d.job_id
+        WHERE d.file_status = 'missing_orphaned'
+        ORDER BY d.id DESC
+        LIMIT 500
+    """).fetchall()
+    nf_total = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM job_note_files WHERE file_status='missing_orphaned'"
+    ).fetchone()["cnt"]
+    doc_total = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM job_documents WHERE file_status='missing_orphaned'"
+    ).fetchone()["cnt"]
+    conn.close()
+    return jsonify({
+        "ok": True,
+        "note_files": {"total": nf_total, "records": [dict(r) for r in nf_orphans]},
+        "documents": {"total": doc_total, "records": [dict(r) for r in doc_orphans]},
+    })
+
+
+@app.post("/admin/orphaned-files/scan")
+@admin_required
+def admin_orphaned_files_scan():
+    import logging as _log
+    conn = db()
+    nf_rows = conn.execute(
+        "SELECT id, filename FROM job_note_files WHERE file_status IS NULL OR file_status='ok'"
+    ).fetchall()
+    doc_rows = conn.execute(
+        "SELECT id, stored_filename FROM job_documents WHERE file_status IS NULL OR file_status='ok'"
+    ).fetchall()
+
+    nf_marked = 0
+    for r in nf_rows:
+        if not _file_exists_in_storage(r["filename"]):
+            conn.execute("UPDATE job_note_files SET file_status='missing_orphaned' WHERE id=?", (r["id"],))
+            nf_marked += 1
+    doc_marked = 0
+    for r in doc_rows:
+        if not _file_exists_in_storage(r["stored_filename"]):
+            conn.execute("UPDATE job_documents SET file_status='missing_orphaned' WHERE id=?", (r["id"],))
+            doc_marked += 1
+    conn.commit()
+    conn.close()
+    total = nf_marked + doc_marked
+    _log.info("[ORPHAN-SCAN] Scanned %d note files + %d documents — marked %d + %d as orphaned",
+              len(nf_rows), len(doc_rows), nf_marked, doc_marked)
+    audit("system", 0, "orphan_scan",
+          f"Orphan scan: {nf_marked} note files + {doc_marked} documents marked missing",
+          {"note_files_scanned": len(nf_rows), "docs_scanned": len(doc_rows),
+           "note_files_marked": nf_marked, "docs_marked": doc_marked})
+    return jsonify({"ok": True, "note_files_marked": nf_marked, "documents_marked": doc_marked, "total_marked": total})
+
+
+@app.post("/admin/orphaned-files/cleanup")
+@admin_required
+def admin_orphaned_files_cleanup():
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "delete")
+    if action not in ("delete",):
+        return jsonify({"ok": False, "error": "Invalid action"}), 400
+    conn = db()
+    nf_count = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM job_note_files WHERE file_status='missing_orphaned'"
+    ).fetchone()["cnt"]
+    doc_count = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM job_documents WHERE file_status='missing_orphaned'"
+    ).fetchone()["cnt"]
+    conn.execute("DELETE FROM job_note_files WHERE file_status='missing_orphaned'")
+    conn.execute("DELETE FROM job_documents WHERE file_status='missing_orphaned'")
+    conn.commit()
+    conn.close()
+    total = nf_count + doc_count
+    audit("system", 0, "orphan_cleanup",
+          f"Orphan cleanup: deleted {nf_count} note file records + {doc_count} document records",
+          {"note_files_deleted": nf_count, "documents_deleted": doc_count})
+    return jsonify({"ok": True, "note_files_deleted": nf_count, "documents_deleted": doc_count, "total_deleted": total})
 
 
 # -------- Cues --------

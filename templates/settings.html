@@ -993,6 +993,42 @@ function dupDeleteClient(clientId, name) {
   </div>
 
   <div class="ax-card">
+    <div class="ax-card-h">Orphaned File Records</div>
+    <div class="ax-card-b">
+      <p style="font-size:.85rem;color:var(--muted)">
+        Scan for attachment records in the database that reference files no longer available in storage.
+        These orphaned records cause repeated failed fetch attempts and broken previews.
+      </p>
+      <div id="orphanResults" style="display:none;margin-bottom:12px;">
+        <div class="alert alert-info py-2" style="font-size:.85rem" id="orphanSummary"></div>
+      </div>
+      <div class="row g-2">
+        <div class="col-md-4">
+          <button type="button" class="btn btn-outline-primary btn-sm w-100" onclick="axOrphanScan()" id="btnOrphanScan">
+            Scan for Orphans
+          </button>
+        </div>
+        <div class="col-md-4">
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="axOrphanView()" id="btnOrphanView">
+            View Orphaned Records
+          </button>
+        </div>
+        <div class="col-md-4">
+          <button type="button" class="btn btn-outline-danger btn-sm w-100" onclick="axOrphanCleanup()" id="btnOrphanCleanup" disabled>
+            Delete Orphan Records
+          </button>
+        </div>
+      </div>
+      <div id="orphanDetail" style="display:none;margin-top:12px;max-height:300px;overflow-y:auto;">
+        <table class="table table-sm" style="font-size:.8rem">
+          <thead><tr><th>Type</th><th>ID</th><th>Job</th><th>Filename</th><th>Uploaded</th></tr></thead>
+          <tbody id="orphanDetailBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="ax-card">
     <div class="ax-card-h">Lifecycle Status Reference</div>
     <div class="ax-card-b">
       <table class="table table-sm" style="font-size:.85rem">
@@ -1035,6 +1071,73 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function axOrphanScan() {
+  var btn = document.getElementById('btnOrphanScan');
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  fetch('/admin/orphaned-files/scan', {method:'POST', headers:{'Content-Type':'application/json'}})
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      btn.disabled = false; btn.textContent = 'Scan for Orphans';
+      var res = document.getElementById('orphanResults');
+      var sum = document.getElementById('orphanSummary');
+      res.style.display = '';
+      if (d.ok) {
+        sum.className = 'alert py-2 ' + (d.total_marked > 0 ? 'alert-warning' : 'alert-success');
+        sum.textContent = d.total_marked > 0
+          ? 'Found ' + d.total_marked + ' orphaned records (' + d.note_files_marked + ' note files, ' + d.documents_marked + ' documents)'
+          : 'No new orphaned records found.';
+        if (d.total_marked > 0) document.getElementById('btnOrphanCleanup').disabled = false;
+      } else { sum.className = 'alert alert-danger py-2'; sum.textContent = d.error || 'Scan failed'; }
+    })
+    .catch(function(e) { btn.disabled = false; btn.textContent = 'Scan for Orphans'; alert('Scan error: ' + e.message); });
+}
+
+function axOrphanView() {
+  var btn = document.getElementById('btnOrphanView');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  fetch('/admin/orphaned-files')
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      btn.disabled = false; btn.textContent = 'View Orphaned Records';
+      if (!d.ok) return;
+      var total = d.note_files.total + d.documents.total;
+      var res = document.getElementById('orphanResults');
+      var sum = document.getElementById('orphanSummary');
+      res.style.display = '';
+      sum.className = 'alert py-2 ' + (total > 0 ? 'alert-warning' : 'alert-success');
+      sum.textContent = total > 0 ? total + ' orphaned records total (' + d.note_files.total + ' note files, ' + d.documents.total + ' documents)' : 'No orphaned records.';
+      if (total > 0) document.getElementById('btnOrphanCleanup').disabled = false;
+      var tbody = document.getElementById('orphanDetailBody');
+      tbody.innerHTML = '';
+      d.note_files.records.forEach(function(r) {
+        tbody.innerHTML += '<tr><td>Note File</td><td>' + r.id + '</td><td>' + esc(r.job_ref || '-') + '</td><td style="word-break:break-all">' + esc(r.filename) + '</td><td>' + esc(r.uploaded_at || '-') + '</td></tr>';
+      });
+      d.documents.records.forEach(function(r) {
+        tbody.innerHTML += '<tr><td>Document</td><td>' + r.id + '</td><td>' + esc(r.job_ref || '-') + '</td><td style="word-break:break-all">' + esc(r.original_filename || r.stored_filename) + '</td><td>' + esc(r.uploaded_at || '-') + '</td></tr>';
+      });
+      document.getElementById('orphanDetail').style.display = total > 0 ? '' : 'none';
+    })
+    .catch(function(e) { btn.disabled = false; btn.textContent = 'View Orphaned Records'; });
+}
+
+function axOrphanCleanup() {
+  if (!confirm('This will permanently delete all orphaned file records from the database. The actual files are already missing. Continue?')) return;
+  var btn = document.getElementById('btnOrphanCleanup');
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  fetch('/admin/orphaned-files/cleanup', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'delete'})})
+    .then(function(r){ return r.json(); })
+    .then(function(d) {
+      btn.textContent = 'Delete Orphan Records';
+      var sum = document.getElementById('orphanSummary');
+      if (d.ok) {
+        sum.className = 'alert alert-success py-2';
+        sum.textContent = 'Deleted ' + d.total_deleted + ' orphaned records (' + d.note_files_deleted + ' note files, ' + d.documents_deleted + ' documents)';
+        document.getElementById('orphanDetail').style.display = 'none';
+      } else { btn.disabled = false; sum.className = 'alert alert-danger py-2'; sum.textContent = d.error || 'Cleanup failed'; }
+    })
+    .catch(function(e) { btn.disabled = false; btn.textContent = 'Delete Orphan Records'; alert('Error: ' + e.message); });
 }
 
 /* ── AI Settings ────────────────────────────────────────────────────── */
