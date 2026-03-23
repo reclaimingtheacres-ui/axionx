@@ -208,5 +208,10 @@ function axReindexPrimary(listId, radioName) {
     rows[0].checked = true;
   }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  var editForm = document.querySelector('form[enctype="multipart/form-data"]');
+  if (editForm) axInterceptFormImages(editForm, ['id_image']);
+});
 </script>
 {% endblock %}

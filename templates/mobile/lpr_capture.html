@@ -146,10 +146,28 @@ document.querySelectorAll('form').forEach(function(form) {
       }
       return false;
     }
-    var btn = form.querySelector('button[type="submit"]');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'Processing…';
+    if (form.getAttribute('data-ax-compressing')) return;
+    var file = fileInput.files[0];
+    if (file.type && file.type.startsWith('image/')) {
+      e.preventDefault();
+      form.setAttribute('data-ax-compressing', '1');
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = true; btn.textContent = 'Optimising photo…'; }
+      axCompressImage(file).then(function(compressed) {
+        var dt = new DataTransfer();
+        dt.items.add(compressed);
+        fileInput.files = dt.files;
+        if (btn) btn.textContent = 'Processing…';
+        form.removeAttribute('data-ax-compressing');
+        form.submit();
+      }).catch(function() {
+        form.removeAttribute('data-ax-compressing');
+        if (btn) btn.textContent = 'Processing…';
+        form.submit();
+      });
+    } else {
+      var btn2 = form.querySelector('button[type="submit"]');
+      if (btn2) { btn2.disabled = true; btn2.textContent = 'Processing…'; }
     }
   });
 });

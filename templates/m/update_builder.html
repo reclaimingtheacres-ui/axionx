@@ -284,12 +284,15 @@ Update Builder
 
   function uploadPhoto(file) {
     var tempId = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    var thumbUrl = URL.createObjectURL(file);
+    _axShowCompressMsg();
+    axCompressImage(file).then(function(compressed) {
+    _axHideCompressMsg();
+    var thumbUrl = URL.createObjectURL(compressed);
     _photos.push({id: tempId, url: thumbUrl, _uploading: true});
     renderPhotos();
 
     var fd = new FormData();
-    fd.append('photo', file);
+    fd.append('photo', compressed);
     fd.append('draft_id', DRAFT_ID);
     fd.append('tag', 'site');
 
@@ -316,6 +319,7 @@ Update Builder
       _photos = _photos.filter(function(p){ return p.id !== tempId; });
       renderPhotos();
       alert('Photo upload failed. Check your connection.');
+    });
     });
   }
 

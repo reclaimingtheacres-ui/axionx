@@ -165,5 +165,8 @@
   }
 
   addPerson();
+
+  var custNewForm = document.getElementById('custNewForm');
+  if (custNewForm) axInterceptFormImages(custNewForm, ['id_photo[]']);
 </script>
 {% endblock %}

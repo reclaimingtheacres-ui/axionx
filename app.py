@@ -258,6 +258,26 @@ def _is_file_missing(file_status_val) -> bool:
     return s.startswith("missing")
 
 
+_IMAGE_WARN_SIZE = 5 * 1024 * 1024  # 5 MB
+
+def _log_oversized_image(file_obj, context: str = ""):
+    """Log a warning if an uploaded image exceeds the expected compressed size."""
+    if not file_obj or not file_obj.filename:
+        return
+    ct = getattr(file_obj, "content_type", "") or ""
+    if not ct.startswith("image/"):
+        return
+    file_obj.seek(0, 2)
+    size = file_obj.tell()
+    file_obj.seek(0)
+    if size > _IMAGE_WARN_SIZE:
+        import logging
+        logging.warning(
+            "[OVERSIZED-IMAGE] %s: %s (%.1f MB) — client compression may have been skipped. Context: %s",
+            file_obj.filename, ct, size / (1024 * 1024), context or "unknown",
+        )
+
+
 def _save_bytes_to_storage(data: bytes, blob_name: str,
                             content_type: str = "application/pdf") -> int:
     """Save raw bytes to Azure Blob Storage or local uploads folder. Returns size."""
@@ -9023,6 +9043,8 @@ def add_job_note(job_id: int):
     note_text = request.form.get("note_text", "").strip()
     barcode   = request.form.get("barcode", "").strip()
     files = request.files.getlist("attachments")
+    for _f in files:
+        _log_oversized_image(_f, f"add_job_note job_id={job_id}")
 
     if barcode:
         note_text = f"[Barcode: {barcode}]\n{note_text}".strip()
@@ -9329,6 +9351,8 @@ def add_note_attachments(job_id: int, note_id: int):
         return jsonify({"ok": False, "error": "Permission denied"}), 403
 
     files = request.files.getlist("attachments")
+    for _f in files:
+        _log_oversized_image(_f, f"add_note_attachments job_id={job_id} note_id={note_id}")
     if not files or not any(f.filename for f in files):
         conn.close()
         return jsonify({"ok": False, "error": "No files provided"}), 400
@@ -10761,6 +10785,7 @@ def update_builder_upload_photo(job_id):
     if not photo or not photo.filename:
         conn.close()
         return jsonify({"ok": False, "error": "No photo provided"}), 400
+    _log_oversized_image(photo, f"update_builder_upload_photo job_id={job_id}")
 
     ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else ""
     if ext not in _UPDATE_PHOTO_ALLOWED:
@@ -16076,6 +16101,7 @@ def m_quick_note_save(job_id):
     note_text  = (request.form.get("note_text") or "").strip() or None
     audio_file = request.files.get("audio_file")
     photo_file = request.files.get("photo_file")
+    _log_oversized_image(photo_file, f"m_quick_note job_id={job_id}")
 
     audio_filename = None
     if audio_file and audio_file.filename:

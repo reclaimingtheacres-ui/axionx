@@ -323,12 +323,15 @@
 
   function uploadPhoto(file) {
     const tempId = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    const thumbUrl = URL.createObjectURL(file);
+    _axShowCompressMsg();
+    axCompressImage(file).then(compressed => {
+    _axHideCompressMsg();
+    const thumbUrl = URL.createObjectURL(compressed);
     _photos.push({id: tempId, url: thumbUrl, _uploading: true});
     renderPhotos();
 
     const fd = new FormData();
-    fd.append('photo', file);
+    fd.append('photo', compressed);
     fd.append('draft_id', DRAFT_ID);
     fd.append('tag', 'site');
 
@@ -356,6 +359,7 @@
         renderPhotos();
         alert('Photo upload failed. Check your connection.');
       });
+    });
   }
 
   function removePhoto(photoId) {
