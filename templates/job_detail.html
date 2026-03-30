@@ -578,6 +578,18 @@
       <div class="ax-card-h">Security/s</div>
       <div class="ax-card-b">
 
+        {% if job.deliver_to or job.delivery_address %}
+        <div style="margin-bottom:14px;padding:10px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;margin-bottom:4px;">DELIVER TO</div>
+          {% if job.deliver_to %}
+            <div style="font-size:.88rem;font-weight:600;color:var(--text);">{{ job.deliver_to }}</div>
+          {% endif %}
+          {% if job.delivery_address %}
+            <div style="font-size:.82rem;color:var(--muted);margin-top:2px;">{{ job.delivery_address }}</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
         {% if job_items %}
           <div class="list-group list-group-flush mb-3">
             {% for item in job_items %}

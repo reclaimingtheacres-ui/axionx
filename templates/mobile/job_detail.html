@@ -204,10 +204,16 @@
     {% endif %}
 
     {% set _deliver = asset.deliver_to or job.deliver_to %}
-    {% if _deliver %}
+    {% set _deliver_addr = job.delivery_address %}
+    {% if _deliver or _deliver_addr %}
     <div style="{% if not (asset.reg or asset.vin) %}margin-top:0;{% endif %}">
       <div class="m-label">Deliver To</div>
+      {% if _deliver %}
       <div style="font-size:.9rem;line-height:1.45;">{{ _deliver }}</div>
+      {% endif %}
+      {% if _deliver_addr %}
+      <div style="font-size:.82rem;color:#6b7280;{% if _deliver %}margin-top:2px;{% endif %}">{{ _deliver_addr }}</div>
+      {% endif %}
     </div>
     {% endif %}
 
