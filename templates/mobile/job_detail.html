@@ -959,7 +959,14 @@ function showTab(name) {
         }
         return;
       }
-      window.location.href = url;
+      body.style.padding = '0'; body.style.overflow = 'hidden';
+      body.innerHTML =
+        '<iframe src="' + url + '#toolbar=1&view=FitH" ' +
+          'style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;" ' +
+          'onerror="this.parentElement.innerHTML=\'' +
+            _fallback(url, filename, '&#128196;', 'Open Document').replace(/'/g, "\\'") + '\'">' +
+        '</iframe>';
+      document.getElementById('mFilePreviewOverlay').style.display = 'flex';
       return;
     }
 
