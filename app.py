@@ -21810,7 +21810,12 @@ def admin_lpr_automation_resume_scope():
 # Internal Messaging System
 # ─────────────────────────────────────────────────────────────────────────────
 
+_msg_tables_ready = False
+
 def _ensure_msg_tables(conn):
+    global _msg_tables_ready
+    if _msg_tables_ready:
+        return
     conn.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21870,6 +21875,7 @@ def _ensure_msg_tables(conn):
         )
     """)
     conn.commit()
+    _msg_tables_ready = True
 
 
 _system_user_id_cache = None
@@ -22142,10 +22148,13 @@ def _post_message(conn, conv_id, sender_id, body):
 @login_required
 def api_messages_unread_count():
     uid = session.get("user_id")
-    conn = db()
-    _ensure_msg_tables(conn)
-    count = _get_unread_count(conn, uid)
-    conn.close()
+    try:
+        conn = db()
+        _ensure_msg_tables(conn)
+        count = _get_unread_count(conn, uid)
+        conn.close()
+    except Exception:
+        count = 0
     return jsonify({"count": count})
 
 
