@@ -58,19 +58,19 @@
 
     {# ── Debtor + Vehicle ── #}
     {{ section('DEBTOR') }}
-    {{ fi('customer_name', 'Name of Debtor', rec.customer_name) }}
+    {{ fi('customer_name', 'Name of Debtor', d.customer_name or rec.customer_name) }}
     </div>
 
     {{ section('VEHICLE DESCRIPTION') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;">
-      {{ fi('year',         'Year',         item_year  or rec.get('year','')) }}
-      {{ fi('make',         'Make',         item_make  or rec.get('make','')) }}
-      {{ fi('model',        'Model',        item_model or rec.get('model','')) }}
-      {{ fi('body_type',    'Body Type',    rec.body_type) }}
-      {{ fi('colour',       'Colour',       rec.colour) }}
-      {{ fi('registration', 'Registration', rec.registration) }}
-      {{ fi('vin',          'VIN / Chassis', rec.vin) }}
-      {{ fi('engine_number','Engine Number', rec.engine_number) }}
+      {{ fi('year',         'Year',         d.year or rec.get('year','')) }}
+      {{ fi('make',         'Make',         d.make or rec.get('make','')) }}
+      {{ fi('model',        'Model',        d.model or rec.get('model','')) }}
+      {{ fi('body_type',    'Body Type',    d.body_type or rec.get('body_type','')) }}
+      {{ fi('colour',       'Colour',       d.colour or rec.get('colour','')) }}
+      {{ fi('registration', 'Registration', d.registration or rec.registration) }}
+      {{ fi('vin',          'VIN / Chassis', d.vin or rec.vin) }}
+      {{ fi('engine_number','Engine Number', d.engine_number or rec.engine_number) }}
     </div>
     </div>
 
@@ -79,47 +79,47 @@
     {% set cond3 = ['POOR','GOOD','EXCELLENT'] %}
     {{ section('EXTERIOR CONDITION') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;">
-      {{ fsel('body',    'Body',    rec.body,    cond4) }}
-      {{ fsel('duco',    'Paint',   rec.duco,    cond4) }}
-      {{ fsel('bumpers', 'Bumpers', rec.bumpers, cond4) }}
-      {{ fsel('glass',   'Windows', rec.glass,   ['BROKEN','CRACKED','GOOD']) }}
-      {{ fsel('tyres',   'Tyres',   rec.tyres,   ['BALD','FAIR','GOOD','EXCELLENT']) }}
+      {{ fsel('body',    'Body',    d.body or rec.get('body',''),       cond4) }}
+      {{ fsel('duco',    'Paint',   d.duco or rec.get('duco',''),       cond4) }}
+      {{ fsel('bumpers', 'Bumpers', d.bumpers or rec.get('bumpers',''), cond4) }}
+      {{ fsel('glass',   'Windows', d.glass or rec.get('glass',''),     ['BROKEN','CRACKED','GOOD']) }}
+      {{ fsel('tyres',   'Tyres',   d.tyres or rec.get('tyres',''),     ['BALD','FAIR','GOOD','EXCELLENT']) }}
     </div>
     </div>
 
     {{ section('MECHANICAL') }}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      {{ fsel('security_drivable',  'Does Vehicle Drive', rec.security_drivable,  ['YES','NO']) }}
-      {{ fsel('engine_condition',   'Engine Intact',      rec.engine_condition,   ['YES','NO','DAMAGED','POOR']) }}
+      {{ fsel('security_drivable',  'Does Vehicle Drive', d.security_drivable or rec.get('security_drivable',''),  ['YES','NO']) }}
+      {{ fsel('engine_condition',   'Engine Intact',      d.engine_condition or rec.get('engine_condition',''),   ['YES','NO','DAMAGED','POOR']) }}
     </div>
     </div>
 
     {{ section('INTERIOR') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;">
-      {{ fsel('interior',  'Trim / Carpet / Dash', rec.interior, cond3) }}
+      {{ fsel('interior',  'Trim / Carpet / Dash', d.interior or rec.get('interior',''), cond3) }}
     </div>
     </div>
 
     {{ section('OTHER') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
-      {{ fi('speedometer',   "KM's on Clock",   rec.speedometer) }}
-      {{ fsel('keys_obtained',    'Keys Secured',   rec.keys_obtained,    ['YES','NO']) }}
-      {{ fi('accessories',    'Accessories',    rec.accessories) }}
+      {{ fi('speedometer',   "KM's on Clock",   d.speedometer or rec.get('speedometer','')) }}
+      {{ fsel('keys_obtained',    'Keys Secured',   d.keys_obtained or rec.get('keys_obtained',''),    ['YES','NO']) }}
+      {{ fi('accessories',    'Accessories',    d.accessories or rec.get('accessories','')) }}
     </div>
     <div style="margin-top:12px;">
       <label style="font-size:.75rem;font-weight:600;color:#374151;">Details of Any Damage</label>
       <textarea name="damage_list" rows="2"
-                style="margin-top:4px;border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:.84rem;color:#111;background:#fff;width:100%;box-sizing:border-box;resize:vertical;">{{ rec.damage_list or '' }}</textarea>
+                style="margin-top:4px;border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:.84rem;color:#111;background:#fff;width:100%;box-sizing:border-box;resize:vertical;">{{ d.damage_list or rec.get('damage_list','') }}</textarea>
     </div>
     </div>
 
     {# ── Tow / Delivery ── #}
     {{ section('TOW / DELIVERY') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
-      {{ fi('tow_company_name', 'Towed By',      rec.tow_company_name or tow_company_name_db) }}
-      {{ fi('tow_costs',        'Towing Cost $', rec.tow_costs) }}
-      {{ fsel('deliver_to', 'Delivered To', rec.deliver_to or '', ['GAMERS','PICKLES','HELD AT TOWING YARD','OTHER']) }}
-      {{ fsel('vol_surrender',  'Debtor wishes to Redeem?', rec.vol_surrender, ['YES','NO']) }}
+      {{ fi('tow_company_name', 'Towed By',      d.tow_company_name or d.tow_company_name_db or rec.get('tow_company_name','')) }}
+      {{ fi('tow_costs',        'Towing Cost $', d.tow_costs or rec.get('tow_costs','')) }}
+      {{ fsel('deliver_to', 'Delivered To', d.deliver_to or rec.get('deliver_to',''), ['GAMERS','PICKLES','HELD AT TOWING YARD','OTHER']) }}
+      {{ fsel('vol_surrender',  'Debtor wishes to Redeem?', d.vol_surrender or rec.get('vol_surrender',''), ['YES','NO']) }}
     </div>
     </div>
 
@@ -226,6 +226,21 @@
   };
   _initCanvas('agentCanvas','agentSigData','agentSigned');
   _initCanvas('customerCanvas','customerSigData','customerSigned');
+
+  {% if saved_agent_sig %}
+  (function(){
+    var sigData = {{ saved_agent_sig|tojson }};
+    var img = new Image();
+    img.onload = function(){
+      var c = document.getElementById('agentCanvas');
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      document.getElementById('agentSigData').value = sigData;
+      document.getElementById('agentSigned').value = '1';
+    };
+    img.src = sigData;
+  })();
+  {% endif %}
+
   document.getElementById('wiseVirForm').addEventListener('submit', function(e) {
     e.preventDefault();
     if (document.getElementById('agentSigned').value !== '1') {

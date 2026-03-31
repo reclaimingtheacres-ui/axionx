@@ -8399,11 +8399,12 @@ def repo_lock_wise_vir(job_id: int, rec_id: int):
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
     conn.close()
     return render_template("wise_vir.html",
-                           rec=rec, job_id=job_id,
+                           rec=rec, d=d, job_id=job_id,
                            agent_name=agent_name,
                            item_year=d.get("year", ""), item_make=d.get("make", ""),
                            item_model=d.get("model", ""),
-                           tow_company_name_db=d.get("tow_company_name_db", ""))
+                           tow_company_name_db=d.get("tow_company_name_db", ""),
+                           saved_agent_sig=rec.get("agent_signature") or "")
 
 
 @app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-vir")
@@ -8420,13 +8421,19 @@ def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
         return "Not found", 404
     rec = dict(rec_row)
 
+    import re as _re_sig
+    def _valid_sig_w(s):
+        return bool(s and _re_sig.match(r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$', s))
+
     agent_sig    = request.form.get("agent_sig", "").strip() or None
     customer_sig = request.form.get("customer_sig", "").strip() or None
 
-    if not agent_sig:
+    if not agent_sig or not _valid_sig_w(agent_sig):
         flash("Agent signature is required.", "error")
         conn.close()
         return redirect(url_for("repo_lock_wise_vir", job_id=job_id, rec_id=rec_id))
+    if customer_sig and not _valid_sig_w(customer_sig):
+        customer_sig = None
 
     for col in ("body_type", "bumpers", "glass", "accessories", "make", "model", "year", "colour"):
         add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
@@ -8459,7 +8466,11 @@ def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
     rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
 
-    # Signatures are session-only — pass directly from form, do not persist
+    conn.execute("""UPDATE repo_lock_records SET agent_signature=?, customer_signature=?,
+                    agent_signed_at=? WHERE id=?""",
+                 (agent_sig, customer_sig, ts, rec_id))
+    conn.commit()
+
     pdf_bytes = _pg.generate_wise_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig)
 
     job_num    = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
