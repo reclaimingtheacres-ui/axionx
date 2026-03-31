@@ -2,7 +2,7 @@
 {% block title %}Wise Tow Instructions — {{ rec.registration or rec.description or ('Case ' ~ (rec.wise_case_number or rec.swpi_ref or rec.id)) }}{% endblock %}
 {% block content %}
 <div style="max-width:700px;margin:20px auto;padding:0 12px;">
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
     <a href="/jobs/{{ job_id }}" style="color:#6b7280;text-decoration:none;font-size:.9rem;">&larr; Back to Job</a>
     <div style="flex:1;text-align:center;">
       <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Wise Tow Instructions</h2>
@@ -10,7 +10,15 @@
     <span style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:6px;padding:4px 10px;font-size:.78rem;font-weight:700;">Wise Group</span>
   </div>
 
-  <form method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-tow">
+  <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
+    <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-vir"
+       style="flex:1;text-align:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:.78rem;font-weight:600;color:#6b7280;text-decoration:none;">VIR</a>
+    <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-auction"
+       style="flex:1;text-align:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:.78rem;font-weight:600;color:#6b7280;text-decoration:none;">Auction</a>
+    <span style="flex:1;text-align:center;padding:8px 10px;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:8px;font-size:.78rem;font-weight:700;color:#92400e;">Tow</span>
+  </div>
+
+  <form id="wiseTowForm" method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-tow">
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:12px;">
       <h6 style="font-weight:700;font-size:.85rem;margin-bottom:10px;color:#111;">Tow Details</h6>
 
@@ -48,9 +56,74 @@
       </div>
     </div>
 
-    <button type="submit" class="btn btn-warning w-100" style="font-weight:600;border-radius:10px;padding:12px;">
-      Generate Wise Tow PDF
+    <button type="submit" id="genBtn" class="btn btn-warning w-100" style="font-weight:600;border-radius:10px;padding:12px;">
+      <span id="genBtnTxt">Generate Wise Tow PDF</span>
     </button>
   </form>
+
+  <div id="towSuccessPanel" style="display:none;margin-top:16px;">
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:18px;text-align:center;margin-bottom:16px;">
+      <div style="font-size:1.6rem;margin-bottom:6px;">&#x2705;</div>
+      <div style="font-weight:700;color:#166534;font-size:.95rem;">Tow Instructions Generated</div>
+      <div style="color:#15803d;font-size:.82rem;margin-top:4px;">PDF has been downloaded and attached to the job.</div>
+    </div>
+    <div style="font-weight:700;font-size:.88rem;color:#111;margin-bottom:10px;">Continue with Wise Document Pack</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-vir"
+         style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1.5px solid #f59e0b;border-radius:10px;text-decoration:none;color:#92400e;font-weight:600;font-size:.88rem;">
+        <span style="font-size:1.2rem;">&#x1F4CB;</span>
+        <span>Vehicle Inspection Report</span>
+        <span style="margin-left:auto;color:#9ca3af;font-size:1rem;">&#x203A;</span>
+      </a>
+      <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-auction"
+         style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1.5px solid #f59e0b;border-radius:10px;text-decoration:none;color:#92400e;font-weight:600;font-size:.88rem;">
+        <span style="font-size:1.2rem;">&#x1F4E8;</span>
+        <span>Auction Instructions</span>
+        <span style="margin-left:auto;color:#9ca3af;font-size:1rem;">&#x203A;</span>
+      </a>
+    </div>
+    <div style="text-align:center;margin-top:16px;">
+      <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.84rem;text-decoration:none;">&#x2190; Back to Job</a>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  document.getElementById('wiseTowForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('genBtn');
+    btn.disabled = true;
+    document.getElementById('genBtnTxt').textContent = 'Generating PDF\u2026';
+    var form = document.getElementById('wiseTowForm');
+    var fd = new FormData(form);
+    fetch(form.action, { method:'POST', body:fd })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Server error');
+        var cd = r.headers.get('Content-Disposition') || '';
+        var m = cd.match(/filename="?([^";\n]+)"?/);
+        var fname = m ? m[1] : 'Wise_Tow.pdf';
+        return r.blob().then(function(b){ return {blob:b, fname:fname}; });
+      })
+      .then(function(res) {
+        var url = URL.createObjectURL(res.blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = res.fname;
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+        form.style.display = 'none';
+        var sp = document.getElementById('towSuccessPanel');
+        sp.style.display = 'block';
+        sp.scrollIntoView({behavior:'smooth',block:'start'});
+      })
+      .catch(function(err) {
+        btn.disabled = false;
+        document.getElementById('genBtnTxt').textContent = 'Generate Wise Tow PDF';
+        alert('Error generating PDF: ' + err.message);
+      });
+  });
+})();
+</script>
 {% endblock %}
