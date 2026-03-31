@@ -935,13 +935,11 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
             return s
 
     c.setFillColor(RL_WHITE)
-    c.rect(330, 626, 215, 16, fill=1, stroke=0)
-    c.rect(330, 668, 215, 14, fill=1, stroke=0)
-    c.rect(340, 585, 205, 16, fill=1, stroke=0)
-    c.rect(350, 370, 195, 14, fill=1, stroke=0)
-    c.rect(300, 547, 245, 16, fill=1, stroke=0)
-    c.rect(300, 457, 245, 16, fill=1, stroke=0)
-    c.rect(300, 438, 245, 16, fill=1, stroke=0)
+    c.rect(340, 625, 200, 16, fill=1, stroke=0)
+    c.rect(340, 585, 200, 20, fill=1, stroke=0)
+    c.rect(310, 551, 235, 14, fill=1, stroke=0)
+    c.rect(310, 460, 235, 14, fill=1, stroke=0)
+    c.rect(310, 442, 235, 14, fill=1, stroke=0)
     c.rect(49, 350, 290, 18, fill=1, stroke=0)
     c.rect(55, 183, 490, 16, fill=1, stroke=0)
 
@@ -967,12 +965,12 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
     credit_provider = _v(data, 'finance_company', 'client_name')
     if credit_provider:
         c.setFont(FONT, 9)
-        c.drawString(380, 631, _trunc(credit_provider, 35))
+        c.drawString(380, 630, _trunc(credit_provider, 35))
 
     occupier_name = _v(data, 'customer_name')
     if occupier_name:
         c.setFont(FONT, 9)
-        c.drawString(410, 593, _trunc(occupier_name, 30))
+        c.drawString(410, 594, _trunc(occupier_name, 30))
 
     occupier_addr = _v(data, 'repo_address')
     if occupier_addr:
@@ -980,7 +978,7 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
         addr_line1 = parts[0].strip()
         addr_line2 = parts[1].strip() if len(parts) > 1 else ''
         c.setFont(FONT, 9)
-        c.drawString(320, 554, _trunc(addr_line1, 40))
+        c.drawString(320, 555, _trunc(addr_line1, 40))
         if addr_line2:
             c.drawString(320, 464, _trunc(addr_line2, 40))
 
