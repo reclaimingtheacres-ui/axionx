@@ -1323,6 +1323,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "repo_lock_records", "agent_signed_at",  "TEXT")
     add_column_if_missing(cur, "repo_lock_records", "customer_signed_at","TEXT")
     add_column_if_missing(cur, "repo_lock_records", "tow_signed_at",    "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "notice_delivery",  "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS repo_lock_queue (
@@ -7938,7 +7939,8 @@ def repo_lock_save(job_id: int, item_id: int):
         "fuel_level", "any_damage", "damage_list",
         "tow_company_id", "tow_company_name", "tow_costs",
         "deliver_to", "delivery_address", "expected_delivery_date",
-        "customers_intention", "other_info", "agent_name", "agent_user_id",
+        "customers_intention", "other_info", "notice_delivery",
+        "agent_name", "agent_user_id",
     ]
 
     values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
@@ -7984,7 +7986,8 @@ _RL_FIELDS = [
     "fuel_level", "any_damage", "damage_list",
     "tow_company_id", "tow_company_name", "tow_costs",
     "deliver_to", "delivery_address", "expected_delivery_date",
-    "customers_intention", "other_info", "agent_name", "agent_user_id",
+    "customers_intention", "other_info", "notice_delivery",
+    "agent_name", "agent_user_id",
 ]
 
 

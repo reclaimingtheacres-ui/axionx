@@ -1202,6 +1202,7 @@ function showTab(name) {
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Customer's Intention</label><textarea name="customers_intention" id="rlm_customers_intention" rows="3" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Other Important Information</label><textarea name="other_info" id="rlm_other_info" rows="3" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;resize:vertical;"></textarea></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Agent</label><input type="text" name="agent_name" id="rlm_agent_name" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"><input type="hidden" name="agent_user_id" id="rlm_agent_user_id"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Notice Delivered By</label><select name="notice_delivery" id="rlm_notice_delivery" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select —</option><option>Serving upon the above customer personally.</option><option>Leaving a true copy at the above address in a sealed envelope and placed the mail box.</option><option>Leaving a true copy at the above address in a sealed envelope and wedged in the door.</option><option>Leaving a true copy at the above address with a person over the agent of 16 years.</option><option>email to the customer email address.</option><option>by mail within 7 days of the above date.</option><option>Copy not provided - 3rd party</option><option>Copy not provided</option></select></div>
         </div>
       </details>
 
@@ -1272,8 +1273,8 @@ function showTab(name) {
     "personal_effects_list","tyres","body","duco","interior","engine_condition",
     "transmission","fuel_level","any_damage","damage_list","tow_company_id",
     "tow_company_name","tow_costs","deliver_to","delivery_address",
-    "expected_delivery_date","customers_intention","other_info","agent_name",
-    "agent_user_id"
+    "expected_delivery_date","customers_intention","other_info","notice_delivery",
+    "agent_name","agent_user_id"
   ];
 
   function _gid(id) { return document.getElementById(id); }
@@ -1474,10 +1475,12 @@ function showTab(name) {
     var agentName = (_gid("rlm_agent_name").value || "").trim();
     var reg       = (_gid("rlm_registration").value || "").trim();
     var desc      = (_gid("rlm_description").value || "").trim();
+    var noticeDel = (_gid("rlm_notice_delivery").value || "").trim();
 
     if (!repoDate)              errors.push("Repo Date is required.");
     if (!agentName)             errors.push("Agent name is required.");
     if (!reg && !desc)          errors.push("Asset Registration or Description is required.");
+    if (!noticeDel)             errors.push("Notice Delivered By is required.");
 
     if (errors.length) {
       var errEl = _gid("rlmErrBanner");

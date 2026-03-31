@@ -407,6 +407,20 @@
                       <input class="form-control form-control-sm" name="agent_name" id="rl_agent_name">
                       <input type="hidden" name="agent_user_id" id="rl_agent_user_id">
                     </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Notice Delivered By <span style="color:#dc2626;">*</span></label>
+                      <select class="form-select form-select-sm" name="notice_delivery" id="rl_notice_delivery">
+                        <option value="">— Select —</option>
+                        <option>Serving upon the above customer personally.</option>
+                        <option>Leaving a true copy at the above address in a sealed envelope and placed the mail box.</option>
+                        <option>Leaving a true copy at the above address in a sealed envelope and wedged in the door.</option>
+                        <option>Leaving a true copy at the above address with a person over the agent of 16 years.</option>
+                        <option>email to the customer email address.</option>
+                        <option>by mail within 7 days of the above date.</option>
+                        <option>Copy not provided - 3rd party</option>
+                        <option>Copy not provided</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -456,8 +470,8 @@
     "personal_effects_list","tyres","body","duco","interior","engine_condition",
     "transmission","fuel_level","any_damage","damage_list","tow_company_id",
     "tow_company_name","tow_costs","deliver_to","delivery_address",
-    "expected_delivery_date","customers_intention","other_info","agent_name",
-    "agent_user_id"
+    "expected_delivery_date","customers_intention","other_info","notice_delivery",
+    "agent_name","agent_user_id"
   ];
 
   function _gid(id) { return document.getElementById(id); }
@@ -614,10 +628,13 @@
     var reg = (_gid("rl_registration").value || "").trim();
     var desc = (_gid("rl_description").value || "").trim();
 
+    var noticeDelivery = (_gid("rl_notice_delivery").value || "").trim();
+
     _gid("rl_repo_date").classList.remove("is-invalid");
     _gid("rl_agent_name").classList.remove("is-invalid");
     _gid("rl_registration").classList.remove("is-invalid");
     _gid("rl_description").classList.remove("is-invalid");
+    _gid("rl_notice_delivery").classList.remove("is-invalid");
 
     if (!repoDate) {
       errors.push("Repo Date is required.");
@@ -631,6 +648,10 @@
       errors.push("Asset Registration or Description is required.");
       _gid("rl_registration").classList.add("is-invalid");
       _gid("rl_description").classList.add("is-invalid");
+    }
+    if (!noticeDelivery) {
+      errors.push("Notice Delivered By is required.");
+      _gid("rl_notice_delivery").classList.add("is-invalid");
     }
     return errors;
   }
