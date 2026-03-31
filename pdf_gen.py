@@ -523,21 +523,31 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.setTitle('Transport Instructions / Tow Receipt')
 
     y = _swpi_letterhead(c)
-    y -= 6
+    y -= 8
 
     title = 'TRANSPORT INSTRUCTIONS / TOW RECEIPT'
     c.setFont('Helvetica-Bold', 11)
     c.setFillColor(DARK)
     c.drawCentredString(PAGE_W / 2, y, title)
-    _hr(c, y - 1, strong=True)
-    y -= 14
+    y -= 4
+    _hr(c, y, strong=True)
+    y -= 16
+
+    def _fmtdate_t(val):
+        if not val: return ''
+        s = str(val).strip()
+        try:
+            from datetime import datetime as _dtm
+            return _dtm.strptime(s[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except (ValueError, IndexError):
+            return s
 
     swpi_ref = _v(data, 'swpi_ref')
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'SWPI REFERENCE:')
     c.setFont('Helvetica', 8)
     c.drawString(ML + 96, y, swpi_ref)
-    y -= 12
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'FINANCE COMPANY:')
@@ -546,26 +556,26 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.setFont('Helvetica-Bold', 8)
     c.drawString(PAGE_W - MR - 130, y, 'DATE:')
     c.setFont('Helvetica', 8)
-    c.drawString(PAGE_W - MR - 100, y, _v(data, 'repo_date'))
-    y -= 12
+    c.drawString(PAGE_W - MR - 100, y, _fmtdate_t(_v(data, 'repo_date')))
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'CUSTOMER NAME:')
     c.setFont('Helvetica', 8)
     c.drawString(ML + 88, y, _trunc(_v(data, 'customer_name'), 38))
-    y -= 12
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'REPOSSESSION ADDRESS:')
     c.setFont('Helvetica', 8)
     c.drawString(ML + 126, y, _trunc(_v(data, 'repo_address'), 42))
-    y -= 10
+    y -= 8
     _hr(c, y)
-    y -= 11
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'SECURITY DETAILS')
-    y -= 12
+    y -= 14
 
     make_model = ' '.join(filter(None, [_v(data, 'make'), _v(data, 'model')])) or ''
     c.setFont('Helvetica-Bold', 8)
@@ -576,15 +586,15 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.drawString(PAGE_W - MR - 130, y, 'REGO:')
     c.setFont('Helvetica', 8)
     c.drawString(PAGE_W - MR - 98, y, _v(data, 'registration'))
-    y -= 12
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'VIN:')
     c.setFont('Helvetica', 8)
     c.drawString(ML + 28, y, _v(data, 'vin'))
-    y -= 10
+    y -= 8
     _hr(c, y)
-    y -= 11
+    y -= 14
 
     tow_name = _v(data, 'tow_company_name')
     tow_phone = _v(data, 'tow_phone')
@@ -596,61 +606,66 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.drawString(PAGE_W - MR - 130, y, 'PHONE:')
     c.setFont('Helvetica', 8)
     c.drawString(PAGE_W - MR - 90, y, tow_phone)
-    y -= 12
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'TOW COSTS:')
     c.setFont('Helvetica', 8)
     c.drawString(ML + 62, y, _v(data, 'tow_costs') or 'TBA')
-    y -= 12
+    y -= 8
     _hr(c, y)
-    y -= 6
+    y -= 10
 
     delivery_label = 'PLEASE DELIVER THE ABOVE ASSET TO THE FOLLOWING AUCTION FACILITY'
     c.setFont('Helvetica-Bold', 8.5)
     c.setFillColor(DARK)
     c.drawCentredString(PAGE_W / 2, y, delivery_label)
-    y -= 6
+    y -= 8
     _hr(c, y)
-    y -= 10
+    y -= 14
 
     deliver_to = _v(data, 'deliver_to', 'delivery_address')
     delivery_addr = _v(data, 'delivery_address')
     c.setFont('Helvetica-Bold', 9)
     c.drawCentredString(PAGE_W / 2, y, _trunc(deliver_to, 60))
     if delivery_addr and delivery_addr != deliver_to:
-        y -= 12
+        y -= 14
         c.setFont('Helvetica', 9)
         c.drawCentredString(PAGE_W / 2, y, _trunc(delivery_addr, 70))
-    y -= 14
+    y -= 10
     _hr(c, y)
-    y -= 8
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'SEND YOUR INVOICE DIRECT TO:')
-    y -= 12
+    y -= 14
     client_name  = _v(data, 'client_name')
     client_email = _v(data, 'client_email')
-    invoice_line = client_name + (f'  \u2014  {client_email}' if client_email else '')
     c.setFont('Helvetica', 8.5)
-    c.drawString(ML, y, _trunc(invoice_line, 65))
-    y -= 16
+    c.drawString(ML, y, _trunc(client_name, 50))
+    if client_email:
+        y -= 14
+        c.setFont('Helvetica-Bold', 8)
+        c.drawString(ML, y, 'EMAIL:')
+        c.setFont('Helvetica', 8.5)
+        c.drawString(ML + 38, y, _trunc(client_email, 50))
+    y -= 10
     _hr(c, y)
-    y -= 8
+    y -= 14
 
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'REFERENCE / JOB NUMBER:')
-    y -= 12
+    y -= 14
     ref = ' / '.join(filter(None, [_v(data, 'client_reference'),
                                    _v(data, 'registration')])) or _v(data, 'swpi_ref')
     c.setFont('Helvetica', 9)
     c.drawString(ML, y, ref)
-    y -= 20
+    y -= 22
 
     agent_name = _v(data, 'agent_name', default='Agent')
     sig_w = (CW - 14) / 2
     sig_h = 80
-    date_str = _v(data, 'repo_date')
+    date_str = _fmtdate_t(_v(data, 'repo_date'))
     _sig_box(c, ML, y, sig_w, sig_h, f'AGENT SIGNATURE: {agent_name}', agent_sig, date_str)
     _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h, 'TOW SIGNATURE:', tow_sig, date_str)
 
