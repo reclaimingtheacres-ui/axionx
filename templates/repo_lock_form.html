@@ -284,8 +284,7 @@
                   <div class="row g-2">
                     {% for fname, lbl in [
                         ("tyres","Tyres"),("body","Body"),("duco","Duco"),
-                        ("interior","Interior"),("engine_condition","Engine"),
-                        ("transmission","Transmission")
+                        ("interior","Interior")
                     ] %}
                     <div class="col-6 col-md-3">
                       <label class="form-label">{{ lbl }}</label>
@@ -295,6 +294,20 @@
                       </select>
                     </div>
                     {% endfor %}
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Engine</label>
+                      <select class="form-select form-select-sm" name="engine_condition" id="rl_engine_condition">
+                        <option value="">— Select —</option>
+                        <option>Intact / Starts</option><option>Intact / No Start</option><option>Dismantled</option><option>Unknown</option><option>N/A</option>
+                      </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                      <label class="form-label">Transmission</label>
+                      <select class="form-select form-select-sm" name="transmission" id="rl_transmission">
+                        <option value="">— Select —</option>
+                        <option>Intact / Moves</option><option>Intact / Not Move</option><option>Dismantled</option><option>Unknown</option><option>N/A</option>
+                      </select>
+                    </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Fuel Level</label>
                       <select class="form-select form-select-sm" name="fuel_level" id="rl_fuel_level">
