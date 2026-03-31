@@ -8508,7 +8508,8 @@ def repo_lock_wise_auction_pdf(job_id: int, rec_id: int):
     rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
 
-    for k in ("finance_company", "wise_case_number", "registration", "engine_number", "vin"):
+    for k in ("lender", "finance_company", "wise_case_number", "registration",
+              "engine_number", "vin", "third_party"):
         fv = request.form.get(k, "").strip()
         if fv:
             d[k] = fv

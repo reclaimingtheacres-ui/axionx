@@ -866,33 +866,50 @@ def generate_wise_auction_pdf(data):
     c = rl_canvas.Canvas(overlay_buf, pagesize=A4)
     c.setFillColor(DARK)
     F = 'Helvetica'
+    FB = 'Helvetica-Bold'
     SZ = 10
 
     c.setFont(F, SZ)
 
-    principal = _v(data, 'finance_company', 'client_name')
-    if principal:
-        c.drawString(332, 618, principal)
+    lender = _v(data, 'lender', 'finance_company', 'client_name')
+    if lender:
+        lsz = SZ
+        max_w = 75
+        while c.stringWidth(lender, F, lsz) > max_w and lsz > 5:
+            lsz -= 0.5
+        if c.stringWidth(lender, F, lsz) > max_w:
+            while len(lender) > 1 and c.stringWidth(lender + '…', F, lsz) > max_w:
+                lender = lender[:-1]
+            lender = lender.rstrip() + '…'
+        c.setFont(F, lsz)
+        c.drawString(280, 681, lender)
+        c.setFont(F, SZ)
+
+    third_party = _v(data, 'third_party')
+    if third_party:
+        c.setFont(F, 8)
+        c.drawString(360, 664, '3rd Party: ' + third_party)
+        c.setFont(F, SZ)
 
     ref = _v(data, 'wise_case_number', 'swpi_ref', 'client_reference')
     if ref:
-        c.drawString(100, 580, ref)
+        c.drawString(100, 625, ref)
 
     unit = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'), _v(data, 'model')]))
     if unit:
-        c.drawString(130, 548, unit)
+        c.drawString(130, 610, unit)
 
     rego = _v(data, 'registration')
     if rego:
-        c.drawString(130, 528, rego)
+        c.drawString(115, 595, rego)
 
     engine = _v(data, 'engine_number')
     if engine:
-        c.drawString(155, 508, engine)
+        c.drawString(160, 581, engine)
 
     vin = _v(data, 'vin')
     if vin:
-        c.drawString(100, 488, vin)
+        c.drawString(82, 566, vin)
 
     c.save()
     overlay_buf.seek(0)
@@ -923,35 +940,35 @@ def generate_wise_tow_pdf(data):
 
     ref = _v(data, 'wise_case_number', 'swpi_ref', 'client_reference')
     if ref:
-        c.drawString(170, 560, ref)
+        c.drawString(160, 548, ref)
 
     matter = _v(data, 'customer_name')
     if matter:
-        c.drawString(100, 540, matter)
+        c.drawString(260, 548, matter)
 
     unit = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'), _v(data, 'model')]))
     if unit:
-        c.drawString(130, 505, unit)
+        c.drawString(130, 522, unit)
 
     rego = _v(data, 'registration')
     if rego:
-        c.drawString(130, 480, rego)
+        c.drawString(110, 495, rego)
 
     engine = _v(data, 'engine_number')
     if engine:
-        c.drawString(155, 455, engine)
+        c.drawString(155, 468, engine)
 
     vin = _v(data, 'vin')
     if vin:
-        c.drawString(130, 430, vin)
+        c.drawString(125, 441, vin)
 
     yard_name = _v(data, 'auction_yard_name', 'deliver_to')
     if yard_name:
-        c.drawString(170, 380, yard_name)
+        c.drawString(170, 361, yard_name)
 
     yard_addr = _v(data, 'delivery_address')
     if yard_addr:
-        c.drawString(120, 355, yard_addr)
+        c.drawString(100, 334, yard_addr)
 
     c.save()
     overlay_buf.seek(0)

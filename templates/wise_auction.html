@@ -23,11 +23,15 @@
       <h6 style="font-weight:700;font-size:.85rem;margin-bottom:10px;color:#111;">Auction Details</h6>
 
       <div style="margin-bottom:8px;">
-        <label style="font-size:.78rem;font-weight:600;color:#374151;">Principal / On Behalf Of</label>
-        <input class="form-control form-control-sm" name="finance_company" value="{{ d.finance_company or d.client_name or '' }}">
+        <label style="font-size:.78rem;font-weight:600;color:#374151;">Lender (On Behalf Of)</label>
+        <input class="form-control form-control-sm" name="lender" value="{{ d.lender or d.finance_company or d.client_name or '' }}">
       </div>
       <div style="margin-bottom:8px;">
-        <label style="font-size:.78rem;font-weight:600;color:#374151;">Reference Number</label>
+        <label style="font-size:.78rem;font-weight:600;color:#374151;">3rd Party <span style="color:#9ca3af;font-weight:400;">(if applicable)</span></label>
+        <input class="form-control form-control-sm" name="third_party" value="{{ d.third_party or '' }}" placeholder="Optional">
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:.78rem;font-weight:600;color:#374151;">Referral / Reference Number</label>
         <input class="form-control form-control-sm" name="wise_case_number" value="{{ d.wise_case_number or d.swpi_ref or d.client_reference or '' }}">
       </div>
       <div style="margin-bottom:8px;">
