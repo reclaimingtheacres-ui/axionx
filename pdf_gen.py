@@ -935,9 +935,9 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
             return s
 
     c.setFillColor(RL_WHITE)
-    c.rect(430, 670, 120, 16, fill=1, stroke=0)
+    c.rect(465, 670, 85, 16, fill=1, stroke=0)
     c.rect(370, 627, 170, 16, fill=1, stroke=0)
-    c.rect(350, 555, 200, 14, fill=1, stroke=0)
+    c.rect(350, 555, 200, 16, fill=1, stroke=0)
     c.rect(320, 473, 230, 14, fill=1, stroke=0)
     c.rect(320, 447, 230, 14, fill=1, stroke=0)
     c.rect(49, 350, 290, 18, fill=1, stroke=0)
@@ -957,27 +957,32 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
     FONT = 'Helvetica'
     FONT_B = 'Helvetica-Bold'
 
+    SZ = 10
+
+    c.setFont(FONT_B, 10)
+    c.drawString(420, 673, 'Date')
+
     date_str = _fmtdate13(_v(data, 'repo_date'))
     if date_str:
-        c.setFont(FONT, 9)
-        c.drawString(440, 673, date_str)
+        c.setFont(FONT, SZ)
+        c.drawString(470, 673, date_str)
 
     credit_provider = _v(data, 'finance_company', 'client_name')
     if credit_provider:
-        c.setFont(FONT, 9)
+        c.setFont(FONT, SZ)
         c.drawString(370, 633, _trunc(credit_provider, 35))
 
     occupier_name = _v(data, 'customer_name')
     if occupier_name:
-        c.setFont(FONT, 9)
-        c.drawString(350, 559, _trunc(occupier_name, 35))
+        c.setFont(FONT, SZ)
+        c.drawString(350, 562, _trunc(occupier_name, 35))
 
     occupier_addr = _v(data, 'repo_address')
     if occupier_addr:
         parts = occupier_addr.split(',', 1)
         addr_line1 = parts[0].strip()
         addr_line2 = parts[1].strip() if len(parts) > 1 else ''
-        c.setFont(FONT, 9)
+        c.setFont(FONT, SZ)
         c.drawString(320, 477, _trunc(addr_line1, 40))
         if addr_line2:
             c.drawString(320, 450, _trunc(addr_line2, 40))
@@ -989,7 +994,7 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
     if vin:
         goods_desc += f', VIN/CHASSIS: {vin}'
     if goods_desc:
-        c.setFont(FONT, 9)
+        c.setFont(FONT, SZ)
         c.drawString(57, 357, _trunc(goods_desc, 80))
 
     if occupant_sig:
