@@ -38,6 +38,12 @@ def _trunc(val, max_ch=40):
     return s[:max_ch] + ('\u2026' if len(s) > max_ch else '')
 
 
+def _sig_to_img(sig_b64):
+    raw_b64 = sig_b64.split(',')[-1]
+    raw = base64.b64decode(raw_b64)
+    return ImageReader(io.BytesIO(raw))
+
+
 def _sig_box(c, x, y, w, h, label, sig_b64=None, date_str=''):
     c.setStrokeColor(LINE)
     c.setLineWidth(0.75)
@@ -905,149 +911,132 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
 # =============================================================================
 
 def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
-    buf = io.BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=A4)
-    c.setTitle('Form 13 Consent to Enter Premises')
+    import os
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.lib.colors import white as RL_WHITE
 
-    y = PAGE_H - MT
+    TMPL_PATH = os.path.join(os.path.dirname(__file__),
+                             'static', 'templates', 'generic_form_13.pdf')
+    reader = PdfReader(TMPL_PATH)
+    tmpl_page = reader.pages[0]
+    pw = float(tmpl_page.mediabox.width)
+    ph = float(tmpl_page.mediabox.height)
 
-    c.setFont('Helvetica-Bold', 12)
+    overlay_buf = io.BytesIO()
+    c = rl_canvas.Canvas(overlay_buf, pagesize=(pw, ph))
+
+    def _fmtdate13(val):
+        if not val: return ''
+        s = str(val).strip()
+        try:
+            from datetime import datetime as _dtm
+            return _dtm.strptime(s[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except (ValueError, IndexError):
+            return s
+
+    c.setFillColor(RL_WHITE)
+    c.rect(330, 626, 215, 16, fill=1, stroke=0)
+    c.rect(330, 668, 215, 14, fill=1, stroke=0)
+    c.rect(340, 585, 205, 16, fill=1, stroke=0)
+    c.rect(350, 370, 195, 14, fill=1, stroke=0)
+    c.rect(300, 547, 245, 16, fill=1, stroke=0)
+    c.rect(300, 457, 245, 16, fill=1, stroke=0)
+    c.rect(300, 438, 245, 16, fill=1, stroke=0)
+    c.rect(49, 350, 290, 18, fill=1, stroke=0)
+    c.rect(55, 183, 490, 16, fill=1, stroke=0)
+
+    annots = tmpl_page.get('/Annots')
+    if annots:
+        for a in annots:
+            obj = a.get_object()
+            rect = obj.get('/Rect')
+            ic = obj.get('/IC')
+            if rect and ic and list(ic) == [1]:
+                x0, y0, x1, y1 = [float(v) for v in rect]
+                c.rect(x0 - 1, y0 - 1, (x1 - x0) + 2, (y1 - y0) + 2, fill=1, stroke=0)
+
     c.setFillColor(DARK)
-    c.drawCentredString(PAGE_W / 2, y, 'Form 13 Consent to enter premises')
-    y -= 16
+    FONT = 'Helvetica'
+    FONT_B = 'Helvetica-Bold'
 
-    c.setFont('Helvetica', 7.5)
-    c.setFillColor(MUTED)
-    c.drawRightString(PAGE_W - MR, y, 'subsection 99 (2) of the Code')
-    y -= 10
-    c.drawRightString(PAGE_W - MR, y, 'regulation 87 of the Regulations')
-    y -= 14
-
-    c.setFont('Helvetica', 8)
-    c.setFillColor(DARK)
-    c.drawRightString(PAGE_W - MR, y, '...............')
-    c.drawRightString(PAGE_W - MR - 15, y, 'Date')
-    y -= 16
+    date_str = _fmtdate13(_v(data, 'repo_date'))
+    if date_str:
+        c.setFont(FONT, 9)
+        c.drawString(450, 650, date_str)
 
     credit_provider = _v(data, 'finance_company', 'client_name')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML, y, 'TO: . . . . . . . . ')
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + 68, y, credit_provider)
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 68 + c.stringWidth(credit_provider, 'Helvetica-Bold', 8) + 4, y, '. . . . . . . . . .')
-    y -= 10
-    c.setFont('Helvetica-Oblique', 7.5)
-    c.setFillColor(MUTED)
-    c.drawString(ML + 68, y, '(name of credit provider)')
-    y -= 10
-    c.setFont('Helvetica-Oblique', 7.5)
-    c.drawString(ML + 68, y, '(Australian credit licence number)')
-    y -= 18
+    if credit_provider:
+        c.setFont(FONT, 9)
+        c.drawString(380, 631, _trunc(credit_provider, 35))
 
     occupier_name = _v(data, 'customer_name')
+    if occupier_name:
+        c.setFont(FONT, 9)
+        c.drawString(410, 593, _trunc(occupier_name, 30))
+
     occupier_addr = _v(data, 'repo_address')
-    c.setFont('Helvetica', 8)
-    c.setFillColor(DARK)
-    c.drawString(ML, y, 'FROM: . . . . . . . . . . ')
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + 100, y, occupier_name)
-    c.setFont('Helvetica', 8)
-    end_x = ML + 100 + c.stringWidth(occupier_name, 'Helvetica-Bold', 8) + 4
-    if end_x < PAGE_W - MR - 40:
-        c.drawString(end_x, y, '. . . . . . . . . . . . . . . . . .')
-    y -= 10
-    c.setFont('Helvetica-Oblique', 7.5)
-    c.setFillColor(MUTED)
-    c.drawString(ML + 100, y, '(name of occupier)')
-    y -= 12
+    if occupier_addr:
+        parts = occupier_addr.split(',', 1)
+        addr_line1 = parts[0].strip()
+        addr_line2 = parts[1].strip() if len(parts) > 1 else ''
+        c.setFont(FONT, 9)
+        c.drawString(320, 554, _trunc(addr_line1, 40))
+        if addr_line2:
+            c.drawString(320, 464, _trunc(addr_line2, 40))
 
-    c.setFont('Helvetica', 8)
-    c.setFillColor(DARK)
-    c.drawString(ML + 100, y, _trunc(occupier_addr, 55))
-    y -= 10
-    c.setFont('Helvetica-Oblique', 7.5)
-    c.setFillColor(MUTED)
-    c.drawString(ML + 100, y, "(address of occupier's premises)")
-    y -= 10
-    c.setFont('Helvetica', 8)
-    c.setFillColor(DARK)
-    c.drawString(ML + 100, y, '.........................................')
-    y -= 10
-    c.setFont('Helvetica-Oblique', 7.5)
-    c.setFillColor(MUTED)
-    c.drawString(ML + 100, y, "('the premises')")
-    y -= 18
-
-    consent_text = (
-        "I consent to the credit provider entering the premises for the purpose of taking "
-        "possession of the mortgaged goods described below."
-    )
-    c.setFont('Helvetica', 8.5)
-    c.setFillColor(DARK)
-    for line in simpleSplit(consent_text, 'Helvetica', 8.5, CW):
-        c.drawString(ML, y, line)
-        y -= 12
-    y -= 6
-
-    make_model = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'),
-                                        _v(data, 'model')])) or _v(data, 'description')
+    make_model = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make').upper(),
+                                        _v(data, 'model').upper()])) or _v(data, 'description')
     vin = _v(data, 'vin')
     goods_desc = make_model
     if vin:
         goods_desc += f', VIN/CHASSIS: {vin}'
+    if goods_desc:
+        c.setFont(FONT, 9)
+        c.drawString(57, 357, _trunc(goods_desc, 80))
 
-    c.setFont('Helvetica-Bold', 8.5)
-    c.drawString(ML, y, 'The mortgaged goods are:')
-    y -= 12
-    c.setFont('Helvetica', 8.5)
-    c.drawString(ML, y, _trunc(goods_desc, 80))
-    y -= 20
+    if occupant_sig:
+        try:
+            sig_img = _sig_to_img(occupant_sig)
+            c.drawImage(sig_img, 240, 245, width=130, height=40,
+                        preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
 
-    _hr(c, y, strong=True)
-    y -= 14
+    agent_name = _v(data, 'agent_name')
+    agent_addr = _v(data, 'repo_address')
+    rep_line = agent_name
+    if agent_addr:
+        rep_line += f', {agent_addr}'
+    if rep_line:
+        c.setFont(FONT, 8)
+        c.drawString(57, 190, _trunc(rep_line, 90))
 
-    c.setFont('Helvetica-Bold', 10)
-    c.drawCentredString(PAGE_W / 2, y, 'IMPORTANT')
-    y -= 12
-
-    important = (
-        'YOU HAVE THE RIGHT TO REFUSE CONSENT. IF YOU DO THE CREDIT PROVIDER MAY GO TO '
-        'COURT FOR PERMISSION TO ENTER THE PREMISES.'
-    )
-    c.setFont('Helvetica-Bold', 8.5)
-    for line in simpleSplit(important, 'Helvetica-Bold', 8.5, CW):
-        c.drawCentredString(PAGE_W / 2, y, line)
-        y -= 12
-    y -= 6
-    _hr(c, y, strong=True)
-    y -= 20
-
-    c.setFont('Helvetica', 8)
-    c.setFillColor(MUTED)
-    c.drawCentredString(PAGE_W / 2, y, '..................................................')
-    y -= 10
-    c.drawCentredString(PAGE_W / 2, y, '(signature of occupier giving consent)')
-    y -= 18
-
-    agent_name  = _v(data, 'agent_name')
-    date_str    = _v(data, 'repo_date')
-    sig_w = (CW - 14) / 2
-    sig_h = 80
-
-    _sig_box(c, ML, y, sig_w, sig_h, 'Signature of Occupier giving consent', occupant_sig, date_str)
-    _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h,
-             f'Agent: {agent_name}, {_v(data, "repo_address")}', agent_sig, date_str)
-    y -= (sig_h + 16)
-
-    c.setFont('Helvetica', 7.5)
-    c.setFillColor(MUTED)
-    c.drawCentredString(PAGE_W / 2, y,
-        'Schedule 1 to the National Consumer Credit Protection Regulations 2010')
+    if agent_sig:
+        try:
+            sig_img = _sig_to_img(agent_sig)
+            c.drawImage(sig_img, 380, 180, width=130, height=40,
+                        preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
 
     c.save()
-    buf.seek(0)
-    return buf.read()
+    overlay_buf.seek(0)
+
+    overlay_reader = PdfReader(overlay_buf)
+    overlay_page = overlay_reader.pages[0]
+
+    if annots:
+        if '/Annots' in tmpl_page:
+            del tmpl_page['/Annots']
+
+    tmpl_page.merge_page(overlay_page)
+
+    writer = PdfWriter()
+    writer.add_page(tmpl_page)
+    out_buf = io.BytesIO()
+    writer.write(out_buf)
+    out_buf.seek(0)
+    return out_buf.read()
 
 
 # =============================================================================

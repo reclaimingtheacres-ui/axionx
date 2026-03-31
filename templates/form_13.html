@@ -54,13 +54,20 @@
     </div>
     </div>
 
-    {{ section('MORTGAGED GOODS') }}
+    {{ section('MORTGAGED GOODS (Security Description)') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
       {{ fi('year',  'Year',         item_year  or rec.get('year','')) }}
       {{ fi('make',  'Make',         item_make  or rec.get('make','')) }}
       {{ fi('model', 'Model',        item_model or rec.get('model','')) }}
       {{ fi('vin',   'VIN / Chassis', rec.vin) }}
     </div>
+    {% set auto_desc = [item_year, (item_make or '')|upper, (item_model or '')|upper]|select|join(' ') %}
+    {% if rec.vin %}{% set auto_desc = auto_desc ~ ', VIN/CHASSIS: ' ~ rec.vin %}{% endif %}
+    {% if auto_desc %}
+    <div style="margin-top:10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 12px;font-size:.82rem;color:#0c4a6e;">
+      <strong>Auto-built description:</strong> {{ auto_desc }}
+    </div>
+    {% endif %}
     </div>
 
     {# ── Signatures ── #}
