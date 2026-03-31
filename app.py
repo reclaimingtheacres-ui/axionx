@@ -7804,13 +7804,58 @@ def repo_lock_get(job_id: int, item_id: int):
     tow_ops = conn.execute("SELECT id, company_name, phone, mobile FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
     auction_yards = conn.execute("SELECT id, name, address FROM auction_yards WHERE active=1 ORDER BY name").fetchall()
     user = conn.execute("SELECT full_name FROM users WHERE id=?", (session.get("user_id"),)).fetchone()
-    conn.close()
 
     if customer:
         customer = dict(customer)
 
-    from datetime import date as _date
+    from datetime import date as _date, datetime as _datetime
     today = _date.today().strftime("%Y-%m-%d")
+    now = _datetime.now()
+    start_time = now.strftime("%H:%M")
+    end_hour = now.replace(hour=(now.hour + 1) % 24)
+    end_time = end_hour.strftime("%H:%M")
+
+    customer_mobile = ""
+    if customer:
+        ph_row = conn.execute(
+            """SELECT phone_number FROM contact_phone_numbers
+               WHERE entity_type='customer' AND entity_id=?
+               AND label='Mobile' ORDER BY id DESC LIMIT 1""",
+            (customer["id"],)).fetchone()
+        if ph_row:
+            customer_mobile = ph_row["phone_number"] or ""
+
+    vicroads_engine = ""
+    vicroads_rego_expiry = ""
+    vicroads_registered = ""
+    vr_notes = conn.execute(
+        """SELECT note_text FROM job_field_notes
+           WHERE job_id=? AND note_text LIKE '%Registration information%'
+           ORDER BY id DESC LIMIT 1""",
+        (job_id,)).fetchall()
+    import re as _re
+    for vn in vr_notes:
+        txt = vn["note_text"] or ""
+        eng_m = _re.search(r"Engine\s*number\s*\n\s*([A-Za-z0-9\-\/]+)", txt)
+        if eng_m:
+            vicroads_engine = eng_m.group(1).strip()
+        exp_m = _re.search(r"(?:expiry\s*date|Registration\s*status\s*&\s*expiry\s*date)\s*\n\s*(?:Current|Expired|Suspended)\s*-\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})", txt, _re.IGNORECASE)
+        if exp_m:
+            raw_exp = exp_m.group(1).strip()
+            exp_date = None
+            for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y"):
+                try:
+                    exp_date = _datetime.strptime(raw_exp, fmt).date()
+                    break
+                except ValueError:
+                    continue
+            if exp_date:
+                vicroads_rego_expiry = exp_date.strftime("%Y-%m-%d")
+                vicroads_registered = "Yes" if exp_date >= _date.today() else "No"
+            else:
+                vicroads_rego_expiry = raw_exp
+
+    conn.close()
 
     prefill = {
         "client_name":      (dict(client)["name"] if client else ""),
@@ -7818,12 +7863,18 @@ def repo_lock_get(job_id: int, item_id: int):
         "swpi_ref":         job.get("internal_job_number") or job.get("display_ref") or "",
         "finance_company":  job.get("lender_name") or item.get("lender_name") or "",
         "repo_date":        today,
+        "start_time":       start_time,
+        "end_time":         end_time,
         "account_number":   job.get("account_number") or item.get("account_number") or "",
         "description":      item.get("description") or "",
         "registration":     item.get("reg") or "",
         "vin":              item.get("vin") or "",
-        "engine_number":    item.get("engine_number") or "",
+        "engine_number":    vicroads_engine or item.get("engine_number") or "",
+        "rego_expiry":      vicroads_rego_expiry,
+        "registered":       vicroads_registered,
         "deliver_to":       job.get("deliver_to") or "",
+        "repossessed_from": job.get("job_address") or "",
+        "contact_number":   customer_mobile,
         "agent_name":       (user["full_name"] if user else ""),
         "agent_user_id":    session.get("user_id") or "",
     }
