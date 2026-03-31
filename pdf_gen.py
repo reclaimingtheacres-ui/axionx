@@ -935,11 +935,11 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
             return s
 
     c.setFillColor(RL_WHITE)
-    c.rect(340, 625, 200, 16, fill=1, stroke=0)
-    c.rect(340, 585, 200, 20, fill=1, stroke=0)
-    c.rect(310, 551, 235, 14, fill=1, stroke=0)
-    c.rect(310, 460, 235, 14, fill=1, stroke=0)
-    c.rect(310, 442, 235, 14, fill=1, stroke=0)
+    c.rect(430, 670, 120, 16, fill=1, stroke=0)
+    c.rect(370, 627, 170, 16, fill=1, stroke=0)
+    c.rect(350, 555, 200, 14, fill=1, stroke=0)
+    c.rect(320, 473, 230, 14, fill=1, stroke=0)
+    c.rect(320, 447, 230, 14, fill=1, stroke=0)
     c.rect(49, 350, 290, 18, fill=1, stroke=0)
     c.rect(55, 183, 490, 16, fill=1, stroke=0)
 
@@ -960,17 +960,17 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
     date_str = _fmtdate13(_v(data, 'repo_date'))
     if date_str:
         c.setFont(FONT, 9)
-        c.drawString(450, 650, date_str)
+        c.drawString(440, 673, date_str)
 
     credit_provider = _v(data, 'finance_company', 'client_name')
     if credit_provider:
         c.setFont(FONT, 9)
-        c.drawString(380, 630, _trunc(credit_provider, 35))
+        c.drawString(370, 633, _trunc(credit_provider, 35))
 
     occupier_name = _v(data, 'customer_name')
     if occupier_name:
         c.setFont(FONT, 9)
-        c.drawString(410, 594, _trunc(occupier_name, 30))
+        c.drawString(350, 559, _trunc(occupier_name, 35))
 
     occupier_addr = _v(data, 'repo_address')
     if occupier_addr:
@@ -978,9 +978,9 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
         addr_line1 = parts[0].strip()
         addr_line2 = parts[1].strip() if len(parts) > 1 else ''
         c.setFont(FONT, 9)
-        c.drawString(320, 555, _trunc(addr_line1, 40))
+        c.drawString(320, 477, _trunc(addr_line1, 40))
         if addr_line2:
-            c.drawString(320, 464, _trunc(addr_line2, 40))
+            c.drawString(320, 450, _trunc(addr_line2, 40))
 
     make_model = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make').upper(),
                                         _v(data, 'model').upper()])) or _v(data, 'description')
