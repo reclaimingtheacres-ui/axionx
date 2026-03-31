@@ -108,7 +108,10 @@
         <li><a class="dropdown-item" href="/forms/generate?type=vir&job_id={{ job.id }}">Vehicle Inspection Report</a></li>
         <li><a class="dropdown-item" href="/forms/generate?type=form_13&job_id={{ job.id }}">Form 13</a></li>
         <li><a class="dropdown-item" href="/forms/generate?type=transport&job_id={{ job.id }}">Transport Instructions</a></li>
-        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formRepoLock">Repossession Lock</a></li>
+        <li><a class="dropdown-item" href="/forms/generate?type=voluntary_surrender&job_id={{ job.id }}">Voluntary Surrender</a></li>
+        {% if job_items %}
+        <li><a class="dropdown-item" href="/jobs/{{ job.id }}?open_repo_lock={{ job_items[0].id }}#securities">Repossession Lock</a></li>
+        {% endif %}
         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formTermination">Termination Notice</a></li>
         {% if form_templates %}
         <li><hr class="dropdown-divider"></li>
@@ -574,7 +577,7 @@
 
 
     <!-- Security/s (was Job Items) -->
-    <div class="ax-card">
+    <div class="ax-card" id="securities">
       <div class="ax-card-h">Security/s</div>
       <div class="ax-card-b">
 
@@ -1557,7 +1560,20 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <div class="form-card">
         <div class="form-card-title">Repossession Lock</div>
         <div class="form-card-sub">Lock &amp; secure details</div>
-        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formRepoLock">Open</button>
+        {% if job_items %}
+        <a class="btn btn-primary btn-sm mt-1" href="/jobs/{{ job.id }}?open_repo_lock={{ job_items[0].id }}#securities">Open</a>
+        {% else %}
+        <button class="btn btn-secondary btn-sm mt-1" disabled>No Assets</button>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- VOLUNTARY SURRENDER -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">Voluntary Surrender</div>
+        <div class="form-card-sub">Customer surrender form</div>
+        <a class="btn btn-primary btn-sm mt-1" href="/forms/generate?type=voluntary_surrender&job_id={{ job.id }}">Open</a>
       </div>
     </div>
 
@@ -1604,13 +1620,13 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 <!-- ===== FORM MODALS ===== -->
 
 <!-- WORKSHEET MODAL -->
-<div class="modal fade" id="formWorksheet" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="formWorksheet" tabindex="-1" aria-hidden="true" data-bs-backdrop="true" data-bs-keyboard="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header no-print">
         <h5 class="modal-title fw-600">Worksheet</h5>
         <div class="d-flex gap-2 ms-auto">
-          <button class="btn btn-primary btn-sm" onclick="window.print()">Print</button>
+          <button class="btn btn-primary btn-sm" onclick="(function(){var c=document.getElementById('ws-print');if(!c)return;var w=window.open('','_blank','width=800,height=900');w.document.write('<html><head><title>Worksheet</title><style>body{font-family:sans-serif;padding:24px;font-size:13px;}.fpa-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;}.fpa-company{font-size:1.3rem;font-weight:700;}.fpa-title{text-align:right;font-size:.95rem;font-weight:600;}.fpa-label{font-size:.7rem;text-transform:uppercase;color:#666;letter-spacing:.04em;margin-bottom:2px;}.fpa-value{border-bottom:1px solid #ccc;padding:4px 0;min-height:1.2em;}.fpa-row3,.fpa-row{display:flex;gap:16px;margin-bottom:12px;}.fpa-row3>div{flex:1;}.fpa-section{margin-bottom:10px;}.fpa-divider{border:0;border-top:1.5px solid #2563eb;margin:16px 0;}table{width:100%;border-collapse:collapse;font-size:.85rem;}th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}th{background:#f3f4f6;font-weight:600;}</style></head><body>'+c.innerHTML+'</body></html>');w.document.close();w.focus();w.print();})()">Print</button>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
       </div>
@@ -4417,6 +4433,20 @@ function axCopyVin(btn) {
   if (rlEl) rlEl.addEventListener('show.bs.modal', function () { setIfEl('rl-date', todayStr()); setIfEl('rl-time', nowTimeStr()); });
   var tnEl = document.getElementById('formTermination');
   if (tnEl) tnEl.addEventListener('show.bs.modal', function () { setIfEl('tn-date', todayStr()); });
+
+  (function() {
+    var params = new URLSearchParams(window.location.search);
+    var rlItemId = params.get('open_repo_lock');
+    if (rlItemId) {
+      setTimeout(function() {
+        var sec = document.getElementById('securities');
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (typeof openRepoLock === 'function') {
+          openRepoLock({{ job.id }}, parseInt(rlItemId, 10));
+        }
+      }, 400);
+    }
+  })();
 
   window.applyTowSelect = function () {
     var sel = document.getElementById('tr-tow-select');

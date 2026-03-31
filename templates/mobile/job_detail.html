@@ -1075,6 +1075,9 @@ function showTab(name) {
         <a id="rlmVirLink" href="#" style="display:block;padding:14px 16px;background:#2563eb;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:.88rem;">
           &#x1F4CB; Vehicle Inspection Report (VIR)
         </a>
+        <a id="rlmForm13Link" href="#" style="display:block;padding:14px 16px;background:#fff;color:#2563eb;border:1.5px solid #2563eb;border-radius:10px;text-decoration:none;font-weight:600;font-size:.88rem;">
+          &#x1F4C4; Form 13 — Notice to Occupier
+        </a>
         <a id="rlmTransportLink" href="#" style="display:block;padding:14px 16px;background:#fff;color:#2563eb;border:1.5px solid #2563eb;border-radius:10px;text-decoration:none;font-weight:600;font-size:.88rem;">
           &#x1F69A; Transport Instructions
         </a>
@@ -1203,6 +1206,25 @@ function showTab(name) {
       </details>
 
     </form>
+
+    <div id="rlmGenFormsSection" style="display:none;margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff;">
+      <div style="padding:12px 14px;background:#f0f9ff;border-bottom:1px solid #e5e7eb;">
+        <div style="font-weight:700;font-size:.85rem;color:#1e40af;">Generate Documents</div>
+        <div style="font-size:.72rem;color:#6b7280;margin-top:2px;">Create PDF forms from this Repo Lock data</div>
+      </div>
+      <div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;">
+        <a id="rlmGenVirBtn" href="#" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#2563eb;color:#fff;border-radius:10px;text-decoration:none;font-weight:600;font-size:.85rem;">
+          <span style="font-size:1.1rem;">&#x1F4CB;</span> Generate VIR
+        </a>
+        <a id="rlmGenF13Btn" href="#" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;color:#2563eb;border:1.5px solid #2563eb;border-radius:10px;text-decoration:none;font-weight:600;font-size:.85rem;">
+          <span style="font-size:1.1rem;">&#x1F4C4;</span> Generate Form 13
+        </a>
+        <a id="rlmGenTransBtn" href="#" style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;color:#2563eb;border:1.5px solid #2563eb;border-radius:10px;text-decoration:none;font-weight:600;font-size:.85rem;">
+          <span style="font-size:1.1rem;">&#x1F69A;</span> Generate Transport Instructions
+        </a>
+      </div>
+    </div>
+
     </div>{# /rlmFormWrap #}
   </div>{# /rlmScrollWrap #}
   <div style="position:absolute;bottom:0;left:0;right:0;padding:10px 12px;background:#fff;border-top:1px solid #e5e7eb;display:flex;gap:8px;">
@@ -1281,6 +1303,20 @@ function showTab(name) {
       draftTxt.textContent  = "Save Draft";
       submitBtn.style.background = "#dc2626";
       submitTxt.textContent = "Submit";
+    }
+  }
+
+  function _rlmUpdateGenBtns() {
+    var sec = _gid("rlmGenFormsSection");
+    if (!sec) return;
+    if (_rlmRecId) {
+      sec.style.display = "";
+      var base = "/jobs/" + _rlmJobId + "/repo-lock/" + _rlmRecId;
+      _gid("rlmGenVirBtn").href   = base + "/vir";
+      _gid("rlmGenF13Btn").href   = base + "/form-13";
+      _gid("rlmGenTransBtn").href = base + "/transport-instructions";
+    } else {
+      sec.style.display = "none";
     }
   }
 
@@ -1381,6 +1417,7 @@ function showTab(name) {
         }
 
         _rlmUpdateBtns(data.status);
+        _rlmUpdateGenBtns();
 
         _gid("rlOverlay").style.display = "flex";
       })
@@ -1410,7 +1447,7 @@ function showTab(name) {
       txt.textContent = orig;
       if (!res.ok) { alert("Save failed."); return; }
 
-      if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); }
+      if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); _rlmUpdateGenBtns(); }
 
       var banner = _gid("rlmBanner");
       banner.textContent = "Draft saved — not yet submitted.";
@@ -1483,9 +1520,10 @@ function showTab(name) {
         trigger.style.background = "#16a34a";
       }
 
-      if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); }
+      if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); _rlmUpdateGenBtns(); }
 
       _gid("rlmVirLink").href       = "/jobs/" + jobId + "/repo-lock/" + res.id + "/vir";
+      _gid("rlmForm13Link").href    = "/jobs/" + jobId + "/repo-lock/" + res.id + "/form-13";
       _gid("rlmTransportLink").href = "/jobs/" + jobId + "/repo-lock/" + res.id + "/transport-instructions";
 
       _gid("rlmFormWrap").style.display     = "none";
