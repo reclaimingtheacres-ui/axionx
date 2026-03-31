@@ -168,10 +168,23 @@
   _initCanvas('agentCanvas','agentSigData','agentSigned');
   _initCanvas('towCanvas','towSigData','towSigned');
 
+  {% if saved_agent_sig %}
+  (function(){
+    var sigData = {{ saved_agent_sig|tojson }};
+    var img = new Image();
+    img.onload = function(){
+      var c = document.getElementById('agentCanvas');
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      document.getElementById('agentSigData').value = sigData;
+      document.getElementById('agentSigned').value = '1';
+    };
+    img.src = sigData;
+  })();
+  {% endif %}
+
   document.getElementById('transportForm').addEventListener('submit', function(e) {
     var signed = document.getElementById('agentSigned').value;
-    var existing = {{ 'true' if rec.agent_signature else 'false' }};
-    if (signed !== '1' && !existing) {
+    if (signed !== '1') {
       e.preventDefault();
       document.getElementById('agentSigPrompt').style.display = 'block';
       document.getElementById('agentCanvas').style.borderColor = '#dc2626';

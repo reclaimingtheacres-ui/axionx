@@ -92,6 +92,11 @@
           <div style="font-size:.84rem;font-weight:700;color:#111;margin-bottom:6px;">
             Agent / Mercantile Agent: {{ agent_name }} <span style="color:#dc2626;">*</span>
           </div>
+          {% if saved_agent_sig %}
+          <div style="font-size:.78rem;color:#166534;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 10px;margin-bottom:8px;">
+            &#x2713; Signature already captured from VIR &mdash; draw to override
+          </div>
+          {% endif %}
           <div style="position:relative;display:inline-block;width:100%;max-width:500px;">
             <canvas id="agentCanvas" width="500" height="120"
                     style="border:2px solid #d1d5db;border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
@@ -153,6 +158,20 @@
   };
   _initCanvas('occupantCanvas','occupantSigData','occupantSigned');
   _initCanvas('agentCanvas','agentSigData','agentSigned');
+
+  {% if saved_agent_sig %}
+  (function(){
+    var sigData = {{ saved_agent_sig|tojson }};
+    var img = new Image();
+    img.onload = function(){
+      var c = document.getElementById('agentCanvas');
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      document.getElementById('agentSigData').value = sigData;
+      document.getElementById('agentSigned').value = '1';
+    };
+    img.src = sigData;
+  })();
+  {% endif %}
 
   document.getElementById('form13Form').addEventListener('submit', function(e) {
     var refused = document.getElementById('occupantRefused').value === '1';

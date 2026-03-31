@@ -8196,7 +8196,8 @@ def repo_lock_vir(job_id: int, rec_id: int):
                            rec=rec, job_id=job_id,
                            agent_name=agent_name,
                            item_year=d.get("year",""), item_make=d.get("make",""),
-                           item_model=d.get("model",""))
+                           item_model=d.get("model",""),
+                           saved_agent_sig=rec.get("agent_signature") or "")
 
 
 @app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/vir")
@@ -8213,17 +8214,22 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
         return "Not found", 404
     rec = dict(rec_row)
 
+    import re as _re_sig
+    def _valid_sig(s):
+        return bool(s and _re_sig.match(r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$', s))
+
     agent_sig    = request.form.get("agent_sig", "").strip() or None
     customer_sig = request.form.get("customer_sig", "").strip() or None
 
-    if not agent_sig:
+    if not agent_sig or not _valid_sig(agent_sig):
         flash("Agent signature is required.", "error")
         conn.close()
         return redirect(url_for("repo_lock_vir", job_id=job_id, rec_id=rec_id))
+    if customer_sig and not _valid_sig(customer_sig):
+        customer_sig = None
 
     ts = now_ts()
 
-    # Ensure optional columns exist
     for col in ("station_officer", "personal_effects_removed", "personal_effects_list",
                 "colour", "make", "model", "year"):
         add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
@@ -8260,7 +8266,11 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
     rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
 
-    # Signatures are session-only — pass directly from form, do not persist
+    conn.execute("""UPDATE repo_lock_records SET agent_signature=?, customer_signature=?,
+                    agent_signed_at=? WHERE id=?""",
+                 (agent_sig, customer_sig, ts, rec_id))
+    conn.commit()
+
     pdf_bytes = _pg.generate_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig)
 
     job_num   = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
@@ -8299,7 +8309,8 @@ def repo_lock_transport(job_id: int, rec_id: int):
                            tow_company_name_db=d.get("tow_company_name_db",""),
                            tow_phone=d.get("tow_phone",""),
                            client_name=d.get("client_name",""),
-                           client_email=d.get("client_email",""))
+                           client_email=d.get("client_email",""),
+                           saved_agent_sig=rec.get("agent_signature") or "")
 
 
 @app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/transport-instructions")
@@ -8479,7 +8490,8 @@ def repo_lock_form_13(job_id: int, rec_id: int):
                            rec=rec, job_id=job_id,
                            agent_name=agent_name,
                            item_year=d.get("year", ""), item_make=d.get("make", ""),
-                           item_model=d.get("model", ""))
+                           item_model=d.get("model", ""),
+                           saved_agent_sig=rec.get("agent_signature") or "")
 
 
 @app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/form-13")
