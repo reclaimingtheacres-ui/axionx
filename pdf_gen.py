@@ -891,7 +891,7 @@ def generate_wise_auction_pdf(data):
         c.drawString(360, 664, '3rd Party: ' + third_party)
         c.setFont(F, SZ)
 
-    ref = _v(data, 'wise_case_number', 'swpi_ref', 'client_reference')
+    ref = _v(data, 'wise_case_number')
     if ref:
         c.drawString(100, 625, ref)
 
@@ -938,13 +938,15 @@ def generate_wise_tow_pdf(data):
 
     c.setFont(F, SZ)
 
-    ref = _v(data, 'wise_case_number', 'swpi_ref', 'client_reference')
+    ref = _v(data, 'wise_case_number')
     if ref:
         c.drawString(160, 548, ref)
 
     matter = _v(data, 'customer_name')
     if matter:
-        c.drawString(260, 548, matter)
+        ref_w = c.stringWidth(ref or '', F, SZ)
+        matter_x = 160 + ref_w + 15 if ref else 160
+        c.drawString(matter_x, 548, matter)
 
     unit = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'), _v(data, 'model')]))
     if unit:

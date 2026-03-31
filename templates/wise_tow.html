@@ -1,5 +1,5 @@
 {% extends "layout.html" %}
-{% block title %}Wise Tow Instructions — {{ rec.registration or rec.description or ('Case ' ~ (rec.wise_case_number or rec.swpi_ref or rec.id)) }}{% endblock %}
+{% block title %}Wise Tow Instructions — {{ rec.registration or rec.description or ('Case ' ~ (rec.wise_case_number or rec.id)) }}{% endblock %}
 {% block content %}
 <div style="max-width:700px;margin:20px auto;padding:0 12px;">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
@@ -24,7 +24,7 @@
 
       <div style="margin-bottom:8px;">
         <label style="font-size:.78rem;font-weight:600;color:#374151;">Reference Number</label>
-        <input class="form-control form-control-sm" name="wise_case_number" value="{{ d.wise_case_number or d.swpi_ref or d.client_reference or '' }}">
+        <input class="form-control form-control-sm" name="wise_case_number" value="{{ d.wise_case_number or '' }}">
       </div>
       <div style="margin-bottom:8px;">
         <label style="font-size:.78rem;font-weight:600;color:#374151;">Matter Name</label>

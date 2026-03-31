@@ -1,5 +1,5 @@
 {% extends "layout.html" %}
-{% block title %}Wise VIR — {{ rec.registration or rec.description or ('Case ' ~ (rec.wise_case_number or rec.swpi_ref or rec.id)) }}{% endblock %}
+{% block title %}Wise VIR — {{ rec.registration or rec.description or ('Case ' ~ (rec.wise_case_number or rec.id)) }}{% endblock %}
 
 {% block content %}
 <div style="max-width:900px;margin:0 auto;padding:20px 16px 40px;">
