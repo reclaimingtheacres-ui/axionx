@@ -684,226 +684,284 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
 # 3. Wise Group — Vehicle Inspection Report
 # =============================================================================
 
+_WISE_VIR_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              'static', 'templates', 'wise', 'wise_vir.pdf')
+_WISE_AUCTION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  'static', 'templates', 'wise', 'wise_auction.pdf')
+_WISE_TOW_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              'static', 'templates', 'wise', 'wise_tow.pdf')
+
+
+def _wise_tick(c, x, y, sz=8):
+    c.setFont('ZapfDingbats', sz)
+    c.drawString(x, y, '\u2714')
+
+
 def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
-    buf = io.BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=A4)
-    c.setTitle('Wise Group \u2014 Vehicle Inspection Report')
+    from pypdf import PdfReader, PdfWriter
 
-    y = PAGE_H - MT
-    case_number = _v(data, 'wise_case_number', 'swpi_ref')
-    title = f'VEHICLE INSPECTION REPORT{f"  {case_number}" if case_number else ""}'
-    c.setFont('Helvetica-Bold', 12)
+    tmpl_reader = PdfReader(_WISE_VIR_PATH)
+    tmpl_page = tmpl_reader.pages[0]
+
+    overlay_buf = io.BytesIO()
+    c = rl_canvas.Canvas(overlay_buf, pagesize=A4)
     c.setFillColor(DARK)
-    c.drawCentredString(PAGE_W / 2, y, title)
-    y -= 6
-    _hr(c, y, strong=True)
-    y -= 14
+    F = 'Helvetica'
+    FB = 'Helvetica-Bold'
+    SZ = 9
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'Name of Debtor:')
-    c.setFont('Helvetica', 9)
-    c.drawString(ML + 88, y, _v(data, 'customer_name'))
-    y -= 12
-    _hr(c, y)
-    y -= 8
+    c.setFont(F, SZ)
+    c.drawString(145, 672, _v(data, 'customer_name'))
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'VEHICLE DESCRIPTION')
-    y -= 4
-    _hr(c, y, strong=True)
-    y -= 10
+    c.drawString(80, 625, _v(data, 'year'))
+    c.drawString(195, 625, _v(data, 'make'))
+    c.drawString(320, 625, _v(data, 'model'))
 
-    c.setFont('Helvetica-Bold', 7.5)
-    c.drawString(ML, y, 'YEAR:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 32, y, _v(data, 'year'))
-    c.setFont('Helvetica-Bold', 7.5)
-    c.drawString(ML + 100, y, 'MAKE:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 130, y, _v(data, 'make'))
-    c.setFont('Helvetica-Bold', 7.5)
-    c.drawString(ML + 230, y, 'MODEL:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 264, y, _v(data, 'model'))
-    y -= 11
-    _hr(c, y)
-    y -= 10
+    c.drawString(120, 600, _v(data, 'body_type'))
+    c.drawString(260, 600, _v(data, 'colour'))
+    c.drawString(360, 600, _v(data, 'registration'))
+    c.drawString(120, 584, _v(data, 'vin'))
 
-    c.setFont('Helvetica-Bold', 7.5)
-    c.drawString(ML, y, 'BODY TYPE:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 60, y, _v(data, 'body_type'))
-    c.setFont('Helvetica-Bold', 7.5)
-    c.drawString(ML + 130, y, 'COLOUR:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 172, y, _v(data, 'colour'))
-    c.setFont('Helvetica-Bold', 7.5)
-    c.drawString(ML + 258, y, 'REGO:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 288, y, _v(data, 'registration'))
-    y -= 11
-    _hr(c, y)
-    y -= 10
-
-    c.setFont('Helvetica-Bold', 7.5)
-    c.drawString(ML, y, 'VIN/CHASSIS:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 70, y, _v(data, 'vin'))
-    y -= 11
-    _hr(c, y)
-    y -= 10
-
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'VEHICLE CONDITION')
-    y -= 4
-    _hr(c, y, strong=True)
-    y -= 8
-
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'EXTERIOR')
-    y -= 4
-    _hr(c, y)
-    y -= 2
+    def _check_condition(val, option):
+        if not val:
+            return False
+        return val.strip().upper() == option.upper()
 
     body_val = _v(data, 'body')
     paint_val = _v(data, 'duco')
-    for lbl, val, opts in [
-        ('BODY',    body_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
-        ('PAINT',   paint_val, ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
-        ('BUMPERS', body_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
-        ('WINDOWS', _v(data, 'glass'), ['BROKEN', 'CRACKED', 'GOOD']),
-        ('TYRES',   _v(data, 'tyres'), ['BALD', 'FAIR', 'GOOD', 'EXCELLENT']),
-    ]:
-        y = _vir_condition_row(c, y, lbl, val, opts)
-    y -= 6
+    glass_val = _v(data, 'glass')
+    tyres_val = _v(data, 'tyres')
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'MECHANICAL')
-    y -= 4
-    _hr(c, y)
-    y -= 10
+    cond_rows = [
+        (481, body_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
+        (461, paint_val, ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
+        (441, body_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED']),
+        (421, glass_val, ['BROKEN', 'CRACKED', 'GOOD', None]),
+        (401, tyres_val, ['BALD', 'FAIR', 'GOOD', 'EXCELLENT']),
+    ]
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'DOES VEHICLE DRIVE:')
-    xb = ML + 120
-    xb = _cb(c, xb, y, 'YES', _condition_checked(_v(data, 'security_drivable'), 'yes'))
-    xb = _cb(c, xb, y, 'NO', _condition_checked(_v(data, 'security_drivable'), 'no'))
-    xb += 16
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(xb, y, 'ENGINE INTACT:')
-    xb2 = xb + 84
+    checkbox_x_4 = [248, 318, 398, 470]
+    checkbox_x_win = [248, 318, 398]
+    checkbox_x_tyre = [248, 318, 398, 470]
+
+    for idx, (row_y, val, opts) in enumerate(cond_rows):
+        if idx == 3:
+            xs = checkbox_x_win
+        else:
+            xs = checkbox_x_4
+        for j, opt in enumerate(opts):
+            if opt and _check_condition(val, opt):
+                _wise_tick(c, xs[j], row_y)
+
+    drive_val = _v(data, 'security_drivable')
+    if drive_val:
+        if drive_val.strip().upper() in ('YES', 'Y', 'TRUE'):
+            _wise_tick(c, 275, 361)
+        else:
+            _wise_tick(c, 332, 361)
+
     eng = _v(data, 'engine_condition').lower()
-    eng_ok = eng and eng not in ('damaged', 'poor', 'missing', 'no', 'n/a')
-    xb2 = _cb(c, xb2, y, 'YES', eng_ok and bool(eng))
-    _cb(c, xb2, y, 'NO', not eng_ok and bool(eng))
-    _hr(c, y - 14)
-    y -= 18
-
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'INTERIOR')
-    y -= 4
-    _hr(c, y)
-    y -= 2
+    if eng:
+        eng_ok = eng not in ('damaged', 'poor', 'missing', 'no', 'n/a')
+        if eng_ok:
+            _wise_tick(c, 450, 361)
+        else:
+            _wise_tick(c, 490, 361)
 
     interior_val = _v(data, 'interior')
-    for lbl, val, opts in [
-        ('TRIM',   interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-        ('CARPET', interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-        ('DASH',   interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-    ]:
-        y = _vir_condition_row(c, y, lbl, val, opts)
-    y -= 6
+    int_rows = [
+        (317, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+        (297, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+        (277, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+    ]
+    int_xs = [248, 305, 385]
+    for row_y, val, opts in int_rows:
+        for j, opt in enumerate(opts):
+            if _check_condition(val, opt):
+                _wise_tick(c, int_xs[j], row_y)
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'OTHER')
-    y -= 4
-    _hr(c, y)
-    y -= 10
-
+    c.setFont(F, SZ)
     km = _v(data, 'speedometer')
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, "KM'S ON CLOCK:")
-    c.setFont('Helvetica', 8)
-    line_end = ML + 88
-    c.drawString(line_end, y, km or '___________________')
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + int(CW * 0.45), y, 'KEYS SECURED:')
-    xb = ML + int(CW * 0.45) + 78
-    keys_yes = _condition_checked(_v(data, 'keys_obtained'), 'yes')
-    xb = _cb(c, xb, y, 'YES', keys_yes)
-    _cb(c, xb, y, 'NO', not keys_yes)
-    _hr(c, y - 14)
-    y -= 14
+    if km:
+        c.drawString(155, 245, km)
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'PLATES ATTACHED:')
-    xb = ML + 100
-    xb = _cb(c, xb, y, 'YES', True)
-    _cb(c, xb, y, 'NO', False)
-    _hr(c, y - 14)
-    y -= 14
+    keys_val = _v(data, 'keys_obtained')
+    if keys_val and keys_val.strip().upper() in ('YES', 'Y', 'TRUE'):
+        c.drawString(440, 245, 'YES')
+    elif keys_val:
+        c.drawString(440, 245, 'NO')
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'ACCESSORIES:')
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.5)
-    c.line(ML + 80, y - 1, PAGE_W - MR, y - 1)
-    _hr(c, y - 14)
-    y -= 14
+    accessories = _v(data, 'accessories')
+    if accessories:
+        c.setFont(F, 8)
+        for i, ln in enumerate(simpleSplit(accessories[:200], F, 8, CW - 20)[:2]):
+            c.drawString(57, 207 - i * 11, ln)
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'DETAILS OF ANY DAMAGE:')
-    y -= 2
     dmg_val = _v(data, 'damage_list') if _v(data, 'any_damage').upper() == 'YES' else ''
-    c.setStrokeColor(LINE)
-    c.setLineWidth(0.5)
-    c.rect(ML, y - 30, CW, 30, fill=0, stroke=1)
     if dmg_val:
-        c.setFont('Helvetica', 8)
-        c.setFillColor(DARK)
-        for i, ln in enumerate(simpleSplit(dmg_val[:200], 'Helvetica', 8, CW - 8)[:2]):
-            c.drawString(ML + 4, y - 14 - i * 11, ln)
-    y -= 38
+        c.setFont(F, 8)
+        for i, ln in enumerate(simpleSplit(dmg_val[:300], F, 8, CW - 20)[:3]):
+            c.drawString(57, 170 - i * 11, ln)
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'TOWED BY:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 56, y, _v(data, 'tow_company_name'))
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML + int(CW * 0.47), y, 'TOWING COST: $')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + int(CW * 0.47) + 84, y, _v(data, 'tow_costs'))
-    _hr(c, y - 14)
-    y -= 14
+    c.setFont(F, SZ)
+    tow_name = _v(data, 'tow_company_name')
+    if tow_name:
+        c.drawString(110, 120, tow_name)
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'DELIVERED TO:')
-    xb = ML + 82
+    tow_cost = _v(data, 'tow_costs')
+    if tow_cost:
+        c.drawString(420, 120, tow_cost)
+
     delivery = _v(data, 'deliver_to', 'delivery_address').upper()
-    for yard in ['GAMERS', 'PICKLES', 'HELD AT TOWING YARD', 'OTHER']:
-        xb = _cb(c, xb, y, yard, any(w in delivery for w in yard.split()))
-    _hr(c, y - 14)
-    y -= 20
+    del_xs = {'GAMERS': 165, 'PICKLES': 230, 'HELD': 310, 'OTHER': 445}
+    for kw, dx in del_xs.items():
+        if kw in delivery:
+            _wise_tick(c, dx, 100)
 
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'DOES THE DEBTOR WISH TO REDEEM THE SECURITY:')
-    xb = ML + 272
-    redeem_yes = _condition_checked(_v(data, 'vol_surrender'), 'yes')
-    xb = _cb(c, xb, y, 'YES', redeem_yes)
-    _cb(c, xb, y, 'NO', not redeem_yes)
-    _hr(c, y - 14)
-    y -= 24
+    redeem = _v(data, 'vol_surrender')
+    if redeem:
+        if redeem.strip().upper() in ('YES', 'Y', 'TRUE'):
+            _wise_tick(c, 420, 70)
+        else:
+            _wise_tick(c, 490, 70)
 
-    agent_name = _v(data, 'agent_name')
-    sig_w = (CW - 14) / 2
-    sig_h = 72
-    date_str = _v(data, 'repo_date')
-    _sig_box(c, ML, y, sig_w, sig_h, f'Agent: {agent_name}', agent_sig, date_str)
-    _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h, 'Customer Signature', customer_sig, date_str)
+    if agent_sig:
+        try:
+            sig_img = _sig_to_img(agent_sig)
+            c.drawImage(sig_img, 57, 32, width=120, height=35,
+                        preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
+
+    if customer_sig:
+        try:
+            sig_img = _sig_to_img(customer_sig)
+            c.drawImage(sig_img, 310, 32, width=120, height=35,
+                        preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
 
     c.save()
-    buf.seek(0)
-    return buf.read()
+    overlay_buf.seek(0)
+
+    overlay_reader = PdfReader(overlay_buf)
+    tmpl_page.merge_page(overlay_reader.pages[0])
+
+    writer = PdfWriter()
+    writer.add_page(tmpl_page)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def generate_wise_auction_pdf(data):
+    from pypdf import PdfReader, PdfWriter
+
+    tmpl_reader = PdfReader(_WISE_AUCTION_PATH)
+    tmpl_page = tmpl_reader.pages[0]
+
+    overlay_buf = io.BytesIO()
+    c = rl_canvas.Canvas(overlay_buf, pagesize=A4)
+    c.setFillColor(DARK)
+    F = 'Helvetica'
+    SZ = 10
+
+    c.setFont(F, SZ)
+
+    principal = _v(data, 'finance_company', 'client_name')
+    if principal:
+        c.drawString(332, 618, principal)
+
+    ref = _v(data, 'wise_case_number', 'swpi_ref', 'client_reference')
+    if ref:
+        c.drawString(100, 580, ref)
+
+    unit = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'), _v(data, 'model')]))
+    if unit:
+        c.drawString(130, 548, unit)
+
+    rego = _v(data, 'registration')
+    if rego:
+        c.drawString(130, 528, rego)
+
+    engine = _v(data, 'engine_number')
+    if engine:
+        c.drawString(155, 508, engine)
+
+    vin = _v(data, 'vin')
+    if vin:
+        c.drawString(100, 488, vin)
+
+    c.save()
+    overlay_buf.seek(0)
+
+    overlay_reader = PdfReader(overlay_buf)
+    tmpl_page.merge_page(overlay_reader.pages[0])
+
+    writer = PdfWriter()
+    writer.add_page(tmpl_page)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def generate_wise_tow_pdf(data):
+    from pypdf import PdfReader, PdfWriter
+
+    tmpl_reader = PdfReader(_WISE_TOW_PATH)
+    tmpl_page = tmpl_reader.pages[0]
+
+    overlay_buf = io.BytesIO()
+    c = rl_canvas.Canvas(overlay_buf, pagesize=A4)
+    c.setFillColor(DARK)
+    F = 'Helvetica'
+    SZ = 10
+
+    c.setFont(F, SZ)
+
+    ref = _v(data, 'wise_case_number', 'swpi_ref', 'client_reference')
+    if ref:
+        c.drawString(170, 560, ref)
+
+    matter = _v(data, 'customer_name')
+    if matter:
+        c.drawString(100, 540, matter)
+
+    unit = ' '.join(filter(None, [_v(data, 'year'), _v(data, 'make'), _v(data, 'model')]))
+    if unit:
+        c.drawString(130, 505, unit)
+
+    rego = _v(data, 'registration')
+    if rego:
+        c.drawString(130, 480, rego)
+
+    engine = _v(data, 'engine_number')
+    if engine:
+        c.drawString(155, 455, engine)
+
+    vin = _v(data, 'vin')
+    if vin:
+        c.drawString(130, 430, vin)
+
+    yard_name = _v(data, 'auction_yard_name', 'deliver_to')
+    if yard_name:
+        c.drawString(170, 380, yard_name)
+
+    yard_addr = _v(data, 'delivery_address')
+    if yard_addr:
+        c.drawString(120, 355, yard_addr)
+
+    c.save()
+    overlay_buf.seek(0)
+
+    overlay_reader = PdfReader(overlay_buf)
+    tmpl_page.merge_page(overlay_reader.pages[0])
+
+    writer = PdfWriter()
+    writer.add_page(tmpl_page)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 # =============================================================================

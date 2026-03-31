@@ -7902,6 +7902,9 @@ def repo_lock_get(job_id: int, item_id: int):
     if q_row:
         queue_id = q_row["id"]
 
+    client_name_str = (dict(client)["name"] if client else "").upper()
+    is_wise = bool(re.search(r'\bWISE\b', client_name_str))
+
     return jsonify({
         "ok":        True,
         "has_rec":   rec is not None,
@@ -7912,6 +7915,7 @@ def repo_lock_get(job_id: int, item_id: int):
         "tow_ops":   [{"id": t["id"], "name": t["company_name"], "phone": t["phone"] or t["mobile"] or ""} for t in tow_ops],
         "auction_yards": [{"id": y["id"], "name": y["name"], "address": y["address"] or ""} for y in auction_yards],
         "item_label": (item["reg"] or item["description"] or f"Item #{item_id}"),
+        "is_wise":   is_wise,
     })
 
 
@@ -8472,6 +8476,129 @@ def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
                      as_attachment=True, download_name=orig_filename)
 
 
+# ─────────────────────── Wise Auction Instructions ─────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-auction")
+@login_required
+def repo_lock_wise_auction(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template("wise_auction.html", rec=rec, job_id=job_id, d=d)
+
+
+@app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-auction")
+@login_required
+def repo_lock_wise_auction_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+
+    for k in ("finance_company", "wise_case_number", "registration", "engine_number", "vin"):
+        fv = request.form.get(k, "").strip()
+        if fv:
+            d[k] = fv
+    unit_details = request.form.get("unit_details", "").strip()
+    if unit_details:
+        parts = unit_details.split(None, 2)
+        if len(parts) >= 1:
+            d["year"] = parts[0]
+        if len(parts) >= 2:
+            d["make"] = parts[1]
+        if len(parts) >= 3:
+            d["model"] = parts[2]
+
+    pdf_bytes = _pg.generate_wise_auction_pdf(d)
+    job_num = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
+    from datetime import datetime as _dt
+    date_str = _dt.now().strftime("%d-%m-%Y")
+    form_label = "Wise Auction Instructions"
+    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+    ts = now_ts()
+    _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
+                       orig_filename, form_label, ts)
+    conn.commit()
+    conn.close()
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=orig_filename)
+
+
+# ──────────────────────── Wise Tow Instructions ───────────────────────
+
+@app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-tow")
+@login_required
+def repo_lock_wise_tow(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template("wise_tow.html", rec=rec, job_id=job_id, d=d)
+
+
+@app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-tow")
+@login_required
+def repo_lock_wise_tow_pdf(job_id: int, rec_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+                           (rec_id, job_id)).fetchone()
+    if not rec_row:
+        conn.close()
+        return "Not found", 404
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+
+    for k in ("wise_case_number", "customer_name", "registration", "engine_number", "vin",
+              "auction_yard_name", "delivery_address"):
+        fv = request.form.get(k, "").strip()
+        if fv:
+            d[k] = fv
+    unit_details = request.form.get("unit_details", "").strip()
+    if unit_details:
+        parts = unit_details.split(None, 2)
+        if len(parts) >= 1:
+            d["year"] = parts[0]
+        if len(parts) >= 2:
+            d["make"] = parts[1]
+        if len(parts) >= 3:
+            d["model"] = parts[2]
+
+    pdf_bytes = _pg.generate_wise_tow_pdf(d)
+    job_num = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
+    from datetime import datetime as _dt
+    date_str = _dt.now().strftime("%d-%m-%Y")
+    form_label = "Wise Tow Instructions"
+    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+    ts = now_ts()
+    _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
+                       orig_filename, form_label, ts)
+    conn.commit()
+    conn.close()
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=orig_filename)
+
+
 # ─────────────────────────── Form 13 ──────────────────────────────────
 
 @app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/form-13")
@@ -8877,6 +9004,26 @@ _FORMS_CATALOGUE = [
         "generate_url": "/forms/generate?type=wise_vir",
     },
     {
+        "id":          "wise_auction",
+        "name":        "Wise Group — Auction Instructions",
+        "description": "Wise-branded letter to the auction manager for Wise Group repossession jobs.",
+        "short":       "Wise Auction",
+        "tags":        ["Wise Group", "Auction", "Letter"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#f59e0b" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=wise_auction",
+    },
+    {
+        "id":          "wise_tow",
+        "name":        "Wise Group — Tow Instructions",
+        "description": "Wise-branded towing instructions letter for Wise Group repossession jobs.",
+        "short":       "Wise Tow",
+        "tags":        ["Wise Group", "Tow", "Letter"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#f59e0b" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+        "available":   True,
+        "generate_url": "/forms/generate?type=wise_tow",
+    },
+    {
         "id":          "auction_letter",
         "name":        "Auction Manager Letter",
         "description": "Auto-populated letter to the auction house confirming vehicle delivery.",
@@ -8976,6 +9123,8 @@ def forms_generate():
                 "vir":                 f"/jobs/{job_id}/repo-lock/{rec_id}/vir",
                 "transport":           f"/jobs/{job_id}/repo-lock/{rec_id}/transport-instructions",
                 "wise_vir":            f"/jobs/{job_id}/repo-lock/{rec_id}/wise-vir",
+                "wise_auction":        f"/jobs/{job_id}/repo-lock/{rec_id}/wise-auction",
+                "wise_tow":            f"/jobs/{job_id}/repo-lock/{rec_id}/wise-tow",
                 "form_13":             f"/jobs/{job_id}/repo-lock/{rec_id}/form-13",
                 "voluntary_surrender": f"/jobs/{job_id}/repo-lock/{rec_id}/voluntary-surrender",
                 "auction_letter":      f"/jobs/{job_id}/repo-lock/{rec_id}/auction-letter",
