@@ -1003,13 +1003,10 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
             pass
 
     agent_name = _v(data, 'agent_name')
-    agent_addr = _v(data, 'repo_address')
-    rep_line = agent_name
-    if agent_addr:
-        rep_line += f', {agent_addr}'
-    if rep_line:
-        c.setFont(FONT, 8)
-        c.drawString(57, 190, _trunc(rep_line, 90))
+    swpi_addr = 'C/o SWPi Recoveries, PO Box 651 Sunshine Vic 3020'
+    rep_line = f'{agent_name}, {swpi_addr}' if agent_name else swpi_addr
+    c.setFont(FONT, 7.5)
+    c.drawString(57, 190, _trunc(rep_line, 100))
 
     if agent_sig:
         try:
