@@ -361,11 +361,15 @@
                       <label class="form-label">Tow Costs</label>
                       <input class="form-control form-control-sm" name="tow_costs" id="rl_tow_costs" placeholder="e.g. $220.00">
                     </div>
-                    <div class="col-12">
+                    <div class="col-12 col-md-6">
                       <label class="form-label">Auction Yard</label>
                       <select class="form-select form-select-sm" id="rl_auction_yard_id" onchange="rlAuctionYardChanged(this)">
                         <option value="">— Select Auction Yard —</option>
                       </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Auction Yard Name (manual)</label>
+                      <input class="form-control form-control-sm" id="rl_auction_yard_manual" placeholder="If not in list">
                     </div>
                     <div class="col-12 col-md-5">
                       <label class="form-label">Deliver To</label>
@@ -394,9 +398,15 @@
               <div id="rlSec7" class="accordion-collapse collapse" data-bs-parent="#rlAccordion">
                 <div class="accordion-body">
                   <div class="row g-2">
-                    <div class="col-12">
+                    <div class="col-12 col-md-6">
                       <label class="form-label">Customer's Intention</label>
-                      <textarea class="form-control form-control-sm" name="customers_intention" id="rl_customers_intention" rows="2" placeholder="e.g. Will redeem, dispute, etc."></textarea>
+                      <select class="form-select form-select-sm" name="customers_intention" id="rl_customers_intention">
+                        <option value="">— Select —</option>
+                        <option>Expected to Redeem</option>
+                        <option>Not Expected to Redeem</option>
+                        <option>Unknown</option>
+                        <option>N/A</option>
+                      </select>
                     </div>
                     <div class="col-12">
                       <label class="form-label">Other Important Information</label>
@@ -791,8 +801,19 @@
     if (sel.value && opt) {
       _gid("rl_deliver_to").value      = opt.dataset.name    || "";
       _gid("rl_delivery_address").value = opt.dataset.address || "";
+      _gid("rl_auction_yard_manual").value = "";
     }
   };
+  var _rlAyManual = _gid("rl_auction_yard_manual");
+  if (_rlAyManual) {
+    _rlAyManual.addEventListener("input", function() {
+      if (this.value.trim()) {
+        _gid("rl_auction_yard_id").value = "";
+        _gid("rl_deliver_to").value = this.value.trim();
+        _gid("rl_delivery_address").value = "";
+      }
+    });
+  }
   window.rlRegoExpiryChanged = function(input) {
     var val = input.value;
     if (!val) return;
