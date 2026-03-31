@@ -9003,6 +9003,24 @@ def forms_generate():
             if j["id"] == job_id:
                 job = j
                 break
+        if not job:
+            row = conn.execute(
+                """SELECT j.id, j.internal_job_number, j.lender_name, j.client_job_number,
+                          c.first_name, c.last_name, c.company
+                   FROM jobs j
+                   LEFT JOIN customers c ON c.id = j.customer_id
+                   WHERE j.id = ?""", (job_id,)).fetchone()
+            if row:
+                cname = f"{row['first_name'] or ''} {row['last_name'] or ''}".strip()
+                clabel = (row["company"] or "").strip() or (row["last_name"] or "").strip() or None
+                job = {
+                    "id":                  row["id"],
+                    "internal_job_number": row["internal_job_number"],
+                    "lender_name":         row["lender_name"],
+                    "customer_name":       cname,
+                    "customer_label":      clabel,
+                }
+                jobs.insert(0, job)
     conn.close()
 
     return render_template("forms_selector.html",
