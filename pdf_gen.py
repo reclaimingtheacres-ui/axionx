@@ -154,6 +154,8 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
                 r = a.get('/Rect')
                 if r:
                     x0, y0, x1, y1 = float(r[0]), float(r[1]), float(r[2]), float(r[3])
+                    if y0 > 700 and x0 < 200:
+                        continue
                     c.rect(x0 - 1, y0 - 1, (x1 - x0) + 2, (y1 - y0) + 2, fill=1, stroke=0)
     except Exception:
         pass
@@ -223,8 +225,8 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     _put(356, 327, _v(data, 'duco'), max_ch=14)
     _put(513, 327, _v(data, 'interior'), max_ch=14)
 
-    _put(85, 306, _v(data, 'engine_condition'), max_ch=14)
-    _put(265, 306, _v(data, 'transmission'), max_ch=14)
+    _put(85, 306, _v(data, 'engine_condition'), max_ch=20)
+    _put(265, 306, _v(data, 'transmission'), max_ch=20)
 
     _put(93, 281, _v(data, 'fuel_level'), max_ch=10)
 
@@ -234,6 +236,10 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     agent_name = _v(data, 'agent_name', default='')
     if agent_name:
         _put(44, 207, agent_name, font=FONT_B, max_ch=30)
+
+    notice_del = _v(data, 'notice_delivery', default='')
+    if notice_del:
+        _put(32, 173, notice_del, fs=8, max_ch=80)
 
     date_str = _v(data, 'repo_date')
     _put(67, 81, date_str, max_ch=12)
