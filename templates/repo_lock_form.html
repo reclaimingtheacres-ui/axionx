@@ -1,6 +1,6 @@
 {# Repo Lock Modal — include in job_detail pages. Requires Bootstrap 5. #}
 <div class="modal fade" id="repoLockModal" tabindex="-1" aria-labelledby="repoLockModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-fullscreen-md-down">
+  <div class="modal-dialog modal-xl modal-fullscreen-md-down modal-dialog-scrollable">
     <div class="modal-content">
 
       <div class="modal-header" style="background:var(--accent,#2563eb);color:#fff;padding:14px 18px;">
@@ -14,7 +14,7 @@
         </div>
       </div>
 
-      <div class="modal-body" style="padding:16px;background:#f9fafb;">
+      <div class="modal-body" style="padding:16px;background:#f9fafb;overflow-y:auto;">
 
         {# Validation errors #}
         <div id="rlValidationErrors" class="alert alert-danger py-2 px-3 mb-3 d-none" style="font-size:.84rem;"></div>
