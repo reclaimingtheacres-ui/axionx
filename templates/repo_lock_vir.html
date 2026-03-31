@@ -103,14 +103,16 @@
     {# ── Condition Report ── #}
     {{ section('CONDITION REPORT') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;">
-      {% set cond_opts = ['POOR','FAIR','GOOD','EXCELLENT','N/A','DAMAGED'] %}
+      {% set cond_opts = ['Poor','Fair','Good','Excellent','N/A','Damaged'] %}
       {{ fsel('tyres',            'Tyres',        rec.tyres,            cond_opts) }}
       {{ fsel('body',             'Body',         rec.body,             cond_opts) }}
       {{ fsel('duco',             'Duco / Paint', rec.duco,             cond_opts) }}
       {{ fsel('interior',         'Interior',     rec.interior,         cond_opts) }}
-      {{ fsel('engine_condition', 'Engine',       rec.engine_condition, cond_opts) }}
-      {{ fsel('transmission',     'Transmission', rec.transmission,     cond_opts) }}
-      {{ fsel('fuel_level',       'Fuel Level',   rec.fuel_level,       ['EMPTY','1/4','1/2','3/4','FULL','N/A']) }}
+      {% set eng_opts = ['Intact / Starts','Intact / No Start','Dismantled','Unknown','N/A'] %}
+      {{ fsel('engine_condition', 'Engine',       rec.engine_condition, eng_opts) }}
+      {% set trans_opts = ['Intact / Moves','Intact / Not Move','Dismantled','Unknown','N/A'] %}
+      {{ fsel('transmission',     'Transmission', rec.transmission,     trans_opts) }}
+      {{ fsel('fuel_level',       'Fuel Level',   rec.fuel_level,       ['Empty','1/4','1/2','3/4','Full','N/A']) }}
       {{ fsel('any_damage',       'Any Damage',   rec.any_damage,       ['Yes','No','N/A']) }}
     </div>
     <div style="margin-top:12px;" id="damageLstWrap">

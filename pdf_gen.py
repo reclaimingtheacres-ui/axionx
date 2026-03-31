@@ -141,6 +141,23 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     overlay_buf = io.BytesIO()
     c = rl_canvas.Canvas(overlay_buf, pagesize=A4)
 
+    try:
+        tpl = _PdfReader(VIR_TEMPLATE_PATH)
+        tpl_page = tpl.pages[0]
+        if '/Annots' in tpl_page:
+            c.setFillColor(white)
+            c.setStrokeColor(white)
+            for annot_ref in tpl_page['/Annots']:
+                a = annot_ref.get_object()
+                if a.get('/Subtype') == '/Stamp':
+                    continue
+                r = a.get('/Rect')
+                if r:
+                    x0, y0, x1, y1 = float(r[0]), float(r[1]), float(r[2]), float(r[3])
+                    c.rect(x0 - 1, y0 - 1, (x1 - x0) + 2, (y1 - y0) + 2, fill=1, stroke=0)
+    except Exception:
+        pass
+
     FONT = 'Helvetica'
     FONT_B = 'Helvetica-Bold'
     FS = 9
@@ -237,7 +254,10 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     overlay_reader = _PdfReader(overlay_buf)
 
     template_page = template_reader.pages[0]
-    template_page.merge_page(overlay_reader.pages[0])
+    if '/Annots' in template_page:
+        del template_page['/Annots']
+    overlay_page = overlay_reader.pages[0]
+    template_page.merge_page(overlay_page)
 
     writer = _PdfWriter()
     writer.add_page(template_page)
