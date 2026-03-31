@@ -5,6 +5,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.colors import HexColor, white
 from reportlab.lib.utils import ImageReader, simpleSplit
+from pypdf import PdfReader as _PdfReader, PdfWriter as _PdfWriter
 
 PAGE_W, PAGE_H = A4
 ML = 40
@@ -19,6 +20,9 @@ _WISE_AMBER = HexColor('#f59e0b')
 
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          'static', 'images', 'swpi_logo_sm.png')
+
+VIR_TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 'static', 'templates', 'swpi_vir_blank.pdf')
 
 
 def _v(d, *keys, default=''):
@@ -114,10 +118,136 @@ def _vir_condition_row(c, y, label, val, options):
 
 
 # =============================================================================
-# 1. SWPI VIR — Surrendered / Repossession Receipt
+# 1. SWPI VIR — Surrendered / Repossession Receipt  (template overlay)
 # =============================================================================
 
+def _overlay_sig(c, x, y, w, h, sig_b64):
+    if not sig_b64:
+        return
+    try:
+        raw_b64 = sig_b64.split(',')[-1]
+        raw = base64.b64decode(raw_b64)
+        img = ImageReader(io.BytesIO(raw))
+        c.drawImage(img, x, y, width=w, height=h,
+                    preserveAspectRatio=True, mask='auto')
+    except Exception:
+        pass
+
+
 def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
+    if not os.path.isfile(VIR_TEMPLATE_PATH):
+        return _generate_vir_pdf_fallback(data, agent_sig, customer_sig)
+
+    overlay_buf = io.BytesIO()
+    c = rl_canvas.Canvas(overlay_buf, pagesize=A4)
+
+    FONT = 'Helvetica'
+    FONT_B = 'Helvetica-Bold'
+    FS = 9
+    c.setFillColor(DARK)
+
+    def _put(x, y, val, font=FONT, fs=FS, max_ch=0):
+        if not val:
+            return
+        c.setFont(font, fs)
+        txt = str(val)
+        if max_ch:
+            txt = txt[:max_ch]
+        c.drawString(x, y, txt)
+
+    client_ref = _v(data, 'client_reference')
+    registration = _v(data, 'registration')
+    ref_display = client_ref or ''
+    if registration and registration not in ref_display:
+        ref_display = f'{ref_display} / {registration}' if ref_display else registration
+    _put(321, 746, ref_display, max_ch=30)
+
+    _put(481, 684, _v(data, 'swpi_ref'), max_ch=20)
+
+    _put(130, 664, _v(data, 'finance_company'), max_ch=36)
+    _put(459, 665, _v(data, 'repo_date'), max_ch=12)
+
+    _put(130, 642, _v(data, 'customer_name'), max_ch=36)
+    _put(424, 643, _v(data, 'account_number'), max_ch=18)
+
+    _put(211, 621, _v(data, 'repo_address'), max_ch=48)
+
+    _put(32, 587, _v(data, 'year'), max_ch=6)
+    _put(105, 587, _v(data, 'make'), max_ch=12)
+    _put(185, 587, _v(data, 'model'), max_ch=14)
+    _put(284, 587, _v(data, 'colour'), max_ch=16)
+    _put(394, 586, _v(data, 'registration'), max_ch=10)
+    _put(470, 586, _v(data, 'rego_expiry'), max_ch=12)
+
+    _put(110, 559, _v(data, 'vin'), max_ch=22)
+    _put(110, 538, _v(data, 'engine_number'), max_ch=22)
+    _put(110, 517, _v(data, 'speedometer'), max_ch=12)
+
+    _put(135, 474, _v(data, 'person_present'), max_ch=14)
+
+    keys_val = _v(data, 'keys_obtained')
+    _put(303, 473, keys_val, max_ch=6)
+    how_many = _v(data, 'how_many_keys')
+    if how_many:
+        _put(372, 473, how_many, max_ch=4)
+
+    _put(504, 472, _v(data, 'vol_surrender'), max_ch=6)
+
+    _put(135, 453, _v(data, 'form_13'), max_ch=6)
+    _put(328, 453, _v(data, 'security_drivable'), max_ch=6)
+    _put(505, 453, _v(data, 'police_notified'), max_ch=6)
+    _put(505, 433, _v(data, 'station_officer'), max_ch=18)
+
+    _put(207, 411, _v(data, 'personal_effects_removed'), max_ch=6)
+    _put(83, 391, _v(data, 'personal_effects_list'), max_ch=72)
+
+    _put(84, 327, _v(data, 'tyres'), max_ch=14)
+    _put(221, 327, _v(data, 'body'), max_ch=14)
+    _put(356, 327, _v(data, 'duco'), max_ch=14)
+    _put(513, 327, _v(data, 'interior'), max_ch=14)
+
+    _put(85, 306, _v(data, 'engine_condition'), max_ch=14)
+    _put(265, 306, _v(data, 'transmission'), max_ch=14)
+
+    _put(93, 281, _v(data, 'fuel_level'), max_ch=10)
+
+    dmg = _v(data, 'damage_list') if _v(data, 'any_damage').upper() == 'YES' else _v(data, 'any_damage')
+    _put(93, 260, dmg, max_ch=72)
+
+    agent_name = _v(data, 'agent_name', default='')
+    if agent_name:
+        _put(44, 207, agent_name, font=FONT_B, max_ch=30)
+
+    date_str = _v(data, 'repo_date')
+    _put(67, 81, date_str, max_ch=12)
+    _put(427, 84, date_str, max_ch=12)
+
+    from datetime import datetime as _dt
+    signed_at = _dt.now().strftime('%d-%m-%Y %H:%M:%S')
+    _put(452, 123, 'Signed at:', fs=7)
+    _put(452, 115, signed_at, fs=7)
+
+    _overlay_sig(c, 32, 95, 240, 65, customer_sig)
+    _overlay_sig(c, 310, 95, 240, 65, agent_sig)
+
+    c.save()
+    overlay_buf.seek(0)
+
+    template_reader = _PdfReader(VIR_TEMPLATE_PATH)
+    overlay_reader = _PdfReader(overlay_buf)
+
+    template_page = template_reader.pages[0]
+    template_page.merge_page(overlay_reader.pages[0])
+
+    writer = _PdfWriter()
+    writer.add_page(template_page)
+    out_buf = io.BytesIO()
+    writer.write(out_buf)
+    out_buf.seek(0)
+    return out_buf.read()
+
+
+def _generate_vir_pdf_fallback(data, agent_sig=None, customer_sig=None):
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
     c.setTitle('Surrendered / Repossession Receipt')
@@ -140,7 +270,6 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.setFont('Helvetica-Bold', 11)
     c.setFillColor(DARK)
     c.drawCentredString(PAGE_W / 2, y, title)
-    tw = c.stringWidth(title, 'Helvetica-Bold', 11)
     _hr(c, y - 1, strong=True)
 
     swpi_ref = _v(data, 'swpi_ref')
