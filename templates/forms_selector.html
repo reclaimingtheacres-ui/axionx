@@ -68,8 +68,20 @@
   {% else %}
     {# ─── Job + Asset selector ─── #}
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 20px 24px;margin-bottom:20px;">
+      <form method="GET" action="/forms/generate" id="formSearchForm">
+        <input type="hidden" name="type" value="{{ form_type }}">
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:.83rem;font-weight:700;color:#374151;margin-bottom:6px;">Search Jobs</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" name="q" value="{{ request.args.get('q','') }}" placeholder="Job number, customer name, or company…"
+                   style="flex:1;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:.88rem;color:#111;background:#fff;">
+            <button type="submit" style="padding:8px 18px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;">Search</button>
+          </div>
+        </div>
+      </form>
       <form method="GET" action="/forms/generate" id="formSelectorForm">
         <input type="hidden" name="type" value="{{ form_type }}">
+        {% if request.args.get('q') %}<input type="hidden" name="q" value="{{ request.args.get('q','') }}">{% endif %}
 
         <div style="margin-bottom:18px;">
           <label style="display:block;font-size:.83rem;font-weight:700;color:#374151;margin-bottom:6px;">Select Job</label>
@@ -85,7 +97,10 @@
             </option>
             {% endfor %}
           </select>
-          <div style="font-size:.75rem;color:#9ca3af;margin-top:4px;">Showing most recent 200 jobs</div>
+          <div style="font-size:.75rem;color:#9ca3af;margin-top:4px;">
+            {% if request.args.get('q') %}Showing results for "{{ request.args.get('q') }}" — <a href="/forms/generate?type={{ form_type }}" style="color:#2563eb;">clear search</a>
+            {% else %}Showing most recent 200 jobs — use search above to find older jobs{% endif %}
+          </div>
         </div>
 
         {% if items and selected_job_id %}

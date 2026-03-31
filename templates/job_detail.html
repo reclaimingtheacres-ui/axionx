@@ -105,9 +105,9 @@
       </button>
       <ul class="dropdown-menu">
         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formWorksheet">Worksheet</a></li>
-        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formVIR">Vehicle Inspection Report</a></li>
-        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formF13">Form 13</a></li>
-        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formTransport">Transport Instructions</a></li>
+        <li><a class="dropdown-item" href="/forms/generate?type=vir&job_id={{ job.id }}">Vehicle Inspection Report</a></li>
+        <li><a class="dropdown-item" href="/forms/generate?type=form_13&job_id={{ job.id }}">Form 13</a></li>
+        <li><a class="dropdown-item" href="/forms/generate?type=transport&job_id={{ job.id }}">Transport Instructions</a></li>
         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formRepoLock">Repossession Lock</a></li>
         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#formTermination">Termination Notice</a></li>
         {% if form_templates %}
@@ -1530,7 +1530,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <div class="form-card">
         <div class="form-card-title">VIR</div>
         <div class="form-card-sub">Vehicle Inspection Report</div>
-        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formVIR">Open</button>
+        <a class="btn btn-primary btn-sm mt-1" href="/forms/generate?type=vir&job_id={{ job.id }}">Open</a>
       </div>
     </div>
 
@@ -1539,7 +1539,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <div class="form-card">
         <div class="form-card-title">Form 13</div>
         <div class="form-card-sub">Legal repossession notice</div>
-        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formF13">Open</button>
+        <a class="btn btn-primary btn-sm mt-1" href="/forms/generate?type=form_13&job_id={{ job.id }}">Open</a>
       </div>
     </div>
 
@@ -1548,7 +1548,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <div class="form-card">
         <div class="form-card-title">Transport Instructions</div>
         <div class="form-card-sub">Tow operator &amp; delivery details</div>
-        <button class="btn btn-primary btn-sm mt-1" data-bs-toggle="modal" data-bs-target="#formTransport">Open</button>
+        <a class="btn btn-primary btn-sm mt-1" href="/forms/generate?type=transport&job_id={{ job.id }}">Open</a>
       </div>
     </div>
 

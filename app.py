@@ -8949,13 +8949,29 @@ def forms_generate():
         for it in items:
             it["registration"] = it.get("reg") or it.get("registration") or ""
 
-    # ── Load all jobs for the selector ──
-    job_rows = conn.execute(
-        """SELECT j.id, j.internal_job_number, j.lender_name, j.client_job_number,
-                  c.first_name, c.last_name, c.company
-           FROM jobs j
-           LEFT JOIN customers c ON c.id = j.customer_id
-           ORDER BY j.id DESC LIMIT 200""").fetchall()
+    # ── Load jobs for the selector ──
+    search_q = request.args.get("q", "").strip()
+    if search_q:
+        like_q = f"%{search_q}%"
+        job_rows = conn.execute(
+            """SELECT j.id, j.internal_job_number, j.lender_name, j.client_job_number,
+                      c.first_name, c.last_name, c.company
+               FROM jobs j
+               LEFT JOIN customers c ON c.id = j.customer_id
+               WHERE j.internal_job_number LIKE ?
+                  OR j.client_job_number LIKE ?
+                  OR c.first_name LIKE ?
+                  OR c.last_name LIKE ?
+                  OR c.company LIKE ?
+               ORDER BY j.id DESC LIMIT 200""",
+            (like_q, like_q, like_q, like_q, like_q)).fetchall()
+    else:
+        job_rows = conn.execute(
+            """SELECT j.id, j.internal_job_number, j.lender_name, j.client_job_number,
+                      c.first_name, c.last_name, c.company
+               FROM jobs j
+               LEFT JOIN customers c ON c.id = j.customer_id
+               ORDER BY j.id DESC LIMIT 200""").fetchall()
     jobs = []
     for r in job_rows:
         cname = f"{r['first_name'] or ''} {r['last_name'] or ''}".strip()
