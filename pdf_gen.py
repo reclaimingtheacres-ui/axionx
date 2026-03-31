@@ -174,6 +174,18 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
             txt = txt[:max_ch]
         c.drawString(x, y, txt)
 
+    def _fmtdate(val):
+        if not val:
+            return ''
+        s = str(val).strip()
+        for fmt_in, fmt_out in [('%Y-%m-%d', '%d/%m/%Y'), ('%Y-%m-%dT%H:%M:%S', '%d/%m/%Y')]:
+            try:
+                from datetime import datetime as _dtm
+                return _dtm.strptime(s[:len(fmt_in)+2], fmt_in).strftime(fmt_out)
+            except (ValueError, IndexError):
+                continue
+        return s
+
     client_ref = _v(data, 'client_reference')
     registration = _v(data, 'registration')
     ref_display = client_ref or ''
@@ -184,7 +196,7 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     _put(481, 684, _v(data, 'swpi_ref'), max_ch=20)
 
     _put(130, 664, _v(data, 'finance_company'), max_ch=36)
-    _put(459, 665, _v(data, 'repo_date'), max_ch=12)
+    _put(459, 665, _fmtdate(_v(data, 'repo_date')), max_ch=12)
 
     _put(130, 642, _v(data, 'customer_name'), max_ch=36)
     _put(424, 643, _v(data, 'account_number'), max_ch=18)
@@ -196,7 +208,7 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     _put(185, 587, _v(data, 'model'), max_ch=14)
     _put(284, 587, _v(data, 'colour'), max_ch=16)
     _put(394, 586, _v(data, 'registration'), max_ch=10)
-    _put(470, 586, _v(data, 'rego_expiry'), max_ch=12)
+    _put(470, 586, _fmtdate(_v(data, 'rego_expiry')), max_ch=12)
 
     _put(110, 559, _v(data, 'vin'), max_ch=22)
     _put(110, 538, _v(data, 'engine_number'), max_ch=22)
@@ -241,7 +253,7 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     if notice_del:
         _put(32, 173, notice_del, fs=8, max_ch=80)
 
-    date_str = _v(data, 'repo_date')
+    date_str = _fmtdate(_v(data, 'repo_date'))
     _put(67, 81, date_str, max_ch=12)
     _put(427, 84, date_str, max_ch=12)
 
