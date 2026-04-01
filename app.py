@@ -3417,49 +3417,21 @@ def _jobs_list_inner():
     if page < 1:
         page = 1
 
-    select_cols = """
-    SELECT j.*,
-           COALESCE(c.nickname, c.name) AS client_name,
-           cu.last_name AS customer_last_name,
-           COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-           (cu.first_name || ' ' || cu.last_name) AS customer_name,
-           (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
-           COALESCE(
-               (SELECT u2.full_name FROM schedules s2
-                JOIN users u2 ON u2.id = s2.assigned_to_user_id
-                WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed') AND s2.hidden = 0
-                ORDER BY s2.scheduled_for ASC LIMIT 1),
-               u.full_name
-           ) AS assigned_name,
-           (SELECT s.scheduled_for FROM schedules s
-            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
-            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled,
-           (SELECT bt.name FROM schedules s
-            JOIN booking_types bt ON bt.id = s.booking_type_id
-            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
-            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_booking_type,
-           (SELECT s.id FROM schedules s
-            WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
-            ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id,
-           (SELECT COUNT(*) FROM job_field_notes fn
-            WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count
-    """
-
-    from_where = """
+    from_clause = """
     FROM jobs j
     LEFT JOIN clients c ON c.id = j.client_id
     LEFT JOIN customers cu ON cu.id = j.customer_id
     LEFT JOIN users u ON u.id = j.assigned_user_id
-    WHERE 1=1
     """
+    where_clause = " WHERE 1=1"
     params = []
 
     include_archived = request.args.get("include_archived", "").strip()
     if status not in ARCHIVED_STATUSES and not include_archived:
-        from_where += f" AND j.status NOT IN {ARCHIVED_STATUSES!r}"
+        where_clause += f" AND j.status NOT IN {ARCHIVED_STATUSES!r}"
 
     if role == "agent":
-        from_where += """ AND (j.assigned_user_id = ? OR EXISTS (
+        where_clause += """ AND (j.assigned_user_id = ? OR EXISTS (
             SELECT 1 FROM schedules s
             WHERE s.job_id = j.id AND s.assigned_to_user_id = ?
               AND s.status NOT IN ('Cancelled') AND s.hidden = 0
@@ -3468,67 +3440,59 @@ def _jobs_list_inner():
 
     if status:
         if status == "Active":
-            from_where += " AND j.status LIKE 'Active%'"
+            where_clause += " AND j.status LIKE 'Active%'"
         else:
-            from_where += " AND j.status = ?"
+            where_clause += " AND j.status = ?"
             params.append(status)
 
     if q:
-        from_where += """
-         AND (
-           j.internal_job_number LIKE ? OR
-           j.client_reference     LIKE ? OR
-           j.client_job_number    LIKE ? OR
-           j.display_ref          LIKE ? OR
-           j.description          LIKE ? OR
-           j.job_address          LIKE ? OR
-           j.tp_referral          LIKE ? OR
-           j.tp_job_number        LIKE ? OR
-           cu.first_name          LIKE ? OR
-           cu.last_name           LIKE ? OR
-           cu.company             LIKE ? OR
-           c.name                 LIKE ? OR
-           EXISTS (
-             SELECT 1 FROM job_items ji
-             WHERE ji.job_id = j.id
-               AND (ji.reg LIKE ? OR ji.vin LIKE ? OR ji.description LIKE ?)
-           )
-         )"""
         like = f"%{q}%"
+        _search_ids_sql = """
+         SELECT id FROM jobs WHERE internal_job_number LIKE ? OR client_reference LIKE ?
+           OR client_job_number LIKE ? OR display_ref LIKE ?
+           OR description LIKE ? OR job_address LIKE ?
+           OR tp_referral LIKE ? OR tp_job_number LIKE ?
+         UNION
+         SELECT j2.id FROM jobs j2 JOIN customers cu2 ON cu2.id = j2.customer_id
+           WHERE cu2.first_name LIKE ? OR cu2.last_name LIKE ? OR cu2.company LIKE ?
+         UNION
+         SELECT j3.id FROM jobs j3 JOIN clients c3 ON c3.id = j3.client_id
+           WHERE c3.name LIKE ?
+         UNION
+         SELECT ji2.job_id FROM job_items ji2
+           WHERE ji2.reg LIKE ? OR ji2.vin LIKE ? OR ji2.description LIKE ?
+        """
+        where_clause += f" AND j.id IN ({_search_ids_sql})"
         params.extend([like] * 15)
 
     if filter_client:
-        from_where += " AND j.client_id = ?"
+        where_clause += " AND j.client_id = ?"
         params.append(filter_client)
 
     filter_unassigned = request.args.get("unassigned", "").strip()
     if filter_unassigned == "1":
-        from_where += " AND j.assigned_user_id IS NULL AND j.status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')"
+        where_clause += " AND j.assigned_user_id IS NULL AND j.status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')"
 
     if filter_agent and role in ("admin", "both"):
-        from_where += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled') AND sa.hidden = 0))"
+        where_clause += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled') AND sa.hidden = 0))"
         params.extend([filter_agent, filter_agent])
 
     if filter_btype:
-        from_where += " AND EXISTS (SELECT 1 FROM schedules sb JOIN booking_types btf ON btf.id = sb.booking_type_id WHERE sb.job_id = j.id AND sb.booking_type_id = ? AND sb.status NOT IN ('Completed', 'Cancelled') AND sb.hidden = 0)"
+        where_clause += " AND EXISTS (SELECT 1 FROM schedules sb JOIN booking_types btf ON btf.id = sb.booking_type_id WHERE sb.job_id = j.id AND sb.booking_type_id = ? AND sb.status NOT IN ('Completed', 'Cancelled') AND sb.hidden = 0)"
         params.append(filter_btype)
 
     if filter_date_from:
-        from_where += " AND date(j.updated_at) >= ?"
+        where_clause += " AND date(j.updated_at) >= ?"
         params.append(filter_date_from)
 
     if filter_date_to:
-        from_where += " AND date(j.updated_at) <= ?"
+        where_clause += " AND date(j.updated_at) <= ?"
         params.append(filter_date_to)
 
-    count_sql = "SELECT COUNT(*) " + from_where
-    total_jobs = cur.execute(count_sql, params).fetchone()[0]
-    total_pages = max(1, (total_jobs + per_page - 1) // per_page)
-    if page > total_pages:
-        page = total_pages
+    from_where = from_clause + where_clause
 
-    _SORT_MAP = {
-        "scheduled":  "CASE WHEN j.status='Invoiced' THEN 1 ELSE 0 END, CASE WHEN next_scheduled IS NULL THEN 1 ELSE 0 END, next_scheduled ASC, j.updated_at DESC",
+    _SORT_MAP_LIGHT = {
+        "scheduled":  "CASE WHEN j.status='Invoiced' THEN 1 ELSE 0 END, CASE WHEN ns.scheduled_for IS NULL THEN 1 ELSE 0 END, ns.scheduled_for ASC, j.updated_at DESC",
         "agent":      "LOWER(COALESCE(u.full_name,'')) ASC, j.updated_at DESC",
         "active":     "CASE WHEN j.status LIKE 'Active%' THEN 0 ELSE 1 END ASC, j.updated_at DESC",
         "job_number": "CAST(j.internal_job_number AS INTEGER) DESC, j.updated_at DESC",
@@ -3536,11 +3500,77 @@ def _jobs_list_inner():
     }
     if not sort:
         sort = "scheduled"
-    order_clause = _SORT_MAP.get(sort, _SORT_MAP["scheduled"])
-    offset = (page - 1) * per_page
-    full_sql = select_cols + from_where + f" ORDER BY {order_clause} LIMIT ? OFFSET ?"
-    cur.execute(full_sql, params + [per_page, offset])
-    rows = cur.fetchall()
+    order_clause = _SORT_MAP_LIGHT.get(sort, _SORT_MAP_LIGHT["scheduled"])
+
+    id_from_where = from_clause
+    if sort == "scheduled":
+        id_from_where += """
+        LEFT JOIN (
+            SELECT s.job_id, MIN(s.scheduled_for) AS scheduled_for
+            FROM schedules s
+            WHERE s.status NOT IN ('Completed','Cancelled') AND s.hidden = 0
+            GROUP BY s.job_id
+        ) ns ON ns.job_id = j.id"""
+    id_from_where += where_clause
+
+    if q:
+        offset = (page - 1) * per_page
+        id_sql = f"SELECT j.id {id_from_where} ORDER BY {order_clause} LIMIT ? OFFSET ?"
+        page_ids = [r[0] for r in cur.execute(id_sql, params + [per_page + 1, offset]).fetchall()]
+        has_more = len(page_ids) > per_page
+        if has_more:
+            page_ids = page_ids[:per_page]
+        total_jobs = offset + len(page_ids) + (1 if has_more else 0)
+        total_pages = max(1, (total_jobs + per_page - 1) // per_page)
+    else:
+        count_sql = "SELECT COUNT(*) " + from_where
+        total_jobs = cur.execute(count_sql, params).fetchone()[0]
+        total_pages = max(1, (total_jobs + per_page - 1) // per_page)
+        if page > total_pages:
+            page = total_pages
+        offset = (page - 1) * per_page
+        id_sql = f"SELECT j.id {id_from_where} ORDER BY {order_clause} LIMIT ? OFFSET ?"
+        page_ids = [r[0] for r in cur.execute(id_sql, params + [per_page, offset]).fetchall()]
+
+    if page_ids:
+        ph = ','.join('?' for _ in page_ids)
+        detail_sql = f"""
+        SELECT j.*,
+               COALESCE(c.nickname, c.name) AS client_name,
+               cu.last_name AS customer_last_name,
+               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
+               COALESCE(
+                   (SELECT u2.full_name FROM schedules s2
+                    JOIN users u2 ON u2.id = s2.assigned_to_user_id
+                    WHERE s2.job_id = j.id AND s2.status NOT IN ('Cancelled', 'Completed') AND s2.hidden = 0
+                    ORDER BY s2.scheduled_for ASC LIMIT 1),
+                   u.full_name
+               ) AS assigned_name,
+               (SELECT s.scheduled_for FROM schedules s
+                WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
+                ORDER BY s.scheduled_for ASC LIMIT 1) AS next_scheduled,
+               (SELECT bt.name FROM schedules s
+                JOIN booking_types bt ON bt.id = s.booking_type_id
+                WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
+                ORDER BY s.scheduled_for ASC LIMIT 1) AS next_booking_type,
+               (SELECT s.id FROM schedules s
+                WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
+                ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id,
+               (SELECT COUNT(*) FROM job_field_notes fn
+                WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users u ON u.id = j.assigned_user_id
+        WHERE j.id IN ({ph})
+        """
+        detail_rows = cur.execute(detail_sql, page_ids).fetchall()
+        row_map = {r['id']: r for r in detail_rows}
+        rows = [row_map[pid] for pid in page_ids if pid in row_map]
+    else:
+        rows = []
 
     clients_list = cur.execute(
         "SELECT id, COALESCE(nickname, name) AS name FROM clients ORDER BY name"
@@ -16528,16 +16558,21 @@ def m_api_jobs_search():
         LEFT JOIN clients c ON c.id = j.client_id
         LEFT JOIN users au ON au.id = j.assigned_user_id
         WHERE {scope_sql}
-          AND (j.display_ref LIKE ? OR j.internal_job_number LIKE ? OR
-               j.client_reference LIKE ? OR j.job_address LIKE ? OR
-               j.lender_name LIKE ? OR j.client_job_number LIKE ? OR
-               j.account_number LIKE ? OR
-               j.tp_referral LIKE ? OR j.tp_job_number LIKE ? OR
-               c.name LIKE ? OR cu.company LIKE ? OR
-               cu.address LIKE ? OR
-               (cu.first_name || ' ' || cu.last_name) LIKE ? OR
-               EXISTS (SELECT 1 FROM job_items ji WHERE ji.job_id=j.id
-                 AND (ji.reg LIKE ? OR ji.vin LIKE ?)))
+          AND j.id IN (
+            SELECT id FROM jobs WHERE display_ref LIKE ? OR internal_job_number LIKE ?
+              OR client_reference LIKE ? OR job_address LIKE ?
+              OR lender_name LIKE ? OR client_job_number LIKE ?
+              OR account_number LIKE ?
+              OR tp_referral LIKE ? OR tp_job_number LIKE ?
+            UNION
+            SELECT j4.id FROM jobs j4 JOIN clients c4 ON c4.id = j4.client_id WHERE c4.name LIKE ?
+            UNION
+            SELECT j5.id FROM jobs j5 JOIN customers cu5 ON cu5.id = j5.customer_id
+              WHERE cu5.company LIKE ? OR cu5.address LIKE ?
+              OR (cu5.first_name || ' ' || cu5.last_name) LIKE ?
+            UNION
+            SELECT ji3.job_id FROM job_items ji3 WHERE ji3.reg LIKE ? OR ji3.vin LIKE ?
+          )
         ORDER BY j.created_at DESC
         LIMIT 50
     """, params).fetchall()
