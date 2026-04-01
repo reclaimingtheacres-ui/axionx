@@ -548,7 +548,8 @@
     <a href="/users"{% if request.path.startswith('/users') %} class="active"{% endif %}>Staff</a>
     <div class="ax-popup-divider"></div>
     <a href="/forms"{% if request.path.startswith('/forms') %} class="active"{% endif %}>Forms</a>
-    <a href="/reports/monthly"{% if request.path.startswith('/reports') %} class="active"{% endif %}>Reports</a>
+    <a href="/reports/monthly"{% if request.path == '/reports/monthly' %} class="active"{% endif %}>Monthly Report</a>
+    <a href="/reports/aged-suspended"{% if request.path.startswith('/reports/aged') %} class="active"{% endif %}>Aged Suspended</a>
     <div class="ax-popup-divider"></div>
     <a href="/admin/settings"{% if request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} class="active"{% endif %}>Settings & Resources</a>
   </div>

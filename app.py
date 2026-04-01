@@ -722,6 +722,12 @@ def init_db():
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_jnf_note_file ON job_note_files(job_field_note_id, filename)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jnf_note_id ON job_note_files(job_field_note_id)")
 
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ju_job ON job_updates(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jfn_job ON job_field_notes(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_int_job ON interactions(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jll_job ON job_lifecycle_log(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_mal_job ON message_audit_log(job_id)")
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS booking_types (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -14276,6 +14282,244 @@ def report_monthly():
                            total_jobs=total_jobs,
                            by_status=by_status,
                            completed_by_agent=completed_by_agent)
+
+
+# -------- Aged Suspended / Awaiting Instructions Report --------
+
+_AGED_REPORT_STATUSES = ('Suspended', 'Awaiting Advice From Client')
+
+def _aged_report_query(conn, min_days=7, client_id=None):
+    params = []
+    status_ph = ','.join('?' for _ in _AGED_REPORT_STATUSES)
+    params.extend(_AGED_REPORT_STATUSES)
+
+    sql = f"""
+        SELECT j.id,
+               COALESCE(j.client_reference, j.client_job_number, '') AS client_reference,
+               COALESCE(cu.first_name || ' ' || cu.last_name,
+                        j.customer_name, '') AS customer_name,
+               j.status,
+               cl.name AS client_name,
+               j.client_id,
+               j.created_at AS job_created_at,
+               COALESCE(
+                   (SELECT MAX(ts) FROM (
+                       SELECT MAX(COALESCE(ju.attend_date, ju.created_at)) AS ts
+                       FROM job_updates ju WHERE ju.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(jfn.created_at) AS ts
+                       FROM job_field_notes jfn WHERE jfn.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(i.occurred_at) AS ts
+                       FROM interactions i WHERE i.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(jll.performed_at) AS ts
+                       FROM job_lifecycle_log jll WHERE jll.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(mal.created_at) AS ts
+                       FROM message_audit_log mal WHERE mal.job_id = j.id
+                   )),
+                   j.created_at
+               ) AS last_activity
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients cl   ON cl.id = j.client_id
+        WHERE j.status IN ({status_ph})
+    """
+
+    if client_id:
+        sql += " AND j.client_id = ?"
+        params.append(client_id)
+
+    sql += " ORDER BY last_activity ASC, j.id ASC"
+
+    rows = conn.execute(sql, params).fetchall()
+
+    from datetime import datetime as _dt, date as _date
+    today = _date.today()
+    results = []
+    for r in rows:
+        la = r['last_activity']
+        la_date = None
+        if la:
+            try:
+                la_date = _dt.strptime(la[:10], '%Y-%m-%d').date()
+            except (ValueError, TypeError):
+                pass
+
+        if la_date:
+            days = (today - la_date).days
+        else:
+            days = 999
+
+        if days < min_days:
+            continue
+
+        results.append({
+            'id': r['id'],
+            'client_reference': r['client_reference'] or '',
+            'customer_name': (r['customer_name'] or '').strip(),
+            'status': r['status'],
+            'client_name': r['client_name'] or '',
+            'days': days,
+            'last_activity': la_date.strftime('%d/%m/%Y') if la_date else 'N/A',
+            'last_activity_sort': la_date.isoformat() if la_date else '1900-01-01',
+        })
+
+    return results
+
+
+@app.get("/reports/aged-suspended")
+@admin_required
+def report_aged_suspended():
+    conn = db()
+    try:
+        min_days = int(request.args.get('days', 7))
+    except (ValueError, TypeError):
+        min_days = 7
+    if min_days not in (7, 14, 30):
+        min_days = 7
+    client_id = request.args.get('client_id', type=int)
+
+    clients = conn.execute(
+        "SELECT id, name FROM clients ORDER BY name"
+    ).fetchall()
+
+    rows = _aged_report_query(conn, min_days=min_days, client_id=client_id)
+    conn.close()
+
+    return render_template("report_aged_suspended.html",
+                           rows=rows, min_days=min_days,
+                           client_id=client_id, clients=clients)
+
+
+@app.get("/reports/aged-suspended/csv")
+@admin_required
+def report_aged_suspended_csv():
+    import csv as _csv
+
+    conn = db()
+    try:
+        min_days = int(request.args.get('days', 7))
+    except (ValueError, TypeError):
+        min_days = 7
+    if min_days not in (7, 14, 30):
+        min_days = 7
+    client_id = request.args.get('client_id', type=int)
+    rows = _aged_report_query(conn, min_days=min_days, client_id=client_id)
+    conn.close()
+
+    buf = io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(['Client Reference', 'Customer', 'Status', 'Days', 'Last Action'])
+    for r in rows:
+        w.writerow([r['client_reference'], r['customer_name'], r['status'],
+                     r['days'], r['last_activity']])
+    buf.seek(0)
+
+    from datetime import datetime as _dt
+    fname = f"Aged_Suspended_Report_{_dt.now().strftime('%Y%m%d')}.csv"
+    return Response(
+        buf.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename="{fname}"'}
+    )
+
+
+@app.get("/reports/aged-suspended/pdf")
+@admin_required
+def report_aged_suspended_pdf():
+    conn = db()
+    try:
+        min_days = int(request.args.get('days', 7))
+    except (ValueError, TypeError):
+        min_days = 7
+    if min_days not in (7, 14, 30):
+        min_days = 7
+    client_id = request.args.get('client_id', type=int)
+    rows = _aged_report_query(conn, min_days=min_days, client_id=client_id)
+
+    client_name = None
+    if client_id:
+        cr = conn.execute("SELECT name FROM clients WHERE id=?", (client_id,)).fetchone()
+        if cr:
+            client_name = cr['name']
+    conn.close()
+
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=15*mm, rightMargin=15*mm,
+                            topMargin=15*mm, bottomMargin=15*mm)
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'],
+                                  fontSize=16, spaceAfter=4, textColor=colors.HexColor('#1e293b'))
+    sub_style = ParagraphStyle('ReportSub', parent=styles['Normal'],
+                                fontSize=9, textColor=colors.HexColor('#6b7280'), spaceAfter=12)
+    cell_style = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=10)
+    header_style = ParagraphStyle('HeaderCell', parent=styles['Normal'],
+                                   fontSize=8, leading=10, textColor=colors.white,
+                                   fontName='Helvetica-Bold')
+
+    elements = []
+    elements.append(Paragraph('Aged Suspended / Awaiting Instructions Report', title_style))
+
+    from datetime import datetime as _dt
+    sub_parts = [f'Generated: {_dt.now().strftime("%d/%m/%Y %H:%M")}',
+                 f'Minimum age: {min_days} days']
+    if client_name:
+        sub_parts.append(f'Client: {client_name}')
+    sub_parts.append(f'Total files: {len(rows)}')
+    elements.append(Paragraph(' | '.join(sub_parts), sub_style))
+    elements.append(Spacer(1, 4*mm))
+
+    data = [[Paragraph('Client Reference', header_style),
+             Paragraph('Customer', header_style),
+             Paragraph('Status', header_style),
+             Paragraph('Days', header_style),
+             Paragraph('Last Action', header_style)]]
+
+    for r in rows:
+        data.append([
+            Paragraph(r['client_reference'], cell_style),
+            Paragraph(r['customer_name'], cell_style),
+            Paragraph(r['status'], cell_style),
+            Paragraph(str(r['days']), cell_style),
+            Paragraph(r['last_activity'], cell_style),
+        ])
+
+    col_widths = [120, 180, 160, 50, 90]
+    t = Table(data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 1), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#e2e8f0')),
+        ('ALIGN', (3, 0), (3, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.append(t)
+
+    doc.build(elements)
+    buf.seek(0)
+
+    fname = f"Aged_Suspended_Report_{_dt.now().strftime('%Y%m%d')}.pdf"
+    return send_file(buf, mimetype='application/pdf', as_attachment=True,
+                     download_name=fname)
 
 
 # -------- Agent: My Today --------
