@@ -16124,7 +16124,7 @@ def m_api_jobs_search():
             "client_reference": r["client_reference"] or "",
             "account_number": r["account_number"] or "",
             "status": r["status"] or "",
-            "job_address": r["customer_address"] or r["job_address"] or "",
+            "job_address": r["job_address"] or r["customer_address"] or "",
             "lat": r["lat"],
             "lng": r["lng"],
             "lender_name": r["lender_name"] or "",
@@ -17031,7 +17031,7 @@ def m_api_map_jobs():
         jobs_out.append({
             "id":           r["id"],
             "ref":          r["display_ref"],
-            "address":      r["customer_address"] or r["job_address"] or "",
+            "address":      r["job_address"] or r["customer_address"] or "",
             "status":       r["status"] or "",
             "lat":          r["lat"],
             "lng":          r["lng"],

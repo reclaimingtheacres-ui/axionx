@@ -283,7 +283,7 @@
                 </button>
               {% endif %}
               {% set _cust_addr = (job_linked_customers[0].address if job_linked_customers and job_linked_customers[0].address else '') %}
-              {% set _resolved_map_addr = (_cust_addr if _cust_addr|length > (job.job_address or '')|length else job.job_address) or _cust_addr or job.job_address or '' %}
+              {% set _resolved_map_addr = (job.job_address if job.job_address else _cust_addr) or '' %}
               {% if _resolved_map_addr %}
                 <a class="btn btn-outline-secondary btn-sm" style="font-size:.7rem;padding:2px 8px"
                    target="_blank"
@@ -301,7 +301,7 @@
                     <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.68rem;font-weight:600">{{ lc.role }}</span>
                     {% if lc.company %}<div class="fw-semibold small">{{ lc.company }}</div>{% endif %}
                     <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
-                    {% set _lc_best_addr = (lc.address if lc.address and lc.address|length > (job.job_address or '')|length else job.job_address) or lc.address or '' %}
+                    {% set _lc_best_addr = lc.address or job.job_address or '' %}
                     {% if _lc_best_addr %}<div class="small" style="color:var(--muted)">{{ _lc_best_addr }}</div>{% endif %}
                     {% if lc.primary_phone %}
                       <div class="small mt-1">

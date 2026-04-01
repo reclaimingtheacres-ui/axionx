@@ -58,7 +58,7 @@
 <div id="tabpanel-detail">
 
 {% set _cust_addr = (customer.address if customer and customer.address else '') %}
-{% set _display_addr = (_cust_addr if _cust_addr|length > (job.job_address or '')|length else job.job_address) or _cust_addr or job.job_address or '' %}
+{% set _display_addr = (job.job_address if job.job_address else _cust_addr) or '' %}
 {% set _has_addr = _display_addr %}
 
 {# ── 1. Customer card: name · address · phone · email · account ── #}
