@@ -78,13 +78,11 @@
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr id="row-{{ r.id }}" style="border-bottom:1px solid #f1f5f9;{% if loop.index is odd %}background:#fff{% else %}background:#f8fafc{% endif %}{% if r.days >= 30 %};color:#991b1b{% elif r.days >= 14 %};color:#92400e{% endif %}">
-          <td style="padding:8px;text-align:center;">
+        <tr id="row-{{ r.id }}" data-href="/jobs/{{ r.id }}" class="aged-row" style="cursor:pointer;border-bottom:1px solid #f1f5f9;{% if loop.index is odd %}background:#fff{% else %}background:#f8fafc{% endif %}{% if r.days >= 30 %};color:#991b1b{% elif r.days >= 14 %};color:#92400e{% endif %}">
+          <td style="padding:8px;text-align:center;" onclick="event.stopPropagation()">
             <input type="checkbox" class="row-cb" value="{{ r.id }}" onchange="updateBulkBtn()" style="cursor:pointer;">
           </td>
-          <td style="padding:8px 12px;">
-            <a href="/jobs/{{ r.id }}" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">{{ r.client_reference or '—' }}</a>
-          </td>
+          <td style="padding:8px 12px;">{{ r.client_reference or '—' }}</td>
           <td style="padding:8px 12px;">{{ r.customer_name or '—' }}</td>
           <td style="padding:8px 12px;">
             {% if r.status == 'Suspended' %}
@@ -95,7 +93,7 @@
           </td>
           <td style="padding:8px 12px;text-align:center;font-weight:600;">{{ r.days }}</td>
           <td style="padding:8px 12px;color:#64748b;">{{ r.last_activity }}</td>
-          <td style="padding:8px 12px;text-align:center;">
+          <td style="padding:8px 12px;text-align:center;" onclick="event.stopPropagation()">
             <button onclick="emailSingle({{ r.id }}, this)" class="email-btn"
                     style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #2563eb;border-radius:5px;font-size:.72rem;font-weight:600;color:#2563eb;background:#fff;cursor:pointer;white-space:nowrap;">
               <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -127,6 +125,12 @@
 </div>
 
 <script>
+document.addEventListener('click',function(e){
+  var row=e.target.closest('tr.aged-row');
+  if(!row) return;
+  var href=row.getAttribute('data-href');
+  if(href) window.location.href=href;
+});
 function toggleAll(el){
   document.querySelectorAll('.row-cb').forEach(function(cb){cb.checked=el.checked;});
   updateBulkBtn();
@@ -259,5 +263,6 @@ function bulkEmail(){
 </script>
 <style>
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+tr.aged-row:hover{filter:brightness(.96);}
 </style>
 {% endblock %}
