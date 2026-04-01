@@ -14296,8 +14296,7 @@ def _aged_report_query(conn, min_days=7, client_id=None):
     sql = f"""
         SELECT j.id,
                COALESCE(j.client_reference, j.client_job_number, '') AS client_reference,
-               COALESCE(cu.first_name || ' ' || cu.last_name,
-                        j.customer_name, '') AS customer_name,
+               COALESCE(cu.first_name || ' ' || cu.last_name, '') AS customer_name,
                j.status,
                cl.name AS client_name,
                j.client_id,
