@@ -45,27 +45,43 @@
     <button type="submit" style="padding:6px 16px;background:#2563eb;color:#fff;border:0;border-radius:6px;font-size:.84rem;font-weight:600;cursor:pointer;">Apply</button>
   </form>
 
-  <div style="font-size:.8rem;color:#64748b;margin-bottom:10px;">
-    {{ rows|length }} file{{ 's' if rows|length != 1 else '' }} found
-    {% if client_id %} for selected client{% endif %}
-    with {{ min_days }}+ days since last activity
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+    <div style="font-size:.8rem;color:#64748b;">
+      {{ rows|length }} file{{ 's' if rows|length != 1 else '' }} found
+      {% if client_id %} for selected client{% endif %}
+      with {{ min_days }}+ days since last activity
+    </div>
+    {% if rows %}
+    <button id="bulkEmailBtn" onclick="bulkEmail()" disabled
+            style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border:1px solid #7c3aed;border-radius:6px;font-size:.8rem;font-weight:600;color:#7c3aed;background:#fff;cursor:pointer;opacity:.5;">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      Email Selected (<span id="selCount">0</span>)
+    </button>
+    {% endif %}
   </div>
 
   {% if rows %}
   <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;">
-    <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+    <table style="width:100%;border-collapse:collapse;font-size:.84rem;" id="agedTable">
       <thead>
         <tr style="background:#1e293b;color:#fff;">
+          <th style="padding:10px 8px;text-align:center;width:36px;">
+            <input type="checkbox" id="selectAll" onchange="toggleAll(this)" style="cursor:pointer;">
+          </th>
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Client Reference</th>
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Customer</th>
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Status</th>
           <th style="padding:10px 12px;text-align:center;font-weight:600;font-size:.78rem;">Days</th>
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Last Action</th>
+          <th style="padding:10px 12px;text-align:center;font-weight:600;font-size:.78rem;">Action</th>
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr style="border-bottom:1px solid #f1f5f9;{% if loop.index is odd %}background:#fff{% else %}background:#f8fafc{% endif %}{% if r.days >= 30 %};color:#991b1b{% elif r.days >= 14 %};color:#92400e{% endif %}">
+        <tr id="row-{{ r.id }}" style="border-bottom:1px solid #f1f5f9;{% if loop.index is odd %}background:#fff{% else %}background:#f8fafc{% endif %}{% if r.days >= 30 %};color:#991b1b{% elif r.days >= 14 %};color:#92400e{% endif %}">
+          <td style="padding:8px;text-align:center;">
+            <input type="checkbox" class="row-cb" value="{{ r.id }}" onchange="updateBulkBtn()" style="cursor:pointer;">
+          </td>
           <td style="padding:8px 12px;">
             <a href="/jobs/{{ r.id }}" style="color:inherit;text-decoration:underline;text-underline-offset:2px;">{{ r.client_reference or '—' }}</a>
           </td>
@@ -79,6 +95,13 @@
           </td>
           <td style="padding:8px 12px;text-align:center;font-weight:600;">{{ r.days }}</td>
           <td style="padding:8px 12px;color:#64748b;">{{ r.last_activity }}</td>
+          <td style="padding:8px 12px;text-align:center;">
+            <button onclick="emailSingle({{ r.id }}, this)" class="email-btn"
+                    style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #2563eb;border-radius:5px;font-size:.72rem;font-weight:600;color:#2563eb;background:#fff;cursor:pointer;white-space:nowrap;">
+              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Email
+            </button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -93,4 +116,148 @@
   {% endif %}
 
 </div>
+
+<div id="emailResultModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:10px;padding:24px 28px;max-width:480px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,.18);">
+    <div id="modalBody" style="font-size:.88rem;color:#1e293b;line-height:1.6;"></div>
+    <div style="text-align:right;margin-top:16px;">
+      <button onclick="closeModal()" style="padding:7px 20px;background:#2563eb;color:#fff;border:0;border-radius:6px;font-size:.84rem;font-weight:600;cursor:pointer;">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleAll(el){
+  document.querySelectorAll('.row-cb').forEach(function(cb){cb.checked=el.checked;});
+  updateBulkBtn();
+}
+function updateBulkBtn(){
+  var n=document.querySelectorAll('.row-cb:checked').length;
+  var btn=document.getElementById('bulkEmailBtn');
+  if(btn){
+    document.getElementById('selCount').textContent=n;
+    btn.disabled=n===0;
+    btn.style.opacity=n===0?'.5':'1';
+  }
+}
+function getSelectedIds(){
+  var ids=[];
+  document.querySelectorAll('.row-cb:checked').forEach(function(cb){ids.push(parseInt(cb.value));});
+  return ids;
+}
+function showModal(html){
+  document.getElementById('modalBody').innerHTML=html;
+  document.getElementById('emailResultModal').style.display='flex';
+}
+function closeModal(){
+  document.getElementById('emailResultModal').style.display='none';
+}
+function disableRowBtn(btn){
+  btn.disabled=true;
+  btn.style.opacity='.5';
+  btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="10" stroke="#2563eb" stroke-width="3" fill="none" stroke-dasharray="30 70"/></svg> Sending\u2026';
+}
+function markRowDone(jobId, msg){
+  var row=document.getElementById('row-'+jobId);
+  if(row){
+    var btn=row.querySelector('.email-btn');
+    if(btn){
+      btn.disabled=true;
+      btn.style.opacity='.5';
+      btn.style.borderColor='#16a34a';
+      btn.style.color='#16a34a';
+      btn.innerHTML='<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Sent';
+    }
+    var cb=row.querySelector('.row-cb');
+    if(cb){cb.checked=false;cb.disabled=true;}
+  }
+}
+function markRowFail(jobId, error){
+  var row=document.getElementById('row-'+jobId);
+  if(row){
+    var btn=row.querySelector('.email-btn');
+    if(btn){
+      btn.disabled=false;
+      btn.style.opacity='1';
+      btn.style.borderColor='#dc2626';
+      btn.style.color='#dc2626';
+      btn.innerHTML='<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#dc2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Failed';
+    }
+  }
+}
+function emailSingle(jobId, btn){
+  if(!confirm('Send email to the client for this file and reschedule for 7 working days?')) return;
+  disableRowBtn(btn);
+  fetch('/reports/aged-suspended/email',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body:JSON.stringify({job_ids:[jobId]})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.ok && d.details){
+      var det=d.details[0];
+      if(det.ok){
+        markRowDone(jobId);
+        showModal('<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">Email sent successfully</div>'
+          +'<div>Email sent and file rescheduled to <strong>'+det.reschedule_date+'</strong>.</div>'
+          +'<div style="font-size:.78rem;color:#64748b;margin-top:6px;">Recipient: '+det.recipient+'</div>');
+      } else {
+        markRowFail(jobId, det.error);
+        showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Email failed</div><div>'+det.error+'</div>');
+      }
+    } else {
+      markRowFail(jobId, d.error||'Unknown error');
+      showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</div><div>'+(d.error||'Unknown error')+'</div>');
+    }
+    updateBulkBtn();
+  }).catch(function(e){
+    markRowFail(jobId, e.message);
+    showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</div><div>'+e.message+'</div>');
+  });
+}
+function bulkEmail(){
+  var ids=getSelectedIds();
+  if(!ids.length) return;
+  if(!confirm('Send emails to clients for '+ids.length+' selected file(s) and reschedule each for 7 working days?')) return;
+  var bulkBtn=document.getElementById('bulkEmailBtn');
+  bulkBtn.disabled=true;
+  bulkBtn.style.opacity='.5';
+  ids.forEach(function(id){
+    var row=document.getElementById('row-'+id);
+    if(row){var btn=row.querySelector('.email-btn');if(btn) disableRowBtn(btn);}
+  });
+  fetch('/reports/aged-suspended/email',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body:JSON.stringify({job_ids:ids})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){
+      var failDetails=[];
+      (d.details||[]).forEach(function(det){
+        if(det.ok){
+          markRowDone(det.job_id);
+        } else {
+          markRowFail(det.job_id, det.error);
+          failDetails.push('<li>File #'+det.job_id+': '+det.error+'</li>');
+        }
+      });
+      var html='<div style="font-weight:600;margin-bottom:8px;">Bulk Email Results</div>';
+      html+='<div>'+d.sent+' email(s) sent successfully.</div>';
+      html+='<div>'+d.sent+' file(s) rescheduled to <strong>'+d.reschedule_date+'</strong>.</div>';
+      if(d.failed>0){
+        html+='<div style="color:#dc2626;margin-top:6px;">'+d.failed+' failure(s):</div><ul style="margin:4px 0 0 16px;font-size:.82rem;">'+failDetails.join('')+'</ul>';
+      }
+      showModal(html);
+    } else {
+      showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</div><div>'+(d.error||'Unknown error')+'</div>');
+    }
+    updateBulkBtn();
+  }).catch(function(e){
+    showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</div><div>'+e.message+'</div>');
+    updateBulkBtn();
+  });
+}
+</script>
+<style>
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+</style>
 {% endblock %}

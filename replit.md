@@ -246,6 +246,16 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **12. Repo Lock (v2):** Per-security-item repossession record accessible on desktop and mobile. Features draft saving and submission workflows, generating formatted notes and linking to PDF generation for VIR, Transport Instructions, and other forms. Includes signature capture and PDF generation via `pdf_gen.py`.
 
+**16. Aged Suspended / Awaiting Instructions Report:** Admin-only report showing jobs in Suspended or Awaiting Advice From Client status with configurable age thresholds (7/14/30 days). Located under Admin → Reports → Aged Suspended.
+- **Last activity calculation**: Uses `COALESCE` subquery across 5 activity tables (job_updates, job_field_notes, interactions, job_lifecycle_log, message_audit_log), falling back to job created_at when no activity exists. Performance indexes on `job_id` for all 5 tables.
+- **Outputs**: Web table, CSV export, PDF export (ReportLab landscape A4). Filters by minimum age and client. Uses `client_reference` (not internal refs).
+- **Email Client action**: Single-row and bulk email buttons. Sends professional email to the client's email address with subject "Further Instructions Required – [Ref] – [Customer]" and standardised body. Signed as "South West Process Serving & Investigation Agency".
+- **Auto-reschedule**: After successful email, automatically creates a "Follow Up" schedule booking 7 working days from today (Mon-Fri only, weekends skipped). Uses `_add_working_days()` utility.
+- **Audit logging**: Each successful email creates an `interactions` record (event_type='Email Sent') with full details (recipient, subject, previous status, reschedule date, source). Schedule creation logged via `schedule_history`.
+- **Error handling**: Per-job atomic commits — if DB writes fail after email sent, the error is reported per-job without affecting other jobs. Duplicate job IDs deduplicated. Input validation on all filter parameters.
+- Routes: `GET /reports/aged-suspended`, `GET /reports/aged-suspended/csv`, `GET /reports/aged-suspended/pdf`, `POST /reports/aged-suspended/email`.
+- Template: `templates/report_aged_suspended.html`.
+
 **17. Unified Authentication Routing:**
 - `_is_mobile_request()` detects mobile context via path prefix (`/m/`), native app UA (`AxionX/`), or iOS/Android device UAs (iPhone, iPad, iPod, Android).
 - `_login_redirect()` routes unauthenticated users to `/m/login` (mobile) or `/login` (web) based on device detection.

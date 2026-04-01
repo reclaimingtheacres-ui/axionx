@@ -14288,6 +14288,18 @@ def report_monthly():
 
 _AGED_REPORT_STATUSES = ('Suspended', 'Awaiting Advice From Client')
 
+
+def _add_working_days(start_date, num_days):
+    from datetime import timedelta
+    current = start_date
+    added = 0
+    while added < num_days:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            added += 1
+    return current
+
+
 def _aged_report_query(conn, min_days=7, client_id=None):
     params = []
     status_ph = ','.join('?' for _ in _AGED_REPORT_STATUSES)
@@ -14519,6 +14531,169 @@ def report_aged_suspended_pdf():
     fname = f"Aged_Suspended_Report_{_dt.now().strftime('%Y%m%d')}.pdf"
     return send_file(buf, mimetype='application/pdf', as_attachment=True,
                      download_name=fname)
+
+
+@app.post("/reports/aged-suspended/email")
+@admin_required
+def report_aged_suspended_email():
+    data = request.get_json(silent=True) or {}
+    job_ids = data.get('job_ids', [])
+    if not job_ids or not isinstance(job_ids, list):
+        return jsonify(ok=False, error="No files selected."), 400
+    seen = set()
+    deduped = []
+    for j in job_ids:
+        if str(j).isdigit():
+            v = int(j)
+            if v not in seen:
+                seen.add(v)
+                deduped.append(v)
+    job_ids = deduped
+    if not job_ids:
+        return jsonify(ok=False, error="No valid file IDs."), 400
+
+    conn = db()
+    cur = conn.cursor()
+    results = []
+    from datetime import datetime as _dt, date as _date
+    today = _date.today()
+    ts = now_ts()
+    user_id = session.get("user_id")
+
+    status_ph = ','.join('?' for _ in _AGED_REPORT_STATUSES)
+    ph = ','.join('?' for _ in job_ids)
+    job_rows = cur.execute(f"""
+        SELECT j.id, j.status, j.client_id,
+               COALESCE(j.client_reference, j.client_job_number, '') AS client_reference,
+               COALESCE(cu.first_name || ' ' || cu.last_name, '') AS customer_name,
+               cl.email AS client_email,
+               cl.name AS client_name,
+               COALESCE(
+                   (SELECT MAX(ts) FROM (
+                       SELECT MAX(COALESCE(ju.attend_date, ju.created_at)) AS ts
+                       FROM job_updates ju WHERE ju.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(jfn.created_at) AS ts
+                       FROM job_field_notes jfn WHERE jfn.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(i.occurred_at) AS ts
+                       FROM interactions i WHERE i.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(jll.performed_at) AS ts
+                       FROM job_lifecycle_log jll WHERE jll.job_id = j.id
+                       UNION ALL
+                       SELECT MAX(mal.created_at) AS ts
+                       FROM message_audit_log mal WHERE mal.job_id = j.id
+                   )),
+                   j.created_at
+               ) AS last_activity
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients cl   ON cl.id = j.client_id
+        WHERE j.id IN ({ph}) AND j.status IN ({status_ph})
+    """, job_ids + list(_AGED_REPORT_STATUSES)).fetchall()
+
+    job_map = {r['id']: r for r in job_rows}
+
+    reschedule_date = _add_working_days(today, 7)
+    reschedule_dt_str = reschedule_date.strftime('%Y-%m-%d') + ' 09:00'
+
+    for jid in job_ids:
+        r = job_map.get(jid)
+        if not r:
+            results.append({'job_id': jid, 'ok': False, 'error': 'File not found or status changed.'})
+            continue
+
+        client_email = (r['client_email'] or '').strip()
+        if not client_email or '@' not in client_email:
+            results.append({'job_id': jid, 'ok': False, 'error': 'No valid client email found.'})
+            continue
+
+        client_ref = r['client_reference'] or ''
+        customer_name = (r['customer_name'] or '').strip()
+        status = r['status']
+
+        la = r['last_activity']
+        la_display = 'N/A'
+        if la:
+            try:
+                la_display = _dt.strptime(la[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+            except (ValueError, TypeError):
+                pass
+
+        subj_parts = ['Further Instructions Required']
+        if client_ref:
+            subj_parts.append(client_ref)
+        if customer_name:
+            subj_parts.append(customer_name)
+        subject = ' \u2013 '.join(subj_parts)
+
+        ref_display = client_ref if client_ref else f'File #{jid}'
+
+        body_txt = (
+            f'This file has been in "{status}" for some time and is now pending closure.\n\n'
+            f'Client Reference: {ref_display}\n'
+            f'Customer: {customer_name}\n'
+            f'Last Action: {la_display}\n\n'
+            f'Please provide further instructions for any further actioning required. '
+            f'In the absence of further instructions, the file will remain pending closure.\n\n'
+            f'Kind regards,\n'
+            f'South West Process Serving & Investigation Agency'
+        )
+
+        try:
+            send_email([client_email], subject, body_txt)
+        except Exception as e:
+            results.append({'job_id': jid, 'ok': False, 'error': f'Email send failed: {str(e)}'})
+            continue
+
+        try:
+            bt_id = _resolve_booking_type(cur, '', 'Follow Up')
+            cur.execute("""
+                INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes, created_by_user_id, created_at)
+                VALUES (?, ?, ?, 'Booked', ?, ?, ?)
+            """, (jid, bt_id, reschedule_dt_str,
+                  'Auto-rescheduled from aged suspended report email action',
+                  user_id, ts))
+            sched_id = cur.lastrowid
+            _write_schedule_history(cur, sched_id, jid, 'created',
+                                    new_scheduled_for=reschedule_dt_str,
+                                    new_status='Booked',
+                                    changed_by_user_id=user_id,
+                                    notes='Auto-rescheduled after aged report email')
+
+            cur.execute("""
+                INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (jid, 'Email Sent',
+                  f'Aged suspended report email sent to {client_email}. '
+                  f'Subject: {subject}. '
+                  f'Previous status: {status}. '
+                  f'File rescheduled to {reschedule_date.strftime("%d/%m/%Y")}. '
+                  f'Source: aged suspended report email action.',
+                  ts, ts))
+
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            results.append({'job_id': jid, 'ok': False,
+                            'error': f'Email sent but reschedule/audit failed: {str(e)}'})
+            continue
+
+        results.append({
+            'job_id': jid,
+            'ok': True,
+            'reschedule_date': reschedule_date.strftime('%d/%m/%Y'),
+            'recipient': client_email,
+        })
+
+    conn.close()
+
+    sent = sum(1 for r in results if r['ok'])
+    failed = sum(1 for r in results if not r['ok'])
+    return jsonify(ok=True, sent=sent, failed=failed, total=len(results),
+                   reschedule_date=reschedule_date.strftime('%d/%m/%Y'),
+                   details=results)
 
 
 # -------- Agent: My Today --------
