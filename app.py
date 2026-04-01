@@ -728,6 +728,15 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jll_job ON job_lifecycle_log(job_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_mal_job ON message_audit_log(job_id)")
 
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sched_job ON schedules(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sched_job_status ON schedules(job_id, status, hidden)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_sched_assigned ON schedules(assigned_to_user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ji_job ON job_items(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_assigned ON jobs(assigned_user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_client ON jobs(client_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_customer ON jobs(customer_id)")
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS booking_types (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

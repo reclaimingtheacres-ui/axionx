@@ -32,7 +32,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "gunicorn -b 0.0.0.0:5000 --capture-output --log-level warning app:app 2>&1"
+args = "gunicorn -b 0.0.0.0:5000 --timeout 120 --capture-output --log-level warning app:app 2>&1"
 waitForPort = 5000
 
 [[workflows.workflow]]
@@ -49,10 +49,6 @@ outputType = "console"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 5904
-externalPort = 3000
 
 [[ports]]
 localPort = 23636
