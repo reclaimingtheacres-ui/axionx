@@ -7905,7 +7905,7 @@ def repo_lock_get(job_id: int, item_id: int):
 
     prefill = {
         "client_name":      (dict(client)["name"] if client else ""),
-        "client_reference": job.get("client_job_number") or "",
+        "client_reference": job.get("client_reference") or job.get("client_job_number") or "",
         "swpi_ref":         job.get("internal_job_number") or job.get("display_ref") or "",
         "finance_company":  job.get("lender_name") or item.get("lender_name") or "",
         "repo_date":        today,
@@ -8210,8 +8210,8 @@ def _rl_pdf_context(conn, rec, job_id):
         "model":                item.get("model") or "",
         "colour":               item.get("colour") or rec.get("colour") or "",
         "client_name":          rec.get("client_name") or client.get("name") or "",
-        "client_reference":     rec.get("client_reference") or job.get("client_job_number") or "",
-        "wise_case_number":     rec.get("wise_case_number") or rec.get("client_reference") or job.get("client_job_number") or "",
+        "client_reference":     rec.get("client_reference") or job.get("client_reference") or job.get("client_job_number") or "",
+        "wise_case_number":     rec.get("wise_case_number") or rec.get("client_reference") or job.get("client_reference") or job.get("client_job_number") or "",
         "swpi_ref":             rec.get("swpi_ref") or job.get("internal_job_number") or "",
         "finance_company":      rec.get("finance_company") or job.get("lender_name") or "",
         "customer_name":        cust_name,
