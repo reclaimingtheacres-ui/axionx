@@ -14375,7 +14375,8 @@ def _aged_report_query(conn, min_days=7, client_id=None):
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients cl   ON cl.id = j.client_id
-        WHERE j.status IN ({status_ph})
+        WHERE (j.status IN ({status_ph})
+               OR EXISTS (SELECT 1 FROM schedules s2 WHERE s2.job_id = j.id AND LOWER(s2.status) = 'suspended'))
     """
 
     if client_id:
@@ -14616,7 +14617,8 @@ def report_aged_suspended_email():
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients cl   ON cl.id = j.client_id
-        WHERE j.id IN ({ph}) AND j.status IN ({status_ph})
+        WHERE j.id IN ({ph}) AND (j.status IN ({status_ph})
+              OR EXISTS (SELECT 1 FROM schedules s2 WHERE s2.job_id = j.id AND LOWER(s2.status) = 'suspended'))
     """, job_ids + list(_AGED_REPORT_STATUSES)).fetchall()
 
     job_map = {r['id']: r for r in job_rows}
@@ -14762,7 +14764,8 @@ def report_aged_suspended_reschedule():
     ph = ','.join('?' for _ in job_ids)
     valid_ids = set(
         r[0] for r in cur.execute(
-            f"SELECT id FROM jobs WHERE id IN ({ph}) AND status IN ({status_ph})",
+            f"""SELECT id FROM jobs WHERE id IN ({ph}) AND (status IN ({status_ph})
+                OR EXISTS (SELECT 1 FROM schedules s2 WHERE s2.job_id = jobs.id AND LOWER(s2.status) = 'suspended'))""",
             job_ids + list(_AGED_REPORT_STATUSES)
         ).fetchall()
     )
