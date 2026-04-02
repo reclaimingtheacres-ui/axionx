@@ -14362,6 +14362,7 @@ def _aged_report_query(conn, min_days=7, client_id=None):
                        UNION ALL
                        SELECT MAX(i.occurred_at) AS ts
                        FROM interactions i WHERE i.job_id = j.id
+                         AND i.event_type NOT IN ('System','Client Link')
                        UNION ALL
                        SELECT MAX(jll.performed_at) AS ts
                        FROM job_lifecycle_log jll WHERE jll.job_id = j.id
@@ -14617,6 +14618,7 @@ def report_aged_suspended_email():
                        UNION ALL
                        SELECT MAX(i.occurred_at) AS ts
                        FROM interactions i WHERE i.job_id = j.id
+                         AND i.event_type NOT IN ('System','Client Link')
                        UNION ALL
                        SELECT MAX(jll.performed_at) AS ts
                        FROM job_lifecycle_log jll WHERE jll.job_id = j.id
