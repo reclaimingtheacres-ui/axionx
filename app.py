@@ -14654,6 +14654,12 @@ def report_aged_suspended_email():
 
         try:
             send_email([client_email], subject, body_txt)
+        except RuntimeError as e:
+            if 'SMTP' in str(e) or 'not configured' in str(e):
+                results.append({'job_id': jid, 'ok': False, 'error': 'smtp_not_configured'})
+            else:
+                results.append({'job_id': jid, 'ok': False, 'error': f'Email send failed: {str(e)}'})
+            continue
         except Exception as e:
             results.append({'job_id': jid, 'ok': False, 'error': f'Email send failed: {str(e)}'})
             continue
@@ -14703,6 +14709,89 @@ def report_aged_suspended_email():
     sent = sum(1 for r in results if r['ok'])
     failed = sum(1 for r in results if not r['ok'])
     return jsonify(ok=True, sent=sent, failed=failed, total=len(results),
+                   reschedule_date=reschedule_date.strftime('%d/%m/%Y'),
+                   details=results)
+
+
+@app.post("/reports/aged-suspended/reschedule")
+@admin_required
+def report_aged_suspended_reschedule():
+    data = request.get_json(silent=True) or {}
+    job_ids = data.get('job_ids', [])
+    if not job_ids or not isinstance(job_ids, list):
+        return jsonify(ok=False, error="No files selected."), 400
+    seen = set()
+    deduped = []
+    for j in job_ids:
+        if str(j).isdigit():
+            v = int(j)
+            if v not in seen:
+                seen.add(v)
+                deduped.append(v)
+    job_ids = deduped
+    if not job_ids:
+        return jsonify(ok=False, error="No valid file IDs."), 400
+
+    conn = db()
+    cur = conn.cursor()
+    results = []
+    from datetime import date as _date
+    today = _date.today()
+    ts = now_ts()
+    user_id = session.get("user_id")
+
+    reschedule_date = _add_working_days(today, 7)
+    reschedule_dt_str = reschedule_date.strftime('%Y-%m-%d') + ' 09:00'
+
+    status_ph = ','.join('?' for _ in _AGED_REPORT_STATUSES)
+    ph = ','.join('?' for _ in job_ids)
+    valid_ids = set(
+        r[0] for r in cur.execute(
+            f"SELECT id FROM jobs WHERE id IN ({ph}) AND status IN ({status_ph})",
+            job_ids + list(_AGED_REPORT_STATUSES)
+        ).fetchall()
+    )
+
+    for jid in job_ids:
+        if jid not in valid_ids:
+            results.append({'job_id': jid, 'ok': False, 'error': 'File not found or status changed.'})
+            continue
+        try:
+            bt_id = _resolve_booking_type(cur, '', 'Follow Up')
+            cur.execute("""
+                INSERT INTO schedules (job_id, booking_type_id, scheduled_for, status, notes, created_by_user_id, created_at)
+                VALUES (?, ?, ?, 'Booked', ?, ?, ?)
+            """, (jid, bt_id, reschedule_dt_str,
+                  'Auto-rescheduled from aged report – Outlook draft opened',
+                  user_id, ts))
+            sched_id = cur.lastrowid
+            _write_schedule_history(cur, sched_id, jid, 'created',
+                                    new_scheduled_for=reschedule_dt_str,
+                                    new_status='Booked',
+                                    changed_by_user_id=user_id,
+                                    notes='Auto-rescheduled after Outlook draft opened from aged report')
+            cur.execute("""
+                INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (jid, 'Outlook Draft',
+                  f'Outlook email draft opened from aged suspended report. '
+                  f'File rescheduled to {reschedule_date.strftime("%d/%m/%Y")}. '
+                  f'Source: aged suspended report.',
+                  ts, ts))
+            conn.commit()
+            results.append({
+                'job_id': jid,
+                'ok': True,
+                'reschedule_date': reschedule_date.strftime('%d/%m/%Y'),
+            })
+        except Exception as e:
+            conn.rollback()
+            results.append({'job_id': jid, 'ok': False, 'error': f'Reschedule failed: {str(e)}'})
+
+    conn.close()
+    rescheduled = sum(1 for r in results if r['ok'])
+    failed = sum(1 for r in results if not r['ok'])
+    return jsonify(ok=True, rescheduled=rescheduled, failed=failed,
                    reschedule_date=reschedule_date.strftime('%d/%m/%Y'),
                    details=results)
 

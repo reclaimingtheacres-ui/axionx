@@ -213,6 +213,19 @@ function markRowFail(jobId){
     }
   }
 }
+function markRowSmtp(jobId){
+  var row=document.getElementById('row-'+jobId);
+  if(row){
+    var btn=row.querySelector('.email-btn');
+    if(btn){
+      btn.disabled=true;
+      btn.style.opacity='.6';
+      btn.style.borderColor='#92400e';
+      btn.style.color='#92400e';
+      btn.innerHTML='<svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="#92400e" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> No SMTP';
+    }
+  }
+}
 function buildMailto(jobId){
   var row=document.getElementById('row-'+jobId);
   if(!row) return null;
@@ -239,6 +252,29 @@ function buildMailto(jobId){
     +'?subject='+encodeURIComponent(subject)
     +'&body='+encodeURIComponent(body);
 }
+function rescheduleFiles(ids, callback){
+  fetch('/reports/aged-suspended/reschedule',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body:JSON.stringify({job_ids:ids})
+  }).then(function(r){return r.json();}).then(callback)
+    .catch(function(e){callback({ok:false,error:e.message});});
+}
+function markRowOutlookDone(jobId){
+  var row=document.getElementById('row-'+jobId);
+  if(row){
+    var btn=row.querySelector('.outlook-btn');
+    if(btn){
+      btn.disabled=true;
+      btn.style.opacity='.5';
+      btn.style.borderColor='#16a34a';
+      btn.style.color='#16a34a';
+      btn.innerHTML='<svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Done';
+    }
+    var cb=row.querySelector('.row-cb');
+    if(cb){cb.checked=false;cb.disabled=true;}
+  }
+}
 function openOutlook(jobId){
   var row=document.getElementById('row-'+jobId);
   if(!row) return;
@@ -250,6 +286,19 @@ function openOutlook(jobId){
   }
   var url=buildMailto(jobId);
   if(url) window.location.href=url;
+  rescheduleFiles([jobId], function(d){
+    if(d.ok){
+      markRowOutlookDone(jobId);
+      var det=(d.details&&d.details[0])||{};
+      showModal('<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">Outlook Draft Opened</div>'
+        +'<div>Email draft opened in your mail client.</div>'
+        +'<div>File rescheduled to <strong>'+(det.reschedule_date||d.reschedule_date)+'</strong>.</div>');
+    } else {
+      showModal('<div style="color:#92400e;font-weight:600;margin-bottom:8px;">Draft Opened</div>'
+        +'<div>Email draft opened, but reschedule failed: '+(d.error||'Unknown error')+'</div>');
+    }
+    updateBulkBtn();
+  });
 }
 function emailSingle(jobId, btn){
   var row=document.getElementById('row-'+jobId);
@@ -275,6 +324,10 @@ function emailSingle(jobId, btn){
         showModal('<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">Email sent successfully</div>'
           +'<div>Email sent and file rescheduled to <strong>'+det.reschedule_date+'</strong>.</div>'
           +'<div style="font-size:.78rem;color:#64748b;margin-top:6px;">Recipient: '+det.recipient+'</div>');
+      } else if(det.error==='smtp_not_configured'){
+        markRowSmtp(jobId);
+        showModal('<div style="color:#92400e;font-weight:600;margin-bottom:8px;">SMTP Not Configured</div>'
+          +'<div>Direct email is not configured in this environment. Use <strong>Open in Outlook</strong> or configure SMTP settings.</div>');
       } else {
         markRowFail(jobId);
         showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Email failed</div><div>'+det.error+'</div>');
@@ -307,9 +360,13 @@ function bulkEmail(){
   }).then(function(r){return r.json();}).then(function(d){
     if(d.ok){
       var failDetails=[];
+      var smtpIssue=false;
       (d.details||[]).forEach(function(det){
         if(det.ok){
           markRowDone(det.job_id);
+        } else if(det.error==='smtp_not_configured'){
+          smtpIssue=true;
+          markRowSmtp(det.job_id);
         } else {
           markRowFail(det.job_id);
           failDetails.push('<li>File #'+det.job_id+': '+det.error+'</li>');
@@ -318,7 +375,9 @@ function bulkEmail(){
       var html='<div style="font-weight:600;margin-bottom:8px;">Bulk Email Results</div>';
       html+='<div><strong>'+d.sent+'</strong> email(s) sent successfully.</div>';
       if(d.sent>0) html+='<div><strong>'+d.sent+'</strong> file(s) rescheduled to <strong>'+d.reschedule_date+'</strong>.</div>';
-      if(d.failed>0){
+      if(smtpIssue){
+        html+='<div style="color:#92400e;margin-top:6px;">Direct email is not configured in this environment. Use <strong>Open in Outlook</strong> or configure SMTP settings.</div>';
+      } else if(d.failed>0){
         html+='<div style="color:#dc2626;margin-top:6px;"><strong>'+d.failed+'</strong> failure(s):</div><ul style="margin:4px 0 0 16px;font-size:.82rem;">'+failDetails.join('')+'</ul>';
       }
       showModal(html);
@@ -348,8 +407,8 @@ function bulkOutlook(){
       +'<div>None of the selected files have a valid client email address.</div>');
     return;
   }
-  var msg='Open '+validIds.length+' email draft(s) in your mail client?';
-  if(noEmail.length>0) msg+='\n\n'+noEmail.length+' file(s) skipped (no client email).';
+  var msg='Open '+validIds.length+' email draft(s) and reschedule for 7 working days?';
+  if(noEmail.length>0) msg+='\n\n'+noEmail.length+' file(s) will be skipped (no client email).';
   if(!confirm(msg)) return;
   var opened=0;
   var skipped=noEmail.length;
@@ -362,11 +421,22 @@ function bulkOutlook(){
       skipped++;
     }
   });
-  var html='<div style="font-weight:600;margin-bottom:8px;">Outlook Drafts</div>';
-  html+='<div><strong>'+opened+'</strong> draft(s) opened in your mail client.</div>';
-  if(skipped>0) html+='<div style="color:#92400e;margin-top:4px;"><strong>'+skipped+'</strong> file(s) skipped (no valid client email).</div>';
-  html+='<div style="font-size:.78rem;color:#64748b;margin-top:8px;">No files were rescheduled. Use Email Client to send and auto-reschedule.</div>';
-  showModal(html);
+  rescheduleFiles(validIds, function(d){
+    var html='<div style="font-weight:600;margin-bottom:8px;">Outlook Drafts</div>';
+    html+='<div><strong>'+opened+'</strong> draft(s) opened in your mail client.</div>';
+    if(d.ok){
+      (d.details||[]).forEach(function(det){
+        if(det.ok) markRowOutlookDone(det.job_id);
+      });
+      html+='<div><strong>'+(d.rescheduled||0)+'</strong> file(s) rescheduled to <strong>'+d.reschedule_date+'</strong>.</div>';
+      if(d.failed>0) html+='<div style="color:#dc2626;margin-top:4px;"><strong>'+d.failed+'</strong> reschedule failure(s).</div>';
+    } else {
+      html+='<div style="color:#dc2626;margin-top:4px;">Reschedule failed: '+(d.error||'Unknown error')+'</div>';
+    }
+    if(skipped>0) html+='<div style="color:#92400e;margin-top:4px;"><strong>'+skipped+'</strong> file(s) skipped (no valid client email).</div>';
+    showModal(html);
+    updateBulkBtn();
+  });
 }
 </script>
 <style>
