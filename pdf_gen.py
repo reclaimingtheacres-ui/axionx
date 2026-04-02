@@ -710,6 +710,12 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     FB = 'Helvetica-Bold'
     SZ = 9
 
+    wise_ref = _v(data, 'wise_case_number')
+    if wise_ref:
+        c.setFont(FB, 9)
+        c.drawString(260, 740, wise_ref)
+        c.setFont(F, SZ)
+
     c.setFont(F, SZ)
     c.drawString(130, 720, _v(data, 'customer_name'))
 
@@ -793,6 +799,10 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     elif keys_val:
         c.drawString(396, 332, 'NO')
 
+    keys_qty = _v(data, 'how_many_keys')
+    if keys_qty:
+        c.drawString(485, 332, keys_qty)
+
     accessories = _v(data, 'accessories')
     if accessories:
         c.setFont(F, 8)
@@ -808,17 +818,23 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.setFont(F, SZ)
     tow_name = _v(data, 'tow_company_name')
     if tow_name:
-        c.drawString(108, 171, tow_name)
+        c.drawString(120, 171, tow_name)
 
     tow_cost = _v(data, 'tow_costs')
     if tow_cost:
-        c.drawString(379, 171, '$' + tow_cost if not tow_cost.startswith('$') else tow_cost)
+        cost_str = '$' + tow_cost if not tow_cost.startswith('$') else tow_cost
+        c.drawString(400, 171, cost_str)
 
-    delivery = _v(data, 'deliver_to', 'delivery_address').upper()
-    del_xs = {'GAMERS': 164, 'PICKLES': 235, 'HELD': 320, 'OTHER': 469}
-    for kw, dx in del_xs.items():
-        if kw in delivery:
-            _wise_tick(c, dx, 157)
+    deliver_to = _v(data, 'deliver_to')
+    delivery_addr = _v(data, 'delivery_address')
+    deliver_text = deliver_to
+    if delivery_addr and delivery_addr != deliver_to:
+        deliver_text = (deliver_text + ', ' + delivery_addr) if deliver_text else delivery_addr
+    if deliver_text:
+        c.setFont(F, 8)
+        for i, ln in enumerate(simpleSplit(deliver_text[:200], F, 8, CW - 20)[:2]):
+            c.drawString(120, 157 - i * 11, ln)
+        c.setFont(F, SZ)
 
     redeem = _v(data, 'vol_surrender')
     if redeem:

@@ -104,6 +104,7 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
       {{ fi('speedometer',   "KM's on Clock",   d.speedometer or rec.get('speedometer','')) }}
       {{ fsel('keys_obtained',    'Keys Secured',   d.keys_obtained or rec.get('keys_obtained',''),    ['YES','NO']) }}
+      {{ fi('how_many_keys', 'Key Qty', d.how_many_keys or rec.get('how_many_keys','')) }}
       {{ fi('accessories',    'Accessories',    d.accessories or rec.get('accessories','')) }}
     </div>
     <div style="margin-top:12px;">
@@ -118,7 +119,8 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
       {{ fi('tow_company_name', 'Towed By',      d.tow_company_name or d.tow_company_name_db or rec.get('tow_company_name','')) }}
       {{ fi('tow_costs',        'Towing Cost $', d.tow_costs or rec.get('tow_costs','')) }}
-      {{ fsel('deliver_to', 'Delivered To', d.deliver_to or rec.get('deliver_to',''), ['GAMERS','PICKLES','HELD AT TOWING YARD','OTHER']) }}
+      {{ fi('deliver_to', 'Delivered To', d.deliver_to or rec.get('deliver_to','')) }}
+      {{ fi('delivery_address', 'Delivery Address', d.delivery_address or rec.get('delivery_address','')) }}
       {{ fsel('vol_surrender',  'Debtor wishes to Redeem?', d.vol_surrender or rec.get('vol_surrender',''), ['YES','NO']) }}
     </div>
     </div>

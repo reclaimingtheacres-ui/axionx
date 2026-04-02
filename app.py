@@ -8211,6 +8211,7 @@ def _rl_pdf_context(conn, rec, job_id):
         "colour":               item.get("colour") or rec.get("colour") or "",
         "client_name":          rec.get("client_name") or client.get("name") or "",
         "client_reference":     rec.get("client_reference") or job.get("client_job_number") or "",
+        "wise_case_number":     rec.get("wise_case_number") or rec.get("client_reference") or job.get("client_job_number") or "",
         "swpi_ref":             rec.get("swpi_ref") or job.get("internal_job_number") or "",
         "finance_company":      rec.get("finance_company") or job.get("lender_name") or "",
         "customer_name":        cust_name,
@@ -8493,8 +8494,8 @@ def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
                         registration=?, vin=?, engine_number=?,
                         body=?, duco=?, bumpers=?, glass=?, tyres=?,
                         security_drivable=?, engine_condition=?, interior=?,
-                        speedometer=?, keys_obtained=?, accessories=?, damage_list=?,
-                        tow_company_name=?, tow_costs=?, deliver_to=?, vol_surrender=?,
+                        speedometer=?, keys_obtained=?, how_many_keys=?, accessories=?, damage_list=?,
+                        tow_company_name=?, tow_costs=?, deliver_to=?, delivery_address=?, vol_surrender=?,
                         updated_at=?
                     WHERE id=?""",
                  (_f("customer_name"),
@@ -8502,8 +8503,8 @@ def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
                   _f("registration"), _f("vin"), _f("engine_number"),
                   _f("body"), _f("duco"), _f("bumpers"), _f("glass"), _f("tyres"),
                   _f("security_drivable"), _f("engine_condition"), _f("interior"),
-                  _f("speedometer"), _f("keys_obtained"), _f("accessories"), _f("damage_list"),
-                  _f("tow_company_name"), _f("tow_costs"), _f("deliver_to"), _f("vol_surrender"),
+                  _f("speedometer"), _f("keys_obtained"), _f("how_many_keys"), _f("accessories"), _f("damage_list"),
+                  _f("tow_company_name"), _f("tow_costs"), _f("deliver_to"), _f("delivery_address"), _f("vol_surrender"),
                   ts, rec_id))
     conn.commit()
 
