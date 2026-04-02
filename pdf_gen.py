@@ -713,28 +713,28 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     wise_ref = _v(data, 'wise_case_number')
     if wise_ref:
         c.setFont(FB, 9)
-        c.drawString(260, 740, wise_ref)
+        c.drawString(274, 760, wise_ref)
         c.setFont(F, SZ)
 
     c.setFont(F, SZ)
-    c.drawString(130, 720, _v(data, 'customer_name'))
+    c.drawString(173, 720, _v(data, 'customer_name'))
 
     from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
     _make_str = _v(data, 'make')
     _model_str = _v(data, 'model')
     _ymm_sz = SZ
-    while _ymm_sz > 6.5 and (_sw(_make_str, F, _ymm_sz) > 26 or _sw(_model_str, F, _ymm_sz) > 55):
+    while _ymm_sz > 6.5 and (_sw(_make_str, F, _ymm_sz) > 55 or _sw(_model_str, F, _ymm_sz) > 80):
         _ymm_sz -= 0.5
     c.setFont(F, _ymm_sz)
-    c.drawString(91, 665, _v(data, 'year'))
-    c.drawString(186, 665, _make_str)
-    c.drawString(270, 665, _model_str)
+    c.drawString(126, 664, _v(data, 'year'))
+    c.drawString(251, 664, _make_str)
+    c.drawString(371, 664, _model_str)
     c.setFont(F, SZ)
 
-    c.drawString(118, 638, _v(data, 'body_type'))
-    c.drawString(230, 638, _v(data, 'colour'))
-    c.drawString(300, 638, _v(data, 'registration'))
-    c.drawString(125, 624, _v(data, 'vin'))
+    c.drawString(152, 651, _v(data, 'body_type'))
+    c.drawString(270, 651, _v(data, 'colour'))
+    c.drawString(376, 651, _v(data, 'registration'))
+    c.drawString(167, 638, _v(data, 'vin'))
 
     def _check_condition(val, option):
         if not val:
@@ -747,13 +747,13 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     glass_val = _v(data, 'glass')
     tyres_val = _v(data, 'tyres')
 
-    ext4_xs = [211, 297, 383, 475]
+    ext4_xs = [255, 339, 425, 517]
     cond_rows = [
-        (554, body_val,   ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
-        (539, paint_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
-        (523, bumper_val, ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
-        (508, glass_val,  ['BROKEN', 'CRACKED', 'GOOD', None],      [212, 296, 358]),
-        (492, tyres_val,  ['BALD', 'FAIR', 'GOOD', 'EXCELLENT'],    [213, 298, 358, 477]),
+        (567, body_val,   ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
+        (552, paint_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
+        (536, bumper_val, ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
+        (521, glass_val,  ['BROKEN', 'CRACKED', 'GOOD', None],      [255, 339, 425]),
+        (506, tyres_val,  ['BALD', 'FAIR', 'GOOD', 'EXCELLENT'],    [255, 339, 425, 517]),
     ]
 
     for row_y, val, opts, xs in cond_rows:
@@ -764,24 +764,24 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     drive_val = _v(data, 'security_drivable')
     if drive_val:
         if drive_val.strip().upper() in ('YES', 'Y', 'TRUE'):
-            _wise_tick(c, 235, 449)
+            _wise_tick(c, 277, 463)
         else:
-            _wise_tick(c, 299, 449)
+            _wise_tick(c, 341, 463)
 
     eng = _v(data, 'engine_condition').lower()
     if eng:
         eng_ok = eng not in ('damaged', 'poor', 'missing', 'no', 'n/a')
         if eng_ok:
-            _wise_tick(c, 469, 449)
+            _wise_tick(c, 511, 463)
         else:
-            _wise_tick(c, 513, 449)
+            _wise_tick(c, 555, 463)
 
     interior_val = _v(data, 'interior')
-    int_xs = [201, 273, 383]
+    int_xs = [243, 315, 425]
     int_rows = [
-        (406, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-        (390, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-        (375, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+        (419, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+        (404, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
+        (388, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
     ]
     for row_y, val, opts in int_rows:
         for j, opt in enumerate(opts):
@@ -791,39 +791,39 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.setFont(F, SZ)
     km = _v(data, 'speedometer')
     if km:
-        c.drawString(144, 332, km)
+        c.drawString(181, 346, km)
 
     keys_val = _v(data, 'keys_obtained')
     if keys_val and keys_val.strip().upper() in ('YES', 'Y', 'TRUE'):
-        c.drawString(396, 332, 'YES')
+        c.drawString(440, 346, 'YES')
     elif keys_val:
-        c.drawString(396, 332, 'NO')
+        c.drawString(440, 346, 'NO')
 
     keys_qty = _v(data, 'how_many_keys')
     if keys_qty:
-        c.drawString(485, 332, keys_qty)
+        c.drawString(498, 346, keys_qty)
 
     accessories = _v(data, 'accessories')
     if accessories:
         c.setFont(F, 8)
         for i, ln in enumerate(simpleSplit(accessories[:200], F, 8, CW - 20)[:2]):
-            c.drawString(57, 289 - i * 12, ln)
+            c.drawString(57, 302 - i * 12, ln)
 
     dmg_val = _v(data, 'damage_list') if _v(data, 'any_damage').upper() == 'YES' else ''
     if dmg_val:
         c.setFont(F, 8)
         for i, ln in enumerate(simpleSplit(dmg_val[:300], F, 8, CW - 20)[:3]):
-            c.drawString(57, 232 - i * 12, ln)
+            c.drawString(57, 245 - i * 12, ln)
 
     c.setFont(F, SZ)
     tow_name = _v(data, 'tow_company_name')
     if tow_name:
-        c.drawString(120, 171, tow_name)
+        c.drawString(148, 184, tow_name)
 
     tow_cost = _v(data, 'tow_costs')
     if tow_cost:
         cost_str = '$' + tow_cost if not tow_cost.startswith('$') else tow_cost
-        c.drawString(400, 171, cost_str)
+        c.drawString(426, 184, cost_str)
 
     deliver_to = _v(data, 'deliver_to')
     delivery_addr = _v(data, 'delivery_address')
@@ -833,20 +833,26 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     if deliver_text:
         c.setFont(F, 8)
         for i, ln in enumerate(simpleSplit(deliver_text[:200], F, 8, CW - 20)[:2]):
-            c.drawString(120, 157 - i * 11, ln)
+            c.drawString(162, 170 - i * 11, ln)
+        c.setFont(F, SZ)
+
+    held_at = _v(data, 'tow_company_name')
+    if held_at:
+        c.setFont(F, 8)
+        c.drawString(426, 170, held_at)
         c.setFont(F, SZ)
 
     redeem = _v(data, 'vol_surrender')
     if redeem:
         if redeem.strip().upper() in ('YES', 'Y', 'TRUE'):
-            _wise_tick(c, 381, 110)
+            _wise_tick(c, 423, 124)
         else:
-            _wise_tick(c, 484, 110)
+            _wise_tick(c, 526, 124)
 
     if agent_sig:
         try:
             sig_img = _sig_to_img(agent_sig)
-            c.drawImage(sig_img, 57, 55, width=120, height=35,
+            c.drawImage(sig_img, 57, 65, width=120, height=35,
                         preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
@@ -854,7 +860,7 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     if customer_sig:
         try:
             sig_img = _sig_to_img(customer_sig)
-            c.drawImage(sig_img, 310, 55, width=120, height=35,
+            c.drawImage(sig_img, 310, 65, width=120, height=35,
                         preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
