@@ -9168,6 +9168,20 @@ def forms_generate():
                             (item_id, job_id)).fetchone()
         item = dict(item) if item else None
 
+        _is_wise_job = False
+        if job and job.get("client_id"):
+            _cl = conn.execute("SELECT name FROM clients WHERE id=?",
+                               (job["client_id"],)).fetchone()
+            if _cl and "WISE" in (_cl["name"] or "").upper():
+                _is_wise_job = True
+
+        if _is_wise_job and form_type == "vir":
+            form_type = "wise_vir"
+            meta = _FORMS_META.get(form_type, meta)
+            form_title = meta["name"]
+            form_description = meta["description"]
+            form_short = meta["short"]
+
         rl = conn.execute(
             """SELECT * FROM repo_lock_records
                WHERE job_id=? AND item_id=?
