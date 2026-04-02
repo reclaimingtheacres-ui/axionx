@@ -14707,6 +14707,22 @@ def report_aged_suspended_email():
                   f'Source: aged suspended report email action.',
                   ts, ts))
 
+            note_text = (
+                f'email to client This file has been in "{status}" for some time and is now pending closure.\n\n'
+                f'Client Reference: {ref_display}\n'
+                f'Customer: {customer_name}\n'
+                f'Last Action: {la_display}\n\n'
+                f'Please provide further instructions for any further actioning required. '
+                f'In the absence of further instructions, the file will remain pending closure.\n\n'
+                f'Kind regards,\n'
+                f'South West Process Serving & Investigation Agency'
+            )
+            cur.execute("""
+                INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
+                                            note_category, review_status, published_at)
+                VALUES (?, ?, ?, ?, 'file_note', 'published', ?)
+            """, (jid, user_id, note_text, ts, ts))
+
             conn.commit()
         except Exception as e:
             conn.rollback()
