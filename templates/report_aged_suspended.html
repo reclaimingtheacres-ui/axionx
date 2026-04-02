@@ -49,14 +49,21 @@
     <div style="font-size:.8rem;color:#64748b;">
       {{ rows|length }} file{{ 's' if rows|length != 1 else '' }} found
       {% if client_id %} for selected client{% endif %}
-      with {{ min_days }}+ days since last activity
+      with {{ min_days }}+ days since last scheduled
     </div>
     {% if rows %}
-    <button id="bulkEmailBtn" onclick="bulkEmail()" disabled
-            style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border:1px solid #7c3aed;border-radius:6px;font-size:.8rem;font-weight:600;color:#7c3aed;background:#fff;cursor:pointer;opacity:.5;">
-      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      Email Selected (<span id="selCount">0</span>)
-    </button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="bulkEmailBtn" onclick="bulkEmail()" disabled
+              style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border:1px solid #2563eb;border-radius:6px;font-size:.8rem;font-weight:600;color:#2563eb;background:#fff;cursor:pointer;opacity:.5;">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        Email Selected (<span id="selCount">0</span>)
+      </button>
+      <button id="bulkOutlookBtn" onclick="bulkOutlook()" disabled
+              style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border:1px solid #6b7280;border-radius:6px;font-size:.8rem;font-weight:600;color:#6b7280;background:#fff;cursor:pointer;opacity:.5;">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Open in Outlook (<span id="selCount2">0</span>)
+      </button>
+    </div>
     {% endif %}
   </div>
 
@@ -73,12 +80,18 @@
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Status</th>
           <th style="padding:10px 12px;text-align:center;font-weight:600;font-size:.78rem;">Days</th>
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Last Scheduled</th>
-          <th style="padding:10px 12px;text-align:center;font-weight:600;font-size:.78rem;">Action</th>
+          <th style="padding:10px 12px;text-align:center;font-weight:600;font-size:.78rem;">Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr id="row-{{ r.id }}" data-href="/jobs/{{ r.id }}" class="aged-row" style="cursor:pointer;border-bottom:1px solid #f1f5f9;{% if loop.index is odd %}background:#fff{% else %}background:#f8fafc{% endif %}{% if r.days >= 30 %};color:#991b1b{% elif r.days >= 14 %};color:#92400e{% endif %}">
+        <tr id="row-{{ r.id }}" data-href="/jobs/{{ r.id }}" class="aged-row"
+            data-client-email="{{ r.client_email }}"
+            data-client-ref="{{ r.client_reference }}"
+            data-customer="{{ r.customer_name }}"
+            data-status="{{ r.status }}"
+            data-last-action="{{ r.last_activity }}"
+            style="cursor:pointer;border-bottom:1px solid #f1f5f9;{% if loop.index is odd %}background:#fff{% else %}background:#f8fafc{% endif %}{% if r.days >= 30 %};color:#991b1b{% elif r.days >= 14 %};color:#92400e{% endif %}">
           <td style="padding:8px;text-align:center;" onclick="event.stopPropagation()">
             <input type="checkbox" class="row-cb" value="{{ r.id }}" onchange="updateBulkBtn()" style="cursor:pointer;">
           </td>
@@ -93,11 +106,16 @@
           </td>
           <td style="padding:8px 12px;text-align:center;font-weight:600;">{{ r.days }}</td>
           <td style="padding:8px 12px;color:#64748b;">{{ r.last_activity }}</td>
-          <td style="padding:8px 12px;text-align:center;" onclick="event.stopPropagation()">
+          <td style="padding:8px 12px;text-align:center;white-space:nowrap;" onclick="event.stopPropagation()">
             <button onclick="emailSingle({{ r.id }}, this)" class="email-btn"
-                    style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid #2563eb;border-radius:5px;font-size:.72rem;font-weight:600;color:#2563eb;background:#fff;cursor:pointer;white-space:nowrap;">
-              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              Email
+                    style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;border:1px solid #2563eb;border-radius:5px;font-size:.7rem;font-weight:600;color:#2563eb;background:#fff;cursor:pointer;white-space:nowrap;">
+              <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Email Client
+            </button>
+            <button onclick="openOutlook({{ r.id }})" class="outlook-btn"
+                    style="display:inline-flex;align-items:center;gap:3px;padding:4px 8px;border:1px solid #6b7280;border-radius:5px;font-size:.7rem;font-weight:600;color:#6b7280;background:#fff;cursor:pointer;white-space:nowrap;margin-left:4px;">
+              <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Outlook
             </button>
           </td>
         </tr>
@@ -143,6 +161,12 @@ function updateBulkBtn(){
     btn.disabled=n===0;
     btn.style.opacity=n===0?'.5':'1';
   }
+  var btn2=document.getElementById('bulkOutlookBtn');
+  if(btn2){
+    document.getElementById('selCount2').textContent=n;
+    btn2.disabled=n===0;
+    btn2.style.opacity=n===0?'.5':'1';
+  }
 }
 function getSelectedIds(){
   var ids=[];
@@ -159,9 +183,9 @@ function closeModal(){
 function disableRowBtn(btn){
   btn.disabled=true;
   btn.style.opacity='.5';
-  btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="10" stroke="#2563eb" stroke-width="3" fill="none" stroke-dasharray="30 70"/></svg> Sending\u2026';
+  btn.innerHTML='<svg width="11" height="11" viewBox="0 0 24 24" style="animation:spin .8s linear infinite;"><circle cx="12" cy="12" r="10" stroke="#2563eb" stroke-width="3" fill="none" stroke-dasharray="30 70"/></svg> Sending\u2026';
 }
-function markRowDone(jobId, msg){
+function markRowDone(jobId){
   var row=document.getElementById('row-'+jobId);
   if(row){
     var btn=row.querySelector('.email-btn');
@@ -170,13 +194,13 @@ function markRowDone(jobId, msg){
       btn.style.opacity='.5';
       btn.style.borderColor='#16a34a';
       btn.style.color='#16a34a';
-      btn.innerHTML='<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Sent';
+      btn.innerHTML='<svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Sent';
     }
     var cb=row.querySelector('.row-cb');
     if(cb){cb.checked=false;cb.disabled=true;}
   }
 }
-function markRowFail(jobId, error){
+function markRowFail(jobId){
   var row=document.getElementById('row-'+jobId);
   if(row){
     var btn=row.querySelector('.email-btn');
@@ -185,11 +209,58 @@ function markRowFail(jobId, error){
       btn.style.opacity='1';
       btn.style.borderColor='#dc2626';
       btn.style.color='#dc2626';
-      btn.innerHTML='<svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#dc2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Failed';
+      btn.innerHTML='<svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="#dc2626" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> Failed';
     }
   }
 }
+function buildMailto(jobId){
+  var row=document.getElementById('row-'+jobId);
+  if(!row) return null;
+  var email=row.getAttribute('data-client-email')||'';
+  var ref=row.getAttribute('data-client-ref')||'';
+  var customer=row.getAttribute('data-customer')||'';
+  var status=row.getAttribute('data-status')||'';
+  var lastAction=row.getAttribute('data-last-action')||'N/A';
+  if(!email||email.indexOf('@')<0) return null;
+  var subjParts=['Further Instructions Required'];
+  if(ref) subjParts.push(ref);
+  if(customer) subjParts.push(customer);
+  var subject=subjParts.join(' \u2013 ');
+  var refDisplay=ref||'File #'+jobId;
+  var body='This file has been in "'+status+'" for some time and is now pending closure.\n\n'
+    +'Client Reference: '+refDisplay+'\n'
+    +'Customer: '+customer+'\n'
+    +'Last Action: '+lastAction+'\n\n'
+    +'Please provide further instructions for any further actioning required. '
+    +'In the absence of further instructions, the file will remain pending closure.\n\n'
+    +'Kind regards,\n'
+    +'South West Process Serving & Investigation Agency';
+  return 'mailto:'+encodeURIComponent(email)
+    +'?subject='+encodeURIComponent(subject)
+    +'&body='+encodeURIComponent(body);
+}
+function openOutlook(jobId){
+  var row=document.getElementById('row-'+jobId);
+  if(!row) return;
+  var email=(row.getAttribute('data-client-email')||'').trim();
+  if(!email||email.indexOf('@')<0){
+    showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">No Client Email</div>'
+      +'<div>This file does not have a valid client email address. Please add one before using this action.</div>');
+    return;
+  }
+  var url=buildMailto(jobId);
+  if(url) window.location.href=url;
+}
 function emailSingle(jobId, btn){
+  var row=document.getElementById('row-'+jobId);
+  if(row){
+    var email=(row.getAttribute('data-client-email')||'').trim();
+    if(!email||email.indexOf('@')<0){
+      showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">No Client Email</div>'
+        +'<div>This file does not have a valid client email address. Please add one before using this action.</div>');
+      return;
+    }
+  }
   if(!confirm('Send email to the client for this file and reschedule for 7 working days?')) return;
   disableRowBtn(btn);
   fetch('/reports/aged-suspended/email',{
@@ -205,16 +276,16 @@ function emailSingle(jobId, btn){
           +'<div>Email sent and file rescheduled to <strong>'+det.reschedule_date+'</strong>.</div>'
           +'<div style="font-size:.78rem;color:#64748b;margin-top:6px;">Recipient: '+det.recipient+'</div>');
       } else {
-        markRowFail(jobId, det.error);
+        markRowFail(jobId);
         showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Email failed</div><div>'+det.error+'</div>');
       }
     } else {
-      markRowFail(jobId, d.error||'Unknown error');
+      markRowFail(jobId);
       showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</div><div>'+(d.error||'Unknown error')+'</div>');
     }
     updateBulkBtn();
   }).catch(function(e){
-    markRowFail(jobId, e.message);
+    markRowFail(jobId);
     showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</div><div>'+e.message+'</div>');
   });
 }
@@ -240,15 +311,15 @@ function bulkEmail(){
         if(det.ok){
           markRowDone(det.job_id);
         } else {
-          markRowFail(det.job_id, det.error);
+          markRowFail(det.job_id);
           failDetails.push('<li>File #'+det.job_id+': '+det.error+'</li>');
         }
       });
       var html='<div style="font-weight:600;margin-bottom:8px;">Bulk Email Results</div>';
-      html+='<div>'+d.sent+' email(s) sent successfully.</div>';
-      html+='<div>'+d.sent+' file(s) rescheduled to <strong>'+d.reschedule_date+'</strong>.</div>';
+      html+='<div><strong>'+d.sent+'</strong> email(s) sent successfully.</div>';
+      if(d.sent>0) html+='<div><strong>'+d.sent+'</strong> file(s) rescheduled to <strong>'+d.reschedule_date+'</strong>.</div>';
       if(d.failed>0){
-        html+='<div style="color:#dc2626;margin-top:6px;">'+d.failed+' failure(s):</div><ul style="margin:4px 0 0 16px;font-size:.82rem;">'+failDetails.join('')+'</ul>';
+        html+='<div style="color:#dc2626;margin-top:6px;"><strong>'+d.failed+'</strong> failure(s):</div><ul style="margin:4px 0 0 16px;font-size:.82rem;">'+failDetails.join('')+'</ul>';
       }
       showModal(html);
     } else {
@@ -259,6 +330,43 @@ function bulkEmail(){
     showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">Error</div><div>'+e.message+'</div>');
     updateBulkBtn();
   });
+}
+function bulkOutlook(){
+  var ids=getSelectedIds();
+  if(!ids.length) return;
+  var noEmail=[];
+  ids.forEach(function(id){
+    var row=document.getElementById('row-'+id);
+    if(row){
+      var email=(row.getAttribute('data-client-email')||'').trim();
+      if(!email||email.indexOf('@')<0) noEmail.push(id);
+    }
+  });
+  var validIds=ids.filter(function(id){return noEmail.indexOf(id)<0;});
+  if(!validIds.length){
+    showModal('<div style="color:#dc2626;font-weight:600;margin-bottom:8px;">No Valid Emails</div>'
+      +'<div>None of the selected files have a valid client email address.</div>');
+    return;
+  }
+  var msg='Open '+validIds.length+' email draft(s) in your mail client?';
+  if(noEmail.length>0) msg+='\n\n'+noEmail.length+' file(s) skipped (no client email).';
+  if(!confirm(msg)) return;
+  var opened=0;
+  var skipped=noEmail.length;
+  validIds.forEach(function(id, idx){
+    var url=buildMailto(id);
+    if(url){
+      setTimeout(function(){window.open(url,'_blank');}, idx*300);
+      opened++;
+    } else {
+      skipped++;
+    }
+  });
+  var html='<div style="font-weight:600;margin-bottom:8px;">Outlook Drafts</div>';
+  html+='<div><strong>'+opened+'</strong> draft(s) opened in your mail client.</div>';
+  if(skipped>0) html+='<div style="color:#92400e;margin-top:4px;"><strong>'+skipped+'</strong> file(s) skipped (no valid client email).</div>';
+  html+='<div style="font-size:.78rem;color:#64748b;margin-top:8px;">No files were rescheduled. Use Email Client to send and auto-reschedule.</div>';
+  showModal(html);
 }
 </script>
 <style>

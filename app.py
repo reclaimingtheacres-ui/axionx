@@ -14350,6 +14350,7 @@ def _aged_report_query(conn, min_days=7, client_id=None):
                COALESCE(cu.first_name || ' ' || cu.last_name, '') AS customer_name,
                j.status,
                cl.name AS client_name,
+               cl.email AS client_email,
                j.client_id,
                j.created_at AS job_created_at,
                COALESCE(
@@ -14396,6 +14397,7 @@ def _aged_report_query(conn, min_days=7, client_id=None):
             'customer_name': (r['customer_name'] or '').strip(),
             'status': r['status'],
             'client_name': r['client_name'] or '',
+            'client_email': (r['client_email'] or '').strip(),
             'days': days,
             'last_activity': ls_date.strftime('%d/%m/%Y') if ls_date else 'N/A',
             'last_activity_sort': ls_date.isoformat() if ls_date else '1900-01-01',
