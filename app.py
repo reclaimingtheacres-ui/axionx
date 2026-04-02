@@ -14353,25 +14353,9 @@ def _aged_report_query(conn, min_days=7, client_id=None):
                j.client_id,
                j.created_at AS job_created_at,
                COALESCE(
-                   (SELECT MAX(ts) FROM (
-                       SELECT MAX(COALESCE(ju.attend_date, ju.created_at)) AS ts
-                       FROM job_updates ju WHERE ju.job_id = j.id
-                       UNION ALL
-                       SELECT MAX(jfn.created_at) AS ts
-                       FROM job_field_notes jfn WHERE jfn.job_id = j.id
-                       UNION ALL
-                       SELECT MAX(i.occurred_at) AS ts
-                       FROM interactions i WHERE i.job_id = j.id
-                         AND i.event_type NOT IN ('System','Client Link')
-                       UNION ALL
-                       SELECT MAX(jll.performed_at) AS ts
-                       FROM job_lifecycle_log jll WHERE jll.job_id = j.id
-                       UNION ALL
-                       SELECT MAX(mal.created_at) AS ts
-                       FROM message_audit_log mal WHERE mal.job_id = j.id
-                   )),
+                   (SELECT MAX(s.scheduled_for) FROM schedules s WHERE s.job_id = j.id),
                    j.created_at
-               ) AS last_activity
+               ) AS last_scheduled
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients cl   ON cl.id = j.client_id
@@ -14382,7 +14366,7 @@ def _aged_report_query(conn, min_days=7, client_id=None):
         sql += " AND j.client_id = ?"
         params.append(client_id)
 
-    sql += " ORDER BY last_activity ASC, j.id ASC"
+    sql += " ORDER BY last_scheduled ASC, j.id ASC"
 
     rows = conn.execute(sql, params).fetchall()
 
@@ -14390,16 +14374,16 @@ def _aged_report_query(conn, min_days=7, client_id=None):
     today = _date.today()
     results = []
     for r in rows:
-        la = r['last_activity']
-        la_date = None
-        if la:
+        ls = r['last_scheduled']
+        ls_date = None
+        if ls:
             try:
-                la_date = _dt.strptime(la[:10], '%Y-%m-%d').date()
+                ls_date = _dt.strptime(ls[:10], '%Y-%m-%d').date()
             except (ValueError, TypeError):
                 pass
 
-        if la_date:
-            days = (today - la_date).days
+        if ls_date:
+            days = (today - ls_date).days
         else:
             days = 999
 
@@ -14413,8 +14397,8 @@ def _aged_report_query(conn, min_days=7, client_id=None):
             'status': r['status'],
             'client_name': r['client_name'] or '',
             'days': days,
-            'last_activity': la_date.strftime('%d/%m/%Y') if la_date else 'N/A',
-            'last_activity_sort': la_date.isoformat() if la_date else '1900-01-01',
+            'last_activity': ls_date.strftime('%d/%m/%Y') if ls_date else 'N/A',
+            'last_activity_sort': ls_date.isoformat() if ls_date else '1900-01-01',
         })
 
     return results
@@ -14609,23 +14593,7 @@ def report_aged_suspended_email():
                cl.email AS client_email,
                cl.name AS client_name,
                COALESCE(
-                   (SELECT MAX(ts) FROM (
-                       SELECT MAX(COALESCE(ju.attend_date, ju.created_at)) AS ts
-                       FROM job_updates ju WHERE ju.job_id = j.id
-                       UNION ALL
-                       SELECT MAX(jfn.created_at) AS ts
-                       FROM job_field_notes jfn WHERE jfn.job_id = j.id
-                       UNION ALL
-                       SELECT MAX(i.occurred_at) AS ts
-                       FROM interactions i WHERE i.job_id = j.id
-                         AND i.event_type NOT IN ('System','Client Link')
-                       UNION ALL
-                       SELECT MAX(jll.performed_at) AS ts
-                       FROM job_lifecycle_log jll WHERE jll.job_id = j.id
-                       UNION ALL
-                       SELECT MAX(mal.created_at) AS ts
-                       FROM message_audit_log mal WHERE mal.job_id = j.id
-                   )),
+                   (SELECT MAX(s.scheduled_for) FROM schedules s WHERE s.job_id = j.id),
                    j.created_at
                ) AS last_activity
         FROM jobs j
