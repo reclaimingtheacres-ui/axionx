@@ -1,5 +1,61 @@
 # Axion Prototype
 
+---
+
+## CONTROLLED BASELINE — 2026-04-14
+
+### Current Deployed State
+- **Azure live commit**: `6db7326` — "Add ability to upgrade repositories and collect data" (deployed 2026-04-14)
+- **Replit branch**: `feature-upgrade-repo-collect-clean` at same change set
+- **Status**: Replit and Azure are fully aligned. No pending release candidates.
+
+### Last Deployed Change (2026-04-14)
+| File | Change | Category | DB change |
+|---|---|---|---|
+| `app.py` | Added "Upgrade to Repo/Collect" to job type seed list + import detection | backend-only | None (seed data only) |
+| `templates/import_jobs.html` | Updated help text to list the new type | UI/template | None |
+
+### Replit Database Schema Corrections Applied (2026-04-14)
+The Replit `axion.db` required the following corrections to align with the production schema. Azure already contains all three.
+
+| Object | Type | Reason |
+|---|---|---|
+| `job_lifecycle_log` | Table created | Missing from Replit snapshot |
+| `message_audit_log` | Table created | Missing from Replit snapshot |
+| `schedules.hidden` | Column added (`INTEGER NOT NULL DEFAULT 0`) | Migration had not run locally |
+
+### Permanent Workflow Rules (ENFORCED)
+
+**One change per deploy.** No bundled changes. No unrelated UI changes.
+
+**Release classification required** for every task:
+- `backend-only` / `UI/template` / `iOS/mobile` / `config/environment` / `database/schema`
+- If a change touches more than one category, explicit approval required before proceeding.
+
+**Pre-work checklist** before any future task:
+1. Preview matches live baseline
+2. Replit DB schema is aligned with current code
+3. No uncommitted or unrelated changes present
+4. New task is isolated from unfinished previous work
+
+**Mandatory output before any deploy recommendation:**
+1. Exact files changed
+2. Exact reason each file changed
+3. Whether any database/schema change is required
+4. Confirmation no unrelated files were touched
+5. Confirmation preview still matches live except for the requested change
+
+**Prohibited:**
+- Collateral/silent UI changes
+- Layout drift
+- Deploying from older snapshots not aligned with current live baseline
+- Cherry-picking from orphaned/old commits
+- Broad branch cuts from older commits
+
+**Deploys**: Replit prepares release candidates only. User approves and deploys manually to Azure.
+
+---
+
 ## Overview
 Axion Prototype is a Flask-based field operations management application designed to streamline field operations, improve job dispatching, and enhance agent productivity. It focuses on efficient tracking of jobs, clients, customers, assets, cues, and staff. Key capabilities include comprehensive job management, role-based access, a dynamic queueing system, audit logging, monthly reporting, and robust field resource management. The system also integrates a Licence Plate Recognition (LPR) system with real-time plate lookups, watchlist hits, agent dispatch, and AI/ML-driven predictive patrol intelligence to identify high-opportunity patrol areas and automate dispatch processes. The project emphasizes mobile accessibility and data-driven decision-making.
 
