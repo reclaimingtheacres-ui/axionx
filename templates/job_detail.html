@@ -298,7 +298,7 @@
               <div class="{% if not loop.first %}mt-2 pt-2{% endif %}" {% if not loop.first %}style="border-top:1px solid var(--line)"{% endif %}>
                 <div class="d-flex align-items-start justify-content-between gap-2">
                   <div>
-                    <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.68rem;font-weight:600">{{ lc.role }}</span>
+                    <span class="badge mb-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.68rem;font-weight:600">{% if lc.role[:7] == 'Other: ' %}{{ lc.role[7:] }}{% else %}{{ lc.role }}{% endif %}</span>
                     {% if lc.company %}<div class="fw-semibold small">{{ lc.company }}</div>{% endif %}
                     <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
                     {% set _lc_best_addr = lc.address or job.job_address or '' %}
@@ -313,6 +313,7 @@
                   <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
                     {% if session.get('role') in ('admin', 'both') %}
                       <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenEditCustomer({{ lc.customer_id }})">Update Customer Details</button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" data-jcid="{{ lc.jc_id }}" data-role="{{ lc.role|e }}" onclick="axOpenEditRole(this.dataset.jcid, this.dataset.role)">Edit Role</button>
                     {% endif %}
                     {% if session.get('role') in ('admin', 'both') and job_linked_customers|length > 1 %}
                       <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
@@ -2936,14 +2937,21 @@ document.addEventListener('click', function(e) {
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Role</label>
-            <select class="form-select" name="role">
+            <select class="form-select" name="role" id="acj_role" onchange="acjRoleChange()">
               <option value="Primary">Primary</option>
-              <option value="Director">Director</option>
+              <option value="Co-Borrower">Co-Borrower</option>
               <option value="Guarantor">Guarantor</option>
-              <option value="Borrower">Borrower</option>
+              <option value="Director">Director</option>
+              <option value="Partner">Partner</option>
               <option value="Spouse">Spouse</option>
+              <option value="Occupant">Occupant</option>
+              <option value="Third Party in Possession">Third Party in Possession</option>
               <option value="Other">Other</option>
             </select>
+          </div>
+          <div class="mb-3" id="acj_other_div" style="display:none">
+            <label class="form-label fw-semibold">Custom role label</label>
+            <input type="text" class="form-control form-control-sm" name="role_other" id="acj_role_other" placeholder="e.g. Executor, Trustee…">
           </div>
           <div class="d-flex justify-content-between align-items-center">
             <a href="/customers/new?return_job={{ job.id }}" class="btn btn-outline-secondary btn-sm">Create New Customer</a>
@@ -6057,6 +6065,74 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+</script>
+
+<!-- Edit Customer Role Modal -->
+<div class="modal fade" id="editCustRoleModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content" style="border-radius:14px;border:1px solid var(--line)">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h6 class="modal-title fw-bold">Change Customer Role</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form method="post" id="ecrForm">
+          <div class="mb-3">
+            <label class="form-label fw-semibold small">Role</label>
+            <select class="form-select form-select-sm" name="role" id="ecrRole" onchange="ecrRoleChange()">
+              <option value="Primary">Primary</option>
+              <option value="Co-Borrower">Co-Borrower</option>
+              <option value="Guarantor">Guarantor</option>
+              <option value="Director">Director</option>
+              <option value="Partner">Partner</option>
+              <option value="Spouse">Spouse</option>
+              <option value="Occupant">Occupant</option>
+              <option value="Third Party in Possession">Third Party in Possession</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="mb-3" id="ecrOtherDiv" style="display:none">
+            <label class="form-label fw-semibold small">Custom role label</label>
+            <input type="text" class="form-control form-control-sm" name="role_other" id="ecrRoleOther" placeholder="e.g. Executor, Trustee…">
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function acjRoleChange() {
+  var sel = document.getElementById('acj_role');
+  var div = document.getElementById('acj_other_div');
+  if (sel && div) div.style.display = sel.value === 'Other' ? '' : 'none';
+}
+function ecrRoleChange() {
+  var sel = document.getElementById('ecrRole');
+  var div = document.getElementById('ecrOtherDiv');
+  if (sel && div) div.style.display = sel.value === 'Other' ? '' : 'none';
+}
+function axOpenEditRole(jcId, currentRole) {
+  var roleEl   = document.getElementById('ecrRole');
+  var otherDiv = document.getElementById('ecrOtherDiv');
+  var otherEl  = document.getElementById('ecrRoleOther');
+  var form     = document.getElementById('ecrForm');
+  form.action  = '/jobs/{{ job.id }}/customers/' + jcId + '/role';
+  var isOther  = currentRole.startsWith('Other: ');
+  if (isOther) {
+    roleEl.value  = 'Other';
+    otherEl.value = currentRole.slice(7);
+    otherDiv.style.display = '';
+  } else {
+    roleEl.value  = currentRole;
+    otherEl.value = '';
+    otherDiv.style.display = 'none';
+  }
+  new bootstrap.Modal(document.getElementById('editCustRoleModal')).show();
+}
 </script>
 
 {% endblock %}

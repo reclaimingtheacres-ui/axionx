@@ -4217,6 +4217,19 @@ def _job_create_inner():
             VALUES (?, ?, 'Primary', 0, ?)
         """, (job_id, customer_id, now))
 
+    extra_cids  = request.form.getlist("extra_customer_ids[]")
+    extra_roles = request.form.getlist("extra_customer_roles[]")
+    for i, (ecid_raw, erole_raw) in enumerate(zip(extra_cids, extra_roles)):
+        ecid_raw = (ecid_raw or "").strip()
+        if not ecid_raw or not ecid_raw.isdigit():
+            continue
+        ecid  = int(ecid_raw)
+        erole = (erole_raw or "Co-Borrower").strip() or "Co-Borrower"
+        cur.execute("""
+            INSERT OR IGNORE INTO job_customers (job_id, customer_id, role, sort_order, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (job_id, ecid, erole, i + 1, now))
+
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -4557,7 +4570,7 @@ def job_detail(job_id: int):
     priorities = ["Low", "Normal", "High", "Urgent"]
     item_types = ["no_asset", "vehicle", "motorcycle", "trailer", "property", "equipment", "other"]
     doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
-    customer_roles = ["Primary", "Director", "Guarantor", "Borrower", "Spouse", "Other"]
+    customer_roles = ["Primary", "Co-Borrower", "Guarantor", "Director", "Partner", "Spouse", "Occupant", "Third Party in Possession", "Other"]
 
     conn3 = db()
     job_types_rows = conn3.execute("SELECT name FROM job_types WHERE active=1 ORDER BY name").fetchall()
@@ -4678,6 +4691,9 @@ def _sync_job_customer_id(cur, job_id):
 def job_customer_add(job_id: int):
     raw_cid = request.form.get("customer_id", "").strip()
     role = request.form.get("role", "Primary").strip()
+    role_other = request.form.get("role_other", "").strip()
+    if role == "Other" and role_other:
+        role = f"Other: {role_other}"
     if not raw_cid or not raw_cid.isdigit():
         flash("Please select a customer.", "warning")
         return redirect(url_for("job_detail", job_id=job_id))
@@ -4724,6 +4740,26 @@ def job_customer_remove(job_id: int, jc_id: int):
     conn.commit()
     conn.close()
     flash("Customer removed from job.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
+@app.post("/jobs/<int:job_id>/customers/<int:jc_id>/role")
+@login_required
+@admin_required
+def job_customer_role(job_id: int, jc_id: int):
+    role = request.form.get("role", "").strip()
+    role_other = request.form.get("role_other", "").strip()
+    if not role:
+        flash("Please select a role.", "warning")
+        return redirect(url_for("job_detail", job_id=job_id))
+    if role == "Other" and role_other:
+        role = f"Other: {role_other}"
+    conn = db()
+    conn.execute("UPDATE job_customers SET role = ? WHERE id = ? AND job_id = ?",
+                 (role, jc_id, job_id))
+    conn.commit()
+    conn.close()
+    flash("Customer role updated.", "success")
     return redirect(url_for("job_detail", job_id=job_id))
 
 

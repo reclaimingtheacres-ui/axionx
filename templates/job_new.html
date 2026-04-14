@@ -177,6 +177,13 @@
             </div>
           </div>
         </div>
+        <!-- Extra Linked Customers -->
+        <div class="nj-row" style="flex-direction:column;gap:.4rem">
+          <div id="njExtraCustList"></div>
+          <div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem" onclick="njAddExtraCustomer()">+ Add Another Customer</button>
+          </div>
+        </div>
         <div class="nj-row">
           <div style="flex:1;">
             <label class="nj-lbl">Customer Address {{ conf_badge('customer_address') }}</label>
@@ -1683,6 +1690,99 @@ window.submitAddJob = function() {
     clearInterval(_draftTimer);
     clearInterval(_tickTimer);
   });
+})();
+</script>
+
+<script>
+(function(){
+  var NJ_ROLES = ["Co-Borrower","Guarantor","Director","Partner","Spouse","Occupant","Third Party in Possession","Other"];
+  var _njCount = 0;
+
+  window.njAddExtraCustomer = function() {
+    _njCount++;
+    var idx = _njCount;
+    var rolesHtml = NJ_ROLES.map(function(r){
+      return '<option value="'+r+'">'+r+'</option>';
+    }).join('');
+    var el = document.createElement('div');
+    el.id = 'njec'+idx;
+    el.className = 'mt-2 pt-2';
+    el.style.borderTop = '1px dashed var(--line)';
+    el.innerHTML =
+      '<div class="d-flex align-items-center justify-content-between mb-1">'
+      +'<span style="font-size:.72rem;color:var(--muted);font-weight:600">Additional Customer</span>'
+      +'<button type="button" class="btn btn-sm p-0" style="color:#ef4444;font-size:.7rem;line-height:1" onclick="njRemoveExtra('+idx+')">Remove</button>'
+      +'</div>'
+      +'<div class="position-relative mb-1">'
+      +'  <input type="text" class="form-control form-control-sm" id="njec_s'+idx+'" placeholder="Search customer\u2026" autocomplete="off" spellcheck="false">'
+      +'  <input type="hidden" name="extra_customer_ids[]" id="njec_v'+idx+'" value="">'
+      +'  <div id="njec_d'+idx+'" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12)"></div>'
+      +'</div>'
+      +'<div class="d-flex gap-2 align-items-center">'
+      +'  <select class="form-select form-select-sm" name="extra_customer_roles[]" id="njec_r'+idx+'" style="max-width:240px" onchange="njEcRC('+idx+')">'
+      +'    '+rolesHtml
+      +'  </select>'
+      +'  <input type="text" class="form-control form-control-sm" id="njec_o'+idx+'" placeholder="Custom label\u2026" style="display:none;max-width:150px">'
+      +'</div>';
+    document.getElementById('njExtraCustList').appendChild(el);
+    _njInitTypeahead(idx);
+  };
+
+  window.njRemoveExtra = function(idx) {
+    var el = document.getElementById('njec'+idx);
+    if (el) el.parentNode.removeChild(el);
+  };
+
+  window.njEcRC = function(idx) {
+    var sel = document.getElementById('njec_r'+idx);
+    var other = document.getElementById('njec_o'+idx);
+    if (sel && other) other.style.display = sel.value === 'Other' ? '' : 'none';
+  };
+
+  function _njInitTypeahead(idx) {
+    var sEl = document.getElementById('njec_s'+idx);
+    var vEl = document.getElementById('njec_v'+idx);
+    var dEl = document.getElementById('njec_d'+idx);
+    if (!sEl) return;
+    sEl.addEventListener('input', function(){
+      var q = this.value.toLowerCase();
+      if (q.length < 1) { dEl.style.display='none'; return; }
+      var hits = (window.CUSTOMER_DATA||[]).filter(function(c){ return c.label.toLowerCase().includes(q); }).slice(0,20);
+      if (!hits.length) { dEl.style.display='none'; return; }
+      dEl.innerHTML = hits.map(function(it){
+        return '<div style="padding:8px 12px;cursor:pointer;font-size:.88rem;border-bottom:1px solid var(--line)" data-id="'+it.id+'" data-label="'+it.label.replace(/"/g,'&quot;')+'">'
+          +(typeof escHtml==='function'?escHtml(it.label):it.label)+'</div>';
+      }).join('');
+      dEl.style.display='block';
+      Array.prototype.forEach.call(dEl.children, function(row){
+        row.addEventListener('mouseenter', function(){ this.style.background='rgba(96,165,250,.12)'; });
+        row.addEventListener('mouseleave', function(){ this.style.background=''; });
+        row.addEventListener('mousedown', function(e){
+          e.preventDefault();
+          sEl.value = row.dataset.label;
+          vEl.value = row.dataset.id;
+          sEl.style.borderColor='#22c55e';
+          dEl.style.display='none';
+        });
+      });
+    });
+    sEl.addEventListener('blur', function(){ setTimeout(function(){ dEl.style.display='none'; },200); });
+  }
+
+  /* Before submit: compose "Other: …" role values */
+  var _njForm = document.getElementById('newJobForm');
+  if (_njForm) {
+    _njForm.addEventListener('submit', function(){
+      document.querySelectorAll('#njExtraCustList [id^="njec"]').forEach(function(block){
+        var idx = block.id.replace('njec','');
+        var rEl = document.getElementById('njec_r'+idx);
+        var oEl = document.getElementById('njec_o'+idx);
+        if (rEl && rEl.value === 'Other' && oEl && oEl.value.trim()) {
+          rEl.value = 'Other: '+oEl.value.trim();
+        }
+      });
+    }, true);
+  }
 })();
 </script>
 
