@@ -861,7 +861,7 @@ def init_db():
             active INTEGER NOT NULL DEFAULT 1
         )
     """)
-    _default_job_types = ["Repo/Collect", "Collect Only", "Field Call", "Process Serve"]
+    _default_job_types = ["Repo/Collect", "Collect Only", "Field Call", "Process Serve", "Upgrade to Repo/Collect"]
     cur.execute("SELECT name FROM job_types")
     existing_jt = {r["name"] for r in cur.fetchall()}
     for jt_name in _default_job_types:
@@ -11508,6 +11508,8 @@ def import_jobs():
             return "Field Call"
         if "process serve" in raw_lower:
             return "Process Serve"
+        if "upgrade to repo" in raw_lower:
+            return "Upgrade to Repo/Collect"
         if "repo only" in raw_lower or "upgraded" in raw_lower:
             return "Repo/Collect"
         return "Field Call"
