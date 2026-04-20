@@ -84,7 +84,7 @@ is_prod = os.environ.get("ENV", "").lower() in ("prod", "production") or os.envi
 
 app.secret_key = os.environ.get("SESSION_SECRET", "axion-dev-secret")
 app.config.update(
-    PERMANENT_SESSION_LIFETIME=_td(hours=8),
+    PERMANENT_SESSION_LIFETIME=_td(days=30),
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="None",
