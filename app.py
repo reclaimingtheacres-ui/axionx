@@ -101,6 +101,11 @@ _LEGACY_UPLOAD_FOLDER = os.path.abspath("uploads")
 if _LEGACY_UPLOAD_FOLDER != os.path.abspath(UPLOAD_FOLDER):
     os.makedirs(_LEGACY_UPLOAD_FOLDER, exist_ok=True)
 
+# In-memory cache for serve_upload file-status lookups (filename → file_status | None).
+# Avoids a DB round-trip on every image/document request. Cleared on startup only;
+# stale entries are harmless because file_status rarely changes after the row is written.
+_file_status_cache: dict = {}
+
 
 @app.after_request
 def add_security_headers(resp):
@@ -166,20 +171,16 @@ except Exception as _e:
 
 
 def upload_to_blob(file_storage, blob_name: str) -> int:
-    """Upload a Werkzeug FileStorage to Azure Blob or local uploads folder. Returns file size in bytes."""
+    """Write file to local disk immediately; background-sync to Azure if configured.
+    Returns file size in bytes. HTTP response is never blocked by Azure latency."""
     data = file_storage.read()
     ct   = file_storage.mimetype or mimetypes.guess_type(blob_name)[0] or "application/octet-stream"
+    dest = os.path.join(UPLOAD_FOLDER, blob_name)
+    with open(dest, "wb") as fh:
+        fh.write(data)
     if _uploads_container:
-        _uploads_container.upload_blob(
-            name=blob_name,
-            data=data,
-            overwrite=True,
-            content_settings=ContentSettings(content_type=ct),
-        )
-    else:
-        dest = os.path.join(UPLOAD_FOLDER, blob_name)
-        with open(dest, "wb") as fh:
-            fh.write(data)
+        t = threading.Thread(target=_bg_azure_upload, args=(data, blob_name, ct), daemon=True)
+        t.start()
     return len(data)
 
 
@@ -299,16 +300,14 @@ def _log_oversized_image(file_obj, context: str = ""):
 
 def _save_bytes_to_storage(data: bytes, blob_name: str,
                             content_type: str = "application/pdf") -> int:
-    """Save raw bytes to Azure Blob Storage or local uploads folder. Returns size."""
+    """Write bytes to local disk immediately; background-sync to Azure if configured.
+    Returns size. HTTP response is never blocked by Azure latency."""
+    dest = os.path.join(UPLOAD_FOLDER, blob_name)
+    with open(dest, "wb") as fh:
+        fh.write(data)
     if _uploads_container:
-        _uploads_container.upload_blob(
-            name=blob_name, data=data, overwrite=True,
-            content_settings=ContentSettings(content_type=content_type),
-        )
-    else:
-        dest = os.path.join(UPLOAD_FOLDER, blob_name)
-        with open(dest, "wb") as fh:
-            fh.write(data)
+        t = threading.Thread(target=_bg_azure_upload, args=(data, blob_name, content_type), daemon=True)
+        t.start()
     return len(data)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -4539,11 +4538,16 @@ def job_detail(job_id: int):
     """, (job_id,))
     raw_notes = cur.fetchall()
 
-    field_notes = []
-    for note in raw_notes:
-        cur.execute("SELECT * FROM job_note_files WHERE job_field_note_id = ?", (note["id"],))
-        files = cur.fetchall()
-        field_notes.append({"note": note, "files": files})
+    _raw_note_ids = [n["id"] for n in raw_notes]
+    _note_files_map: dict = {}
+    if _raw_note_ids:
+        _ph = ",".join("?" * len(_raw_note_ids))
+        for _fr in cur.execute(
+            f"SELECT * FROM job_note_files WHERE job_field_note_id IN ({_ph}) ORDER BY id",
+            _raw_note_ids
+        ).fetchall():
+            _note_files_map.setdefault(_fr["job_field_note_id"], []).append(_fr)
+    field_notes = [{"note": n, "files": _note_files_map.get(n["id"], [])} for n in raw_notes]
 
     cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
     booking_types = cur.fetchall()
@@ -4591,11 +4595,9 @@ def job_detail(job_id: int):
         cur.execute("SELECT id, first_name, last_name, company FROM customers ORDER BY last_name, first_name")
     all_customers = cur.fetchall()
 
-    conn2 = db()
-    tow_operators = conn2.execute("SELECT * FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
-    auction_yards  = conn2.execute("SELECT * FROM auction_yards WHERE active=1 ORDER BY name").fetchall()
-    form_templates = conn2.execute("SELECT * FROM form_templates WHERE active=1 ORDER BY name").fetchall()
-    conn2.close()
+    tow_operators = conn.execute("SELECT * FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
+    auction_yards  = conn.execute("SELECT * FROM auction_yards WHERE active=1 ORDER BY name").fetchall()
+    form_templates = conn.execute("SELECT * FROM form_templates WHERE active=1 ORDER BY name").fetchall()
 
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting Advice From Client", "Completed", "Invoiced", "Cancelled"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
@@ -4604,14 +4606,10 @@ def job_detail(job_id: int):
     doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
     customer_roles = ["Primary", "Co-Borrower", "Guarantor", "Director", "Partner", "Spouse", "Occupant", "Third Party in Possession", "Other"]
 
-    conn3 = db()
-    job_types_rows = conn3.execute("SELECT name FROM job_types WHERE active=1 ORDER BY name").fetchall()
-    conn3.close()
-    job_types = [r["name"] for r in job_types_rows]
+    job_types = [r["name"] for r in conn.execute("SELECT name FROM job_types WHERE active=1 ORDER BY name").fetchall()]
 
-    conn4 = db()
-    _lpr_sightings_ensure_table(conn4)
-    job_lpr_sightings = conn4.execute("""
+    _lpr_sightings_ensure_table(conn)
+    job_lpr_sightings = conn.execute("""
         SELECT s.*, u.full_name AS agent_name
         FROM lpr_sightings s
         LEFT JOIN users u ON u.id = s.user_id
@@ -4625,8 +4623,8 @@ def job_detail(job_id: int):
         reg = job_lpr_sightings[0]["registration_normalised"]
         if reg:
             try:
-                _patrol_intelligence_ensure(conn4)
-                pi_row = conn4.execute(
+                _patrol_intelligence_ensure(conn)
+                pi_row = conn.execute(
                     "SELECT * FROM lpr_patrol_intelligence WHERE registration_normalised=?",
                     (reg,)
                 ).fetchone()
@@ -4660,25 +4658,19 @@ def job_detail(job_id: int):
                     }
             except Exception:
                 pass
-    conn4.close()
 
-    conn5 = db()
-    _rl_rows = conn5.execute(
+    repo_lock_map = {r["item_id"]: (r["status"] or "Draft") for r in conn.execute(
         "SELECT item_id, status FROM repo_lock_records WHERE job_id=?", (job_id,)
-    ).fetchall()
-    conn5.close()
-    repo_lock_map = {r["item_id"]: (r["status"] or "Draft") for r in _rl_rows}
+    ).fetchall()}
 
     from_cue = request.args.get("from_cue", "")
 
-    conn6 = db()
     try:
-        known_referrals = [r["tp_referral"] for r in conn6.execute(
+        known_referrals = [r["tp_referral"] for r in conn.execute(
             "SELECT DISTINCT tp_referral FROM jobs WHERE tp_referral IS NOT NULL AND tp_referral != '' ORDER BY tp_referral"
         ).fetchall()]
     except Exception:
         known_referrals = []
-    conn6.close()
 
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
@@ -10005,14 +9997,18 @@ def serve_upload(filename):
     primary = app.config["UPLOAD_FOLDER"]
     legacy  = _LEGACY_UPLOAD_FOLDER
 
-    conn = db()
-    alt_row = conn.execute(
-        "SELECT id, filename, filepath, file_status FROM job_note_files WHERE filename=? OR filepath=?",
-        (filename, filename)
-    ).fetchone()
-    conn.close()
+    # Check in-memory cache before opening a DB connection.
+    if filename not in _file_status_cache:
+        conn = db()
+        alt_row = conn.execute(
+            "SELECT id, filename, filepath, file_status FROM job_note_files WHERE filename=? OR filepath=?",
+            (filename, filename)
+        ).fetchone()
+        conn.close()
+        _file_status_cache[filename] = dict(alt_row) if alt_row else None
+    alt_row = _file_status_cache[filename]
 
-    if alt_row and _is_file_missing(alt_row["file_status"]):
+    if alt_row and _is_file_missing(alt_row.get("file_status") if isinstance(alt_row, dict) else alt_row["file_status"]):
         return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
     if _uploads_container:
@@ -23112,17 +23108,23 @@ def _get_unread_count(conn, user_id):
         SELECT COUNT(*) c
         FROM messages m
         JOIN conversation_participants cp ON cp.conversation_id = m.conversation_id AND cp.user_id = ?
+        LEFT JOIN message_reads mr ON mr.message_id = m.id AND mr.user_id = ?
         WHERE m.sender_id != ?
           AND m.is_deleted = 0
-          AND NOT EXISTS (
-              SELECT 1 FROM message_reads mr WHERE mr.message_id = m.id AND mr.user_id = ?
-          )
+          AND mr.message_id IS NULL
     """, (user_id, user_id, user_id)).fetchone()
     return row["c"] if row else 0
 
 
 def _get_conv_list(conn, user_id):
-    """Return list of conversations for a user with last message + unread count."""
+    """Return list of conversations for a user with last message + unread count.
+
+    Batch strategy — 3 queries total regardless of conversation count:
+      Q1: conversations the user participates in (with job ref)
+      Q2: last message per conversation (window via MAX subquery)
+      Q3: per-conversation unread count (LEFT JOIN on message_reads)
+      Q4: all participants except self (one IN query)
+    """
     system_uid = _get_system_user_id(conn)
     rows = conn.execute("""
         SELECT c.id, c.type, c.job_id, c.subject, c.updated_at,
@@ -23133,34 +23135,64 @@ def _get_conv_list(conn, user_id):
         ORDER BY c.updated_at DESC
     """, (user_id,)).fetchall()
 
+    if not rows:
+        return []
+
+    cids = [r["id"] for r in rows]
+    ph = ",".join("?" * len(cids))
+
+    # Q2: last message per conversation (single scan)
+    last_msg_rows = conn.execute(f"""
+        SELECT m.conversation_id, m.body, m.created_at, u.full_name AS sender_name, m.sender_id
+        FROM messages m
+        JOIN users u ON u.id = m.sender_id
+        WHERE m.conversation_id IN ({ph}) AND m.is_deleted = 0
+          AND m.id = (
+              SELECT id FROM messages m2
+              WHERE m2.conversation_id = m.conversation_id AND m2.is_deleted = 0
+              ORDER BY m2.created_at DESC LIMIT 1
+          )
+    """, cids).fetchall()
+    last_msg_map = {r["conversation_id"]: dict(r) for r in last_msg_rows}
+
+    # Q3: unread counts per conversation (LEFT JOIN avoids correlated subquery)
+    unread_rows = conn.execute(f"""
+        SELECT m.conversation_id,
+               COUNT(m.id) AS cnt
+        FROM messages m
+        LEFT JOIN message_reads mr ON mr.message_id = m.id AND mr.user_id = ?
+        WHERE m.conversation_id IN ({ph})
+          AND m.sender_id != ?
+          AND m.is_deleted = 0
+          AND mr.id IS NULL
+        GROUP BY m.conversation_id
+    """, [user_id] + cids + [user_id]).fetchall()
+    unread_map = {r["conversation_id"]: r["cnt"] for r in unread_rows}
+
+    # Q4: participants (excluding self) for all conversations
+    others_rows = conn.execute(f"""
+        SELECT cp.conversation_id, u.id, u.full_name
+        FROM conversation_participants cp
+        JOIN users u ON u.id = cp.user_id
+        WHERE cp.conversation_id IN ({ph}) AND cp.user_id != ?
+    """, cids + [user_id]).fetchall()
+    others_map: dict = {}
+    for o in others_rows:
+        others_map.setdefault(o["conversation_id"], []).append({"id": o["id"], "full_name": o["full_name"]})
+
     result = []
     for conv in rows:
         cid = conv["id"]
-        last_msg = conn.execute("""
-            SELECT m.body, m.created_at, u.full_name sender_name, m.sender_id
-            FROM messages m JOIN users u ON u.id = m.sender_id
-            WHERE m.conversation_id = ? AND m.is_deleted = 0
-            ORDER BY m.created_at DESC LIMIT 1
-        """, (cid,)).fetchone()
-        unread = conn.execute("""
-            SELECT COUNT(*) c FROM messages m
-            WHERE m.conversation_id = ? AND m.sender_id != ? AND m.is_deleted = 0
-              AND NOT EXISTS (SELECT 1 FROM message_reads mr WHERE mr.message_id=m.id AND mr.user_id=?)
-        """, (cid, user_id, user_id)).fetchone()["c"]
-        others = conn.execute("""
-            SELECT u.id, u.full_name FROM conversation_participants cp
-            JOIN users u ON u.id = cp.user_id
-            WHERE cp.conversation_id = ? AND cp.user_id != ?
-        """, (cid, user_id)).fetchall()
+        others = others_map.get(cid, [])
         has_system = any(o["id"] == system_uid for o in others)
         is_system_only = has_system and len(others) == 1
         result.append({
             "id": cid, "type": conv["type"], "job_id": conv["job_id"],
             "job_ref": conv["job_ref"], "subject": conv["subject"],
             "updated_at": conv["updated_at"],
-            "last_msg": dict(last_msg) if last_msg else None,
-            "unread": unread,
-            "others": [dict(o) for o in others],
+            "last_msg": last_msg_map.get(cid),
+            "unread": unread_map.get(cid, 0),
+            "others": others,
             "is_system": is_system_only,
         })
     return result
