@@ -736,6 +736,10 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_assigned ON jobs(assigned_user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_client ON jobs(client_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jobs_customer ON jobs(customer_id)")
+    # Performance: cover correlated subqueries in mobile jobs list
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cpn_entity ON contact_phone_numbers(entity_type, entity_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jfn_job_review ON job_field_notes(job_id, review_status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ji_job_type ON job_items(job_id, item_type)")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS booking_types (
@@ -22730,6 +22734,8 @@ def _ensure_msg_tables(conn):
             created_at      TEXT    NOT NULL
         )
     """)
+    # Performance: unread-count query runs on every mobile page load
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_msgs_conv ON messages(conversation_id, sender_id, is_deleted)")
     conn.commit()
     _msg_tables_ready = True
 
