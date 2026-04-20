@@ -7996,13 +7996,17 @@ def repo_lock_get(job_id: int, item_id: int):
         "contact_number":   customer_mobile,
         "agent_name":       (user["full_name"] if user else ""),
         "agent_user_id":    session.get("user_id") or "",
+        # Surrendered/Repossessed Address: falls back to job address if no customer address
+        "repo_address":     job.get("job_address") or "",
     }
     if customer:
         name_parts = []
         if customer.get("first_name"): name_parts.append(customer["first_name"])
         if customer.get("last_name"):  name_parts.append(customer["last_name"])
         prefill["customer_name"] = " ".join(name_parts)
-        prefill["repo_address"]  = customer.get("address") or ""
+        # Customer address takes priority over job address for repo_address
+        if customer.get("address"):
+            prefill["repo_address"] = customer["address"]
 
     existing = {}
     rec_status = None
@@ -8041,57 +8045,66 @@ def repo_lock_get(job_id: int, item_id: int):
 @login_required
 def repo_lock_save(job_id: int, item_id: int):
     conn = db()
-    item = conn.execute("SELECT id FROM job_items WHERE id=? AND job_id=?", (item_id, job_id)).fetchone()
-    if not item:
+    try:
+        item = conn.execute("SELECT id FROM job_items WHERE id=? AND job_id=?", (item_id, job_id)).fetchone()
+        if not item:
+            conn.close()
+            return jsonify({"ok": False, "error": "Item not found"}), 404
+
+        f = request.form
+        fields = [
+            "client_name", "client_reference", "swpi_ref", "finance_company",
+            "repo_date", "start_time", "end_time",
+            "customer_name", "account_number", "repo_address", "contact_number",
+            "description", "registration", "rego_expiry", "registered", "insured", "insured_with",
+            "vin", "engine_number", "speedometer",
+            "person_present", "keys_obtained", "how_many_keys", "vol_surrender",
+            "form_13", "form_13_signed_by", "repossessed_from", "lien_paid", "security_drivable",
+            "police_notified", "station_officer",
+            "personal_effects_removed", "removed_by_who", "personal_effects_list",
+            "tyres", "body", "duco", "interior", "engine_condition", "transmission",
+            "fuel_level", "any_damage", "damage_list",
+            "tow_company_id", "tow_company_name", "tow_costs",
+            "deliver_to", "delivery_address", "expected_delivery_date",
+            "customers_intention", "other_info", "notice_delivery",
+            "agent_name", "agent_user_id",
+        ]
+
+        values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
+        ts = now_ts()
+        uid = session.get("user_id")
+
+        existing = conn.execute(
+            "SELECT id FROM repo_lock_records WHERE job_id=? AND item_id=? ORDER BY id DESC LIMIT 1",
+            (job_id, item_id)
+        ).fetchone()
+
+        if existing:
+            set_clause = ", ".join(f"{k}=?" for k in fields)
+            set_clause += ", status='Draft', updated_by_user_id=?, updated_at=?"
+            params = [values[k] for k in fields] + [uid, ts, existing["id"]]
+            conn.execute(f"UPDATE repo_lock_records SET {set_clause} WHERE id=?", params)
+            rec_id = existing["id"]
+            is_new = False
+        else:
+            cols = ", ".join(fields) + ", job_id, item_id, status, created_by_user_id, created_at, updated_by_user_id, updated_at"
+            placeholders = ", ".join("?" for _ in fields) + ", ?, ?, ?, ?, ?, ?, ?"
+            params = [values[k] for k in fields] + [job_id, item_id, "Draft", uid, ts, uid, ts]
+            cur = conn.execute(f"INSERT INTO repo_lock_records ({cols}) VALUES ({placeholders})", params)
+            rec_id = cur.lastrowid
+            is_new = True
+
+        conn.commit()
         conn.close()
-        return jsonify({"error": "Not found"}), 404
+        return jsonify({"ok": True, "id": rec_id, "is_new": is_new, "status": "Draft"})
 
-    f = request.form
-    fields = [
-        "client_name", "client_reference", "swpi_ref", "finance_company",
-        "repo_date", "start_time", "end_time",
-        "customer_name", "account_number", "repo_address", "contact_number",
-        "description", "registration", "rego_expiry", "registered", "insured", "insured_with",
-        "vin", "engine_number", "speedometer",
-        "person_present", "keys_obtained", "how_many_keys", "vol_surrender",
-        "form_13", "form_13_signed_by", "repossessed_from", "lien_paid", "security_drivable",
-        "police_notified", "station_officer",
-        "personal_effects_removed", "removed_by_who", "personal_effects_list",
-        "tyres", "body", "duco", "interior", "engine_condition", "transmission",
-        "fuel_level", "any_damage", "damage_list",
-        "tow_company_id", "tow_company_name", "tow_costs",
-        "deliver_to", "delivery_address", "expected_delivery_date",
-        "customers_intention", "other_info", "notice_delivery",
-        "agent_name", "agent_user_id",
-    ]
-
-    values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
-    ts = now_ts()
-    uid = session.get("user_id")
-
-    existing = conn.execute(
-        "SELECT id FROM repo_lock_records WHERE job_id=? AND item_id=? ORDER BY id DESC LIMIT 1",
-        (job_id, item_id)
-    ).fetchone()
-
-    if existing:
-        set_clause = ", ".join(f"{k}=?" for k in fields)
-        set_clause += ", status='Draft', updated_by_user_id=?, updated_at=?"
-        params = [values[k] for k in fields] + [uid, ts, existing["id"]]
-        conn.execute(f"UPDATE repo_lock_records SET {set_clause} WHERE id=?", params)
-        rec_id = existing["id"]
-        is_new = False
-    else:
-        cols = ", ".join(fields) + ", job_id, item_id, status, created_by_user_id, created_at, updated_by_user_id, updated_at"
-        placeholders = ", ".join("?" for _ in fields) + ", ?, ?, ?, ?, ?, ?, ?"
-        params = [values[k] for k in fields] + [job_id, item_id, "Draft", uid, ts, uid, ts]
-        cur = conn.execute(f"INSERT INTO repo_lock_records ({cols}) VALUES ({placeholders})", params)
-        rec_id = cur.lastrowid
-        is_new = True
-
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True, "id": rec_id, "is_new": is_new, "status": "Draft"})
+    except Exception as _e:
+        app.logger.exception("repo_lock_save failed job_id=%s item_id=%s: %s", job_id, item_id, _e)
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "errors": [f"Save failed: {_e}"]}), 500
 
 
 _RL_FIELDS = [
@@ -8117,84 +8130,93 @@ _RL_FIELDS = [
 @login_required
 def repo_lock_submit(job_id: int, item_id: int):
     conn = db()
-    item = conn.execute("SELECT id FROM job_items WHERE id=? AND job_id=?", (item_id, job_id)).fetchone()
-    if not item:
-        conn.close()
-        return jsonify({"error": "Not found"}), 404
+    try:
+        item = conn.execute("SELECT id FROM job_items WHERE id=? AND job_id=?", (item_id, job_id)).fetchone()
+        if not item:
+            conn.close()
+            return jsonify({"ok": False, "error": "Item not found"}), 404
 
-    f = request.form
-    values = {fld: (f.get(fld) or "").strip() or None for fld in _RL_FIELDS}
-    ts  = now_ts()
-    uid = session.get("user_id")
+        f = request.form
+        values = {fld: (f.get(fld) or "").strip() or None for fld in _RL_FIELDS}
+        ts  = now_ts()
+        uid = session.get("user_id")
 
-    errors = []
-    if not values.get("repo_date"):
-        errors.append("Repo Date is required.")
-    if not values.get("agent_name"):
-        errors.append("Agent name is required.")
-    if not values.get("registration") and not values.get("description"):
-        errors.append("Asset registration or description is required.")
-    if errors:
-        conn.close()
-        return jsonify({"ok": False, "errors": errors}), 400
+        errors = []
+        if not values.get("repo_date"):
+            errors.append("Repo Date is required.")
+        if not values.get("agent_name"):
+            errors.append("Agent name is required.")
+        if not values.get("registration") and not values.get("description"):
+            errors.append("Asset registration or description is required.")
+        if errors:
+            conn.close()
+            return jsonify({"ok": False, "errors": errors}), 400
 
-    existing = conn.execute(
-        "SELECT id FROM repo_lock_records WHERE job_id=? AND item_id=? ORDER BY id DESC LIMIT 1",
-        (job_id, item_id)
-    ).fetchone()
+        existing = conn.execute(
+            "SELECT id FROM repo_lock_records WHERE job_id=? AND item_id=? ORDER BY id DESC LIMIT 1",
+            (job_id, item_id)
+        ).fetchone()
 
-    if existing:
-        set_clause = ", ".join(f"{k}=?" for k in _RL_FIELDS)
-        set_clause += ", status='Submitted', submitted_at=?, updated_by_user_id=?, updated_at=?"
-        params = [values[k] for k in _RL_FIELDS] + [ts, uid, ts, existing["id"]]
-        conn.execute(f"UPDATE repo_lock_records SET {set_clause} WHERE id=?", params)
-        rec_id = existing["id"]
-        is_new = False
-    else:
-        cols = ", ".join(_RL_FIELDS) + ", job_id, item_id, status, submitted_at, created_by_user_id, created_at, updated_by_user_id, updated_at"
-        placeholders = ", ".join("?" for _ in _RL_FIELDS) + ", ?, ?, ?, ?, ?, ?, ?, ?"
-        params = [values[k] for k in _RL_FIELDS] + [job_id, item_id, "Submitted", ts, uid, ts, uid, ts]
-        cur = conn.execute(f"INSERT INTO repo_lock_records ({cols}) VALUES ({placeholders})", params)
-        rec_id = cur.lastrowid
-        is_new = True
+        if existing:
+            set_clause = ", ".join(f"{k}=?" for k in _RL_FIELDS)
+            set_clause += ", status='Submitted', submitted_at=?, updated_by_user_id=?, updated_at=?"
+            params = [values[k] for k in _RL_FIELDS] + [ts, uid, ts, existing["id"]]
+            conn.execute(f"UPDATE repo_lock_records SET {set_clause} WHERE id=?", params)
+            rec_id = existing["id"]
+            is_new = False
+        else:
+            cols = ", ".join(_RL_FIELDS) + ", job_id, item_id, status, submitted_at, created_by_user_id, created_at, updated_by_user_id, updated_at"
+            placeholders = ", ".join("?" for _ in _RL_FIELDS) + ", ?, ?, ?, ?, ?, ?, ?, ?"
+            params = [values[k] for k in _RL_FIELDS] + [job_id, item_id, "Submitted", ts, uid, ts, uid, ts]
+            cur = conn.execute(f"INSERT INTO repo_lock_records ({cols}) VALUES ({placeholders})", params)
+            rec_id = cur.lastrowid
+            is_new = True
 
-    note_text = _repo_lock_note(values)
-    conn.execute(
-        "INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at) VALUES (?,?,?,?,?)",
-        (job_id, "Repo Lock Submitted", note_text, ts, ts)
-    )
-    conn.execute(
-        "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
-        (job_id, uid, note_text, ts)
-    )
-
-    existing_q = conn.execute(
-        "SELECT id, submission_count FROM repo_lock_queue WHERE job_id=? AND item_id=?",
-        (job_id, item_id)
-    ).fetchone()
-
-    if existing_q:
+        note_text = _repo_lock_note(values)
         conn.execute(
-            """UPDATE repo_lock_queue SET repo_lock_id=?, status='Pending',
-               submission_count=?, submitted_at=?, submitted_by_user_id=?, updated_at=?
-               WHERE id=?""",
-            (rec_id, (existing_q["submission_count"] + 1), ts, uid, ts, existing_q["id"])
+            "INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at) VALUES (?,?,?,?,?)",
+            (job_id, "Repo Lock Submitted", note_text, ts, ts)
         )
-        queue_id = existing_q["id"]
-    else:
-        qcur = conn.execute(
-            """INSERT INTO repo_lock_queue
-               (job_id, item_id, repo_lock_id, status, submission_count,
-                submitted_at, submitted_by_user_id, created_at, updated_at)
-               VALUES (?,?,?,'Pending',1,?,?,?,?)""",
-            (job_id, item_id, rec_id, ts, uid, ts, ts)
+        conn.execute(
+            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+            (job_id, uid, note_text, ts)
         )
-        queue_id = qcur.lastrowid
 
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True, "id": rec_id, "is_new": is_new,
-                    "queue_id": queue_id, "status": "Submitted"})
+        existing_q = conn.execute(
+            "SELECT id, submission_count FROM repo_lock_queue WHERE job_id=? AND item_id=?",
+            (job_id, item_id)
+        ).fetchone()
+
+        if existing_q:
+            conn.execute(
+                """UPDATE repo_lock_queue SET repo_lock_id=?, status='Pending',
+                   submission_count=?, submitted_at=?, submitted_by_user_id=?, updated_at=?
+                   WHERE id=?""",
+                (rec_id, (existing_q["submission_count"] + 1), ts, uid, ts, existing_q["id"])
+            )
+            queue_id = existing_q["id"]
+        else:
+            qcur = conn.execute(
+                """INSERT INTO repo_lock_queue
+                   (job_id, item_id, repo_lock_id, status, submission_count,
+                    submitted_at, submitted_by_user_id, created_at, updated_at)
+                   VALUES (?,?,?,'Pending',1,?,?,?,?)""",
+                (job_id, item_id, rec_id, ts, uid, ts, ts)
+            )
+            queue_id = qcur.lastrowid
+
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "id": rec_id, "is_new": is_new,
+                        "queue_id": queue_id, "status": "Submitted"})
+
+    except Exception as _e:
+        app.logger.exception("repo_lock_submit failed job_id=%s item_id=%s: %s", job_id, item_id, _e)
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "errors": [f"Submission failed: {_e}"]}), 500
 
 
 def _attach_pdf_to_job(conn, job_id: int, user_id, pdf_bytes: bytes,

@@ -682,6 +682,14 @@
     return errors;
   }
 
+  function _rlShowErrors(msgs) {
+    var errEl = _gid("rlValidationErrors");
+    errEl.innerHTML = "<strong>Error:</strong><ul class='mb-0 mt-1'>"
+      + msgs.map(function(m){ return "<li>" + m + "</li>"; }).join("") + "</ul>";
+    errEl.classList.remove("d-none");
+    errEl.scrollIntoView({behavior:"smooth", block:"nearest"});
+  }
+
   window.rlSave = function() {
     var btn     = _gid("rlDraftBtn");
     var spinner = _gid("rlDraftBtnSpinner");
@@ -692,10 +700,16 @@
       method: "POST",
       body: _rlCollectForm()
     })
-    .then(r => r.json())
-    .then(function(res) {
+    .then(function(r) {
+      return r.json().then(function(data) { return {ok: r.ok, data: data}; });
+    })
+    .then(function(resp) {
       _rlSetBtnState(btn, spinner, false);
-      if (!res.ok) { alert("Save failed."); return; }
+      var res = resp.data;
+      if (!res.ok) {
+        _rlShowErrors(res.errors || [res.error || "Draft save failed — please try again."]);
+        return;
+      }
 
       if (res.id) { _rlRecId = res.id; _rlUpdateForm13Btn(); }
 
@@ -712,8 +726,8 @@
     })
     .catch(function(e) {
       _rlSetBtnState(btn, spinner, false);
-      console.error(e);
-      alert("Save error.");
+      console.error("rlSave error:", e);
+      _rlShowErrors(["Draft save failed — please check your connection and try again."]);
     });
   };
 
@@ -739,17 +753,16 @@
       method: "POST",
       body: _rlCollectForm()
     })
-    .then(r => r.json())
-    .then(function(res) {
+    .then(function(r) {
+      return r.json().then(function(data) { return {ok: r.ok, data: data}; });
+    })
+    .then(function(resp) {
       _rlSetBtnState(btn, spinner, false);
       _gid("rlDraftBtn").disabled = false;
+      var res = resp.data;
 
       if (!res.ok) {
-        var serverErrors = res.errors || ["Submission failed."];
-        var errEl = _gid("rlValidationErrors");
-        errEl.innerHTML = "<strong>Submission error:</strong><ul class='mb-0 mt-1'>"
-          + serverErrors.map(function(e){ return "<li>" + e + "</li>"; }).join("") + "</ul>";
-        errEl.classList.remove("d-none");
+        _rlShowErrors(res.errors || [res.error || "Submission failed — please try again."]);
         return;
       }
 
@@ -782,8 +795,8 @@
     .catch(function(e) {
       _rlSetBtnState(btn, spinner, false);
       _gid("rlDraftBtn").disabled = false;
-      console.error(e);
-      alert("Submission error.");
+      console.error("rlDoSubmit error:", e);
+      _rlShowErrors(["Submission failed — please check your connection and try again."]);
     });
   };
 

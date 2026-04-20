@@ -89,6 +89,10 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **33. Per-Item Arrears & Costs on Additional Securities:** Each `job_items` record now stores its own `arrears_cents` and `costs_cents` columns. Display: vehicle/motorcycle/trailer cards now show the item `description` field (previously invisible) plus an inline Arrears/Costs row when values are present. Input surfaces updated: inline Edit form, "+ Add Security" form (job_detail), New Job asset rows (asset_arrears[]/asset_costs[]), and clone-data endpoint + clone-apply JS. Mobile job_detail also shows per-item arrears/costs in the asset card. Schema migration via `add_column_if_missing`.
 
+**34. Photo Upload Performance (Mobile Quick Note):** Changed `m_quick_note_save` to write photos to local disk first (~29ms) before returning the JSON response, then sync to Azure Blob Storage in a daemon background thread. `m_documents_preview` already falls back to local disk on Azure errors, so photos render instantly. New `_bg_azure_upload()` helper handles the background sync with WARNING-level logging on failure.
+
+**35. Repo Lock Form Fixes:** Fixed `repo_lock_save` and `repo_lock_submit` routes: both now wrapped in `try/except` with `app.logger.exception()` logging and return `{"ok": false, "errors": [...]}` JSON on failure instead of HTML 500. Frontend (`repo_lock_form.html` and mobile `job_detail.html`): removed all `alert()` calls from catch/error handlers — errors now display inline in the form's error banner showing the actual server message. `Surrendered / Repossessed Address` (`repo_address`) field now always pre-fills: customer address takes priority, falls back to `job.get("job_address")` if customer has no address or there is no customer. Applied identically to desktop modal and mobile overlay (`rlm*` functions).
+
 ## External Dependencies
 
 - **Database**: SQLite

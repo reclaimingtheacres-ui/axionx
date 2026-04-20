@@ -1447,6 +1447,13 @@ function showTab(name) {
     _gid("rlOverlay").style.display = "none";
   };
 
+  function _rlmShowErrors(msgs) {
+    var errEl = _gid("rlmErrBanner");
+    errEl.innerHTML = "<strong>Error:</strong> " + msgs.join(" ");
+    errEl.style.display = "block";
+    _gid("rlmScrollWrap").scrollTo({top:0, behavior:"smooth"});
+  }
+
   window.rlmSave = function() {
     var jobId  = _gid("rlmJobId").value;
     var itemId = _gid("rlmItemId").value;
@@ -1460,11 +1467,17 @@ function showTab(name) {
     fetch("/jobs/" + jobId + "/repo-lock/" + itemId + "/save", {
       method: "POST", body: _rlmCollect()
     })
-    .then(r => r.json())
-    .then(function(res) {
+    .then(function(r) {
+      return r.json().then(function(data) { return {ok: r.ok, data: data}; });
+    })
+    .then(function(resp) {
       btn.disabled = false;
       txt.textContent = orig;
-      if (!res.ok) { alert("Save failed."); return; }
+      var res = resp.data;
+      if (!res.ok) {
+        _rlmShowErrors(res.errors || [res.error || "Draft save failed — please try again."]);
+        return;
+      }
 
       if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); _rlmUpdateGenBtns(); }
 
@@ -1482,8 +1495,8 @@ function showTab(name) {
     .catch(function(e) {
       btn.disabled = false;
       txt.textContent = orig;
-      console.error(e);
-      alert("Save error.");
+      console.error("rlmSave error:", e);
+      _rlmShowErrors(["Draft save failed — please check your connection and try again."]);
     });
   };
 
@@ -1521,17 +1534,17 @@ function showTab(name) {
     fetch("/jobs/" + jobId + "/repo-lock/" + itemId + "/submit", {
       method: "POST", body: _rlmCollect()
     })
-    .then(r => r.json())
-    .then(function(res) {
+    .then(function(r) {
+      return r.json().then(function(data) { return {ok: r.ok, data: data}; });
+    })
+    .then(function(resp) {
       btn.disabled = false;
       _gid("rlmDraftBtn").disabled = false;
       txt.textContent = "Submit";
+      var res = resp.data;
 
       if (!res.ok) {
-        var serverErrors = res.errors || ["Submission failed."];
-        var errEl = _gid("rlmErrBanner");
-        errEl.innerHTML = "<strong>Error:</strong> " + serverErrors.join(" ");
-        errEl.style.display = "block";
+        _rlmShowErrors(res.errors || [res.error || "Submission failed — please try again."]);
         return;
       }
 
@@ -1555,8 +1568,8 @@ function showTab(name) {
       btn.disabled = false;
       _gid("rlmDraftBtn").disabled = false;
       txt.textContent = "Submit";
-      console.error(e);
-      alert("Submission error.");
+      console.error("rlmDoSubmit error:", e);
+      _rlmShowErrors(["Submission failed — please check your connection and try again."]);
     });
   };
 
