@@ -344,6 +344,16 @@
               <input class="form-control form-control-sm" name="asset_notes[]" placeholder="Rego expiry, status, etc."
                      value="{% if _sec and _sec.reg_expiry %}Rego: {{ _sec.reg_expiry }}{% endif %}{% if _sec and _sec.reg_note %}{% if _sec and _sec.reg_expiry %} | {% endif %}{{ _sec.reg_note }}{% endif %}">
             </div>
+            <div class="nj-row" style="margin-top:6px;">
+              <div style="flex:1;min-width:100px;">
+                <label class="nj-lbl">Arrears</label>
+                <input class="form-control form-control-sm asset-arrears" name="asset_arrears[]" placeholder="$0.00">
+              </div>
+              <div style="flex:1;min-width:100px;">
+                <label class="nj-lbl">Costs</label>
+                <input class="form-control form-control-sm asset-costs" name="asset_costs[]" placeholder="$0.00">
+              </div>
+            </div>
             </div>
             <div class="mt-2 d-flex justify-content-end">
               <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.7rem;" onclick="removeAssetRow(this)">Remove</button>
@@ -1291,6 +1301,8 @@ function toggleParsed(btn) {
           row.querySelector('.asset-engine').value = a.engine_number || '';
           var serialInp = row.querySelector('[name="asset_serial[]"]');
           if (serialInp && a.serial_number) serialInp.value = a.serial_number;
+          setRowInput('asset-arrears', a.arrears);
+          setRowInput('asset-costs', a.costs);
           if (typeof window._njUpdateParsedDisplay === 'function') window._njUpdateParsedDisplay(row);
           var addrInp = row.querySelector('.asset-address');
           if (addrInp && a.property_address) {

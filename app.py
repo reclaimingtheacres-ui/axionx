@@ -838,6 +838,8 @@ def init_db():
         ("engine_number",  "TEXT"),
         ("deliver_to",     "TEXT"),
         ("colour",         "TEXT"),
+        ("arrears_cents",  "INTEGER"),
+        ("costs_cents",    "INTEGER"),
     ]:
         add_column_if_missing(cur, "job_items", col, coltype)
 
@@ -3752,6 +3754,8 @@ def job_clone_data(job_id: int):
                 "property_address": a["property_address"] or "",
                 "serial_number":    a["serial_number"] or "",
                 "notes":            a["notes"] or "",
+                "arrears":          cents_to_str(a["arrears_cents"]),
+                "costs":            cents_to_str(a["costs_cents"]),
             }
             for a in assets
         ]
@@ -4251,6 +4255,8 @@ def _job_create_inner():
     addresses     = request.form.getlist("asset_address[]")
     serials       = request.form.getlist("asset_serial[]")
     asset_notes   = request.form.getlist("asset_notes[]")
+    asset_arrears = request.form.getlist("asset_arrears[]")
+    asset_costs   = request.form.getlist("asset_costs[]")
 
     def _al(lst, i):
         return (lst[i] if i < len(lst) else "") or ""
@@ -4268,25 +4274,28 @@ def _job_create_inner():
         a_addr   = _al(addresses,   i).strip()
         a_ser    = _al(serials,     i).strip()
         a_note   = _al(asset_notes, i).strip()
+        a_arrears = money_to_cents(_al(asset_arrears, i))
+        a_costs   = money_to_cents(_al(asset_costs, i))
         item_type_val = (a_type or "other").lower().replace(" ", "_")
         if item_type_val == "no_asset":
             if not a_desc:
                 continue
             cur.execute("""
                 INSERT INTO job_items
-                (job_id, item_type, description, created_at)
-                VALUES (?, ?, ?, ?)
-            """, (job_id, "no_asset", a_desc, now))
+                (job_id, item_type, description, arrears_cents, costs_cents, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (job_id, "no_asset", a_desc, a_arrears or None, a_costs or None, now))
             continue
         if not any([a_desc, a_rego, a_vin, a_addr, a_ser, a_note, a_make, a_model, a_year, a_engine, a_colour]):
             continue
         cur.execute("""
             INSERT INTO job_items
-            (job_id, item_type, description, reg, vin, make, model, year, colour, engine_number, property_address, serial_number, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (job_id, item_type, description, reg, vin, make, model, year, colour, engine_number, property_address, serial_number, notes, arrears_cents, costs_cents, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (job_id, item_type_val,
               a_desc or None, a_rego or None, a_vin or None, a_make or None, a_model or None, a_year or None,
-              a_colour or None, a_engine or None, a_addr or None, a_ser or None, a_note or None, now))
+              a_colour or None, a_engine or None, a_addr or None, a_ser or None, a_note or None,
+              a_arrears or None, a_costs or None, now))
 
     sched_date = request.form.get("sched_date", "").strip()
     sched_time = request.form.get("sched_time", "").strip()
@@ -7685,6 +7694,8 @@ def job_item_create(job_id: int):
     item_account     = request.form.get("item_account_number", "").strip()
     item_regulation  = request.form.get("item_regulation_type", "").strip()
     item_deliver_to  = request.form.get("item_deliver_to", "").strip()
+    item_arrears     = money_to_cents(request.form.get("item_arrears", ""))
+    item_costs       = money_to_cents(request.form.get("item_costs", ""))
 
     conn = db()
     cur = conn.cursor()
@@ -7695,15 +7706,15 @@ def job_item_create(job_id: int):
             property_address, lot_details,
             serial_number, identifier,
             notes, lender_name, account_number, regulation_type,
-            deliver_to, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            deliver_to, arrears_cents, costs_cents, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         job_id, item_type, description or None,
         reg or None, vin or None, make or None, model or None, year or None,
         property_address or None, lot_details or None,
         serial_number or None, identifier or None,
         notes or None, item_lender or None, item_account or None, item_regulation or None,
-        item_deliver_to or None, now_ts()
+        item_deliver_to or None, item_arrears or None, item_costs or None, now_ts()
     ))
     conn.commit()
     conn.close()
@@ -7729,6 +7740,8 @@ def job_item_edit(job_id: int, item_id: int):
     item_account     = request.form.get("item_account_number", "").strip()
     item_regulation  = request.form.get("item_regulation_type", "").strip()
     item_deliver_to  = request.form.get("item_deliver_to", "").strip()
+    item_arrears     = money_to_cents(request.form.get("item_arrears", ""))
+    item_costs       = money_to_cents(request.form.get("item_costs", ""))
     conn = db()
     cur  = conn.cursor()
     cur.execute("""
@@ -7736,7 +7749,7 @@ def job_item_edit(job_id: int, item_id: int):
             item_type=?, description=?, reg=?, vin=?,
             serial_number=?, identifier=?, property_address=?, lot_details=?,
             notes=?, lender_name=?, account_number=?, regulation_type=?,
-            deliver_to=?
+            deliver_to=?, arrears_cents=?, costs_cents=?
         WHERE id=? AND job_id=?
     """, (
         item_type, description or None, reg or None, vin or None,
@@ -7744,6 +7757,7 @@ def job_item_edit(job_id: int, item_id: int):
         property_address or None, lot_details or None,
         notes or None, item_lender or None, item_account or None,
         item_regulation or None, item_deliver_to or None,
+        item_arrears or None, item_costs or None,
         item_id, job_id
     ))
     conn.commit()

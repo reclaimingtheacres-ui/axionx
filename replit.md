@@ -87,6 +87,8 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **32. Multi-Customer per Job:** Jobs can now have multiple linked customers with individual roles. Customer roles expanded to: Primary, Co-Borrower, Guarantor, Director, Partner, Spouse, Occupant, Third Party in Possession, Other (with custom label). New Job form includes "+ Add Another Customer" blocks with typeahead search + role selection. Job detail page has per-customer "Edit Role" button opening a modal to change or customise any customer's role. "Other" role values are stored as "Other: <custom text>" in the DB and displayed with the custom label only. Backend: `job_customer_add` route handles `role_other`; new `job_customer_role` route (`POST /jobs/<id>/customers/<jc_id>/role`) updates existing link roles; `_job_create_inner()` processes `extra_customer_ids[]` + `extra_customer_roles[]` form arrays.
 
+**33. Per-Item Arrears & Costs on Additional Securities:** Each `job_items` record now stores its own `arrears_cents` and `costs_cents` columns. Display: vehicle/motorcycle/trailer cards now show the item `description` field (previously invisible) plus an inline Arrears/Costs row when values are present. Input surfaces updated: inline Edit form, "+ Add Security" form (job_detail), New Job asset rows (asset_arrears[]/asset_costs[]), and clone-data endpoint + clone-apply JS. Mobile job_detail also shows per-item arrears/costs in the asset card. Schema migration via `add_column_if_missing`.
+
 ## External Dependencies
 
 - **Database**: SQLite

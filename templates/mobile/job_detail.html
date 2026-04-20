@@ -224,6 +224,23 @@
     </div>
     {% endif %}
 
+    {% if asset.arrears_cents or asset.costs_cents %}
+    <div style="margin-top:10px;display:flex;gap:16px;">
+      {% if asset.arrears_cents %}
+      <div>
+        <div class="m-label">Arrears</div>
+        <div style="font-weight:600;font-size:.9rem;color:#dc2626;">${{ "%.2f" | format(asset.arrears_cents / 100) }}</div>
+      </div>
+      {% endif %}
+      {% if asset.costs_cents %}
+      <div>
+        <div class="m-label">Costs</div>
+        <div style="font-weight:600;font-size:.9rem;">${{ "%.2f" | format(asset.costs_cents / 100) }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
   </div>
 </div>
 {% endfor %}
