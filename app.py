@@ -7912,9 +7912,18 @@ def _repo_lock_note(d):
         v = d.get(k) or ""
         return v if v else "—"
 
+    def _fmt_dmy(s):
+        if not s:
+            return "—"
+        from datetime import datetime as _ddt
+        try:
+            return _ddt.strptime(str(s)[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+        except (ValueError, TypeError):
+            return s or "—"
+
     lines = ["REPO LOCK SUBMITTED", "=" * 44]
 
-    ref = d.get("swpi_ref") or ""
+    ref = d.get("client_reference") or d.get("swpi_ref") or ""
     if ref:
         lines.append(f"Reference:  {ref}")
     if d.get("client_name"):
@@ -7927,7 +7936,7 @@ def _repo_lock_note(d):
         time_part = f"  {d['start_time']}"
         if d.get("end_time"):
             time_part += f"–{d['end_time']}"
-    lines.append(f"Date:       {_v('repo_date')}{time_part}")
+    lines.append(f"Date:       {_fmt_dmy(d.get('repo_date'))}{time_part}")
 
     asset_parts = []
     if d.get("description"):  asset_parts.append(d["description"])
@@ -7939,6 +7948,8 @@ def _repo_lock_note(d):
     lines.append(f"Customer:   {_v('customer_name')}")
     if d.get("account_number"):
         lines[-1] += f"  (Acct: {d['account_number']})"
+    if d.get("contact_number"):
+        lines.append(f"Mobile:     {d['contact_number']}")
     lines.append(f"Repo Addr:  {_v('repo_address')}")
 
     lines.append("")
@@ -7994,7 +8005,7 @@ def _repo_lock_note(d):
     if d.get("delivery_address"): deliver_parts.append(d["delivery_address"])
     lines.append(f"  Deliver:  {' — '.join(deliver_parts) or '—'}")
     if d.get("expected_delivery_date"):
-        lines.append(f"  Exp. Delivery: {d['expected_delivery_date']}")
+        lines.append(f"  Exp. Delivery: {_fmt_dmy(d['expected_delivery_date'])}")
 
     if d.get("customers_intention"):
         lines.append("")
@@ -8553,7 +8564,7 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
 
     pdf_bytes = _pg.generate_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig)
 
-    job_num   = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
+    job_num   = (d.get("client_reference") or d.get("swpi_ref") or str(job_id)).replace("/", "-")
     from datetime import datetime as _dt
     date_str  = _dt.now().strftime("%d-%m-%y")
     form_label = "SWPI VIR"
