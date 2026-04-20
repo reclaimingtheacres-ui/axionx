@@ -170,6 +170,11 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             "document.body && (document.body.style.backgroundColor='#ffffff');",
             completionHandler: nil
         )
+        // Track last known Job Notes URL so DocumentPreviewHandler can restore it after dismiss
+        if let url = webView.url, DocumentPreviewHandler.isJobNotesURL(url) {
+            DocumentPreviewHandler.shared.setReturnURL(url)
+            print("[NavDelegate] Job Notes URL tracked for return: \(url.absoluteString)")
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

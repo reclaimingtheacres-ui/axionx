@@ -10,9 +10,21 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
 
     private weak var webView: WKWebView?
     private var isPresentingDocument = false
+    private var returnURL: URL?
 
     func setWebView(_ wv: WKWebView) {
         self.webView = wv
+    }
+
+    func setReturnURL(_ url: URL) {
+        returnURL = url
+        print("[DocPreview] returnURL saved: \(url.absoluteString)")
+    }
+
+    /// Returns true for /m/job/<id>  /m/jobs/<id>/notes  (with optional trailing slash or query)
+    static func isJobNotesURL(_ url: URL) -> Bool {
+        let path = url.path
+        return path.range(of: "^/m/job(s)?/\\d+(/notes)?/?$", options: .regularExpression) != nil
     }
 
     func userContentController(
@@ -29,6 +41,16 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
         print("[DocPreview] urlString='\(urlString)', filename='\(filename)'")
         print("[DocPreview] webView nil=\(webView == nil), webView.url=\(webView?.url?.absoluteString ?? "nil")")
+
+        // Capture return URL from JS message (most reliable) or fall back to current webView URL
+        if let returnToStr = body["returnTo"] as? String,
+           let returnToURL = URL(string: returnToStr) {
+            returnURL = returnToURL
+            print("[DocPreview] returnURL from JS message: \(returnToStr)")
+        } else if let currentURL = webView?.url, Self.isJobNotesURL(currentURL) {
+            returnURL = currentURL
+            print("[DocPreview] returnURL from webView.url: \(currentURL.absoluteString)")
+        }
 
         jsDebug("DocumentPreviewHandler: called=YES, url=\(urlString), filename=\(filename)")
 
@@ -60,6 +82,12 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     func previewFile(at url: URL, filename: String) {
         print("[DocPreview] ── previewFile called ──")
         print("[DocPreview] url=\(url.absoluteString), filename=\(filename)")
+
+        // Capture return URL if we're currently on a Job Notes page
+        if let currentURL = webView?.url, Self.isJobNotesURL(currentURL) {
+            returnURL = currentURL
+            print("[DocPreview] previewFile: returnURL from webView.url: \(currentURL.absoluteString)")
+        }
 
         guard !isPresentingDocument else {
             print("[DocPreview] ABORT: already presenting a document")
@@ -355,6 +383,15 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             print("[DocPreview] QLPreviewController dismissed")
             self?.isPresentingDocument = false
             self?.previewCoordinator = nil
+            if let url = self?.returnURL {
+                self?.returnURL = nil
+                print("[DocPreview] Restoring webView to returnURL: \(url.absoluteString)")
+                DispatchQueue.main.async {
+                    self?.webView?.load(URLRequest(url: url))
+                }
+            } else {
+                print("[DocPreview] No returnURL stored — webView stays at current page")
+            }
         }
 
         vc.present(ql, animated: true) {

@@ -976,7 +976,7 @@ function showTab(name) {
     if (ext === 'pdf') {
       if (hasNative) {
         try {
-          window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
+          window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
         } catch(e) {
           window.open(url, '_blank');
         }
@@ -1019,7 +1019,7 @@ function showTab(name) {
     if (hasNative) {
       console.log('[DOC-PREVIEW] native handoff: ' + url);
       try {
-        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename});
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
       } catch(e) {
         console.log('[DOC-PREVIEW] native postMessage error: ' + e.message);
         body.innerHTML = _fallback(url, filename, '&#128196;', 'Open Document');
@@ -1042,7 +1042,7 @@ function showTab(name) {
     console.log('[DOC-PREVIEW] axNativeDocOpen: ' + url);
     var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
     if (hasNative) {
-      try { window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename}); } catch(e) { window.open(url, '_blank'); }
+      try { window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href}); } catch(e) { window.open(url, '_blank'); }
     } else {
       window.open(url, '_blank');
     }
