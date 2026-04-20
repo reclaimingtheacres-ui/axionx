@@ -604,12 +604,15 @@
                     {% if item.item_type == 'no_asset' %}
                       <span class="fw-semibold">{{ item.description or "Unsecured matter" }}</span>
                     {% elif item.item_type in ('vehicle', 'motorcycle', 'trailer') %}
-                      {% if item.year or item.make or item.model %}
-                        <div class="fw-semibold">{{ [item.year, item.make, item.model] | select | join(' ') }}</div>
+                      {% set _ymm = [item.year, item.make, item.model] | select | join(' ') %}
+                      {% if _ymm %}
+                        <div class="fw-semibold">{{ _ymm }}</div>
+                      {% elif item.description %}
+                        <div class="fw-semibold">{{ item.description }}</div>
                       {% endif %}
                       {% if item.reg %}<div class="fw-semibold">REG: {{ item.reg }}</div>{% endif %}
                       {% if item.vin %}<div class="small" style="color:var(--muted)">VIN: {{ item.vin }}</div>{% endif %}
-                      {% if item.description %}<div class="small" style="color:var(--muted)">{{ item.description }}</div>{% endif %}
+                      {% if item.description and _ymm %}<div class="small" style="color:var(--muted)">{{ item.description }}</div>{% endif %}
                     {% elif item.item_type == 'property' %}
                       <span class="fw-semibold">{{ item.property_address or "No address" }}</span>
                       {% if item.lot_details %}<div class="small" style="color:var(--muted)">{{ item.lot_details }}</div>{% endif %}
