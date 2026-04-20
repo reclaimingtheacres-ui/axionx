@@ -243,7 +243,16 @@
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label">Repossessed From</label>
-                      <input class="form-control form-control-sm" name="repossessed_from" id="rl_repossessed_from" placeholder="Name / address">
+                      <select class="form-select form-select-sm" name="repossessed_from" id="rl_repossessed_from">
+                        <option value="">— Select —</option>
+                        <option>Residential Property</option>
+                        <option>Commercial Property</option>
+                        <option>The Roadway</option>
+                        <option>Nature Strip</option>
+                        <option>Public Car Park</option>
+                        <option>Vacant Land</option>
+                        <option>Public Land</option>
+                      </select>
                     </div>
                     <div class="col-6 col-md-3">
                       <label class="form-label">Lien Paid?</label>
@@ -304,7 +313,7 @@
                       <label class="form-label">{{ lbl }}</label>
                       <select class="form-select form-select-sm" name="{{ fname }}" id="rl_{{ fname }}">
                         <option value="">— Select —</option>
-                        <option>Good</option><option>Fair</option><option>Poor</option>
+                        <option>Bad</option><option>Fair</option><option>Average</option><option>Good</option><option>N/A</option>
                       </select>
                     </div>
                     {% endfor %}
@@ -326,7 +335,7 @@
                       <label class="form-label">Fuel Level</label>
                       <select class="form-select form-select-sm" name="fuel_level" id="rl_fuel_level">
                         <option value="">— Select —</option>
-                        <option>Empty</option><option>1/4</option><option>1/2</option><option>3/4</option><option>Full</option>
+                        <option>Full</option><option>3 Quarter</option><option>Half</option><option>1 Quarter</option><option>Empty</option><option>N/A</option>
                       </select>
                     </div>
                     <div class="col-6 col-md-3">
@@ -685,6 +694,27 @@
       errors.push("Notice Delivered By is required.");
       _gid("rl_notice_delivery").classList.add("is-invalid");
     }
+
+    var _rlDropdownRequired = [
+      ["rl_repossessed_from",  "Repossessed From"],
+      ["rl_engine_condition",  "Engine"],
+      ["rl_transmission",      "Transmission"],
+      ["rl_tyres",             "Tyres"],
+      ["rl_body",              "Body"],
+      ["rl_duco",              "Duco"],
+      ["rl_interior",          "Interior"],
+      ["rl_fuel_level",        "Fuel Level"]
+    ];
+    _rlDropdownRequired.forEach(function(pair) {
+      var el = _gid(pair[0]);
+      if (!el) return;
+      el.classList.remove("is-invalid");
+      if (!el.value) {
+        errors.push(pair[1] + " is required.");
+        el.classList.add("is-invalid");
+      }
+    });
+
     return errors;
   }
 
