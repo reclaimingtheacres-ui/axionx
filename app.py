@@ -183,6 +183,25 @@ def upload_to_blob(file_storage, blob_name: str) -> int:
     return len(data)
 
 
+def _bg_azure_upload(data: bytes, blob_name: str, content_type: str) -> None:
+    """Background thread: push bytes to Azure Blob after the HTTP response has returned.
+    Logs outcome. Never raises — caller must not join() this thread."""
+    import logging as _log
+    try:
+        if not _uploads_container:
+            _log.info("[BG-AZURE] skipped — Azure not configured (blob=%s)", blob_name)
+            return
+        _uploads_container.upload_blob(
+            name=blob_name,
+            data=data,
+            overwrite=True,
+            content_settings=ContentSettings(content_type=content_type),
+        )
+        _log.info("[BG-AZURE] synced %s (%d bytes)", blob_name, len(data))
+    except Exception as exc:
+        _log.warning("[BG-AZURE] Azure sync failed for %s: %s", blob_name, exc)
+
+
 def delete_blob_safely(blob_name: str):
     """Delete a blob, silently ignore errors."""
     try:
@@ -17021,17 +17040,36 @@ def m_quick_note_save(job_id):
 
     photo_file_id = None
     if has_photo:
+        import logging as _log
         try:
             heic_bytes, heic_name, was_heic = _maybe_convert_heic(photo_file)
         except ValueError as _hce:
             conn.close()
             return jsonify({"ok": False, "error": str(_hce)}), 400
-        safe_fn      = secure_filename(heic_name or photo_file.filename or "photo.jpg")
-        photo_name   = f"{job_id}_{note_id}_{uuid.uuid4().hex}_{safe_fn}"
-        if was_heic:
-            _save_bytes_to_storage(heic_bytes, photo_name, "image/jpeg")
+        safe_fn    = secure_filename(heic_name or photo_file.filename or "photo.jpg")
+        photo_name = f"{job_id}_{note_id}_{uuid.uuid4().hex}_{safe_fn}"
+        raw_bytes  = heic_bytes if was_heic else photo_file.read()
+        photo_ct   = "image/jpeg" if was_heic else (
+            photo_file.mimetype or mimetypes.guess_type(photo_name)[0] or "image/jpeg"
+        )
+
+        # 1. Write to local disk immediately — fast (~29 ms) and unblocks the response.
+        #    m_documents_preview falls back to local disk so the photo is viewable at once.
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        with open(os.path.join(UPLOAD_FOLDER, photo_name), "wb") as _fh:
+            _fh.write(raw_bytes)
+
+        # 2. Queue Azure sync in background — response is NOT held waiting for this.
+        if _uploads_container:
+            _log.info("[BG-AZURE] queued async sync: %s (%d bytes)", photo_name, len(raw_bytes))
+            threading.Thread(
+                target=_bg_azure_upload,
+                args=(raw_bytes, photo_name, photo_ct),
+                daemon=True,
+            ).start()
         else:
-            upload_to_blob(photo_file, photo_name)
+            _log.info("[BG-AZURE] skipped — Azure not configured (blob=%s)", photo_name)
+
         cur.execute(
             "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
             (note_id, photo_name, photo_name, ts)
