@@ -416,6 +416,8 @@ def _schema_is_current():
             cols = [r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
             if "geoop_assigned_agent" not in cols:
                 return False
+            if "status_changed_at" not in cols:
+                return False
             nf_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_note_files)").fetchall()]
             return "file_status" in nf_cols
         except Exception:
@@ -1443,6 +1445,49 @@ def _migrate_update_builder():
             SELECT 1 FROM schedules s
             WHERE s.job_id = jobs.id AND s.status = 'Completed'
           )
+    """)
+
+    # ── Client Update Request tracking ───────────────────────────────────────
+    # status_changed_at: when the job entered its current status.
+    # Priority: populated from job_lifecycle_log on status changes going forward;
+    # backfilled below for existing records using the most recent lifecycle entry
+    # that matches the current status (falling back to jobs.updated_at).
+    add_column_if_missing(cur, "jobs", "status_changed_at",                   "TEXT")
+    add_column_if_missing(cur, "jobs", "last_client_update_request_sent_at",  "TEXT")
+    add_column_if_missing(cur, "jobs", "client_update_request_count",         "INTEGER DEFAULT 0")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS client_update_requests (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id              INTEGER NOT NULL,
+        sent_by_user_id     INTEGER,
+        sent_at             TEXT NOT NULL,
+        recipient_email     TEXT,
+        subject             TEXT,
+        body_snapshot       TEXT,
+        reply_to            TEXT NOT NULL DEFAULT 'office@swpirecoveries.com',
+        result_status       TEXT NOT NULL DEFAULT 'sent',
+        related_note_id     INTEGER,
+        FOREIGN KEY(job_id)          REFERENCES jobs(id),
+        FOREIGN KEY(sent_by_user_id) REFERENCES users(id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cur_job ON client_update_requests(job_id, sent_at)")
+
+    # Backfill status_changed_at for existing jobs that have no value yet.
+    # Use the most recent lifecycle log entry where to_status = current status;
+    # fall back to the job's own updated_at if no lifecycle entry exists.
+    cur.execute("""
+        UPDATE jobs
+        SET status_changed_at = COALESCE(
+            (SELECT l.performed_at
+             FROM job_lifecycle_log l
+             WHERE l.job_id = jobs.id AND l.to_status = jobs.status
+             ORDER BY l.performed_at DESC
+             LIMIT 1),
+            jobs.updated_at
+        )
+        WHERE status_changed_at IS NULL
     """)
 
     conn.commit()
@@ -2778,10 +2823,11 @@ def send_reset_email(to_addr, reset_link):
         s.sendmail(frm, to_addr, msg.as_string())
 
 
-def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachments=None):
+def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachments=None, reply_to=None):
     """Generic SMTP helper.
     to_list/cc_list: lists of email strings.
     attachments: list of (filename, bytes_data, mime_type_str) tuples.
+    reply_to: optional Reply-To address string.
     """
     import os as _os
     host = _os.environ.get("SMTP_HOST", "smtp.gmail.com")
@@ -2802,6 +2848,8 @@ def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachm
     msg["To"]      = ", ".join(to_list)
     if cc_list:
         msg["Cc"] = ", ".join(cc_list)
+    if reply_to:
+        msg["Reply-To"] = reply_to
 
     alt = _MIMEMultipart("alternative")
     alt.attach(_MIMEText(body_txt, "plain"))
@@ -3583,7 +3631,8 @@ def _jobs_list_inner():
                 WHERE s.job_id = j.id AND s.status NOT IN ('Completed', 'Cancelled') AND s.hidden = 0
                 ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id,
                (SELECT COUNT(*) FROM job_field_notes fn
-                WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count
+                WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count,
+               CAST((julianday('now') - julianday(COALESCE(j.status_changed_at, j.updated_at))) AS INTEGER) AS status_days
         FROM jobs j
         LEFT JOIN clients c ON c.id = j.client_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -4693,7 +4742,8 @@ def job_detail(job_id: int):
                            job_payments=job_payments,
                            payments_total_cents=payments_total_cents,
                            known_referrals=known_referrals,
-                           from_cue=from_cue)
+                           from_cue=from_cue,
+                           client_update_info=_client_update_request_eligibility(conn, job_id))
 
 
 def _sync_job_customer_id(cur, job_id):
@@ -5209,7 +5259,7 @@ def job_activate(job_id):
     conn = db()
     cur  = conn.cursor()
 
-    cur.execute("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?", (new_status, now, job_id))
+    cur.execute("UPDATE jobs SET status = ?, updated_at = ?, status_changed_at = ? WHERE id = ?", (new_status, now, now, job_id))
     cur.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
                 (job_id, "Status Update", f"Status changed to '{new_status}'.", now, now))
@@ -5920,8 +5970,8 @@ def job_status_update(job_id: int):
     now = datetime.now().isoformat(timespec="seconds")
     conn = db()
     cur = conn.cursor()
-    cur.execute("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?",
-                (status, now, job_id))
+    cur.execute("UPDATE jobs SET status = ?, updated_at = ?, status_changed_at = ? WHERE id = ?",
+                (status, now, now, job_id))
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
@@ -6034,6 +6084,238 @@ def job_assign_agent(job_id: int):
                                    prev["display_ref"] if prev else str(job_id),
                                    prev["job_address"] if prev else "")
     return jsonify({"ok": True})
+
+
+# ── Client Update Request ──────────────────────────────────────────────────────
+_CUR_ELIGIBLE_STATUSES = ("Suspended", "Awaiting Advice From Client", "Awaiting Instructions")
+_CUR_STALE_DAYS        = 28   # job must be in eligible status at least this long
+_CUR_COOLDOWN_DAYS     = 7    # minimum gap between repeat sends
+
+def _client_update_request_eligibility(conn, job_id: int) -> dict:
+    """Return eligibility info for the Request Client Update workflow.
+
+    Returns a dict with keys:
+      eligible (bool), reason (str), days_in_status (int|None),
+      client_email (str|None), last_sent_at (str|None),
+      cooldown_remaining (int), subject (str), body (str)
+    """
+    job = conn.execute("""
+        SELECT j.*, c.name AS client_name, c.email AS client_email,
+               cu.first_name || ' ' || cu.last_name AS customer_name
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE j.id = ?
+    """, (job_id,)).fetchone()
+
+    if not job:
+        return {"eligible": False, "reason": "Job not found."}
+
+    status = job["status"]
+    if status not in _CUR_ELIGIBLE_STATUSES:
+        return {"eligible": False, "reason": f"Job status '{status}' is not eligible."}
+
+    # Status age: prefer status_changed_at (set on every status change going forward),
+    # then fall back to the most recent lifecycle log entry matching current status,
+    # then fall back to job updated_at.  Document the fallback in a code comment.
+    raw_changed = job["status_changed_at"]
+    if not raw_changed:
+        ll = conn.execute("""
+            SELECT performed_at FROM job_lifecycle_log
+            WHERE job_id = ? AND to_status = ?
+            ORDER BY performed_at DESC LIMIT 1
+        """, (job_id, status)).fetchone()
+        raw_changed = ll["performed_at"] if ll else job["updated_at"]
+        # fallback: updated_at is not guaranteed to be the status-change timestamp
+        # but is the best available approximation when no lifecycle log entry exists.
+
+    try:
+        from datetime import date as _date, datetime as _dt
+        changed_date = _dt.fromisoformat(raw_changed[:19]).date()
+        days_in_status = (_date.today() - changed_date).days
+    except Exception:
+        days_in_status = 0
+
+    if days_in_status < _CUR_STALE_DAYS:
+        return {
+            "eligible": False,
+            "reason": f"Job has only been in '{status}' for {days_in_status} day(s) — {_CUR_STALE_DAYS} required.",
+            "days_in_status": days_in_status,
+        }
+
+    # Client email - prefer contacts email table, fall back to clients.email column
+    client_email = None
+    if job["client_id"]:
+        ce_row = conn.execute("""
+            SELECT email FROM contact_emails
+            WHERE entity_type = 'client' AND entity_id = ?
+            ORDER BY id LIMIT 1
+        """, (job["client_id"],)).fetchone()
+        client_email = ce_row["email"] if ce_row else None
+    if not client_email:
+        client_email = job["client_email"] or None
+
+    if not client_email or "@" not in client_email:
+        return {
+            "eligible": False,
+            "reason": "No valid client email address on file.",
+            "days_in_status": days_in_status,
+        }
+
+    # 7-day cooldown check
+    last_sent_row = conn.execute("""
+        SELECT sent_at FROM client_update_requests
+        WHERE job_id = ? AND result_status = 'sent'
+        ORDER BY sent_at DESC LIMIT 1
+    """, (job_id,)).fetchone()
+    last_sent_at = last_sent_row["sent_at"] if last_sent_row else None
+    cooldown_remaining = 0
+    if last_sent_at:
+        try:
+            from datetime import datetime as _dt2, timedelta as _td
+            last_dt = _dt2.fromisoformat(last_sent_at[:19])
+            days_since = (datetime.now() - last_dt).days
+            cooldown_remaining = max(0, _CUR_COOLDOWN_DAYS - days_since)
+        except Exception:
+            cooldown_remaining = 0
+    if cooldown_remaining > 0:
+        return {
+            "eligible": False,
+            "reason": f"A client update request has already been sent within the last {_CUR_COOLDOWN_DAYS} days.",
+            "cooldown_remaining": cooldown_remaining,
+            "days_in_status": days_in_status,
+            "last_sent_at": last_sent_at,
+        }
+
+    # Build prefilled content
+    ref   = job["client_reference"] or job["display_ref"] or ""
+    cname = (job["customer_name"] or "").strip()
+    client_name = (job["client_name"] or "").strip()
+    subject = f"Update Request \u2013 {ref} \u2013 {cname}"
+    body = (
+        f"Hi {client_name},\n\n"
+        f"We refer to the above matter currently listed as {status}.\n\n"
+        f"To date, no further instructions have been received and the file has now been "
+        f"outstanding for over four weeks.\n\n"
+        f"Could you please provide an update on how you wish to proceed, including whether "
+        f"further action is required, or whether the matter is to remain on hold or be closed.\n\n"
+        f"Should no further action be required, please confirm so we may update our records accordingly.\n\n"
+        f"We will continue to monitor pending your advice.\n\n"
+        f"Kind regards,\n"
+    )
+
+    return {
+        "eligible": True,
+        "reason": "",
+        "days_in_status": days_in_status,
+        "client_email": client_email,
+        "client_name": client_name,
+        "customer_name": cname,
+        "status": status,
+        "last_sent_at": last_sent_at,
+        "cooldown_remaining": 0,
+        "subject": subject,
+        "body": body,
+        "ref": ref,
+    }
+
+
+@app.get("/jobs/<int:job_id>/client-update-request/prefill")
+@login_required
+@admin_required
+def client_update_request_prefill(job_id: int):
+    """Return eligibility data and prefilled email content as JSON."""
+    conn = db()
+    info = _client_update_request_eligibility(conn, job_id)
+    conn.close()
+    return jsonify(info)
+
+
+@app.post("/jobs/<int:job_id>/client-update-request/send")
+@login_required
+@admin_required
+def client_update_request_send(job_id: int):
+    """Send a client update request email, record the event, create a published file note.
+    Server-side enforces all eligibility and cooldown rules independent of the UI.
+    """
+    conn = db()
+    info = _client_update_request_eligibility(conn, job_id)
+    if not info.get("eligible"):
+        conn.close()
+        return jsonify({"ok": False, "error": info.get("reason", "Not eligible.")})
+
+    subject      = (request.json or {}).get("subject", info["subject"]).strip()
+    body         = (request.json or {}).get("body",    info["body"]).strip()
+    to_email     = info["client_email"]
+    reply_to     = "office@swpirecoveries.com"
+    sender_name  = session.get("user_name", "SWPI Recoveries")
+    full_body    = body + f"\n{sender_name}"
+
+    # Attempt to send — do NOT create note or update tracking on failure
+    ts = now_ts()
+    log_id = None
+    try:
+        body_html = f"""<div style="font-family:sans-serif;max-width:640px">
+<p>{full_body.replace(chr(10),'<br>')}</p>
+<hr style="border:none;border-top:1px solid #e5e7eb">
+<p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+</div>"""
+        send_email([to_email], subject, full_body, body_html=body_html, reply_to=reply_to)
+    except Exception as exc:
+        # Log failed attempt but do NOT create note or update counters
+        try:
+            conn.execute("""
+                INSERT INTO client_update_requests
+                    (job_id, sent_by_user_id, sent_at, recipient_email, subject, body_snapshot, reply_to, result_status)
+                VALUES (?,?,?,?,?,?,?,'failed')
+            """, (job_id, session.get("user_id"), ts, to_email, subject, full_body, reply_to))
+            conn.commit()
+        except Exception:
+            pass
+        conn.close()
+        return jsonify({"ok": False, "error": f"Email send failed: {exc}"})
+
+    # ── Success: create published file note ──────────────────────────────────
+    days  = info["days_in_status"]
+    status = info["status"]
+    client_name = info["client_name"]
+    note_heading = f"{client_name} \\ E"
+    note_body = (
+        f"{note_heading}\n"
+        f"Update request sent to client via email requesting current status of file, "
+        f"which remains {status}. File has been outstanding for over {days} days without "
+        f"further instruction. Awaiting response."
+    )
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO job_field_notes
+            (job_id, created_by_user_id, note_text, created_at, note_category, review_status, published_at)
+        VALUES (?,?,?,?,?,?,?)
+    """, (job_id, session.get("user_id"), note_body, ts, "file_note", "published", ts))
+    note_id = cur.lastrowid
+
+    # ── Record the send event ────────────────────────────────────────────────
+    cur.execute("""
+        INSERT INTO client_update_requests
+            (job_id, sent_by_user_id, sent_at, recipient_email, subject, body_snapshot, reply_to, result_status, related_note_id)
+        VALUES (?,?,?,?,?,?,?,'sent',?)
+    """, (job_id, session.get("user_id"), ts, to_email, subject, full_body, reply_to, note_id))
+    log_id = cur.lastrowid
+
+    # ── Update summary fields on job ─────────────────────────────────────────
+    cur.execute("""
+        UPDATE jobs
+        SET last_client_update_request_sent_at = ?,
+            client_update_request_count = COALESCE(client_update_request_count, 0) + 1
+        WHERE id = ?
+    """, (ts, job_id))
+
+    conn.commit()
+    conn.close()
+    audit("job", job_id, "client_update_request_sent",
+          f"Client update request email sent to {to_email}.",
+          {"note_id": note_id, "days_in_status": days})
+    return jsonify({"ok": True, "note_id": note_id, "sent_to": to_email})
 
 
 @app.post("/jobs/<int:job_id>/archive")

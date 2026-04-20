@@ -146,6 +146,20 @@
       </ul>
     </div>
 
+    {% if session.get('role') in ('admin','both') and client_update_info %}
+      {% if client_update_info.eligible %}
+    <button class="btn btn-warning btn-sm" type="button" id="btnClientUpdateRequest"
+            onclick="openClientUpdateModal()">
+      Request Client Update
+    </button>
+      {% elif client_update_info.get('cooldown_remaining', 0) > 0 %}
+    <button class="btn btn-outline-warning btn-sm" type="button" disabled
+            title="A client update request has already been sent within the last 7 days.">
+      Request Client Update
+    </button>
+      {% endif %}
+    {% endif %}
+
     <button class="btn btn-primary btn-sm" type="button"
             onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).show()">
       Add Bookings
@@ -2519,6 +2533,19 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span class="fw-semibold">{{ schedules|length }}</span>
     </div>
   </div>
+
+  {% if client_update_info and client_update_info.get('days_in_status') is not none and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+  <hr style="border-color:var(--line);margin:10px 0">
+  <div>
+    <div class="fw-bold small mb-1" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">STATUS AGE</div>
+    <span style="font-size:.75rem;background:{% if client_update_info.days_in_status >= 28 %}#fef3c7;color:#92400e;border:1px solid #fcd34d{% else %}#f1f5f9;color:#64748b;border:1px solid #e2e8f0{% endif %};border-radius:4px;padding:2px 7px;font-weight:600">
+      {% if client_update_info.days_in_status >= 28 %}Overdue {% endif %}{{ client_update_info.days_in_status }} day{{ 's' if client_update_info.days_in_status != 1 }}
+    </span>
+    {% if client_update_info.last_sent_at %}
+    <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Last update request: {{ client_update_info.last_sent_at[:10] }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
 
 </div><!-- /ax-sidebar-right -->
 
@@ -6166,5 +6193,97 @@ function axOpenEditRole(jcId, currentRole) {
   new bootstrap.Modal(document.getElementById('editCustRoleModal')).show();
 }
 </script>
+
+{% if session.get('role') in ('admin','both') and client_update_info and client_update_info.eligible %}
+<!-- ── Request Client Update Modal ──────────────────────────────────────────── -->
+<div class="modal fade" id="clientUpdateRequestModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" style="color:var(--text)">Request Client Update</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="curAlertBox" class="alert d-none mb-3" role="alert"></div>
+        <div class="mb-2" style="font-size:.82rem;color:var(--muted)">
+          <strong>To:</strong> <span id="curToEmail">{{ client_update_info.client_email or '' }}</span> &nbsp;|&nbsp;
+          <strong>Reply-To:</strong> office@swpirecoveries.com &nbsp;|&nbsp;
+          <strong>File:</strong> {{ job.display_ref }} &nbsp;|&nbsp;
+          <strong>{{ job.status }}</strong> &mdash; <strong>{{ client_update_info.days_in_status }}</strong> days
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Subject</label>
+          <input type="text" id="curSubject" class="form-control form-control-sm"
+                 value="{{ client_update_info.subject | e }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Body</label>
+          <textarea id="curBody" class="form-control" rows="12"
+                    style="font-size:.84rem;font-family:inherit">{{ client_update_info.body | e }}{{ session.get('user_name','') }}</textarea>
+        </div>
+        <div style="font-size:.75rem;color:var(--muted)">
+          Sending will create a published file note on this job automatically.
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-warning fw-semibold" id="curSendBtn"
+                onclick="submitClientUpdateRequest()">Send Request</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openClientUpdateModal() {
+  var modal = new bootstrap.Modal(document.getElementById('clientUpdateRequestModal'));
+  document.getElementById('curAlertBox').className = 'alert d-none mb-3';
+  document.getElementById('curSendBtn').disabled = false;
+  document.getElementById('curSendBtn').textContent = 'Send Request';
+  modal.show();
+}
+
+function submitClientUpdateRequest() {
+  var btn     = document.getElementById('curSendBtn');
+  var alert   = document.getElementById('curAlertBox');
+  var subject = document.getElementById('curSubject').value.trim();
+  var body    = document.getElementById('curBody').value.trim();
+  if (!subject || !body) {
+    alert.className = 'alert alert-warning mb-3';
+    alert.textContent = 'Subject and body are required.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  alert.className = 'alert d-none mb-3';
+
+  fetch('/jobs/{{ job.id }}/client-update-request/send', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({subject: subject, body: body})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      alert.className = 'alert alert-success mb-3';
+      alert.textContent = 'Request sent to ' + data.sent_to + '. File note created.';
+      btn.textContent = 'Sent';
+      setTimeout(function(){ window.location.reload(); }, 1800);
+    } else {
+      alert.className = 'alert alert-danger mb-3';
+      alert.textContent = data.error || 'Send failed.';
+      btn.disabled = false;
+      btn.textContent = 'Send Request';
+    }
+  })
+  .catch(function(e) {
+    alert.className = 'alert alert-danger mb-3';
+    alert.textContent = 'Network error: ' + e;
+    btn.disabled = false;
+    btn.textContent = 'Send Request';
+  });
+}
+</script>
+{% endif %}
 
 {% endblock %}
