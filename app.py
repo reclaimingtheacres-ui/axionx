@@ -6434,7 +6434,7 @@ def archive_bulk():
     archived_count = 0
     for jid in job_ids:
         job = cur.execute("SELECT id, status, display_ref FROM jobs WHERE id = ?", (jid,)).fetchone()
-        if not job or job["status"] in ARCHIVED_STATUSES or job["status"] not in ("Completed", "Invoiced"):
+        if not job or job["status"] in ARCHIVED_STATUSES or job["status"] not in ("Completed", "Invoiced", "Cancelled"):
             continue
         old_status = job["status"]
         cur.execute("""
@@ -6475,7 +6475,7 @@ def archive_bulk_all():
         pass
     filter_client = data.get("client_id", "").strip()
 
-    where = "WHERE j.status IN ('Invoiced', 'Completed')"
+    where = "WHERE j.status IN ('Invoiced', 'Completed', 'Cancelled')"
     params = []
     if days > 0:
         where += f"""
@@ -6538,7 +6538,7 @@ def admin_archive():
     ).fetchall()
 
     if mode == "eligible":
-        where = "WHERE j.status IN ('Invoiced', 'Completed')"
+        where = "WHERE j.status IN ('Invoiced', 'Completed', 'Cancelled')"
         params = []
         days = request.args.get("days", "90").strip()
         try:
