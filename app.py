@@ -8286,10 +8286,36 @@ def repo_lock_submit(job_id: int, item_id: int):
             "INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at) VALUES (?,?,?,?,?)",
             (job_id, "Repo Lock Submitted", note_text, ts, ts)
         )
-        conn.execute(
-            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
-            (job_id, uid, note_text, ts)
+        fn_cur = conn.execute(
+            """INSERT INTO job_field_notes
+                   (job_id, created_by_user_id, note_text, created_at,
+                    note_type, note_category, review_status)
+               VALUES (?,?,?,?,?,?,?)""",
+            (job_id, uid, note_text, ts,
+             "Repo Lock", "field_note", "submitted_for_review")
         )
+        _rl_note_id = fn_cur.lastrowid
+        try:
+            from datetime import datetime as _dt_rl
+            _today_rl = _dt_rl.now().strftime("%Y-%m-%d")
+            _existing_cue = conn.execute(
+                """SELECT id FROM cue_items WHERE job_id=? AND visit_type='Agent Note Review'
+                   AND status='Pending' AND cue_status IN ('open','in_review','held')""",
+                (job_id,)
+            ).fetchone()
+            if not _existing_cue:
+                conn.execute(
+                    """INSERT INTO cue_items
+                           (job_id, visit_type, due_date, priority, status,
+                            instructions, created_by_user_id, created_at, updated_at, cue_status)
+                       VALUES (?, 'Agent Note Review', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')""",
+                    (job_id, _today_rl, (note_text or "")[:200], uid, ts, ts)
+                )
+        except Exception as _cue_err:
+            app.logger.warning(
+                "Repo Lock: failed to create review cue item for note %s: %s",
+                _rl_note_id, _cue_err
+            )
 
         existing_q = conn.execute(
             "SELECT id, submission_count FROM repo_lock_queue WHERE job_id=? AND item_id=?",
