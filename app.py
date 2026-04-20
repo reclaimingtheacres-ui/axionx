@@ -15357,65 +15357,158 @@ def my_today():
     lockout = _check_agent_lockout()
     if lockout:
         return lockout
-    from datetime import timedelta as _td, date as _date
+    import calendar as _cal
+    from datetime import timedelta as _td
+    from collections import OrderedDict as _OD
+
+    view = request.args.get("view", "day").strip().lower()
+    if view not in ("day", "week", "month"):
+        view = "day"
+
     date_param = request.args.get("date", "").strip()
+    actual_today = datetime.now(_melbourne).date()
     if date_param:
         try:
-            parsed = datetime.strptime(date_param, "%Y-%m-%d").date()
-            today = parsed.isoformat()
+            anchor = datetime.strptime(date_param, "%Y-%m-%d").date()
         except (ValueError, OverflowError):
-            today = datetime.now(_melbourne).date().isoformat()
+            anchor = actual_today
     else:
-        today = datetime.now(_melbourne).date().isoformat()
-    today_display = today[8:10] + "/" + today[5:7] + "/" + today[:4]
-    actual_today = datetime.now(_melbourne).date().isoformat()
-    sel = datetime.strptime(today, "%Y-%m-%d").date()
-    try:
-        prev_date = (sel - _td(days=1)).isoformat()
-    except (ValueError, OverflowError):
-        prev_date = today
-    try:
-        next_date = (sel + _td(days=1)).isoformat()
-    except (ValueError, OverflowError):
-        next_date = today
-    is_today = (today == actual_today)
+        anchor = actual_today
+
+    if view == "day":
+        date_start = date_end = anchor
+        period_label = anchor.strftime("%d/%m/%Y")
+        prev_anchor = anchor - _td(days=1)
+        next_anchor = anchor + _td(days=1)
+    elif view == "week":
+        date_start = anchor - _td(days=anchor.weekday())   # Monday
+        date_end = date_start + _td(days=6)                # Sunday
+        period_label = date_start.strftime("%d/%m/%Y") + " \u2013 " + date_end.strftime("%d/%m/%Y")
+        prev_anchor = date_start - _td(days=7)
+        next_anchor = date_start + _td(days=7)
+    else:  # month
+        date_start = anchor.replace(day=1)
+        date_end = anchor.replace(day=_cal.monthrange(anchor.year, anchor.month)[1])
+        period_label = anchor.strftime("%B %Y")
+        if anchor.month == 1:
+            prev_anchor = anchor.replace(year=anchor.year - 1, month=12, day=1)
+        else:
+            prev_anchor = anchor.replace(month=anchor.month - 1, day=1)
+        if anchor.month == 12:
+            next_anchor = anchor.replace(year=anchor.year + 1, month=1, day=1)
+        else:
+            next_anchor = anchor.replace(month=anchor.month + 1, day=1)
+
+    today = anchor.isoformat()
+    today_display = anchor.strftime("%d/%m/%Y")
+    is_today = (anchor == actual_today)
+    prev_date = prev_anchor.isoformat()
+    next_date = next_anchor.isoformat()
     user_id = session.get("user_id")
 
     conn = db()
     cur = conn.cursor()
-    cur.execute(f"""
-        SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
-               (cu.first_name || ' ' || cu.last_name) customer_name,
-               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) asset_reg
-        FROM cue_items ci
-        JOIN jobs j ON j.id = ci.job_id
-        LEFT JOIN customers cu ON cu.id = j.customer_id
-        WHERE ci.due_date = ? AND ci.assigned_user_id = ?
-          AND ci.status IN ('Pending','In Progress')
-          AND j.status NOT IN {ARCHIVED_STATUSES!r}
-        ORDER BY ci.priority DESC, ci.id
-    """, (today, user_id))
-    cues = cur.fetchall()
 
-    cur.execute(f"""
-        SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
-               bt.name AS booking_type_name,
-               j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name,
-               COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
-        FROM schedules s
-        JOIN booking_types bt ON bt.id = s.booking_type_id
-        JOIN jobs j ON j.id = s.job_id
-        LEFT JOIN customers cu ON cu.id = j.customer_id
-        WHERE date(s.scheduled_for) = ? AND s.assigned_to_user_id = ?
-          AND s.status NOT IN ('Cancelled', 'Completed')
-          AND s.hidden = 0
-          AND j.status NOT IN {ARCHIVED_STATUSES!r}
-        ORDER BY s.scheduled_for
-    """, (today, user_id))
-    schedules = cur.fetchall()
+    day_groups = []
+
+    if view == "day":
+        cur.execute(f"""
+            SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
+                   (cu.first_name || ' ' || cu.last_name) customer_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) asset_reg
+            FROM cue_items ci
+            JOIN jobs j ON j.id = ci.job_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            WHERE ci.due_date = ? AND ci.assigned_user_id = ?
+              AND ci.status IN ('Pending','In Progress')
+              AND j.status NOT IN {ARCHIVED_STATUSES!r}
+            ORDER BY ci.priority DESC, ci.id
+        """, (today, user_id))
+        cues = cur.fetchall()
+
+        cur.execute(f"""
+            SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
+                   bt.name AS booking_type_name,
+                   j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
+                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
+            FROM schedules s
+            JOIN booking_types bt ON bt.id = s.booking_type_id
+            JOIN jobs j ON j.id = s.job_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            WHERE date(s.scheduled_for) = ? AND s.assigned_to_user_id = ?
+              AND s.status NOT IN ('Cancelled', 'Completed')
+              AND s.hidden = 0
+              AND j.status NOT IN {ARCHIVED_STATUSES!r}
+            ORDER BY s.scheduled_for
+        """, (today, user_id))
+        schedules = cur.fetchall()
+        schedule_days = []
+        cue_days = []
+    else:
+        cues = []
+        schedules = []
+        ds = date_start.isoformat()
+        de = date_end.isoformat()
+
+        cur.execute(f"""
+            SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
+                   (cu.first_name || ' ' || cu.last_name) customer_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) asset_reg
+            FROM cue_items ci
+            JOIN jobs j ON j.id = ci.job_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            WHERE ci.due_date >= ? AND ci.due_date <= ? AND ci.assigned_user_id = ?
+              AND ci.status IN ('Pending','In Progress')
+              AND j.status NOT IN {ARCHIVED_STATUSES!r}
+            ORDER BY ci.due_date, ci.priority DESC, ci.id
+        """, (ds, de, user_id))
+        all_cues = cur.fetchall()
+
+        cur.execute(f"""
+            SELECT s.id, s.job_id, s.scheduled_for, s.status, s.notes,
+                   date(s.scheduled_for) AS sched_date,
+                   bt.name AS booking_type_name,
+                   j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
+                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
+            FROM schedules s
+            JOIN booking_types bt ON bt.id = s.booking_type_id
+            JOIN jobs j ON j.id = s.job_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            WHERE date(s.scheduled_for) >= ? AND date(s.scheduled_for) <= ? AND s.assigned_to_user_id = ?
+              AND s.status NOT IN ('Cancelled', 'Completed')
+              AND s.hidden = 0
+              AND j.status NOT IN {ARCHIVED_STATUSES!r}
+            ORDER BY s.scheduled_for
+        """, (ds, de, user_id))
+        all_schedules = cur.fetchall()
+
+        sched_by_day = _OD()
+        for row in all_schedules:
+            d = row["sched_date"]
+            sched_by_day.setdefault(d, []).append(row)
+
+        cue_by_day = _OD()
+        for row in all_cues:
+            d = row["due_date"]
+            cue_by_day.setdefault(d, []).append(row)
+
+        all_days = sorted(set(list(sched_by_day.keys()) + list(cue_by_day.keys())))
+
+        def _day_label(iso):
+            return datetime.strptime(iso, "%Y-%m-%d").strftime("%A %d/%m/%Y")
+
+        day_groups = [
+            (d, _day_label(d), sched_by_day.get(d, []), cue_by_day.get(d, []))
+            for d in all_days
+        ]
+        schedule_days = []
+        cue_days = []
 
     cur.execute("""
         SELECT ju.id AS draft_id, ju.job_id, ju.created_at,
@@ -15432,10 +15525,12 @@ def my_today():
     conn.close()
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
+                           day_groups=day_groups if view != "day" else [],
                            today=today, today_display=today_display,
                            update_drafts=update_drafts,
                            prev_date=prev_date, next_date=next_date,
-                           is_today=is_today)
+                           is_today=is_today, view=view,
+                           period_label=period_label)
 
 
 @app.get("/my/settings")

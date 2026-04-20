@@ -2,21 +2,70 @@
 {% block title %}Axion | My Today{% endblock %}
 {% block page_title %}My Today{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3 class="m-0">My Jobs {% if is_today %}Today{% else %}{{ today_display }}{% endif %}</h3>
-  <div style="display:flex;align-items:center;gap:6px">
-    <a href="/my/today?date={{ prev_date }}" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e2e8f0);background:#fff;color:var(--text,#1e293b);text-decoration:none;font-size:1rem;transition:background .15s" title="Previous day">&lsaquo;</a>
-    <div style="position:relative;display:inline-block">
-      <button type="button" onclick="document.getElementById('ax-date-pick').showPicker?document.getElementById('ax-date-pick').showPicker():document.getElementById('ax-date-pick').click()" style="padding:5px 12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;background:#fff;font-size:.82rem;font-weight:600;color:var(--text,#1e293b);cursor:pointer;min-width:110px;text-align:center">{{ today_display }}</button>
-      <input type="date" id="ax-date-pick" value="{{ today }}" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer" onchange="if(this.value)window.location.href='/my/today?date='+this.value">
-    </div>
-    <a href="/my/today?date={{ next_date }}" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e2e8f0);background:#fff;color:var(--text,#1e293b);text-decoration:none;font-size:1rem;transition:background .15s" title="Next day">&rsaquo;</a>
-    {% if not is_today %}
-    <a href="/my/today" style="font-size:.76rem;color:var(--accent,#2563eb);text-decoration:none;padding:5px 10px;border:1px solid var(--accent,#2563eb);border-radius:8px;font-weight:600;white-space:nowrap">Today</a>
+
+{# ── Header row: title + view toggle + date nav ── #}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h3 class="m-0">
+    {% if view == 'day' %}
+      My Jobs {% if is_today %}Today{% else %}{{ today_display }}{% endif %}
+    {% elif view == 'week' %}
+      My Jobs — Week of {{ period_label }}
+    {% else %}
+      My Jobs — {{ period_label }}
     {% endif %}
+  </h3>
+
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+
+    {# View toggle #}
+    <div style="display:flex;border:1px solid var(--line,#e2e8f0);border-radius:8px;overflow:hidden;background:#fff">
+      <a href="/my/today?view=day&date={{ today }}"
+         style="padding:5px 13px;font-size:.8rem;font-weight:600;text-decoration:none;{% if view == 'day' %}background:var(--accent,#2563eb);color:#fff{% else %}color:var(--text,#1e293b){% endif %}">Day</a>
+      <a href="/my/today?view=week&date={{ today }}"
+         style="padding:5px 13px;font-size:.8rem;font-weight:600;text-decoration:none;border-left:1px solid var(--line,#e2e8f0);{% if view == 'week' %}background:var(--accent,#2563eb);color:#fff{% else %}color:var(--text,#1e293b){% endif %}">Week</a>
+      <a href="/my/today?view=month&date={{ today }}"
+         style="padding:5px 13px;font-size:.8rem;font-weight:600;text-decoration:none;border-left:1px solid var(--line,#e2e8f0);{% if view == 'month' %}background:var(--accent,#2563eb);color:#fff{% else %}color:var(--text,#1e293b){% endif %}">Month</a>
+    </div>
+
+    {# Prev arrow #}
+    <a href="/my/today?view={{ view }}&date={{ prev_date }}"
+       style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e2e8f0);background:#fff;color:var(--text,#1e293b);text-decoration:none;font-size:1rem;transition:background .15s"
+       title="Previous {{ view }}">&lsaquo;</a>
+
+    {# Period display / date picker #}
+    <div style="position:relative;display:inline-block">
+      {% if view == 'day' %}
+        <button type="button"
+                onclick="document.getElementById('ax-date-pick').showPicker?document.getElementById('ax-date-pick').showPicker():document.getElementById('ax-date-pick').click()"
+                style="padding:5px 12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;background:#fff;font-size:.82rem;font-weight:600;color:var(--text,#1e293b);cursor:pointer;min-width:110px;text-align:center">{{ today_display }}</button>
+        <input type="date" id="ax-date-pick" value="{{ today }}"
+               style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer"
+               onchange="if(this.value)window.location.href='/my/today?view=day&date='+this.value">
+      {% else %}
+        <button type="button"
+                onclick="document.getElementById('ax-month-pick').showPicker?document.getElementById('ax-month-pick').showPicker():document.getElementById('ax-month-pick').click()"
+                style="padding:5px 12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;background:#fff;font-size:.82rem;font-weight:600;color:var(--text,#1e293b);cursor:pointer;min-width:150px;text-align:center">{{ period_label }}</button>
+        <input type="month" id="ax-month-pick" value="{{ today[:7] }}"
+               style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer"
+               onchange="if(this.value)window.location.href='/my/today?view={{ view }}&date='+this.value+'-01'">
+      {% endif %}
+    </div>
+
+    {# Next arrow #}
+    <a href="/my/today?view={{ view }}&date={{ next_date }}"
+       style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--line,#e2e8f0);background:#fff;color:var(--text,#1e293b);text-decoration:none;font-size:1rem;transition:background .15s"
+       title="Next {{ view }}">&rsaquo;</a>
+
+    {# "Today" shortcut #}
+    {% if not is_today %}
+    <a href="/my/today?view={{ view }}"
+       style="font-size:.76rem;color:var(--accent,#2563eb);text-decoration:none;padding:5px 10px;border:1px solid var(--accent,#2563eb);border-radius:8px;font-weight:600;white-space:nowrap">Today</a>
+    {% endif %}
+
   </div>
 </div>
 
+{# ── Draft update warning — always shown ── #}
 {% if update_drafts %}
 <div class="d-flex align-items-center justify-content-between px-3 py-2 mb-4"
      style="background:rgba(217,119,6,.12);border:1px solid rgba(217,119,6,.35);border-radius:8px">
@@ -53,20 +102,20 @@
 </div>
 {% endif %}
 
+{# ══════════════════════════════════════════════
+   DAY VIEW — exactly as the original
+   ══════════════════════════════════════════════ #}
+{% if view == 'day' %}
+
 {% if schedules %}
 <h6 class="text-muted mb-2" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.05em">Scheduled Visits</h6>
 <div class="list-group mb-4">
   {% for s in schedules %}
   {% set bt = s.booking_type_name or '' %}
-  {% if 'Update' in bt %}
-    {% set badge_color = '#2563eb' %}
-  {% elif 'New' in bt %}
-    {% set badge_color = '#22c55e' %}
-  {% elif 'Re-attend' in bt %}
-    {% set badge_color = '#f59e0b' %}
-  {% else %}
-    {% set badge_color = '#9ca3af' %}
-  {% endif %}
+  {% if 'Update' in bt %}{% set badge_color = '#2563eb' %}
+  {% elif 'New' in bt %}{% set badge_color = '#22c55e' %}
+  {% elif 'Re-attend' in bt %}{% set badge_color = '#f59e0b' %}
+  {% else %}{% set badge_color = '#9ca3af' %}{% endif %}
   <div class="list-group-item">
     <div class="d-flex justify-content-between align-items-start">
       <div>
@@ -79,16 +128,12 @@
           {% if s.asset_reg %} | Reg: {{ s.asset_reg }}{% endif %}
           {% if s.status %} | {{ s.status }}{% endif %}
         </div>
-        {% if s.notes %}
-          <div class="small mt-1">{{ s.notes }}</div>
-        {% endif %}
+        {% if s.notes %}<div class="small mt-1">{{ s.notes }}</div>{% endif %}
         {% if s.job_address %}
           <div class="small text-muted mt-1">
             {{ s.job_address }}
             <a class="ms-2" target="_blank"
-               href="https://www.google.com/maps/search/?api=1&query={{ s.job_address|urlencode }}">
-              Map ↗
-            </a>
+               href="https://www.google.com/maps/search/?api=1&query={{ s.job_address|urlencode }}">Map ↗</a>
           </div>
         {% endif %}
       </div>
@@ -125,16 +170,12 @@
           {{ c.visit_type }} | {{ c.priority }}
           {% if c.asset_reg %} | Reg: {{ c.asset_reg }}{% endif %}
         </div>
-        {% if c.instructions %}
-          <div class="small mt-1">{{ c.instructions }}</div>
-        {% endif %}
+        {% if c.instructions %}<div class="small mt-1">{{ c.instructions }}</div>{% endif %}
         {% if c.job_address %}
           <div class="small text-muted mt-1">
             {{ c.job_address }}
             <a class="ms-2" target="_blank"
-               href="https://www.google.com/maps/search/?api=1&query={{ c.job_address|urlencode }}">
-              Map ↗
-            </a>
+               href="https://www.google.com/maps/search/?api=1&query={{ c.job_address|urlencode }}">Map ↗</a>
           </div>
         {% endif %}
       </div>
@@ -159,7 +200,123 @@
   <div class="text-muted">No jobs assigned to you for {% if is_today %}today{% else %}{{ today_display }}{% endif %}.</div>
 {% endif %}
 
-<div id="ax-geo-badge" style="display:none;position:fixed;bottom:16px;right:16px;
+{# ══════════════════════════════════════════════
+   WEEK / MONTH VIEW — grouped by day
+   day_groups: list of (iso_date, display_label, sched_items, cue_items)
+   ══════════════════════════════════════════════ #}
+{% else %}
+
+{% if not day_groups and not update_drafts %}
+  <div class="text-muted">No jobs assigned to you for this {{ view }}.</div>
+{% endif %}
+
+{% for day_iso, day_label, sched_items, cue_items in day_groups %}
+<div class="mb-4">
+  {# Day heading with quick link to day view #}
+  <div class="d-flex align-items-center gap-2 mb-2"
+       style="border-bottom:1px solid var(--line,#e2e8f0);padding-bottom:6px">
+    <h6 class="m-0" style="font-size:.88rem;font-weight:700;color:var(--text,#1e293b)">{{ day_label }}</h6>
+    <a href="/my/today?view=day&date={{ day_iso }}"
+       style="font-size:.72rem;color:var(--accent,#2563eb);text-decoration:none;border:1px solid var(--accent,#2563eb);border-radius:6px;padding:1px 7px;white-space:nowrap">Day view</a>
+  </div>
+
+  {% if sched_items %}
+  <h6 class="text-muted mb-1" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Scheduled Visits</h6>
+  <div class="list-group mb-2">
+    {% for s in sched_items %}
+    {% set bt = s.booking_type_name or '' %}
+    {% if 'Update' in bt %}{% set badge_color = '#2563eb' %}
+    {% elif 'New' in bt %}{% set badge_color = '#22c55e' %}
+    {% elif 'Re-attend' in bt %}{% set badge_color = '#f59e0b' %}
+    {% else %}{% set badge_color = '#9ca3af' %}{% endif %}
+    <div class="list-group-item">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="fw-semibold">
+            <a href="/jobs/{{ s.job_id }}">{{ s.internal_job_number }}{% if s.client_reference %} ({{ s.client_reference }}){% endif %}</a>
+            — {{ s.customer_label or s.customer_name or "No customer" }}
+          </div>
+          <div class="small text-muted">
+            {% if s.scheduled_for %}{{ s.scheduled_for[11:16] }}{% endif %}
+            {% if s.asset_reg %} | Reg: {{ s.asset_reg }}{% endif %}
+            {% if s.status %} | {{ s.status }}{% endif %}
+          </div>
+          {% if s.notes %}<div class="small mt-1">{{ s.notes }}</div>{% endif %}
+          {% if s.job_address %}
+            <div class="small text-muted mt-1">
+              {{ s.job_address }}
+              <a class="ms-2" target="_blank"
+                 href="https://www.google.com/maps/search/?api=1&query={{ s.job_address|urlencode }}">Map ↗</a>
+            </div>
+          {% endif %}
+        </div>
+        <div class="text-end d-flex flex-column gap-1 align-items-end">
+          <span style="display:inline-block;background:{{ badge_color }};color:#fff;border-radius:999px;padding:.25rem .85rem;font-size:.8rem;font-weight:600;white-space:nowrap;">
+            {{ bt or 'Scheduled' }}
+          </span>
+          <form method="post" action="/my/schedule/{{ s.id }}/attended">
+            <button type="submit" class="btn btn-sm btn-success mt-1"
+                    style="font-size:.78rem;padding:.25rem .7rem"
+                    onclick="return confirm('Mark this visit as attended and open the Update Builder?')">
+              &#10003; Attended → Build Report
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if cue_items %}
+  <h6 class="text-muted mb-1" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Queue Items</h6>
+  <div class="list-group mb-2">
+    {% for c in cue_items %}
+    <div class="list-group-item">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="fw-semibold">
+            <a href="/jobs/{{ c.job_id }}">{{ c.internal_job_number }}{% if c.client_reference %} ({{ c.client_reference }}){% endif %}</a>
+            — {{ c.customer_label or c.customer_name or "No customer" }}
+          </div>
+          <div class="small text-muted">
+            {{ c.visit_type }} | {{ c.priority }}
+            {% if c.asset_reg %} | Reg: {{ c.asset_reg }}{% endif %}
+          </div>
+          {% if c.instructions %}<div class="small mt-1">{{ c.instructions }}</div>{% endif %}
+          {% if c.job_address %}
+            <div class="small text-muted mt-1">
+              {{ c.job_address }}
+              <a class="ms-2" target="_blank"
+                 href="https://www.google.com/maps/search/?api=1&query={{ c.job_address|urlencode }}">Map ↗</a>
+            </div>
+          {% endif %}
+        </div>
+        <div class="text-end d-flex flex-column gap-1 align-items-end">
+          <span class="badge
+            {% if c.status == 'Completed' %}bg-success
+            {% elif c.status == 'In Progress' %}bg-warning text-dark
+            {% else %}bg-dark{% endif %}">{{ c.status }}</span>
+          {% if c.status not in ('Completed', 'Cancelled') %}
+            <form method="post" action="/cue/{{ c.id }}/complete" class="mt-1">
+              <button class="btn btn-outline-success btn-sm">✓ Done</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+{% endfor %}
+
+{% endif %}
+{# END view branches #}
+
+{# ── Geo location badge ── #}
+<div id="ax-geo-badge" style="position:fixed;bottom:16px;right:16px;
      background:rgba(22,163,74,.12);border:1px solid rgba(22,163,74,.3);
      border-radius:20px;padding:5px 12px;font-size:.75rem;color:#166534;
      display:none;align-items:center;gap:6px;z-index:999">
