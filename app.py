@@ -8554,11 +8554,10 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
     pdf_bytes = _pg.generate_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig)
 
     job_num   = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
-    date_str  = ts[:10].replace("-", "-") if ts else ""
     from datetime import datetime as _dt
-    date_str  = _dt.now().strftime("%d-%m-%Y")
+    date_str  = _dt.now().strftime("%d-%m-%y")
     form_label = "SWPI VIR"
-    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+    orig_filename = f"{job_num} VIR {date_str}.pdf"
     _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                        orig_filename, form_label, ts)
     conn.commit()
