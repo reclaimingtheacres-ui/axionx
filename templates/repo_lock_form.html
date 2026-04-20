@@ -380,6 +380,11 @@
                       <select class="form-select form-select-sm" id="rl_auction_yard_id" onchange="rlAuctionYardChanged(this)">
                         <option value="">— Select Auction Yard —</option>
                       </select>
+                      <div id="rl_yard_addr_wrap" style="display:none;margin-top:6px;">
+                        <select class="form-select form-select-sm" id="rl_yard_addr_picker" onchange="rlYardAddrPickerChanged(this)">
+                          <option value="">— Select Delivery Address —</option>
+                        </select>
+                      </div>
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label">Auction Yard Name (manual)</label>
@@ -565,9 +570,10 @@
         _rlAuctionYards.forEach(function(y) {
           var o = document.createElement("option");
           o.value = y.id;
-          o.textContent = y.name + (y.address ? " — " + y.address : "");
-          o.dataset.address = y.address || "";
-          o.dataset.name    = y.name || "";
+          var _addrs = (y.address || "").split("\n").map(function(a){ return a.trim(); }).filter(Boolean);
+          o.textContent = (_addrs.length === 1) ? y.name + " — " + _addrs[0] : y.name;
+          o.dataset.addresses = JSON.stringify(_addrs);
+          o.dataset.name      = y.name || "";
           yardSel.appendChild(o);
         });
 
@@ -836,10 +842,35 @@
   };
   window.rlAuctionYardChanged = function(sel) {
     var opt = sel.options[sel.selectedIndex];
+    var pickerWrap = _gid("rl_yard_addr_wrap");
+    var picker     = _gid("rl_yard_addr_picker");
     if (sel.value && opt) {
-      _gid("rl_deliver_to").value      = opt.dataset.name    || "";
-      _gid("rl_delivery_address").value = opt.dataset.address || "";
+      var addrs = [];
+      try { addrs = JSON.parse(opt.dataset.addresses || "[]"); } catch(e) {}
+      _gid("rl_deliver_to").value          = opt.dataset.name || "";
       _gid("rl_auction_yard_manual").value = "";
+      if (addrs.length <= 1) {
+        _gid("rl_delivery_address").value = addrs[0] || "";
+        pickerWrap.style.display = "none";
+        picker.innerHTML = '<option value="">— Select Delivery Address —</option>';
+      } else {
+        _gid("rl_delivery_address").value = "";
+        picker.innerHTML = '<option value="">— Select Delivery Address —</option>';
+        addrs.forEach(function(a) {
+          var ao = document.createElement("option");
+          ao.value = a; ao.textContent = a;
+          picker.appendChild(ao);
+        });
+        pickerWrap.style.display = "";
+      }
+    } else {
+      pickerWrap.style.display = "none";
+      picker.innerHTML = '<option value="">— Select Delivery Address —</option>';
+    }
+  };
+  window.rlYardAddrPickerChanged = function(sel) {
+    if (sel.value) {
+      _gid("rl_delivery_address").value = sel.value;
     }
   };
   var _rlAyManual = _gid("rl_auction_yard_manual");
