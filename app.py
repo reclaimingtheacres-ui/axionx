@@ -8070,6 +8070,7 @@ def repo_lock_save(job_id: int, item_id: int):
             "agent_name", "agent_user_id",
         ]
 
+        add_column_if_missing(conn, "repo_lock_records", "notice_delivery", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
         ts = now_ts()
         uid = session.get("user_id")
@@ -8137,6 +8138,7 @@ def repo_lock_submit(job_id: int, item_id: int):
             return jsonify({"ok": False, "error": "Item not found"}), 404
 
         f = request.form
+        add_column_if_missing(conn, "repo_lock_records", "notice_delivery", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in _RL_FIELDS}
         ts  = now_ts()
         uid = session.get("user_id")
