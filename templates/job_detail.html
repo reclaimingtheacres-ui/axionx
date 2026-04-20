@@ -604,18 +604,22 @@
                     {% if item.item_type == 'no_asset' %}
                       <span class="fw-semibold">{{ item.description or "Unsecured matter" }}</span>
                     {% elif item.item_type in ('vehicle', 'motorcycle', 'trailer') %}
-                      <span class="fw-semibold">{{ item.reg or "No Reg" }}</span>
-                      {% if item.make or item.model %}
-                        <span class="small" style="color:var(--muted)"> — {{ item.year or "" }} {{ item.make or "" }} {{ item.model or "" }}</span>
+                      {% if item.year or item.make or item.model %}
+                        <div class="fw-semibold">{{ [item.year, item.make, item.model] | select | join(' ') }}</div>
                       {% endif %}
+                      {% if item.reg %}<div class="fw-semibold">REG: {{ item.reg }}</div>{% endif %}
                       {% if item.vin %}<div class="small" style="color:var(--muted)">VIN: {{ item.vin }}</div>{% endif %}
                       {% if item.description %}<div class="small" style="color:var(--muted)">{{ item.description }}</div>{% endif %}
                     {% elif item.item_type == 'property' %}
                       <span class="fw-semibold">{{ item.property_address or "No address" }}</span>
                       {% if item.lot_details %}<div class="small" style="color:var(--muted)">{{ item.lot_details }}</div>{% endif %}
                     {% elif item.item_type == 'equipment' %}
-                      <span class="fw-semibold">{{ item.description or "Equipment" }}</span>
-                      {% if item.serial_number %}<div class="small" style="color:var(--muted)">Serial: {{ item.serial_number }}</div>{% endif %}
+                      {% if item.year or item.make or item.model %}
+                        <div class="fw-semibold">{{ [item.year, item.make, item.model] | select | join(' ') }}</div>
+                      {% else %}
+                        <div class="fw-semibold">{{ item.description or "Equipment" }}</div>
+                      {% endif %}
+                      {% if item.serial_number %}<div class="fw-semibold">Serial: {{ item.serial_number }}</div>{% endif %}
                       {% if item.identifier %}<div class="small" style="color:var(--muted)">ID: {{ item.identifier }}</div>{% endif %}
                     {% else %}
                       <span class="fw-semibold">{{ item.description or "Item" }}</span>
