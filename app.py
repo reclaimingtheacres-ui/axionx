@@ -5016,60 +5016,167 @@ def add_schedule_ajax(job_id: int):
 @login_required
 @admin_required
 def job_clone(job_id: int):
+    import traceback as _tb
     conn = db()
-    src = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-    if not src:
+    try:
+        src = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if not src:
+            conn.close()
+            flash("Job not found.", "danger")
+            return redirect(url_for("jobs_list"))
+
+        src = dict(src)
+
+        # ── New job number ──────────────────────────────────────────────
+        settings = conn.execute("SELECT * FROM system_settings WHERE id = 1").fetchone()
+        prefix   = settings["job_prefix"] if settings else "0000"
+        seq      = (settings["job_sequence"] or 0) + 1
+        internal = f"{prefix}{seq:03d}"
+        conn.execute("UPDATE system_settings SET job_sequence = ? WHERE id = 1", (seq,))
+
+        now       = now_ts()
+        caller_id = session.get("user_id")
+
+        # ── Setup fields to carry across (no workflow/activity state) ───
+        _COPY = [
+            "client_id", "customer_id",
+            "client_reference", "client_job_number",
+            "job_type", "visit_type", "priority",
+            "job_address", "description",
+            "lender_name", "account_number", "regulation_type",
+            "arrears_cents", "costs_cents", "costs2_cents", "mmp_cents",
+            "job_due_date", "payment_frequency", "bill_to_client_id",
+            "deliver_to", "lat", "lng", "is_regional",
+            "tp_referral", "tp_job_number", "geoop_source_description",
+            "assigned_user_id",
+        ]
+        valid_fields = [f for f in _COPY if f in src]
+        col_str      = ("internal_job_number, display_ref, status, "
+                        "created_at, updated_at, " +
+                        ", ".join(valid_fields))
+        ph           = ", ".join(["?"] * (5 + len(valid_fields)))
+        vals         = ([internal, internal, "New", now, now] +
+                        [src.get(f) for f in valid_fields])
+        cur = conn.execute(f"INSERT INTO jobs ({col_str}) VALUES ({ph})", vals)
+        new_id = cur.lastrowid
+
+        # ── Copy job_items (all asset/security rows) ────────────────────
+        src_items  = conn.execute(
+            "SELECT * FROM job_items WHERE job_id = ?", (job_id,)).fetchall()
+        item_cols  = [r[1] for r in conn.execute(
+            "PRAGMA table_info(job_items)").fetchall()
+                      if r[1] not in ("id", "job_id")]
+        for item in src_items:
+            item = dict(item)
+            cols_p = [c for c in item_cols if c in item]
+            if not cols_p:
+                continue
+            conn.execute(
+                f"INSERT INTO job_items (job_id, {', '.join(cols_p)}) "
+                f"VALUES ({', '.join(['?'] * (1 + len(cols_p)))})",
+                [new_id] + [item[c] for c in cols_p]
+            )
+
+        # ── Copy job_customers (multi-customer links) ───────────────────
+        for jc in conn.execute(
+                "SELECT customer_id, role, sort_order FROM job_customers "
+                "WHERE job_id = ?", (job_id,)).fetchall():
+            conn.execute(
+                "INSERT OR IGNORE INTO job_customers "
+                "(job_id, customer_id, role, sort_order, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (new_id, jc["customer_id"], jc["role"], jc["sort_order"], now)
+            )
+
+        # ── Clone interaction ───────────────────────────────────────────
+        conn.execute(
+            "INSERT INTO interactions "
+            "(job_id, event_type, narrative, occurred_at, created_at) "
+            "VALUES (?, 'Create', ?, ?, ?)",
+            (new_id, f"Job cloned from {src['internal_job_number']}.", now, now)
+        )
+
+        # ── Previous File Notes PDF ─────────────────────────────────────
+        pdf_warning = None
+        try:
+            notes_rows = conn.execute("""
+                SELECT jfn.note_text, jfn.created_at, jfn.note_type,
+                       COALESCE(u.full_name, 'System') AS author_name
+                FROM   job_field_notes jfn
+                LEFT JOIN users u ON u.id = jfn.created_by_user_id
+                WHERE  jfn.job_id = ?
+                ORDER  BY jfn.created_at ASC, jfn.id ASC
+            """, (job_id,)).fetchall()
+            notes = [dict(n) for n in notes_rows]
+
+            client   = (conn.execute("SELECT name FROM clients WHERE id = ?",
+                                     (src["client_id"],)).fetchone()
+                        if src.get("client_id") else None)
+            customer = (conn.execute(
+                            "SELECT first_name, last_name FROM customers WHERE id = ?",
+                            (src["customer_id"],)).fetchone()
+                        if src.get("customer_id") else None)
+
+            items_raw = conn.execute(
+                "SELECT * FROM job_items WHERE job_id = ?", (job_id,)).fetchall()
+            asset_parts = []
+            for it in items_raw:
+                it = dict(it)
+                ymm  = " ".join(filter(None, [it.get("year"), it.get("make"),
+                                              it.get("model")]))
+                line = ymm or it.get("description") or it.get("item_type", "")
+                if it.get("reg"):  line += f" REG: {it['reg']}"
+                if it.get("vin"):  line += f" VIN: {it['vin']}"
+                if line.strip():   asset_parts.append(line.strip())
+
+            from datetime import datetime as _dt
+            job_data_pdf = {
+                "job_number":    src.get("internal_job_number", ""),
+                "client_name":   (client["name"] if client
+                                  else src.get("lender_name") or ""),
+                "customer_name": (f"{customer['first_name']} "
+                                  f"{customer['last_name']}".strip()
+                                  if customer else ""),
+                "lender_name":   src.get("lender_name", ""),
+                "job_address":   src.get("job_address", ""),
+                "asset_details": "; ".join(asset_parts),
+                "generated_date": _dt.now().strftime("%d/%m/%Y %H:%M"),
+            }
+
+            import pdf_gen as _pg
+            pdf_bytes = _pg.generate_previous_file_notes_pdf(job_data_pdf, notes)
+
+            _attach_pdf_to_job(
+                conn, new_id, caller_id, pdf_bytes,
+                "Previous File Notes.pdf",
+                "Previous File Notes"
+            )
+
+        except Exception as _pdf_err:
+            app.logger.error(
+                "Clone PDF failed job %s → %s: %s\n%s",
+                job_id, new_id, _pdf_err, _tb.format_exc()
+            )
+            pdf_warning = ("Job cloned successfully, but the Previous File Notes PDF "
+                           "could not be generated. Please check the server logs.")
+
+        conn.commit()
         conn.close()
-        flash("Job not found.", "danger")
-        return redirect(url_for("jobs_list"))
 
-    conn2 = db()
-    cur2 = conn2.cursor()
-    cur2.execute("SELECT * FROM system_settings WHERE id = 1")
-    settings = cur2.fetchone()
-    prefix   = settings["job_prefix"] if settings else "0000"
-    seq      = (settings["job_sequence"] or 0) + 1
-    internal = f"{prefix}{seq:03d}"
-    cur2.execute("UPDATE system_settings SET job_sequence = ? WHERE id = 1", (seq,))
+        if pdf_warning:
+            flash(pdf_warning, "warning")
+        flash(f"Job cloned as {internal}.", "success")
+        return redirect(url_for("job_detail", job_id=new_id))
 
-    now = now_ts()
-    caller_id = session.get("user_id")
-    cur2.execute("""INSERT INTO jobs
-        (internal_job_number, display_ref, client_id, customer_id,
-         client_reference,
-         job_type, visit_type, status, priority,
-         job_address, description, assigned_user_id,
-         created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (internal, internal,
-         src["client_id"], src["customer_id"],
-         src["client_reference"],
-         src["job_type"], src["visit_type"], "New", src["priority"],
-         src["job_address"], src["description"], src["assigned_user_id"],
-         now, now))
-    new_id = cur2.lastrowid
-
-    src_items = conn.execute("SELECT * FROM job_items WHERE job_id = ?", (job_id,)).fetchall()
-    item_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()
-                 if r[1] not in ("id", "job_id")]
-    for item in src_items:
-        cols_present = [c for c in item_cols if c in dict(item)]
-        if not cols_present:
-            continue
-        ph = ",".join("?" * (len(cols_present) + 1))
-        col_str = "job_id," + ",".join(cols_present)
-        vals = [new_id] + [item[c] for c in cols_present]
-        cur2.execute(f"INSERT INTO job_items ({col_str}) VALUES ({ph})", vals)
-
-    cur2.execute("""INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
-                   VALUES (?, 'Create', ?, ?, ?)""",
-                (new_id, f"Job cloned from {src['internal_job_number']}.", now, now))
-
-    conn.close()
-    conn2.commit()
-    conn2.close()
-    flash(f"Job cloned as {internal}.", "success")
-    return redirect(url_for("job_detail", job_id=new_id))
+    except Exception as _e:
+        app.logger.error("Clone failed job %s: %s\n%s",
+                         job_id, _e, _tb.format_exc())
+        try:
+            conn.close()
+        except Exception:
+            pass
+        flash(f"Clone failed: {_e}", "danger")
+        return redirect(url_for("job_detail", job_id=job_id))
 
 
 @app.post("/jobs/<int:job_id>/activate")
