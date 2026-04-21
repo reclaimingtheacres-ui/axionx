@@ -30,6 +30,16 @@ struct WebViewContainer: View {
         return url.path.hasPrefix("/m/lpr/patrol")
     }
 
+    private var isActiveLPRCameraView: Bool {
+        if showLPRScanner { return true }
+        guard let path = currentURL?.path else { return false }
+        return path == "/m/lpr/capture" || path.hasPrefix("/m/lpr/patrol-mode")
+    }
+
+    private var shouldShowLPROverlays: Bool {
+        isOnLPRPage && !isOffline && !isActiveLPRCameraView
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             AxionWebView(store: store)
@@ -64,7 +74,7 @@ struct WebViewContainer: View {
             }
 
             // Floating Live Scan button — visible on /m/lpr* pages
-            if isOnLPRPage && !isOffline && !isLookingUp {
+            if shouldShowLPROverlays && !isLookingUp {
                 VStack(spacing: 8) {
                     Button(action: { showLPRScanner = true }) {
                         HStack(spacing: 6) {
@@ -109,7 +119,7 @@ struct WebViewContainer: View {
             }
 
             // Field Status Control — bottom centre, shown on LPR pages
-            if isOnLPRPage && !isOffline {
+            if shouldShowLPROverlays {
                 VStack(spacing: 0) {
                     Spacer(minLength: 0)
                     FieldStatusView()
@@ -123,7 +133,7 @@ struct WebViewContainer: View {
             }
 
             // Dispatch banner — shown on LPR pages when a follow-up is assigned and not yet accepted
-            if isOnLPRPage && !isOffline && dispatchManager.activeDispatch == nil
+            if shouldShowLPROverlays && dispatchManager.activeDispatch == nil
                 && syncManager.assignedFollowupCount > 0 {
                 VStack {
                     Spacer()
@@ -169,7 +179,7 @@ struct WebViewContainer: View {
             }
 
             // Active dispatch banner — shown when a dispatch is in progress
-            if let dispatch = dispatchManager.activeDispatch, !showDispatchSheet {
+            if let dispatch = dispatchManager.activeDispatch, !showDispatchSheet, !isActiveLPRCameraView {
                 VStack {
                     Spacer()
                     HStack(spacing: 0) {
@@ -209,7 +219,7 @@ struct WebViewContainer: View {
             }
 
             // Sync badge — bottom-left, shown when there are pending or failed items
-            if syncManager.pendingCount > 0 || syncManager.failedCount > 0 {
+            if !isActiveLPRCameraView && (syncManager.pendingCount > 0 || syncManager.failedCount > 0) {
                 VStack {
                     Spacer()
                     HStack {
@@ -286,6 +296,12 @@ struct WebViewContainer: View {
         }
         .onChange(of: dispatchManager.activeDispatch == nil) { isNil in
             if isNil { showDispatchSheet = false }
+        }
+        .onChange(of: isActiveLPRCameraView) { active in
+            if active {
+                showDispatchSheet = false
+                showSyncStatus = false
+            }
         }
         .onReceive(
             NotificationCenter.default.publisher(for: .axionOpenNotifications)

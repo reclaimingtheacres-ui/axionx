@@ -109,6 +109,8 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **43. SMTP Configuration Hardening:** Production email sending now uses one central runtime SMTP resolver based only on `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM`. The previous `SMTP_HOST` provider fallback was removed from password reset and the shared mail helper used by Request Client Update. Missing required SMTP values now raise controlled server-side errors, `SMTP_PORT` defaults only to 587 when blank, and send attempts log host, port, user, from address, and TLS status without logging the password.
 
+**44. iOS LPR Camera Overlay Suppression:** Native iOS `WebViewContainer` now treats active LPR camera contexts as camera-exclusive screens: the native full-screen Live Scan cover, `/m/lpr/capture` Camera OCR route, and `/m/lpr/patrol-mode` Patrol scanner route suppress the container-level LPR floating buttons, field status pill (`Off Duty / Available / Active Job`), dispatch banners, and sync badge while the camera is active. Normal non-camera LPR pages still retain the LPR controls. Notes camera capture is unchanged because it uses the separate shared camera capture bridge and does not enter the LPR camera route guard.
+
 ## External Dependencies
 
 - **Database**: SQLite
