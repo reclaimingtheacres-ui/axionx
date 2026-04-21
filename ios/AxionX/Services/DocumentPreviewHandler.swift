@@ -13,6 +13,7 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     private var isPreviewInFlight = false
     private var returnURL: URL?
     private var returnURLFrozen = false
+    private var restoreProtectionUntil: Date?
 
     func setWebView(_ wv: WKWebView) {
         self.webView = wv
@@ -39,6 +40,41 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         setReturnURL(url, reason: reason)
     }
 
+    var canTrackReturnURL: Bool {
+        !isReturnNavigationProtected
+    }
+
+    private var isReturnNavigationProtected: Bool {
+        if returnURLFrozen || isPreviewInFlight || isPresentingDocument {
+            return true
+        }
+        if let until = restoreProtectionUntil, until > Date() {
+            return true
+        }
+        return false
+    }
+
+    func shouldBlockNavigation(to url: URL, reason: String) -> Bool {
+        guard isReturnNavigationProtected else { return false }
+        if let returnURL = returnURL, Self.urlsEquivalent(url, returnURL) {
+            return false
+        }
+        guard Self.isBlockedDuringPreviewLifecycle(url) else { return false }
+        print("[DocPreview] blocked background navigation during preview/restore (\(reason)): attempted=\(url.absoluteString), frozen=\(returnURL?.absoluteString ?? "nil")")
+        return true
+    }
+
+    func noteNavigationFinished(_ url: URL) {
+        guard isReturnNavigationProtected,
+              let returnURL = returnURL,
+              Self.urlsEquivalent(url, returnURL) else {
+            return
+        }
+        print("[DocPreview] restore target finished loading: \(url.absoluteString)")
+        returnURLFrozen = false
+        restoreProtectionUntil = nil
+    }
+
     /// Returns true for /m/job/<id>  /m/jobs/<id>/notes  (with optional trailing slash or query)
     static func isJobNotesURL(_ url: URL) -> Bool {
         let path = url.path
@@ -61,6 +97,31 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     static func isRepoLockGeneratedFormURL(_ url: URL) -> Bool {
         let path = url.path
         return path.range(of: "^/jobs/\\d+/repo-lock/\\d+/(vir|transport-instructions|form-13)/?$", options: .regularExpression) != nil
+    }
+
+    static func isBlockedDuringPreviewLifecycle(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              AllowedDomains.isTrusted(url) else {
+            return false
+        }
+        let path = url.path
+        return path == "/m"
+            || path == "/m/"
+            || path.hasPrefix("/m/schedule")
+            || path == "/login"
+            || path.hasPrefix("/login")
+            || path == "/m/login"
+            || path.hasPrefix("/m/login")
+    }
+
+    static func urlsEquivalent(_ lhs: URL, _ rhs: URL) -> Bool {
+        guard lhs.scheme?.lowercased() == rhs.scheme?.lowercased(),
+              lhs.host?.lowercased() == rhs.host?.lowercased(),
+              lhs.path == rhs.path else {
+            return false
+        }
+        return (lhs.query ?? "") == (rhs.query ?? "")
     }
 
     static func isRestorableReturnURL(_ url: URL) -> Bool {
@@ -104,13 +165,30 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
         print("[DocPreview] preview URL opened: \(docURL.absoluteString)")
 
-        // Capture return URL from JS message (most reliable) or fall back to current webView URL
-        if let returnToStr = body["returnTo"] as? String,
-           let returnToURL = resolveURL(returnToStr) {
-            setReturnURL(returnToURL, reason: "JS returnTo")
-            print("[DocPreview] return target captured from JS: \(returnToURL.absoluteString)")
+        let returnToURL = (body["returnTo"] as? String).flatMap { resolveURL($0) }
+        let visibleSourceURL = webView?.url
+        let isGeneratedRepoLockPreview = (returnToURL.map(Self.isRepoLockGeneratedFormURL) ?? false)
+            || (visibleSourceURL.map(Self.isRepoLockGeneratedFormURL) ?? false)
+        if isGeneratedRepoLockPreview {
+            guard let sourceURL = visibleSourceURL,
+                  Self.isRepoLockGeneratedFormURL(sourceURL),
+                  Self.isRestorableReturnURL(sourceURL) else {
+                print("[DocPreview] ABORT: invalid generated repo-lock preview source. webView.url=\(visibleSourceURL?.absoluteString ?? "nil"), returnTo=\(returnToURL?.absoluteString ?? "nil")")
+                showError("Could not open the document because the app could not confirm the originating form page. Please reopen the form and try again.")
+                return
+            }
+            setReturnURL(sourceURL, reason: "exact visible repo-lock source")
+            print("[DocPreview] captured previewSourceURL=\(sourceURL.absoluteString)")
+        } else if let sourceURL = visibleSourceURL, Self.isRestorableReturnURL(sourceURL) {
+            setReturnURL(sourceURL, reason: "exact visible source")
+            print("[DocPreview] captured previewSourceURL=\(sourceURL.absoluteString)")
+        } else if let returnToURL = returnToURL {
+            setReturnURL(returnToURL, reason: "JS returnTo fallback")
+            print("[DocPreview] return target captured from JS fallback: \(returnToURL.absoluteString)")
         } else {
-            captureReturnURL(from: webView?.url, reason: "JS current page before preview")
+            print("[DocPreview] ABORT: invalid preview source. webView.url=\(visibleSourceURL?.absoluteString ?? "nil")")
+            showError("Could not open the document because the app could not confirm the originating page. Please reopen the page and try again.")
+            return
         }
 
         jsDebug("DocumentPreviewHandler: called=YES, url=\(urlString), filename=\(filename)")
@@ -453,18 +531,33 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             self?.previewCoordinator = nil
             self?.logCookiesAfterPreview()
             if let url = self?.returnURL {
-                self?.returnURL = nil
+                self?.restoreProtectionUntil = Date().addingTimeInterval(8)
                 print("[DocPreview] actual URL restored after Quick Look closes: \(url.absoluteString)")
                 DispatchQueue.main.async {
                     self?.webView?.load(URLRequest(url: url))
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                         print("[DocPreview] final webView URL after restore: \(self?.webView?.url?.absoluteString ?? "nil")")
+                        if let current = self?.webView?.url, Self.urlsEquivalent(current, url) {
+                            self?.returnURLFrozen = false
+                            self?.restoreProtectionUntil = nil
+                            self?.returnURL = nil
+                        } else {
+                            print("[DocPreview] restore target not confirmed yet; keeping return protection active")
+                        }
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8.5) {
+                        if self?.returnURLFrozen == true {
+                            print("[DocPreview] restore protection timeout; clearing frozen return target")
+                            self?.returnURLFrozen = false
+                            self?.restoreProtectionUntil = nil
+                            self?.returnURL = nil
+                        }
                     }
                 }
             } else {
                 print("[DocPreview] No returnURL stored — webView stays at current page")
+                self?.returnURLFrozen = false
             }
-            self?.returnURLFrozen = false
         }
 
         vc.present(ql, animated: true) {

@@ -29,6 +29,12 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         print("[NavDelegate] decidePolicyFor: \(url.absoluteString)")
         print("[NavDelegate]   ext='\(ext)' navType=\(navType.rawValue) isMainFrame=\(isMainFrame)")
 
+        if DocumentPreviewHandler.shared.shouldBlockNavigation(to: url, reason: "navigation action") {
+            print("[NavDelegate]   → CANCEL (blocked during document preview/restore)")
+            decisionHandler(.cancel)
+            return
+        }
+
         if AllowedDomains.isNativeScheme(url) {
             print("[NavDelegate]   → CANCEL (native scheme)")
             UIApplication.shared.open(url)
@@ -115,6 +121,12 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
 
+        if DocumentPreviewHandler.shared.shouldBlockNavigation(to: url, reason: "navigation response") {
+            print("[NavDelegate]   → CANCEL RESPONSE (blocked during document preview/restore)")
+            decisionHandler(.cancel)
+            return
+        }
+
         let isTrusted = AllowedDomains.isTrusted(url)
         let isPreviewRoute = Self.isDocumentPreviewPath(url)
         let mimeLower = mime.lowercased()
@@ -175,9 +187,13 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             "document.body && (document.body.style.backgroundColor='#ffffff');",
             completionHandler: nil
         )
-        if let url = webView.url, DocumentPreviewHandler.isRestorableReturnURL(url) {
-            DocumentPreviewHandler.shared.setReturnURL(url, reason: "successful page load")
-            print("[NavDelegate] Return URL tracked after load: \(url.absoluteString)")
+        if let url = webView.url {
+            DocumentPreviewHandler.shared.noteNavigationFinished(url)
+            if DocumentPreviewHandler.shared.canTrackReturnURL,
+               DocumentPreviewHandler.isRestorableReturnURL(url) {
+                DocumentPreviewHandler.shared.setReturnURL(url, reason: "successful page load")
+                print("[NavDelegate] Return URL tracked after load: \(url.absoluteString)")
+            }
         }
     }
 
