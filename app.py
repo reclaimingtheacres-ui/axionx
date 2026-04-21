@@ -15469,6 +15469,9 @@ def my_today():
     else:
         anchor = actual_today
 
+    # ── Date range + grid bounds computation ────────────────────────────────
+    grid_start = grid_end = None   # only set for month view
+
     if view == "day":
         date_start = date_end = anchor
         period_label = anchor.strftime("%d/%m/%Y")
@@ -15476,13 +15479,15 @@ def my_today():
         next_anchor = anchor + _td(days=1)
     elif view == "week":
         date_start = anchor - _td(days=anchor.weekday())   # Monday
-        date_end = date_start + _td(days=6)                # Sunday
-        period_label = date_start.strftime("%d/%m/%Y") + " \u2013 " + date_end.strftime("%d/%m/%Y")
+        date_end   = date_start + _td(days=6)              # Sunday
+        _ws = date_start.strftime("%-d %b")
+        _we = date_end.strftime("%-d %b %Y")
+        period_label = f"{_ws} \u2013 {_we}"
         prev_anchor = date_start - _td(days=7)
         next_anchor = date_start + _td(days=7)
     else:  # month
         date_start = anchor.replace(day=1)
-        date_end = anchor.replace(day=_cal.monthrange(anchor.year, anchor.month)[1])
+        date_end   = anchor.replace(day=_cal.monthrange(anchor.year, anchor.month)[1])
         period_label = anchor.strftime("%B %Y")
         if anchor.month == 1:
             prev_anchor = anchor.replace(year=anchor.year - 1, month=12, day=1)
@@ -15492,18 +15497,25 @@ def my_today():
             next_anchor = anchor.replace(year=anchor.year + 1, month=1, day=1)
         else:
             next_anchor = anchor.replace(month=anchor.month + 1, day=1)
+        # Extend bounds to full Mon–Sun weeks for the calendar grid
+        grid_start = date_start - _td(days=date_start.weekday())
+        _trailing  = (6 - date_end.weekday()) % 7
+        grid_end   = date_end + _td(days=_trailing)
 
-    today = anchor.isoformat()
-    today_display = anchor.strftime("%d/%m/%Y")
-    is_today = (anchor == actual_today)
-    prev_date = prev_anchor.isoformat()
-    next_date = next_anchor.isoformat()
-    user_id = session.get("user_id")
+    today          = anchor.isoformat()
+    today_display  = anchor.strftime("%d/%m/%Y")
+    is_today       = (anchor == actual_today)
+    prev_date      = prev_anchor.isoformat()
+    next_date      = next_anchor.isoformat()
+    user_id        = session.get("user_id")
 
     conn = db()
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
+    # ── Day view queries (untouched) ─────────────────────────────────────
     day_groups = []
+    week_cols  = []
+    cal_grid   = []
 
     if view == "day":
         cur.execute(f"""
@@ -15539,13 +15551,14 @@ def my_today():
             ORDER BY s.scheduled_for
         """, (today, user_id))
         schedules = cur.fetchall()
-        schedule_days = []
-        cue_days = []
+
     else:
+        # ── Week / Month queries ─────────────────────────────────────────
         cues = []
         schedules = []
-        ds = date_start.isoformat()
-        de = date_end.isoformat()
+        # For month: query the full visual grid range (includes adjacent-month overflow days)
+        qs = (grid_start or date_start).isoformat()
+        qe = (grid_end   or date_end  ).isoformat()
 
         cur.execute(f"""
             SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
@@ -15559,7 +15572,7 @@ def my_today():
               AND ci.status IN ('Pending','In Progress')
               AND j.status NOT IN {ARCHIVED_STATUSES!r}
             ORDER BY ci.due_date, ci.priority DESC, ci.id
-        """, (ds, de, user_id))
+        """, (qs, qe, user_id))
         all_cues = cur.fetchall()
 
         cur.execute(f"""
@@ -15579,30 +15592,52 @@ def my_today():
               AND s.hidden = 0
               AND j.status NOT IN {ARCHIVED_STATUSES!r}
             ORDER BY s.scheduled_for
-        """, (ds, de, user_id))
+        """, (qs, qe, user_id))
         all_schedules = cur.fetchall()
 
-        sched_by_day = _OD()
+        sched_by_day: dict = {}
         for row in all_schedules:
-            d = row["sched_date"]
-            sched_by_day.setdefault(d, []).append(row)
+            sched_by_day.setdefault(row["sched_date"], []).append(row)
 
-        cue_by_day = _OD()
+        cue_by_day: dict = {}
         for row in all_cues:
-            d = row["due_date"]
-            cue_by_day.setdefault(d, []).append(row)
+            cue_by_day.setdefault(row["due_date"], []).append(row)
 
-        all_days = sorted(set(list(sched_by_day.keys()) + list(cue_by_day.keys())))
+        if view == "week":
+            # Build 7-column structured list (Mon → Sun)
+            for i in range(7):
+                d   = date_start + _td(days=i)
+                iso = d.isoformat()
+                week_cols.append({
+                    "iso":        iso,
+                    "wd_short":   d.strftime("%a"),
+                    "wd_full":    d.strftime("%A"),
+                    "date_label": d.strftime("%-d %b"),
+                    "is_today":   d == actual_today,
+                    "schedules":  sched_by_day.get(iso, []),
+                    "cues":       cue_by_day.get(iso, []),
+                })
 
-        def _day_label(iso):
-            return datetime.strptime(iso, "%Y-%m-%d").strftime("%A %d/%m/%Y")
-
-        day_groups = [
-            (d, _day_label(d), sched_by_day.get(d, []), cue_by_day.get(d, []))
-            for d in all_days
-        ]
-        schedule_days = []
-        cue_days = []
+        else:  # month
+            # Build full Mon–Sun weekly grid including overflow days
+            d = grid_start
+            while d <= grid_end:
+                week = []
+                for _j in range(7):
+                    iso = d.isoformat()
+                    scheds = sched_by_day.get(iso, [])
+                    cues_d = cue_by_day.get(iso, [])
+                    week.append({
+                        "iso":      iso,
+                        "day_num":  d.day,
+                        "in_month": d.month == anchor.month,
+                        "is_today": d == actual_today,
+                        "schedules": scheds,
+                        "cues":     cues_d,
+                        "total":    len(scheds) + len(cues_d),
+                    })
+                    d += _td(days=1)
+                cal_grid.append(week)
 
     cur.execute("""
         SELECT ju.id AS draft_id, ju.job_id, ju.created_at,
@@ -15619,12 +15654,13 @@ def my_today():
     conn.close()
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
-                           day_groups=day_groups if view != "day" else [],
                            today=today, today_display=today_display,
                            update_drafts=update_drafts,
                            prev_date=prev_date, next_date=next_date,
                            is_today=is_today, view=view,
-                           period_label=period_label)
+                           period_label=period_label,
+                           week_cols=week_cols,
+                           cal_grid=cal_grid)
 
 
 @app.get("/my/settings")

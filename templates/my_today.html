@@ -41,13 +41,20 @@
         <input type="date" id="ax-date-pick" value="{{ today }}"
                style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer"
                onchange="if(this.value)window.location.href='/my/today?view=day&date='+this.value">
+      {% elif view == 'week' %}
+        <button type="button"
+                onclick="document.getElementById('ax-week-pick').showPicker?document.getElementById('ax-week-pick').showPicker():document.getElementById('ax-week-pick').click()"
+                style="padding:5px 12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;background:#fff;font-size:.82rem;font-weight:600;color:var(--text,#1e293b);cursor:pointer;min-width:150px;text-align:center">{{ period_label }}</button>
+        <input type="date" id="ax-week-pick" value="{{ today }}"
+               style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer"
+               onchange="if(this.value)window.location.href='/my/today?view=week&date='+this.value">
       {% else %}
         <button type="button"
                 onclick="document.getElementById('ax-month-pick').showPicker?document.getElementById('ax-month-pick').showPicker():document.getElementById('ax-month-pick').click()"
                 style="padding:5px 12px;border:1px solid var(--line,#e2e8f0);border-radius:8px;background:#fff;font-size:.82rem;font-weight:600;color:var(--text,#1e293b);cursor:pointer;min-width:150px;text-align:center">{{ period_label }}</button>
         <input type="month" id="ax-month-pick" value="{{ today[:7] }}"
                style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer"
-               onchange="if(this.value)window.location.href='/my/today?view={{ view }}&date='+this.value+'-01'">
+               onchange="if(this.value)window.location.href='/my/today?view=month&date='+this.value+'-01'">
       {% endif %}
     </div>
 
@@ -200,117 +207,211 @@
   <div class="text-muted">No jobs assigned to you for {% if is_today %}today{% else %}{{ today_display }}{% endif %}.</div>
 {% endif %}
 
-{# ══════════════════════════════════════════════
-   WEEK / MONTH VIEW — grouped by day
-   day_groups: list of (iso_date, display_label, sched_items, cue_items)
-   ══════════════════════════════════════════════ #}
+{# ══════════════════════════════════════════════════════════════════════
+   WEEK VIEW — true 7-column calendar grid (Mon → Sun)
+   ══════════════════════════════════════════════════════════════════════ #}
+{% elif view == 'week' %}
+
+{% if not week_cols %}
+  <div class="text-muted">No data available for this week.</div>
 {% else %}
 
-{% if not day_groups and not update_drafts %}
-  <div class="text-muted">No jobs assigned to you for this {{ view }}.</div>
-{% endif %}
+<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+<table style="width:100%;min-width:700px;border-collapse:collapse;table-layout:fixed;">
 
-{% for day_iso, day_label, sched_items, cue_items in day_groups %}
-<div class="mb-4">
-  {# Day heading with quick link to day view #}
-  <div class="d-flex align-items-center gap-2 mb-2"
-       style="border-bottom:1px solid var(--line,#e2e8f0);padding-bottom:6px">
-    <h6 class="m-0" style="font-size:.88rem;font-weight:700;color:var(--text,#1e293b)">{{ day_label }}</h6>
-    <a href="/my/today?view=day&date={{ day_iso }}"
-       style="font-size:.72rem;color:var(--accent,#2563eb);text-decoration:none;border:1px solid var(--accent,#2563eb);border-radius:6px;padding:1px 7px;white-space:nowrap">Day view</a>
-  </div>
+  {# ── Column headers ── #}
+  <thead>
+    <tr>
+      {% for col in week_cols %}
+      <th style="text-align:center;padding:8px 4px 7px;border:1px solid #e5e7eb;
+                 {% if col.is_today %}background:#dbeafe;{% else %}background:#f8fafc;{% endif %}">
+        <a href="/my/today?view=day&date={{ col.iso }}"
+           style="display:block;text-decoration:none;
+                  color:{% if col.is_today %}#1d4ed8{% else %}var(--text,#374151){% endif %}">
+          <div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+                      color:{% if col.is_today %}#1d4ed8{% else %}#6b7280{% endif %}">{{ col.wd_short }}</div>
+          <div style="font-size:.95rem;font-weight:{% if col.is_today %}800{% else %}600{% endif %};margin-top:1px">{{ col.date_label }}</div>
+        </a>
+      </th>
+      {% endfor %}
+    </tr>
+  </thead>
 
-  {% if sched_items %}
-  <h6 class="text-muted mb-1" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Scheduled Visits</h6>
-  <div class="list-group mb-2">
-    {% for s in sched_items %}
-    {% set bt = s.booking_type_name or '' %}
-    {% if 'Update' in bt %}{% set badge_color = '#2563eb' %}
-    {% elif 'New' in bt %}{% set badge_color = '#22c55e' %}
-    {% elif 'Re-attend' in bt %}{% set badge_color = '#f59e0b' %}
-    {% else %}{% set badge_color = '#9ca3af' %}{% endif %}
-    <div class="list-group-item">
-      <div class="d-flex justify-content-between align-items-start">
-        <div>
-          <div class="fw-semibold">
-            <a href="/jobs/{{ s.job_id }}">{{ s.internal_job_number }}{% if s.client_reference %} ({{ s.client_reference }}){% endif %}</a>
-            — {{ s.customer_label or s.customer_name or "No customer" }}
-          </div>
-          <div class="small text-muted">
-            {% if s.scheduled_for %}{{ s.scheduled_for[11:16] }}{% endif %}
-            {% if s.asset_reg %} | Reg: {{ s.asset_reg }}{% endif %}
-            {% if s.status %} | {{ s.status }}{% endif %}
-          </div>
-          {% if s.notes %}<div class="small mt-1">{{ s.notes }}</div>{% endif %}
-          {% if s.job_address %}
-            <div class="small text-muted mt-1">
-              {{ s.job_address }}
-              <a class="ms-2" target="_blank"
-                 href="https://www.google.com/maps/search/?api=1&query={{ s.job_address|urlencode }}">Map ↗</a>
+  {# ── Visit cells ── #}
+  <tbody>
+    <tr style="vertical-align:top;">
+      {% for col in week_cols %}
+      <td style="border:1px solid #e5e7eb;padding:5px 4px;min-height:110px;vertical-align:top;
+                 {% if col.is_today %}background:#eff6ff;{% endif %}">
+
+        {# Scheduled visits #}
+        {% for s in col.schedules %}
+          {% set bt = s.booking_type_name or '' %}
+          {% if 'Update' in bt %}{% set bc = '#2563eb' %}
+          {% elif 'New' in bt %}{% set bc = '#16a34a' %}
+          {% elif 'Re-attend' in bt %}{% set bc = '#d97706' %}
+          {% else %}{% set bc = '#6b7280' %}{% endif %}
+          <div style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid {{ bc }};
+                      border-radius:5px;padding:5px 6px;margin-bottom:4px;">
+            <div style="font-size:.72rem;font-weight:700;white-space:nowrap;overflow:hidden;
+                        text-overflow:ellipsis;margin-bottom:2px;">
+              <a href="/jobs/{{ s.job_id }}" style="color:#1e293b;text-decoration:none;">
+                {{ s.customer_label or s.customer_name or (s.display_ref or s.internal_job_number) }}
+              </a>
             </div>
-          {% endif %}
-        </div>
-        <div class="text-end d-flex flex-column gap-1 align-items-end">
-          <span style="display:inline-block;background:{{ badge_color }};color:#fff;border-radius:999px;padding:.25rem .85rem;font-size:.8rem;font-weight:600;white-space:nowrap;">
-            {{ bt or 'Scheduled' }}
-          </span>
-          <form method="post" action="/my/schedule/{{ s.id }}/attended">
-            <button type="submit" class="btn btn-sm btn-success mt-1"
-                    style="font-size:.78rem;padding:.25rem .7rem"
-                    onclick="return confirm('Mark this visit as attended and open the Update Builder?')">
-              &#10003; Attended → Build Report
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  {% if cue_items %}
-  <h6 class="text-muted mb-1" style="font-size:.75rem;text-transform:uppercase;letter-spacing:.05em">Queue Items</h6>
-  <div class="list-group mb-2">
-    {% for c in cue_items %}
-    <div class="list-group-item">
-      <div class="d-flex justify-content-between align-items-start">
-        <div>
-          <div class="fw-semibold">
-            <a href="/jobs/{{ c.job_id }}">{{ c.internal_job_number }}{% if c.client_reference %} ({{ c.client_reference }}){% endif %}</a>
-            — {{ c.customer_label or c.customer_name or "No customer" }}
-          </div>
-          <div class="small text-muted">
-            {{ c.visit_type }} | {{ c.priority }}
-            {% if c.asset_reg %} | Reg: {{ c.asset_reg }}{% endif %}
-          </div>
-          {% if c.instructions %}<div class="small mt-1">{{ c.instructions }}</div>{% endif %}
-          {% if c.job_address %}
-            <div class="small text-muted mt-1">
-              {{ c.job_address }}
-              <a class="ms-2" target="_blank"
-                 href="https://www.google.com/maps/search/?api=1&query={{ c.job_address|urlencode }}">Map ↗</a>
+            <div style="font-size:.68rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">
+              {% if s.scheduled_for %}<span style="color:{{ bc }};font-weight:700;">{{ s.scheduled_for[11:16] }}</span> · {% endif %}{{ s.display_ref or s.internal_job_number }}{% if s.asset_reg %} · {{ s.asset_reg }}{% endif %}
             </div>
-          {% endif %}
-        </div>
-        <div class="text-end d-flex flex-column gap-1 align-items-end">
-          <span class="badge
-            {% if c.status == 'Completed' %}bg-success
-            {% elif c.status == 'In Progress' %}bg-warning text-dark
-            {% else %}bg-dark{% endif %}">{{ c.status }}</span>
-          {% if c.status not in ('Completed', 'Cancelled') %}
-            <form method="post" action="/cue/{{ c.id }}/complete" class="mt-1">
-              <button class="btn btn-outline-success btn-sm">✓ Done</button>
-            </form>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
+            <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;">
+              <span style="background:{{ bc }};color:#fff;border-radius:99px;padding:1px 6px;
+                           font-size:.62rem;font-weight:600;white-space:nowrap;">{{ bt or 'Scheduled' }}</span>
+              <form method="post" action="/my/schedule/{{ s.id }}/attended" style="margin:0;line-height:1;">
+                <button type="submit"
+                        style="background:#16a34a;color:#fff;border:none;border-radius:4px;
+                               font-size:.6rem;padding:2px 5px;cursor:pointer;line-height:1.4;white-space:nowrap;"
+                        onclick="return confirm('Mark this visit as attended and open the Update Builder?')">✓ Attended</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
 
+        {# Queue / cue items #}
+        {% for c in col.cues %}
+          <div style="background:#fff;border:1px solid #e5e7eb;border-left:3px solid #7c3aed;
+                      border-radius:5px;padding:5px 6px;margin-bottom:4px;">
+            <div style="font-size:.72rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;">
+              <a href="/jobs/{{ c.job_id }}" style="color:#1e293b;text-decoration:none;">
+                {{ c.customer_label or c.customer_name or c.internal_job_number }}
+              </a>
+            </div>
+            <div style="font-size:.68rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">
+              {{ c.internal_job_number }}{% if c.client_reference %} · {{ c.client_reference }}{% endif %}{% if c.asset_reg %} · {{ c.asset_reg }}{% endif %}
+            </div>
+            <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;">
+              <span style="background:#7c3aed;color:#fff;border-radius:99px;padding:1px 6px;
+                           font-size:.62rem;font-weight:600;white-space:nowrap;">{{ c.visit_type or 'Queue' }}</span>
+              {% if c.status not in ('Completed', 'Cancelled') %}
+              <form method="post" action="/cue/{{ c.id }}/complete" style="margin:0;line-height:1;">
+                <button type="submit"
+                        style="background:#16a34a;color:#fff;border:none;border-radius:4px;
+                               font-size:.6rem;padding:2px 5px;cursor:pointer;line-height:1.4;">✓ Done</button>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+
+        {% if not col.schedules and not col.cues %}
+          <div style="color:#d1d5db;font-size:.7rem;text-align:center;padding:14px 0;">—</div>
+        {% endif %}
+
+      </td>
+      {% endfor %}
+    </tr>
+  </tbody>
+</table>
 </div>
-{% endfor %}
+
+{% endif %}
+{# END week view #}
+
+
+{# ══════════════════════════════════════════════════════════════════════
+   MONTH VIEW — true calendar month grid
+   cal_grid: list of weeks; each week = list of day-dicts
+   ══════════════════════════════════════════════════════════════════════ #}
+{% else %}
+
+{% if not cal_grid %}
+  <div class="text-muted">No data available for this month.</div>
+{% else %}
+
+{# ── Calendar table ── #}
+<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+<table style="width:100%;min-width:480px;border-collapse:collapse;table-layout:fixed;">
+  <thead>
+    <tr>
+      {% for wd in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+      <th style="text-align:center;padding:6px 3px;background:#f8fafc;
+                 border:1px solid #e5e7eb;font-size:.72rem;font-weight:700;
+                 color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">{{ wd }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for week in cal_grid %}
+    <tr style="vertical-align:top;">
+      {% for day in week %}
+      <td style="border:1px solid #e5e7eb;padding:4px 3px 6px;min-height:80px;vertical-align:top;
+                 {% if not day.in_month %}background:#f9fafb;{% endif %}
+                 {% if day.is_today %}background:#eff6ff;{% endif %}">
+
+        {# Day number — links to Day view for in-month days #}
+        {% if day.in_month %}
+        <a href="/my/today?view=day&date={{ day.iso }}"
+           style="display:inline-flex;align-items:center;justify-content:center;
+                  width:22px;height:22px;border-radius:50%;font-size:.78rem;font-weight:700;
+                  text-decoration:none;margin-bottom:3px;
+                  {% if day.is_today %}background:#2563eb;color:#fff;{% else %}color:#374151;{% endif %}">{{ day.day_num }}</a>
+        {% else %}
+        <span style="display:inline-block;font-size:.72rem;color:#d1d5db;
+                     padding:1px 0 3px 1px;">{{ day.day_num }}</span>
+        {% endif %}
+
+        {# Show visits — up to 2 combined; "+N more" links to Day view #}
+        {% set ns = namespace(shown=0) %}
+
+        {% for s in day.schedules %}
+          {% if ns.shown < 2 %}
+            {% set bt = s.booking_type_name or '' %}
+            {% if 'Update' in bt %}{% set bc = '#2563eb' %}
+            {% elif 'New' in bt %}{% set bc = '#16a34a' %}
+            {% elif 'Re-attend' in bt %}{% set bc = '#d97706' %}
+            {% else %}{% set bc = '#6b7280' %}{% endif %}
+            <a href="/jobs/{{ s.job_id }}"
+               style="display:block;background:#fff;border:1px solid #e5e7eb;
+                      border-left:2px solid {{ bc }};border-radius:3px;
+                      padding:2px 4px;margin-bottom:2px;font-size:.65rem;
+                      color:#1e293b;text-decoration:none;
+                      overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"
+               title="{{ s.customer_label or s.customer_name or s.internal_job_number }}">
+              {% if s.scheduled_for %}<span style="color:{{ bc }};font-weight:700;">{{ s.scheduled_for[11:16] }}</span> {% endif %}{{ s.customer_label or s.customer_name or s.internal_job_number }}
+            </a>
+            {% set ns.shown = ns.shown + 1 %}
+          {% endif %}
+        {% endfor %}
+
+        {% for c in day.cues %}
+          {% if ns.shown < 2 %}
+            <a href="/jobs/{{ c.job_id }}"
+               style="display:block;background:#fff;border:1px solid #e5e7eb;
+                      border-left:2px solid #7c3aed;border-radius:3px;
+                      padding:2px 4px;margin-bottom:2px;font-size:.65rem;
+                      color:#1e293b;text-decoration:none;
+                      overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"
+               title="{{ c.customer_label or c.customer_name or c.internal_job_number }}">
+              {{ c.customer_label or c.customer_name or c.internal_job_number }}
+            </a>
+            {% set ns.shown = ns.shown + 1 %}
+          {% endif %}
+        {% endfor %}
+
+        {% if day.total > 2 %}
+        <a href="/my/today?view=day&date={{ day.iso }}"
+           style="display:block;font-size:.63rem;font-weight:700;color:#2563eb;
+                  text-decoration:none;padding:1px 2px;margin-top:1px;">+{{ day.total - 2 }} more</a>
+        {% endif %}
+
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% endif %}
+{# END month view #}
 
 {% endif %}
 {# END view branches #}
