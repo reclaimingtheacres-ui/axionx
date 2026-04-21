@@ -99,6 +99,8 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **38. Transport Instructions Tow Operator Phone Persistence:** Repo Lock records now persist `tow_phone` as a first-class field alongside `tow_company_id` and `tow_company_name`. Shared draft/submit save paths include the phone regardless of whether the operator came from the dropdown or was typed manually. Transport PDF context now prefers the saved `tow_phone` before falling back to the selected tow operator record, so custom/manual tow operator phone numbers reload and generate correctly. Mobile Repo Lock form now includes an editable tow phone input, auto-fills it from selected dropdown operators, keeps it for manual/custom operators, and clears the dropdown selection when a manual operator name is typed.
 
+**39. Internal Message Notification Hardening:** Internal messaging push now sends APNs alerts with title `New AxionX Message`, sender/preview body text, unread badge count, default sound, and conversation/message IDs for native deep linking. Device token storage now tracks `environment`, `active`, and `last_seen_at`, reactivates refreshed tokens, and inactivates stale/invalid APNs tokens. A `message_notification_log` table records per-message/per-recipient/per-token send attempts for idempotency and production diagnostics. Web message badge polling now uses `/api/messages/unread-summary` to pulse only the message indicator, show one toast per newly seen unread message, optionally trigger browser notifications when already permitted, and flash the browser tab title while unread messages exist in a background tab.
+
 ## External Dependencies
 
 - **Database**: SQLite

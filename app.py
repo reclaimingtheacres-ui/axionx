@@ -19525,6 +19525,10 @@ def _lpr_device_tokens_ensure(conn):
     """)
     cur = conn.cursor()
     add_column_if_missing(cur, "lpr_device_tokens", "platform", "TEXT DEFAULT 'ios'")
+    add_column_if_missing(cur, "lpr_device_tokens", "environment", "TEXT")
+    add_column_if_missing(cur, "lpr_device_tokens", "active", "INTEGER NOT NULL DEFAULT 1")
+    add_column_if_missing(cur, "lpr_device_tokens", "last_seen_at", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_lpr_device_tokens_user_active ON lpr_device_tokens(user_id, active)")
 
 
 def _lpr_notifications_ensure(conn):
@@ -19949,13 +19953,13 @@ _FOLLOWUP_VALID_TRANSITIONS: dict = {
 
 # ── APNs push delivery ─────────────────────────────────────────────────────────
 
-def _apns_send(device_token: str, title: str, body: str, data: dict = None,
-               badge: int = None) -> bool:
+def _apns_send_result(device_token: str, title: str, body: str, data: dict = None,
+                      badge: int = None) -> dict:
     try:
         import jwt as _jwt
         import httpx as _httpx
     except ImportError:
-        return False
+        return {"ok": False, "status_code": None, "error": "Missing APNs dependencies"}
 
     key_id      = os.environ.get("APNS_KEY_ID")
     team_id     = os.environ.get("APNS_TEAM_ID")
@@ -19964,7 +19968,7 @@ def _apns_send(device_token: str, title: str, body: str, data: dict = None,
     is_sandbox  = os.environ.get("APNS_SANDBOX", "1") == "1"
 
     if not all([key_id, team_id, private_key]):
-        return False
+        return {"ok": False, "status_code": None, "error": "Missing APNs configuration"}
 
     try:
         apns_token = _jwt.encode(
@@ -19991,9 +19995,29 @@ def _apns_send(device_token: str, title: str, body: str, data: dict = None,
                     "apns-priority":  "10",
                 },
             )
-        return resp.status_code == 200
-    except Exception:
-        return False
+        error = None
+        if resp.status_code != 200:
+            try:
+                error = resp.json().get("reason")
+            except Exception:
+                error = resp.text[:200]
+        return {"ok": resp.status_code == 200, "status_code": resp.status_code, "error": error}
+    except Exception as exc:
+        return {"ok": False, "status_code": None, "error": str(exc)}
+
+
+def _apns_send(device_token: str, title: str, body: str, data: dict = None,
+               badge: int = None) -> bool:
+    return bool(_apns_send_result(device_token, title, body, data, badge).get("ok"))
+
+
+def _apns_invalid_token(result: dict) -> bool:
+    reason = (result or {}).get("error") or ""
+    return (result or {}).get("status_code") in (400, 410) and reason in {
+        "BadDeviceToken",
+        "Unregistered",
+        "DeviceTokenNotForTopic",
+    }
 
 
 # ── In-app notification helpers ────────────────────────────────────────────────
@@ -20012,14 +20036,17 @@ def _notify_user(user_id: int, title: str, body: str, notif_type: str,
               json.dumps(data) if data else None))
         conn.commit()
         tokens = conn.execute(
-            "SELECT token FROM lpr_device_tokens WHERE user_id=?", (user_id,)
+            "SELECT id, token FROM lpr_device_tokens WHERE user_id=? AND COALESCE(active,1)=1", (user_id,)
         ).fetchall()
-        conn.close()
         push_data = dict(data) if data else {}
         if "type" not in push_data:
             push_data["type"] = "lpr"
         for tok in tokens:
-            _apns_send(tok["token"], title, body, push_data)
+            result = _apns_send_result(tok["token"], title, body, push_data)
+            if _apns_invalid_token(result):
+                conn.execute("UPDATE lpr_device_tokens SET active=0, updated_at=? WHERE id=?", (now_ts(), tok["id"]))
+                conn.commit()
+        conn.close()
     except Exception:
         pass
 
@@ -20211,11 +20238,23 @@ def m_api_device_register():
         return jsonify({"ok": False, "error": "Missing token"}), 400
     conn = db()
     _lpr_device_tokens_ensure(conn)
+    environment = "sandbox" if os.environ.get("APNS_SANDBOX", "1") == "1" else "production"
+    ts = now_ts()
+    conn.execute(
+        "UPDATE lpr_device_tokens SET active=0, updated_at=? WHERE token=? AND user_id!=?",
+        (ts, token, uid)
+    )
     conn.execute("""
-        INSERT INTO lpr_device_tokens (user_id, platform, token, created_at, updated_at)
-        VALUES (?,?,?,?,?)
-        ON CONFLICT(user_id, token) DO UPDATE SET updated_at=excluded.updated_at
-    """, (uid, platform, token, now_ts(), now_ts()))
+        INSERT INTO lpr_device_tokens
+            (user_id, platform, token, environment, active, last_seen_at, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?)
+        ON CONFLICT(user_id, token) DO UPDATE SET
+            platform=excluded.platform,
+            environment=excluded.environment,
+            active=1,
+            last_seen_at=excluded.last_seen_at,
+            updated_at=excluded.updated_at
+    """, (uid, platform, token, environment, 1, ts, ts, ts))
     conn.commit()
     conn.close()
     return jsonify({"ok": True}), 200
@@ -23724,6 +23763,20 @@ def _ensure_msg_tables(conn):
     """)
     # Performance: unread-count query runs on every mobile page load
     conn.execute("CREATE INDEX IF NOT EXISTS idx_msgs_conv ON messages(conversation_id, sender_id, is_deleted)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS message_notification_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id INTEGER NOT NULL,
+            recipient_user_id INTEGER NOT NULL,
+            token_id INTEGER,
+            status TEXT NOT NULL,
+            error TEXT,
+            sent_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(message_id, recipient_user_id, token_id)
+        )
+    """)
     conn.commit()
     _msg_tables_ready = True
 
@@ -24012,18 +24065,45 @@ def _post_message(conn, conv_id, sender_id, body):
             "SELECT user_id FROM conversation_participants WHERE conversation_id=? AND user_id!=?",
             (conv_id, sender_id)
         ).fetchall()
-        preview = body.strip()[:80]
+        preview = body.strip()[:120]
         for r in recipients:
             recipient_unread = _get_unread_count(conn, r["user_id"])
             tokens = conn.execute(
-                "SELECT token FROM lpr_device_tokens WHERE user_id=?", (r["user_id"],)
+                "SELECT id, token FROM lpr_device_tokens WHERE user_id=? AND COALESCE(active,1)=1", (r["user_id"],)
             ).fetchall()
             for tok in tokens:
-                _apns_send(tok["token"], sender_name, preview,
-                           {"type": "message", "conv_id": conv_id},
-                           badge=recipient_unread)
-    except Exception:
-        pass
+                log_ts = now_ts()
+                cur = conn.execute("""
+                    INSERT OR IGNORE INTO message_notification_log
+                        (message_id, recipient_user_id, token_id, status, created_at, updated_at)
+                    VALUES (?,?,?,?,?,?)
+                """, (msg_id, r["user_id"], tok["id"], "pending", log_ts, log_ts))
+                conn.commit()
+                if cur.rowcount == 0:
+                    continue
+                result = _apns_send_result(
+                    tok["token"],
+                    "New AxionX Message",
+                    f"{sender_name}: {preview}",
+                    {"type": "message", "conv_id": conv_id, "message_id": msg_id},
+                    badge=recipient_unread
+                )
+                status = "sent" if result.get("ok") else "failed"
+                error = result.get("error")
+                conn.execute("""
+                    UPDATE message_notification_log
+                    SET status=?, error=?, sent_at=?, updated_at=?
+                    WHERE message_id=? AND recipient_user_id=? AND token_id=?
+                """, (status, error, now_ts(), now_ts(), msg_id, r["user_id"], tok["id"]))
+                if _apns_invalid_token(result):
+                    conn.execute("UPDATE lpr_device_tokens SET active=0, updated_at=? WHERE id=?", (now_ts(), tok["id"]))
+                conn.commit()
+                if result.get("ok"):
+                    app.logger.info("Message push sent message_id=%s recipient_id=%s token_id=%s", msg_id, r["user_id"], tok["id"])
+                else:
+                    app.logger.warning("Message push failed message_id=%s recipient_id=%s token_id=%s error=%s", msg_id, r["user_id"], tok["id"], error)
+    except Exception as exc:
+        app.logger.warning("Message push notification dispatch failed message_id=%s error=%s", msg_id, exc)
 
     return msg_id
 
@@ -24042,6 +24122,44 @@ def api_messages_unread_count():
     except Exception:
         count = 0
     return jsonify({"count": count})
+
+
+@app.get("/api/messages/unread-summary")
+@login_required
+def api_messages_unread_summary():
+    uid = session.get("user_id")
+    try:
+        conn = db()
+        _ensure_msg_tables(conn)
+        count = _get_unread_count(conn, uid)
+        latest = conn.execute("""
+            SELECT m.id, m.conversation_id, m.body, u.full_name
+            FROM messages m
+            JOIN conversation_participants cp ON cp.conversation_id=m.conversation_id
+            LEFT JOIN users u ON u.id=m.sender_id
+            WHERE cp.user_id=?
+              AND m.sender_id != ?
+              AND m.is_deleted = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM message_reads mr
+                WHERE mr.message_id=m.id AND mr.user_id=?
+              )
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT 1
+        """, (uid, uid, uid)).fetchone()
+        conn.close()
+    except Exception:
+        count = 0
+        latest = None
+    data = {"count": count}
+    if latest:
+        data.update({
+            "latest_message_id": latest["id"],
+            "conversation_id": latest["conversation_id"],
+            "sender_name": latest["full_name"] or "Someone",
+            "preview": (latest["body"] or "")[:120],
+        })
+    return jsonify(data)
 
 
 # ── Desktop messaging routes ──────────────────────────────────────────────────
