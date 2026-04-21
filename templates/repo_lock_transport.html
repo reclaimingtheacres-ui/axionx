@@ -168,6 +168,30 @@
   _initCanvas('agentCanvas','agentSigData','agentSigned');
   _initCanvas('towCanvas','towSigData','towSigned');
 
+  function showTransportError(message) {
+    var existing = document.getElementById('transportErrorBox');
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = 'transportErrorBox';
+      existing.style.cssText = 'padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:.84rem;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
+      var form = document.getElementById('transportForm');
+      form.parentNode.insertBefore(existing, form);
+    }
+    existing.textContent = message || 'Unable to generate the document. Please refresh and try again.';
+    existing.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  function openGeneratedDocument(url, filename) {
+    var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+    if (hasNative) {
+      try {
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename || 'Transport Instructions.pdf', returnTo: window.location.href});
+        return;
+      } catch(e) {}
+    }
+    window.location.href = url;
+  }
+
   {% if saved_agent_sig %}
   (function(){
     var sigData = {{ saved_agent_sig|tojson }};
@@ -182,10 +206,10 @@
   })();
   {% endif %}
 
-  document.getElementById('transportForm').addEventListener('submit', function(e) {
+  document.getElementById('transportForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
     var signed = document.getElementById('agentSigned').value;
     if (signed !== '1') {
-      e.preventDefault();
       document.getElementById('agentSigPrompt').style.display = 'block';
       document.getElementById('agentCanvas').style.borderColor = '#dc2626';
       document.getElementById('agentCanvas').scrollIntoView({behavior:'smooth',block:'center'});
@@ -194,6 +218,34 @@
     var btn = document.getElementById('genTransBtn');
     btn.disabled = true;
     document.getElementById('genTransTxt').textContent = 'Generating PDF\u2026';
+    try {
+      var res = await fetch(this.action, {
+        method: 'POST',
+        body: new FormData(this),
+        headers: {'Accept': 'application/json'}
+      });
+      var ct = (res.headers.get('Content-Type') || '').toLowerCase();
+      if (ct.indexOf('application/json') === -1) {
+        showTransportError('Unable to generate the document. The server returned an unexpected response.');
+        return;
+      }
+      var data = await res.json();
+      if (!res.ok || !data.ok) {
+        showTransportError(data.message || data.error || 'Unable to generate the document.');
+        return;
+      }
+      var url = data.preview_url || data.download_url;
+      if (!url) {
+        showTransportError('The document was generated but no preview URL was returned.');
+        return;
+      }
+      openGeneratedDocument(url, data.filename);
+    } catch (ex) {
+      showTransportError('Unable to generate the document. Please check your connection and try again.');
+    } finally {
+      btn.disabled = false;
+      document.getElementById('genTransTxt').textContent = 'Save & Generate PDF';
+    }
   });
 })();
 </script>

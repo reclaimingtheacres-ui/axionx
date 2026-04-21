@@ -103,6 +103,8 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **40. Recovery Targets Module:** Added a standalone Recovery Targets module for loss recovery / LPR repossession targets, separate from normal jobs. It uses dedicated `recovery_targets` child tables for parties, people, phones, addresses, associates, assets, prior registrations, documents, and simple operational notes. Admin/both users can create, edit, upload documents, add simple notes, and mark a target Repossessed without entering standard job workflow. Mobile users can directly search and open Recovery Targets. Shared LPR lookup now checks Active Recovery Targets by current registration, prior registration, and VIN before normal job matching, returning a distinct `recovery_target_match` result that clearly labels the record as a Recovery Target and opens the mobile target view. The schema setup defensively upgrades legacy/partial recovery-target tables left from earlier attempts.
 
+**41. Mobile Repo Lock Document Flow:** VIR, Form 13, and Transport Instructions now use a consistent JSON generation contract from their signing pages when submitted by JavaScript. Successful responses include both the normal desktop download URL and a mobile-safe `/m/doc-stream/job-doc/<id>` preview URL with a short-lived token, so the iOS WKWebView can hand generated PDFs directly to native Quick Look without replacing the webview with a raw download. The mobile note-file preview route now uses `job_note_files.filepath` as the stored object key and `filename` as the display name, fixing generated PDFs attached to file notes where the stored filename differs from the original PDF name.
+
 ## External Dependencies
 
 - **Database**: SQLite

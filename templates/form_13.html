@@ -193,6 +193,17 @@
     existing.scrollIntoView({behavior:'smooth', block:'center'});
   }
 
+  function openGeneratedDocument(url, filename) {
+    var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+    if (hasNative) {
+      try {
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename || 'Form 13.pdf', returnTo: window.location.href});
+        return;
+      } catch(e) {}
+    }
+    window.location.href = url;
+  }
+
   document.getElementById('form13Form').addEventListener('submit', async function(e) {
     e.preventDefault();
     var refused = document.getElementById('occupantRefused').value === '1';
@@ -227,11 +238,12 @@
           showForm13Error(data.message || data.error || 'Unable to generate the document.');
           return;
         }
-        if (!data.download_url) {
-          showForm13Error('The document was generated but no download URL was returned.');
+        var docUrl = data.preview_url || data.download_url;
+        if (!docUrl) {
+          showForm13Error('The document was generated but no preview URL was returned.');
           return;
         }
-        window.location.href = data.download_url;
+        openGeneratedDocument(docUrl, data.filename);
         return;
       }
       if (ct.indexOf('application/pdf') !== -1) {

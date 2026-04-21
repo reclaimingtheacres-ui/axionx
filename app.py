@@ -8776,6 +8776,28 @@ def _attach_pdf_to_job(conn, job_id: int, user_id, pdf_bytes: bytes,
     return {"document_id": doc_id, "note_id": note_id, "stored_filename": stored_filename, "original_filename": original_filename}
 
 
+def _repo_lock_wants_json():
+    return "application/json" in (request.headers.get("Accept") or "") or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
+def _generated_pdf_json(job_id: int, attach: dict, message: str):
+    uid = session.get("user_id") or 0
+    preview_args = {"doc_id": attach["document_id"]}
+    if uid:
+        preview_args.update({"tok": _make_mobile_view_token(uid), "uid": uid})
+    preview_url = url_for("m_doc_stream_job_doc", **preview_args)
+    return jsonify({
+        "ok": True,
+        "message": message,
+        "document_id": attach["document_id"],
+        "note_id": attach["note_id"],
+        "download_url": url_for("download_job_document", job_id=job_id, doc_id=attach["document_id"]),
+        "preview_url": preview_url,
+        "filename": attach["original_filename"],
+        "mime_type": "application/pdf"
+    })
+
+
 def _rl_pdf_context(conn, rec, job_id):
     """Build merged data dict for PDF generation from all related records."""
     job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
@@ -8892,6 +8914,8 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
     if not agent_sig or not _valid_sig(agent_sig):
         flash("Agent signature is required.", "error")
         conn.close()
+        if _repo_lock_wants_json():
+            return jsonify({"ok": False, "error": "validation_error", "message": "Agent signature is required."}), 400
         return redirect(url_for("repo_lock_vir", job_id=job_id, rec_id=rec_id))
     if customer_sig and not _valid_sig(customer_sig):
         customer_sig = None
@@ -8946,10 +8970,13 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
     date_str  = _dt.now().strftime("%d-%m-%y")
     form_label = "SWPI VIR"
     orig_filename = f"{job_num} VIR {date_str}.pdf"
-    _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
-                       orig_filename, form_label, ts)
+    attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
+                                orig_filename, form_label, ts)
     conn.commit()
     conn.close()
+
+    if _repo_lock_wants_json():
+        return _generated_pdf_json(job_id, attach, "VIR generated successfully.")
 
     return send_file(io.BytesIO(pdf_bytes),
                      mimetype="application/pdf",
@@ -9000,6 +9027,8 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
     if not agent_sig:
         flash("Agent signature is required.", "error")
         conn.close()
+        if _repo_lock_wants_json():
+            return jsonify({"ok": False, "error": "validation_error", "message": "Agent signature is required."}), 400
         return redirect(url_for("repo_lock_transport", job_id=job_id, rec_id=rec_id))
 
     for col in ("make", "model", "tow_phone"):
@@ -9036,10 +9065,13 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
     date_str   = _dt.now().strftime("%d-%m-%Y")
     form_label = "Transport Instructions"
     orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
-    _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
-                       orig_filename, form_label, ts)
+    attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
+                                orig_filename, form_label, ts)
     conn.commit()
     conn.close()
+
+    if _repo_lock_wants_json():
+        return _generated_pdf_json(job_id, attach, "Transport Instructions generated successfully.")
 
     return send_file(io.BytesIO(pdf_bytes),
                      mimetype="application/pdf",
@@ -9363,9 +9395,14 @@ def repo_lock_form_13_pdf(job_id: int, rec_id: int):
                            orig_filename, form_label, ts)
         conn.commit()
         download_url = url_for("download_job_document", job_id=job_id, doc_id=attach["document_id"])
+        uid = session.get("user_id") or 0
+        preview_args = {"doc_id": attach["document_id"]}
+        if uid:
+            preview_args.update({"tok": _make_mobile_view_token(uid), "uid": uid})
+        preview_url = url_for("m_doc_stream_job_doc", **preview_args)
         _log.info(
-            "[FORM13] saved file user_id=%s job_id=%s rec_id=%s doc_id=%s note_id=%s original=%r stored=%r download_url=%s response_status=200 content_type=application/json",
-            session.get("user_id"), job_id, rec_id, attach["document_id"], attach["note_id"], attach["original_filename"], attach["stored_filename"], download_url
+            "[FORM13] saved file user_id=%s job_id=%s rec_id=%s doc_id=%s note_id=%s original=%r stored=%r download_url=%s preview_url=%s response_status=200 content_type=application/json",
+            session.get("user_id"), job_id, rec_id, attach["document_id"], attach["note_id"], attach["original_filename"], attach["stored_filename"], download_url, preview_url
         )
         conn.close()
         return jsonify({
@@ -9374,6 +9411,7 @@ def repo_lock_form_13_pdf(job_id: int, rec_id: int):
             "document_id": attach["document_id"],
             "note_id": attach["note_id"],
             "download_url": download_url,
+            "preview_url": preview_url,
             "filename": attach["original_filename"],
             "mime_type": "application/pdf"
         })
@@ -10945,8 +10983,8 @@ def m_documents_preview(file_id: int):
             return b'', 403
     conn.close()
 
-    stored = row["filename"]
-    original = row["filepath"] if row["filepath"] else stored
+    stored = row["filepath"] or row["filename"]
+    original = row["filename"] or stored
     mime = mimetypes.guess_type(stored)[0] or "application/octet-stream"
 
     ext = os.path.splitext(stored)[1].lower()
