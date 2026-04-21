@@ -95,6 +95,8 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **35. Repo Lock Form Fixes:** Fixed `repo_lock_save` and `repo_lock_submit` routes: both now wrapped in `try/except` with `app.logger.exception()` logging and return `{"ok": false, "errors": [...]}` JSON on failure instead of HTML 500. Frontend (`repo_lock_form.html` and mobile `job_detail.html`): removed all `alert()` calls from catch/error handlers — errors now display inline in the form's error banner showing the actual server message. `Surrendered / Repossessed Address` (`repo_address`) field now always pre-fills: customer address takes priority, falls back to `job.get("job_address")` if customer has no address or there is no customer. Applied identically to desktop modal and mobile overlay (`rlm*` functions).
 
+**37. Form 13 PDF Response Contract:** Form 13 save/generate now uses a JSON-only POST contract: `POST /jobs/<job_id>/repo-lock/<rec_id>/form-13` returns `{ok, message, document_id, note_id, download_url, filename, mime_type}` on success and structured JSON errors on validation/session/generation failure. The frontend submits with `fetch`, validates `Content-Type`, shows controlled errors, and only navigates to the returned document URL after success. `download_job_document` returns PDF bytes with explicit `Content-Type: application/pdf` and JSON errors instead of HTML/text failures. Document token handling now uses stored filepath for note attachments and a 1-hour reusable token window. The iOS document preview handler rejects JSON/text/HTML/non-document MIME responses before opening Quick Look.
+
 ## External Dependencies
 
 - **Database**: SQLite

@@ -259,12 +259,18 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
                 return
             }
 
-            if contentType.contains("text/html") {
+            let contentTypeLower = contentType.lowercased()
+            let expectedDocumentMime = contentTypeLower.contains("application/pdf")
+                || contentTypeLower.contains("application/msword")
+                || contentTypeLower.contains("officedocument")
+                || contentTypeLower.contains("application/octet-stream")
+                || contentTypeLower.contains("image/")
+            if contentTypeLower.contains("text/html") || contentTypeLower.contains("application/json") || contentTypeLower.contains("text/plain") || !expectedDocumentMime {
                 let snippet = (try? String(contentsOf: tempURL, encoding: .utf8))?.prefix(500) ?? ""
-                print("[DocPreview] WARNING: Server returned HTML instead of document file")
-                print("[DocPreview] HTML body preview: \(snippet)")
+                print("[DocPreview] WARNING: Server returned non-document response")
+                print("[DocPreview] Non-document body preview: \(snippet)")
                 DispatchQueue.main.async {
-                    self?.showError("The server returned a web page instead of the document file. This usually means the download token has expired or the session is invalid.")
+                    self?.showError("The server did not return a valid document file. Your session may have expired or the file could not be created. Please refresh and try again.")
                 }
                 return
             }

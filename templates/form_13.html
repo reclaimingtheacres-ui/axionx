@@ -180,7 +180,21 @@
   })();
   {% endif %}
 
-  document.getElementById('form13Form').addEventListener('submit', function(e) {
+  function showForm13Error(message) {
+    var existing = document.getElementById('form13ErrorBox');
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = 'form13ErrorBox';
+      existing.style.cssText = 'padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:.84rem;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;';
+      var form = document.getElementById('form13Form');
+      form.parentNode.insertBefore(existing, form);
+    }
+    existing.textContent = message || 'Unable to generate the document. Your session may have expired or the file could not be created. Please refresh and try again.';
+    existing.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  document.getElementById('form13Form').addEventListener('submit', async function(e) {
+    e.preventDefault();
     var refused = document.getElementById('occupantRefused').value === '1';
     var oSigned = document.getElementById('occupantSigned').value === '1';
     var aSigned = document.getElementById('agentSigned').value === '1';
@@ -195,9 +209,48 @@
       document.getElementById('occupantCanvas').style.borderColor='#dc2626';
       err = true;
     } else { document.getElementById('occupantSigPrompt').style.display='none'; }
-    if (err) { e.preventDefault(); return; }
-    document.getElementById('genBtn').disabled=true;
-    document.getElementById('genBtnTxt').textContent='Generating PDF\u2026';
+    if (err) { return; }
+    var btn = document.getElementById('genBtn');
+    var btnTxt = document.getElementById('genBtnTxt');
+    btn.disabled = true;
+    btnTxt.textContent = 'Generating PDF\u2026';
+    try {
+      var res = await fetch(this.action, {
+        method: 'POST',
+        body: new FormData(this),
+        headers: {'Accept': 'application/json'}
+      });
+      var ct = (res.headers.get('Content-Type') || '').toLowerCase();
+      if (ct.indexOf('application/json') !== -1) {
+        var data = await res.json();
+        if (!res.ok || !data.ok) {
+          showForm13Error(data.message || data.error || 'Unable to generate the document.');
+          return;
+        }
+        if (!data.download_url) {
+          showForm13Error('The document was generated but no download URL was returned.');
+          return;
+        }
+        window.location.href = data.download_url;
+        return;
+      }
+      if (ct.indexOf('application/pdf') !== -1) {
+        var blob = await res.blob();
+        var url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+        return;
+      }
+      var txt = await res.text();
+      console.warn('Unexpected Form 13 response', res.status, ct, txt.slice(0, 300));
+      showForm13Error('Unable to generate the document. The server returned an unexpected response.');
+    } catch (ex) {
+      console.warn('Form 13 generation failed', ex);
+      showForm13Error('Unable to generate the document. Please check your connection and try again.');
+    } finally {
+      btn.disabled = false;
+      btnTxt.textContent = 'Save & Generate PDF';
+    }
   });
 })();
 </script>

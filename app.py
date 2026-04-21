@@ -2744,7 +2744,26 @@ def _is_mobile_request():
         return True
     return False
 
+def _expects_json_auth_response():
+    path = request.path or ""
+    accept = request.headers.get("Accept", "")
+    return (
+        request.is_json
+        or "application/json" in accept
+        or path.startswith("/api/")
+        or path.startswith("/m/documents/")
+        or "/documents/" in path
+        or ("/repo-lock/" in path and request.method in ("POST", "PUT", "PATCH", "DELETE"))
+    )
+
+
 def _login_redirect():
+    if _expects_json_auth_response():
+        return jsonify({
+            "ok": False,
+            "error": "session_expired",
+            "message": "Session expired. Please log in again."
+        }), 401
     if _is_mobile_request():
         next_path = request.path
         return redirect(url_for("m_login") + f"?next={next_path}")
@@ -8750,6 +8769,7 @@ def _attach_pdf_to_job(conn, job_id: int, user_id, pdf_bytes: bytes,
         INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at)
         VALUES (?, ?, ?, ?)
     """, (note_id, original_filename, stored_filename, ts))
+    return {"document_id": doc_id, "note_id": note_id, "stored_filename": stored_filename, "original_filename": original_filename}
 
 
 def _rl_pdf_context(conn, rec, job_id):
@@ -9275,15 +9295,17 @@ def repo_lock_form_13(job_id: int, rec_id: int):
 @app.post("/jobs/<int:job_id>/repo-lock/<int:rec_id>/form-13")
 @login_required
 def repo_lock_form_13_pdf(job_id: int, rec_id: int):
-    from flask import send_file
     import pdf_gen as _pg
+    import logging as _log
 
+    _log.info("[FORM13] request received user_id=%s job_id=%s rec_id=%s", session.get("user_id"), job_id, rec_id)
     conn = db()
     rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
                            (rec_id, job_id)).fetchone()
     if not rec_row:
         conn.close()
-        return "Not found", 404
+        _log.warning("[FORM13] not found user_id=%s job_id=%s rec_id=%s", session.get("user_id"), job_id, rec_id)
+        return jsonify({"ok": False, "error": "not_found", "message": "Form 13 record was not found."}), 404
     rec = dict(rec_row)
 
     occupant_sig     = request.form.get("occupant_sig", "").strip() or None
@@ -9291,51 +9313,72 @@ def repo_lock_form_13_pdf(job_id: int, rec_id: int):
     occupant_refused = request.form.get("occupant_refused") == "1"
 
     if not agent_sig:
-        flash("Agent signature is required.", "error")
         conn.close()
-        return redirect(url_for("repo_lock_form_13", job_id=job_id, rec_id=rec_id))
+        _log.warning("[FORM13] validation failed missing_agent_signature user_id=%s job_id=%s rec_id=%s", session.get("user_id"), job_id, rec_id)
+        return jsonify({"ok": False, "error": "validation_error", "message": "Agent signature is required."}), 400
 
     if not occupant_refused and not occupant_sig:
-        flash("Occupier signature is required, or check 'Occupier refused to sign'.", "error")
         conn.close()
-        return redirect(url_for("repo_lock_form_13", job_id=job_id, rec_id=rec_id))
+        _log.warning("[FORM13] validation failed missing_occupier_signature user_id=%s job_id=%s rec_id=%s", session.get("user_id"), job_id, rec_id)
+        return jsonify({"ok": False, "error": "validation_error", "message": "Occupier signature is required, or check 'Occupier refused to sign'."}), 400
 
-    for col in ("make", "model", "year"):
-        add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
+    try:
+        for col in ("make", "model", "year"):
+            add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
 
-    def _f(name):
-        return request.form.get(name, "").strip() or rec.get(name) or ""
+        def _f(name):
+            return request.form.get(name, "").strip() or rec.get(name) or ""
 
-    ts = now_ts()
-    conn.execute("""UPDATE repo_lock_records
-                    SET finance_company=?, customer_name=?, account_number=?,
-                        repo_address=?, year=?, make=?, model=?, vin=?,
-                        updated_at=?
-                    WHERE id=?""",
-                 (_f("finance_company"), _f("customer_name"), _f("account_number"),
-                  _f("repo_address"), _f("year"), _f("make"), _f("model"), _f("vin"),
-                  ts, rec_id))
-    conn.commit()
+        ts = now_ts()
+        conn.execute("""UPDATE repo_lock_records
+                        SET finance_company=?, customer_name=?, account_number=?,
+                            repo_address=?, year=?, make=?, model=?, vin=?,
+                            updated_at=?
+                        WHERE id=?""",
+                     (_f("finance_company"), _f("customer_name"), _f("account_number"),
+                      _f("repo_address"), _f("year"), _f("make"), _f("model"), _f("vin"),
+                      ts, rec_id))
+        conn.commit()
 
-    rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
-    rec = dict(rec_row)
-    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+        rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
+        rec = dict(rec_row)
+        d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
 
-    # Signatures are session-only — pass directly from form, do not persist
-    pdf_bytes = _pg.generate_form_13_pdf(d, occupant_sig=occupant_sig, agent_sig=agent_sig)
+        _log.info("[FORM13] PDF generation started user_id=%s job_id=%s rec_id=%s form_type=form_13", session.get("user_id"), job_id, rec_id)
+        pdf_bytes = _pg.generate_form_13_pdf(d, occupant_sig=occupant_sig, agent_sig=agent_sig)
+        if not pdf_bytes:
+            raise RuntimeError("PDF generation returned empty bytes")
+        _log.info("[FORM13] PDF generation succeeded user_id=%s job_id=%s rec_id=%s bytes=%s", session.get("user_id"), job_id, rec_id, len(pdf_bytes))
 
-    job_num    = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
-    from datetime import datetime as _dt
-    date_str   = _dt.now().strftime("%d-%m-%Y")
-    form_label = "Form 13"
-    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
-    _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
-                       orig_filename, form_label, ts)
-    conn.commit()
-    conn.close()
+        job_num    = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
+        from datetime import datetime as _dt
+        date_str   = _dt.now().strftime("%d-%m-%Y")
+        form_label = "Form 13"
+        orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+        attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
+                           orig_filename, form_label, ts)
+        conn.commit()
+        download_url = url_for("download_job_document", job_id=job_id, doc_id=attach["document_id"])
+        _log.info(
+            "[FORM13] saved file user_id=%s job_id=%s rec_id=%s doc_id=%s note_id=%s original=%r stored=%r download_url=%s response_status=200 content_type=application/json",
+            session.get("user_id"), job_id, rec_id, attach["document_id"], attach["note_id"], attach["original_filename"], attach["stored_filename"], download_url
+        )
+        conn.close()
+        return jsonify({
+            "ok": True,
+            "message": "Form 13 generated successfully.",
+            "document_id": attach["document_id"],
+            "note_id": attach["note_id"],
+            "download_url": download_url,
+            "filename": attach["original_filename"],
+            "mime_type": "application/pdf"
+        })
+    except Exception:
+        conn.rollback()
+        conn.close()
+        _log.exception("[FORM13] failed user_id=%s job_id=%s rec_id=%s response_status=500 content_type=application/json", session.get("user_id"), job_id, rec_id)
+        return jsonify({"ok": False, "error": "generation_failed", "message": "Unable to generate the document. Please refresh and try again."}), 500
 
-    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
-                     as_attachment=True, download_name=orig_filename)
 
 
 # ─────────────────────────── Voluntary Surrender ─────────────────────
@@ -10492,7 +10535,8 @@ def download_job_document(job_id: int, doc_id: int):
         ).fetchone()
         if not access:
             conn.close()
-            return ("Not found", 404)
+            _log.warning("[DOC_DOWNLOAD] access denied user_id=%s job_id=%s doc_id=%s", user_id, job_id, doc_id)
+            return jsonify({"ok": False, "error": "not_found", "message": "Document not found or not accessible."}), 404
 
     cur.execute(
         "SELECT original_filename, stored_filename, mime_type, file_status FROM job_documents WHERE id=? AND job_id=?",
@@ -10501,10 +10545,12 @@ def download_job_document(job_id: int, doc_id: int):
     doc = cur.fetchone()
     if not doc:
         conn.close()
-        return ("Not found", 404)
+        _log.warning("[DOC_DOWNLOAD] not found job_id=%s doc_id=%s", job_id, doc_id)
+        return jsonify({"ok": False, "error": "not_found", "message": "Document not found."}), 404
 
     if _is_file_missing(doc["file_status"]):
         conn.close()
+        _log.warning("[DOC_DOWNLOAD] file unavailable status=%s job_id=%s doc_id=%s", doc["file_status"], job_id, doc_id)
         return jsonify({"ok": False, "error": "File unavailable"}), 410
 
     stored = doc["stored_filename"]
@@ -10518,6 +10564,7 @@ def download_job_document(job_id: int, doc_id: int):
             resp = make_response(data)
             resp.headers["Content-Type"] = mime
             resp.headers["Content-Disposition"] = f'attachment; filename="{doc["original_filename"]}"'
+            _log.info("[DOC_DOWNLOAD] served azure job_id=%s doc_id=%s stored=%r original=%r content_type=%s bytes=%s", job_id, doc_id, stored, doc["original_filename"], mime, len(data))
             return resp
         except Exception:
             pass
@@ -10527,15 +10574,22 @@ def download_job_document(job_id: int, doc_id: int):
         if os.path.isfile(local_path):
             audit("job_document", doc_id, "download", f"Document downloaded: {doc['original_filename']}", {"job_id": job_id})
             conn.close()
-            return send_from_directory(search_dir, stored, as_attachment=True, download_name=doc["original_filename"])
+            with open(local_path, "rb") as fh:
+                data = fh.read()
+            resp = make_response(data)
+            resp.headers["Content-Type"] = mime
+            resp.headers["Content-Disposition"] = f'attachment; filename="{doc["original_filename"]}"'
+            _log.info("[DOC_DOWNLOAD] served local job_id=%s doc_id=%s stored=%r original=%r content_type=%s bytes=%s", job_id, doc_id, stored, doc["original_filename"], mime, len(data))
+            return resp
 
     conn.close()
     _mark_file_orphaned("job_documents", doc_id)
+    _log.warning("[DOC_DOWNLOAD] marked orphaned job_id=%s doc_id=%s stored=%r", job_id, doc_id, stored)
     return jsonify({"ok": False, "error": "File unavailable"}), 410
 
 
 _doc_tokens: dict = {}
-_DOC_TOKEN_TTL = 600
+_DOC_TOKEN_TTL = 3600
 _doc_token_lock = threading.Lock()
 
 def _clean_doc_tokens():
@@ -10586,7 +10640,7 @@ def api_doc_token():
             if not job_access:
                 conn.close()
                 return jsonify({"ok": False, "error": "Access denied"}), 403
-        stored = row["filename"]
+        stored = row["filepath"] or row["filename"]
         mime = mimetypes.guess_type(stored)[0] or "application/octet-stream"
         size = None
         for sd in [app.config["UPLOAD_FOLDER"], _LEGACY_UPLOAD_FOLDER]:
@@ -10670,7 +10724,7 @@ def api_doc_download(token: str):
     import time as _t, logging as _log
     with _doc_token_lock:
         _clean_doc_tokens()
-        entry = _doc_tokens.pop(token, None)
+        entry = _doc_tokens.get(token)
 
     if not entry:
         return jsonify({"ok": False, "error": "Token expired or invalid"}), 403
