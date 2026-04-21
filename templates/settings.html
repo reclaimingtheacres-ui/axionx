@@ -64,6 +64,9 @@
     <li class="nav-item">
       <a class="nav-link" href="/admin/archive">Archive</a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link" href="/admin/settings?tab=ai-drafts" data-tab="ai-drafts">AI Draft Cleanup</a>
+    </li>
   </ul>
 </div>
 
@@ -1043,6 +1046,17 @@ function dupDeleteClient(clientId, name) {
   </div>
 </div>
 
+<!-- TAB: AI Draft Cleanup -->
+<div class="tab-pane-custom" id="tab-ai-drafts" style="display:none">
+  {% set total_drafts = ai_draft_cleanup.total_drafts %}
+  {% set on_inactive = ai_draft_cleanup.on_inactive %}
+  {% set blank_drafts = ai_draft_cleanup.blank_drafts %}
+  {% set will_discard = ai_draft_cleanup.will_discard %}
+  {% set affected_records = ai_draft_cleanup.affected_records %}
+  {% set ai_drafts_embedded = true %}
+  {% include "partials/ai_draft_cleanup_panel.html" %}
+</div>
+
 <script>
 /* ── Tab switching ──────────────────────────────────────────────────── */
 function showTab(name) {
@@ -1057,16 +1071,17 @@ function showTab(name) {
 
 document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
   link.addEventListener('click', function(e) {
-    if (this.getAttribute('href') && !this.getAttribute('href').startsWith('#')) return;
+    if (!this.dataset.tab) return;
     e.preventDefault();
     showTab(this.dataset.tab);
   });
 });
 
 (function() {
-  var validTabs = ['job-numbers', 'import-data', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder', 'data-management'];
+  var validTabs = ['job-numbers', 'import-data', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder', 'data-management', 'ai-drafts'];
+  var queryTab = new URLSearchParams(location.search).get('tab') || '';
   var hash = location.hash.replace('#', '');
-  showTab(validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers');
+  showTab(validTabs.indexOf(queryTab) >= 0 ? queryTab : (validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers'));
 })();
 
 function esc(s) {

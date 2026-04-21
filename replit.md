@@ -105,6 +105,8 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **41. Mobile Repo Lock Document Flow:** VIR, Form 13, and Transport Instructions now use a consistent JSON generation contract from their signing pages when submitted by JavaScript. Successful responses include both the normal desktop download URL and a mobile-safe `/m/doc-stream/job-doc/<id>` preview URL with a short-lived token, so the iOS WKWebView can hand generated PDFs directly to native Quick Look without replacing the webview with a raw download. The mobile note-file preview route now uses `job_note_files.filepath` as the stored object key and `filename` as the display name, fixing generated PDFs attached to file notes where the stored filename differs from the original PDF name.
 
+**42. Admin Navigation Tidy-Up:** AI Draft Cleanup is now accessed as a tab inside Admin → Settings & Resources via `/admin/settings?tab=ai-drafts`, reusing the existing cleanup route/action and interface. The standalone sidebar/admin-popup link was removed. Recovery Targets remains on its existing routes and functionality, but its desktop navigation entry moved from Workspace into the Admin menu.
+
 ## External Dependencies
 
 - **Database**: SQLite

@@ -347,7 +347,6 @@
           Queue
           <span id="ax-queue-badge" style="display:none;background:#dc2626;color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
         </a>
-        <a href="/recovery-targets" class="{% if request.path.startswith('/recovery-targets') %}active{% endif %}">Recovery Targets</a>
         {% endif %}
         {% if session.get('user_id') %}
         <a href="/messages" class="{% if request.path.startswith('/messages') %}active{% endif %}" style="position:relative">
@@ -364,7 +363,7 @@
 
         {% if session.get('role') in ('admin', 'both') %}
           <div class="hint">Admin</div>
-          <button type="button" class="ax-menu-btn{% if request.path == '/admin' or request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/reports') or request.path.startswith('/forms') or request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} active{% endif %}" data-popup="ax-admin-popup">
+          <button type="button" class="ax-menu-btn{% if request.path == '/admin' or request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/reports') or request.path.startswith('/forms') or request.path.startswith('/recovery-targets') or request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} active{% endif %}" data-popup="ax-admin-popup">
             Admin
             <svg class="ax-menu-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -543,6 +542,7 @@
   </div>
   <div id="ax-admin-popup" class="ax-popup-menu" role="menu">
     <a href="/admin"{% if request.path == '/admin' %} class="active"{% endif %}>Dashboard</a>
+    <a href="/recovery-targets"{% if request.path.startswith('/recovery-targets') %} class="active"{% endif %}>Recovery Targets</a>
     <div class="ax-popup-divider"></div>
     <a href="/clients"{% if request.path.startswith('/clients') %} class="active"{% endif %}>Clients</a>
     <a href="/customers"{% if request.path.startswith('/customers') %} class="active"{% endif %}>Customers</a>
@@ -553,7 +553,6 @@
     <a href="/reports/aged-suspended"{% if request.path.startswith('/reports/aged') %} class="active"{% endif %}>Aged Suspended</a>
     <div class="ax-popup-divider"></div>
     <a href="/admin/settings"{% if request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} class="active"{% endif %}>Settings & Resources</a>
-    <a href="/admin/cleanup-ai-drafts"{% if request.path.startswith('/admin/cleanup-ai-drafts') %} class="active"{% endif %}>Clean Up AI Drafts</a>
   </div>
   {% endif %}
   <script>

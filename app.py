@@ -12102,13 +12102,8 @@ def my_drafts():
     return render_template("my_drafts.html", drafts=drafts)
 
 
-@app.get("/admin/cleanup-ai-drafts")
-@login_required
-@admin_required
-def admin_cleanup_ai_drafts():
-    """Admin bulk cleanup: show stale AI draft stats before executing."""
+def _ai_draft_cleanup_context(conn):
     _ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
-    conn = db()
     total_drafts = conn.execute(
         "SELECT COUNT(*) c FROM job_updates WHERE status='draft'"
     ).fetchone()["c"]
@@ -12134,15 +12129,24 @@ def admin_cleanup_ai_drafts():
             ORDER BY ju.updated_at DESC""",
         INACTIVE_JOB_STATUSES
     ).fetchall()
+    return {
+        "total_drafts": total_drafts,
+        "on_inactive": on_inactive,
+        "blank_drafts": blank_drafts,
+        "will_discard": on_inactive + blank_drafts,
+        "affected_records": affected_records,
+    }
+
+
+@app.get("/admin/cleanup-ai-drafts")
+@login_required
+@admin_required
+def admin_cleanup_ai_drafts():
+    """Admin bulk cleanup: show stale AI draft stats before executing."""
+    conn = db()
+    cleanup_context = _ai_draft_cleanup_context(conn)
     conn.close()
-    return render_template(
-        "admin_cleanup_ai_drafts.html",
-        total_drafts=total_drafts,
-        on_inactive=on_inactive,
-        blank_drafts=blank_drafts,
-        will_discard=on_inactive + blank_drafts,
-        affected_records=affected_records,
-    )
+    return render_template("admin_cleanup_ai_drafts.html", **cleanup_context)
 
 
 @app.post("/admin/cleanup-ai-drafts")
@@ -12166,6 +12170,8 @@ def admin_cleanup_ai_drafts_run():
     conn.commit()
     conn.close()
     flash(f"Bulk cleanup complete: {discarded} stale AI draft session(s) discarded.", "success")
+    if request.form.get("return_to_settings") == "1":
+        return redirect(url_for("admin_settings") + "?tab=ai-drafts")
     return redirect(url_for("admin_cleanup_ai_drafts"))
 
 
@@ -13928,10 +13934,12 @@ def admin_settings():
     except Exception:
         ai_usage = []
     clients_list = cur.execute("SELECT id, name FROM clients ORDER BY name").fetchall()
+    ai_draft_cleanup = _ai_draft_cleanup_context(conn)
     conn.close()
     return render_template("settings.html", settings=settings, booking_types=booking_types,
                            tow_operators=tow_operators, auction_yards=auction_yards,
-                           ai_usage=ai_usage, clients_list=clients_list)
+                           ai_usage=ai_usage, clients_list=clients_list,
+                           ai_draft_cleanup=ai_draft_cleanup)
 
 
 @app.get("/admin/api/duplicates")
