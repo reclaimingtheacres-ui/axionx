@@ -10329,6 +10329,26 @@ def serve_upload(filename):
     alt_row = _file_status_cache[filename]
 
     if alt_row and _is_file_missing(alt_row.get("file_status") if isinstance(alt_row, dict) else alt_row["file_status"]):
+        # Previously marked orphaned — but try Azure with the stored filepath blob name
+        # before giving up, in case the file exists in blob storage under its stored name.
+        if _uploads_container:
+            _fp = alt_row.get("filepath") or "" if isinstance(alt_row, dict) else alt_row["filepath"] or ""
+            _bn = os.path.basename(_fp) if _fp else ""
+            if _bn and _bn != filename:
+                try:
+                    import logging as _log_orp
+                    _blob_orp = _uploads_container.get_blob_client(_bn)
+                    _dl_orp   = _blob_orp.download_blob()
+                    _mime_orp = mimetypes.guess_type(_bn)[0] or "application/octet-stream"
+                    _log_orp.info("[serve_upload] Recovered orphaned file %r from Azure blob %r — resetting status", filename, _bn)
+                    try:
+                        _rc = db(); _rc.execute("UPDATE job_note_files SET file_status='ok' WHERE id=?", (alt_row["id"],)); _rc.commit(); _rc.close()
+                        _file_status_cache.pop(filename, None)
+                    except Exception:
+                        pass
+                    return Response(_dl_orp.readall(), mimetype=_mime_orp)
+                except Exception:
+                    pass
         return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
     if _uploads_container:
@@ -10387,6 +10407,19 @@ def serve_upload(filename):
                     if os.path.isfile(alt_sub):
                         _log.info("Serving alt filename %r from %s/%s", bn, search_dir, sd)
                         return send_from_directory(os.path.join(search_dir, sd), bn)
+            # Disk lookups exhausted — try Azure with the stored blob name (filepath) before
+            # giving up.  Generated PDFs are stored in Azure under stored_filename but the
+            # URL and job_note_files.filename use original_filename, so the initial Azure
+            # check at the top of this function always misses them.
+            if _uploads_container and bn != filename:
+                try:
+                    _blob_alt = _uploads_container.get_blob_client(bn)
+                    _dl_alt   = _blob_alt.download_blob()
+                    _mime_alt = mimetypes.guess_type(bn)[0] or "application/octet-stream"
+                    _log.info("[serve_upload] Served %r from Azure via stored filepath blob %r", filename, bn)
+                    return Response(_dl_alt.readall(), mimetype=_mime_alt)
+                except Exception as _az_alt_e:
+                    _log.warning("[serve_upload] Alt Azure fetch failed for blob %r (filepath for %r): %s", bn, filename, _az_alt_e)
         _mark_file_orphaned("job_note_files", alt_row["id"])
         return jsonify({"ok": False, "error": "File unavailable", "orphaned": True}), 410
 
