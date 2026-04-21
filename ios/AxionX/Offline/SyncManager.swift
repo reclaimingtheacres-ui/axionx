@@ -131,6 +131,11 @@ final class SyncManager: ObservableObject {
     // MARK: - Sync
 
     func syncNow() async {
+        if DocumentPreviewHandler.shared.isPreviewRestoreProtected {
+            print("[SyncManager] syncNow skipped during document preview/restore")
+            refreshCounts()
+            return
+        }
         guard !isSyncing, let wv = webView else {
             refreshCounts()
             return
@@ -181,6 +186,10 @@ final class SyncManager: ObservableObject {
     // MARK: - Remote state refresh (badge + follow-up count)
 
     private func refreshRemoteState(webView: WKWebView) async {
+        if DocumentPreviewHandler.shared.isPreviewRestoreProtected {
+            print("[SyncManager] remote refresh skipped during document preview/restore")
+            return
+        }
         PushNotificationService.shared.refreshUnreadBadge()
         do {
             let json = try await fetchJSON(path: "/m/api/lpr/assigned-followups",

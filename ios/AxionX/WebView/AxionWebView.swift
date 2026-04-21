@@ -46,6 +46,15 @@ final class WebViewStore: ObservableObject {
     let openSettingsHandler: OpenSettingsHandler
 
     func loadInitial() {
+        if DocumentPreviewHandler.shared.isPreviewRestoreProtected {
+            print("[AxionWebView] loadInitial skipped during document preview/restore")
+            return
+        }
+        if let current = webView.url {
+            print("[AxionWebView] loadInitial skipped because webView already has URL: \(current.absoluteString)")
+            return
+        }
+        print("[AxionWebView] loadInitial loading entry URL: \(AppConfig.entryURL.absoluteString)")
         webView.load(URLRequest(
             url: AppConfig.entryURL,
             cachePolicy: .useProtocolCachePolicy,

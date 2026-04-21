@@ -73,6 +73,10 @@ final class AxionAppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         Task { @MainActor in
+            if DocumentPreviewHandler.shared.isPreviewRestoreProtected {
+                print("[AxionXApp] foreground refresh skipped during document preview/restore")
+                return
+            }
             PushNotificationService.shared.refreshUnreadBadge()
             await SyncManager.shared.syncNow()
         }

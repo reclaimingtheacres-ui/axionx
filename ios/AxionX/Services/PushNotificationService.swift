@@ -66,6 +66,10 @@ final class PushNotificationService: NSObject {
     // MARK: - Unread count badge (polled after login & on foreground)
 
     func refreshUnreadBadge() {
+        if DocumentPreviewHandler.shared.isPreviewRestoreProtected {
+            print("[PushNotification] unread badge refresh skipped during document preview/restore")
+            return
+        }
         guard let url = URL(
             string: AppConfig.currentBaseURL + "/api/messages/unread-count"
         ) else { return }

@@ -44,6 +44,10 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         !isReturnNavigationProtected
     }
 
+    var isPreviewRestoreProtected: Bool {
+        isReturnNavigationProtected
+    }
+
     private var isReturnNavigationProtected: Bool {
         if returnURLFrozen || isPreviewInFlight || isPresentingDocument {
             return true
