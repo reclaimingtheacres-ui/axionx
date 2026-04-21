@@ -1348,6 +1348,7 @@ def _migrate_update_builder():
         damage_list               TEXT,
         tow_company_id            INTEGER,
         tow_company_name          TEXT,
+        tow_phone                 TEXT,
         tow_costs                 TEXT,
         deliver_to                TEXT,
         delivery_address          TEXT,
@@ -1374,6 +1375,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "repo_lock_records", "customer_signed_at","TEXT")
     add_column_if_missing(cur, "repo_lock_records", "tow_signed_at",    "TEXT")
     add_column_if_missing(cur, "repo_lock_records", "notice_delivery",  "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "tow_phone",        "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS repo_lock_queue (
@@ -8554,13 +8556,14 @@ def repo_lock_save(job_id: int, item_id: int):
             "personal_effects_removed", "removed_by_who", "personal_effects_list",
             "tyres", "body", "duco", "interior", "engine_condition", "transmission",
             "fuel_level", "any_damage", "damage_list",
-            "tow_company_id", "tow_company_name", "tow_costs",
+            "tow_company_id", "tow_company_name", "tow_phone", "tow_costs",
             "deliver_to", "delivery_address", "expected_delivery_date",
             "customers_intention", "other_info", "notice_delivery",
             "agent_name", "agent_user_id",
         ]
 
         add_column_if_missing(conn, "repo_lock_records", "notice_delivery", "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_phone", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
         ts = now_ts()
         uid = session.get("user_id")
@@ -8610,7 +8613,7 @@ _RL_FIELDS = [
     "personal_effects_removed", "removed_by_who", "personal_effects_list",
     "tyres", "body", "duco", "interior", "engine_condition", "transmission",
     "fuel_level", "any_damage", "damage_list",
-    "tow_company_id", "tow_company_name", "tow_costs",
+    "tow_company_id", "tow_company_name", "tow_phone", "tow_costs",
     "deliver_to", "delivery_address", "expected_delivery_date",
     "customers_intention", "other_info", "notice_delivery",
     "agent_name", "agent_user_id",
@@ -8629,6 +8632,7 @@ def repo_lock_submit(job_id: int, item_id: int):
 
         f = request.form
         add_column_if_missing(conn, "repo_lock_records", "notice_delivery", "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_phone", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in _RL_FIELDS}
         ts  = now_ts()
         uid = session.get("user_id")
@@ -8835,7 +8839,7 @@ def _rl_pdf_context(conn, rec, job_id):
         "agent_name":           agent_name,
         "tow_company_name":     rec.get("tow_company_name") or tow_op.get("company_name") or "",
         "tow_company_name_db":  tow_op.get("company_name") or "",
-        "tow_phone":            tow_op.get("phone") or tow_op.get("mobile") or "",
+        "tow_phone":            rec.get("tow_phone") or tow_op.get("phone") or tow_op.get("mobile") or "",
         "client_email":         client.get("email") or "",
         "item_make":            item.get("make") or "",
         "item_model":           item.get("model") or "",

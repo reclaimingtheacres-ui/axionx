@@ -1203,8 +1203,9 @@ function showTab(name) {
         <summary style="padding:11px 14px;background:#fff;font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;">Tow &amp; Delivery</summary>
         <div style="padding:12px 14px;background:#fff;border-top:1px solid #e5e7eb;">
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Company</label><select name="tow_company_id" id="rlm_tow_company_id" onchange="rlmTowChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select or enter manually —</option></select></div>
-          <div id="rlm_tow_phone_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Phone</label><div id="rlm_tow_phone_display" style="padding:8px 10px;background:#f3f4f6;border-radius:8px;font-size:.9rem;font-weight:700;color:#111;"></div></div>
+          <div id="rlm_tow_phone_wrap" style="display:none;margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Saved Operator Phone</label><div id="rlm_tow_phone_display" style="padding:8px 10px;background:#f3f4f6;border-radius:8px;font-size:.9rem;font-weight:700;color:#111;"></div></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Company Name (manual)</label><input type="text" name="tow_company_name" id="rlm_tow_company_name" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Operator Phone</label><input type="tel" name="tow_phone" id="rlm_tow_phone" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Costs</label><input type="text" name="tow_costs" id="rlm_tow_costs" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard</label><select id="rlm_auction_yard_id" onchange="rlmAuctionYardChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Auction Yard —</option></select></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard Name (manual)</label><input type="text" id="rlm_auction_yard_manual" placeholder="If not in list" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
@@ -1290,7 +1291,7 @@ function showTab(name) {
     "station_officer","personal_effects_removed","removed_by_who",
     "personal_effects_list","tyres","body","duco","interior","engine_condition",
     "transmission","fuel_level","any_damage","damage_list","tow_company_id",
-    "tow_company_name","tow_costs","deliver_to","delivery_address",
+    "tow_company_name","tow_phone","tow_costs","deliver_to","delivery_address",
     "expected_delivery_date","customers_intention","other_info","notice_delivery",
     "agent_name","agent_user_id"
   ];
@@ -1427,10 +1428,14 @@ function showTab(name) {
           var match = _rlmTowOps.find(function(t){ return String(t.id) === String(towSel.value); });
           if (match && match.phone) {
             _gid("rlm_tow_phone_display").textContent = match.phone;
+            if (!_gid("rlm_tow_phone").value) _gid("rlm_tow_phone").value = match.phone;
             towPhoneWrap.style.display = "";
           } else {
             towPhoneWrap.style.display = "none";
           }
+        } else if ((_gid("rlm_tow_phone").value || "").trim()) {
+          _gid("rlm_tow_phone_display").textContent = _gid("rlm_tow_phone").value;
+          towPhoneWrap.style.display = "";
         } else {
           towPhoneWrap.style.display = "none";
         }
@@ -1593,14 +1598,22 @@ function showTab(name) {
       var disp  = _gid("rlm_tow_phone_display");
       if (match && match.phone) {
         disp.textContent = match.phone;
+          _gid("rlm_tow_phone").value = match.phone;
         wrap.style.display = "";
       } else {
+          _gid("rlm_tow_phone").value = "";
         wrap.style.display = "none";
       }
     } else {
-      _gid("rlm_tow_phone_wrap").style.display = "none";
+        _gid("rlm_tow_phone_wrap").style.display = "none";
     }
   };
+  (function() {
+    var manual = _gid("rlm_tow_company_name");
+    if (manual) manual.addEventListener("input", function() {
+      if (this.value.trim()) _gid("rlm_tow_company_id").value = "";
+    });
+  })();
   window.rlmAuctionYardChanged = function(sel) {
     var opt = sel.options[sel.selectedIndex];
     if (sel.value && opt) {
