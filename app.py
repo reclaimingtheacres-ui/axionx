@@ -2879,14 +2879,59 @@ from email.mime.base import MIMEBase as _MIMEBase
 from email import encoders as _encoders
 
 
+def _smtp_env(name):
+    return (_os.environ.get(name) or "").strip()
+
+
+def get_smtp_settings():
+    host = _smtp_env("SMTP_SERVER")
+    port_raw = _smtp_env("SMTP_PORT")
+    user = _smtp_env("SMTP_USER")
+    pswd = _smtp_env("SMTP_PASS")
+    frm = _smtp_env("SMTP_FROM")
+
+    missing = [name for name, value in (
+        ("SMTP_SERVER", host),
+        ("SMTP_USER", user),
+        ("SMTP_PASS", pswd),
+        ("SMTP_FROM", frm),
+    ) if not value]
+    if missing:
+        raise RuntimeError(f"SMTP configuration missing: {', '.join(missing)}")
+
+    if port_raw:
+        try:
+            port = int(port_raw)
+        except ValueError:
+            raise RuntimeError("SMTP configuration invalid: SMTP_PORT must be a number.")
+    else:
+        port = 587
+
+    use_tls = True
+    app.logger.warning("[SMTP DEBUG] host=%s port=%s user=%s from=%s tls=%s",
+                       host, port, user, frm, str(use_tls).lower())
+    return {
+        "host": host,
+        "port": port,
+        "user": user,
+        "password": pswd,
+        "from": frm,
+        "use_tls": use_tls,
+    }
+
+
+def smtp_config_present():
+    return bool(_smtp_env("SMTP_SERVER") and _smtp_env("SMTP_USER") and
+                _smtp_env("SMTP_PASS") and _smtp_env("SMTP_FROM"))
+
+
 def send_reset_email(to_addr, reset_link):
-    host = _os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(_os.environ.get("SMTP_PORT", "587"))
-    user = _os.environ.get("SMTP_USER", "")
-    pswd = _os.environ.get("SMTP_PASS", "")
-    frm  = _os.environ.get("SMTP_FROM", user)
-    if not user or not pswd:
-        raise RuntimeError("SMTP credentials not configured.")
+    smtp = get_smtp_settings()
+    host = smtp["host"]
+    port = smtp["port"]
+    user = smtp["user"]
+    pswd = smtp["password"]
+    frm = smtp["from"]
     msg = _MIMEMultipart("alternative")
     msg["Subject"] = "Axion — Password Reset"
     msg["From"]    = frm
@@ -2905,7 +2950,8 @@ def send_reset_email(to_addr, reset_link):
     msg.attach(_MIMEText(htm, "html"))
     with _smtplib.SMTP(host, port, timeout=10) as s:
         s.ehlo()
-        s.starttls()
+        if smtp["use_tls"]:
+            s.starttls()
         s.login(user, pswd)
         s.sendmail(frm, to_addr, msg.as_string())
 
@@ -2916,14 +2962,12 @@ def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachm
     attachments: list of (filename, bytes_data, mime_type_str) tuples.
     reply_to: optional Reply-To address string.
     """
-    import os as _os
-    host = _os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(_os.environ.get("SMTP_PORT", "587"))
-    user = _os.environ.get("SMTP_USER", "")
-    pswd = _os.environ.get("SMTP_PASS", "")
-    frm  = _os.environ.get("SMTP_FROM", user)
-    if not user or not pswd:
-        raise RuntimeError("SMTP credentials not configured.")
+    smtp = get_smtp_settings()
+    host = smtp["host"]
+    port = smtp["port"]
+    user = smtp["user"]
+    pswd = smtp["password"]
+    frm = smtp["from"]
     to_list = [e for e in (to_list or []) if e and "@" in e]
     if not to_list:
         raise ValueError("No valid recipient email addresses.")
@@ -2955,7 +2999,8 @@ def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachm
     all_recipients = to_list + cc_list
     with _smtplib.SMTP(host, port, timeout=10) as s:
         s.ehlo()
-        s.starttls()
+        if smtp["use_tls"]:
+            s.starttls()
         s.login(user, pswd)
         s.sendmail(frm, all_recipients, msg.as_string())
 
@@ -14737,7 +14782,7 @@ def queue_job_attachments(job_id: int):
         "status": "Available"
     } for r in forms_rows]
 
-    smtp_from = os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", ""))
+    smtp_from = _smtp_env("SMTP_FROM")
     return jsonify({
         "notes": notes, "docs": docs, "forms": forms,
         "job": dict(job_row) if job_row else {},
@@ -15043,7 +15088,7 @@ def queue_send_email():
 
     conn.close()
 
-    smtp_ok = bool(os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASS"))
+    smtp_ok = smtp_config_present()
     smtp_skipped = False
     if smtp_ok:
         try:
@@ -15171,7 +15216,7 @@ def queue_email_agent_queue():
     subject = f"Your AxionX Queue — {date_str} ({len(all_items)} items)"
     to_list = [agent["email"]]
 
-    smtp_ok = bool(os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASS"))
+    smtp_ok = smtp_config_present()
     smtp_skipped = False
     if smtp_ok:
         try:

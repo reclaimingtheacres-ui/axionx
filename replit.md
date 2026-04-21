@@ -107,6 +107,8 @@ Axion Prototype is a Flask-based field operations management application designe
 
 **42. Admin Navigation Tidy-Up:** AI Draft Cleanup is now accessed as a tab inside Admin → Settings & Resources via `/admin/settings?tab=ai-drafts`, reusing the existing cleanup route/action and interface. The standalone sidebar/admin-popup link was removed. Recovery Targets remains on its existing routes and functionality, but its desktop navigation entry moved from Workspace into the Admin menu.
 
+**43. SMTP Configuration Hardening:** Production email sending now uses one central runtime SMTP resolver based only on `SMTP_SERVER`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM`. The previous `SMTP_HOST` provider fallback was removed from password reset and the shared mail helper used by Request Client Update. Missing required SMTP values now raise controlled server-side errors, `SMTP_PORT` defaults only to 587 when blank, and send attempts log host, port, user, from address, and TLS status without logging the password.
+
 ## External Dependencies
 
 - **Database**: SQLite
