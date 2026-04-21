@@ -327,7 +327,7 @@
                   <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
                     {% if session.get('role') in ('admin', 'both') %}
                       <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenEditCustomer({{ lc.customer_id }})">Update Customer Details</button>
-                      <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" data-jcid="{{ lc.jc_id }}" data-role="{{ lc.role|e }}" onclick="axOpenEditRole(this.dataset.jcid, this.dataset.role)">Edit Role</button>
+
                     {% endif %}
                     {% if session.get('role') in ('admin', 'both') and job_linked_customers|length > 1 %}
                       <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
