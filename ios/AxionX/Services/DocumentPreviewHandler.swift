@@ -379,6 +379,9 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         let ql = QLPreviewController()
         ql.dataSource = coord
         ql.delegate = coord
+        // Present full-screen so the document viewer covers the entire display.
+        // The default .pageSheet presentation shows the job screen behind the viewer.
+        ql.modalPresentationStyle = .fullScreen
         coord.onDismiss = { [weak self] in
             print("[DocPreview] QLPreviewController dismissed")
             self?.isPresentingDocument = false
