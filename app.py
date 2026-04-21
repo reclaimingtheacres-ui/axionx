@@ -11492,6 +11492,11 @@ def update_builder_generate(job_id: int):
     ts = now_ts()
     structured_json = json.dumps({k: v for k, v in data.items() if k != "draft_id"})
     if draft_id:
+        # Do NOT persist generated_narrative/ai_model_used/ai_tokens_used here.
+        # AI content remains client-side only until the user explicitly saves.
+        # Form-field state (dates, checkboxes, etc.) is synced so the draft
+        # remains consistent, but the generated narrative is returned in the
+        # response only and written to the DB only on explicit Save.
         conn.execute("""
             UPDATE job_updates SET
                 attend_date=?, attend_time=?, is_first_attendance=?,
@@ -11500,7 +11505,6 @@ def update_builder_generate(job_id: int):
                 neighbour_outcome=?, call_made=?, call_outcome=?,
                 voicemail_left=?, sms_sent=?, customer_mobile=?,
                 points_of_contact=?, eta_next_date=?,
-                generated_narrative=?, ai_model_used=?, ai_tokens_used=?,
                 structured_inputs_json=?, agent_notes=?, updated_at=?
             WHERE id=? AND created_by_user_id=?
         """, (
@@ -11515,7 +11519,6 @@ def update_builder_generate(job_id: int):
             1 if voicemail else 0, 1 if sms_sent else 0,
             phone_used,
             poc, eta_str,
-            narrative, model_used, tokens_used,
             structured_json, (data.get("agent_notes") or "").strip(), ts,
             draft_id, uid
         ))

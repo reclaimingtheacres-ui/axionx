@@ -250,7 +250,7 @@
 
         <div class="d-flex gap-2">
           <button id="btn_save" class="btn btn-success flex-grow-1">Save Update to Job</button>
-          <a href="/jobs/{{ job.id }}" class="btn btn-outline-secondary">Cancel</a>
+          <button type="button" id="btn_cancel" class="btn btn-outline-secondary">Cancel</button>
         </div>
         <div id="save_error" class="text-danger small mt-2" style="display:none"></div>
         <div id="save_success" class="text-success small mt-2" style="display:none">Saved! Redirecting…</div>
@@ -500,6 +500,7 @@
         const ta = $('final_narrative');
         ta.value = data.narrative;
         ta.dataset.generated = data.narrative;
+        _narrativeHasContent = true;
         $('narrative_placeholder').style.display = 'none';
         if (data.poc !== undefined && data.eta) {
           const b = $('poc_eta_badge');
@@ -532,6 +533,7 @@
   }
 
   let _applied = false;
+  let _narrativeHasContent = false;
 
   const _autosaveTimer = setInterval(() => {
     if (!_applied) doAutosave(false);
@@ -542,6 +544,37 @@
       clearInterval(_autosaveTimer);
       doAutosave(true);
     }
+  });
+
+  $('btn_cancel').addEventListener('click', function() {
+    const hasContent = _narrativeHasContent && ($('final_narrative').value.trim() !== '');
+    if (!hasContent) {
+      _applied = true;
+      clearInterval(_autosaveTimer);
+      window.location.href = '/jobs/{{ job.id }}';
+      return;
+    }
+    // Content present — confirm discard
+    const modal = document.createElement('div');
+    modal.id = 'ax_cancel_modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:var(--surface,#fff);border-radius:12px;padding:28px 24px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+        <h6 style="font-weight:700;margin:0 0 8px;color:var(--text,#111);">Discard this AI draft?</h6>
+        <p style="font-size:.9rem;color:var(--muted,#6b7280);margin:0 0 20px;">Unsaved content will be lost. Your manual notes in the Attendance Notes field are not affected.</p>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <button id="ax_cancel_keep" style="padding:8px 18px;border-radius:8px;border:1.5px solid var(--border,#dee2e6);background:transparent;cursor:pointer;font-weight:600;font-size:.9rem;">Keep Editing</button>
+          <button id="ax_cancel_discard" style="padding:8px 18px;border-radius:8px;border:none;background:#dc3545;color:#fff;cursor:pointer;font-weight:600;font-size:.9rem;">Discard</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('ax_cancel_keep').onclick = function() { modal.remove(); };
+    document.getElementById('ax_cancel_discard').onclick = function() {
+      modal.remove();
+      _applied = true;
+      clearInterval(_autosaveTimer);
+      window.location.href = '/jobs/{{ job.id }}';
+    };
   });
 
   $('btn_save').addEventListener('click', async function() {

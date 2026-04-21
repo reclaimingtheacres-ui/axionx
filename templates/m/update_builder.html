@@ -166,10 +166,11 @@ Update Builder
   </div>
 </div>
 
-<button type="button" class="m-btn m-btn-primary" id="generateBtn" style="margin-bottom:12px;">
+<button type="button" class="m-btn m-btn-primary" id="generateBtn" style="margin-bottom:8px;">
   <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
   Generate AI Update
 </button>
+<button type="button" class="m-btn m-btn-secondary" id="cancelBtnTop" style="margin-bottom:12px;">Cancel</button>
 
 <div id="narrative_section" style="display:none;margin-bottom:16px;">
   <div class="m-card">
@@ -190,7 +191,8 @@ Update Builder
     <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     Submit for Admin Review
   </button>
-  <button type="button" class="m-btn m-btn-secondary" id="regenerateBtn">Regenerate</button>
+  <button type="button" class="m-btn m-btn-secondary" id="regenerateBtn" style="margin-bottom:8px;">Regenerate</button>
+  <button type="button" class="m-btn m-btn-secondary" id="cancelBtnNarrative">Cancel</button>
 </div>
 {% endblock %}
 
@@ -202,6 +204,7 @@ Update Builder
   var _applied = false;
   var _timer   = null;
   var _photos  = {{ (draft_photos or []) | tojson }};
+  var _narrativeHasContent = false;
 
   function $$(id){ return document.getElementById(id); }
 
@@ -425,6 +428,8 @@ Update Builder
     $$('saveFieldNoteBtn').addEventListener('click', function() { apply('field_note'); });
     $$('submitReviewBtn').addEventListener('click', function() { apply('submit_review'); });
     $$('regenerateBtn').addEventListener('click', generate);
+    $$('cancelBtnTop').addEventListener('click', cancelAI);
+    $$('cancelBtnNarrative').addEventListener('click', cancelAI);
 
     _timer = setInterval(function(){ doAutosave(false); }, 30000);
 
@@ -455,10 +460,40 @@ Update Builder
       btn.textContent = 'Generate AI Update'; btn.disabled = false;
       if (data.error) { alert(data.error); return; }
       $$('final_narrative').value = data.narrative || '';
+      _narrativeHasContent = true;
       $$('narrative_section').style.display = 'block';
       $$('narrative_section').scrollIntoView({behavior:'smooth'});
     })
     .catch(function(){ btn.textContent = 'Generate AI Update'; btn.disabled = false; alert('Network error. Please try again.'); });
+  }
+
+  function cancelAI() {
+    var hasContent = _narrativeHasContent && ($$('final_narrative') && $$('final_narrative').value.trim() !== '');
+    if (!hasContent) {
+      _applied = true;
+      clearInterval(_timer);
+      window.location.href = '/m/job/' + JOB_ID;
+      return;
+    }
+    // Content present — show discard confirmation overlay
+    var overlay = document.createElement('div');
+    overlay.id = 'ax_cancel_overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+    overlay.innerHTML =
+      '<div style="background:var(--bg,#fff);border-radius:16px 16px 0 0;padding:28px 20px 32px;width:100%;max-width:480px;box-shadow:0 -4px 24px rgba(0,0,0,.15);">' +
+        '<h6 style="font-weight:700;font-size:1rem;margin:0 0 8px;color:var(--text,#111);">Discard this AI draft?</h6>' +
+        '<p style="font-size:.9rem;color:var(--muted,#6b7280);margin:0 0 20px;">Unsaved content will be lost. Your notes in the Attendance Notes field are not affected.</p>' +
+        '<button id="ax_discard_btn" style="width:100%;padding:14px;border-radius:12px;border:none;background:#dc3545;color:#fff;font-weight:700;font-size:1rem;cursor:pointer;margin-bottom:10px;">Discard</button>' +
+        '<button id="ax_keep_btn" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid var(--line,#e5e7eb);background:transparent;font-weight:600;font-size:1rem;cursor:pointer;color:var(--text,#111);">Keep Editing</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    document.getElementById('ax_keep_btn').onclick = function() { overlay.remove(); };
+    document.getElementById('ax_discard_btn').onclick = function() {
+      overlay.remove();
+      _applied = true;
+      clearInterval(_timer);
+      window.location.href = '/m/job/' + JOB_ID;
+    };
   }
 
   var _saving = false;
