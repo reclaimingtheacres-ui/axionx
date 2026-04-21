@@ -2726,6 +2726,13 @@ def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
+            import logging as _lr_log
+            _lr_log.warning(
+                "[AUTH] login_required redirect  path=%s  cookie_present=%s  uid=%s",
+                request.path,
+                bool(request.cookies.get("session")),
+                session.get("user_id"),
+            )
             return _login_redirect()
         return f(*args, **kwargs)
     return wrapper
@@ -2744,6 +2751,34 @@ def admin_required(f):
 
 
 import hmac as _hmac
+import hashlib as _hashlib
+import time as _time_mod
+
+
+def _make_mobile_view_token(uid: int) -> str:
+    """Return a short-lived HMAC token (2-hour rolling window) bound to uid.
+
+    Used so the native iOS document viewer (QLPreviewController / URLSession)
+    can fetch protected document URLs without needing a WKWebView session cookie.
+    The token is embedded in the URL at page-render time and checked server-side.
+    """
+    slot = int(_time_mod.time()) // 7200
+    data = f"mvt:{uid}:{slot}".encode()
+    return _hmac.new(app.secret_key.encode(), data, _hashlib.sha256).hexdigest()[:40]
+
+
+def _verify_mobile_view_token(tok: str, uid: int) -> bool:
+    """Accept current and previous 2-hour slot (up to 4-hour window)."""
+    if not tok or not uid:
+        return False
+    slot = int(_time_mod.time()) // 7200
+    for s in (slot, slot - 1):
+        data = f"mvt:{uid}:{s}".encode()
+        expected = _hmac.new(app.secret_key.encode(), data, _hashlib.sha256).hexdigest()[:40]
+        if _hmac.compare_digest(tok, expected):
+            return True
+    return False
+
 
 def _geoop_pw():
     return os.environ.get("GEOOP_PASSWORD", "")
@@ -10710,14 +10745,41 @@ def debug_test_pdf():
 
 
 @app.get("/m/documents/<int:file_id>/preview")
-@login_required
 def m_documents_preview(file_id: int):
     """Single mobile document preview route.  Returns RAW FILE BYTES only.
     Never returns HTML, never redirects, never renders a template.
-    Full diagnostic logging on every request."""
+    Full diagnostic logging on every request.
+
+    Auth: session cookie (WKWebView) OR URL token (native iOS URLSession / QLPreviewController).
+    The URL token is a short-lived HMAC embedded in the URL at page-render time so that the
+    native document viewer can fetch the file without sharing the WKWebView cookie store.
+    """
     import logging as _log
     uid = session.get("user_id")
     role = session.get("role", "")
+
+    if not uid:
+        tok = request.args.get("tok", "")
+        uid_raw = request.args.get("uid", "")
+        try:
+            uid_int = int(uid_raw)
+        except (ValueError, TypeError):
+            _log.warning("[DOC-PREVIEW] id=%s  AUTH=no_session_no_token  ip=%s", file_id, request.remote_addr)
+            return redirect(url_for("m_login"))
+        if not _verify_mobile_view_token(tok, uid_int):
+            _log.warning("[DOC-PREVIEW] id=%s  AUTH=bad_token  uid_param=%s  ip=%s", file_id, uid_int, request.remote_addr)
+            return redirect(url_for("m_login"))
+        conn_t = db()
+        user_r = conn_t.execute("SELECT role FROM users WHERE id=? AND active=1", (uid_int,)).fetchone()
+        conn_t.close()
+        if not user_r:
+            _log.warning("[DOC-PREVIEW] id=%s  AUTH=token_uid_not_found  uid_param=%s", file_id, uid_int)
+            return redirect(url_for("m_login"))
+        uid = uid_int
+        role = user_r["role"]
+        _log.info("[DOC-PREVIEW] id=%s  AUTH=token_ok  uid=%s  role=%s", file_id, uid, role)
+    else:
+        _log.info("[DOC-PREVIEW] id=%s  AUTH=session_ok  uid=%s  role=%s", file_id, uid, role)
 
     conn = db()
     row = conn.execute(
@@ -10808,22 +10870,51 @@ def _find_upload_file(stored_name):
 
 
 @app.get("/m/doc-stream/note-file/<int:file_id>")
-@login_required
 def m_doc_stream_note_file(file_id: int):
-    return redirect(url_for('m_documents_preview', file_id=file_id), code=301)
+    tok = request.args.get("tok", "")
+    uid = request.args.get("uid", "")
+    target = url_for('m_documents_preview', file_id=file_id)
+    if tok and uid:
+        target += f"?tok={tok}&uid={uid}"
+    return redirect(target, code=301)
 
 @app.get("/m/doc-preview-render/note-file/<int:file_id>")
-@login_required
 def m_doc_preview_render_redirect(file_id: int):
-    return redirect(url_for('m_documents_preview', file_id=file_id), code=301)
+    tok = request.args.get("tok", "")
+    uid = request.args.get("uid", "")
+    target = url_for('m_documents_preview', file_id=file_id)
+    if tok and uid:
+        target += f"?tok={tok}&uid={uid}"
+    return redirect(target, code=301)
 
 
 @app.get("/m/doc-stream/job-doc/<int:doc_id>")
-@login_required
 def m_doc_stream_job_doc(doc_id: int):
     import logging as _log
     uid = session.get("user_id")
     role = session.get("role", "")
+
+    if not uid:
+        tok = request.args.get("tok", "")
+        uid_raw = request.args.get("uid", "")
+        try:
+            uid_int = int(uid_raw)
+        except (ValueError, TypeError):
+            _log.warning("[DOC-JOB-STREAM] id=%s  AUTH=no_session_no_token  ip=%s", doc_id, request.remote_addr)
+            return redirect(url_for("m_login"))
+        if not _verify_mobile_view_token(tok, uid_int):
+            _log.warning("[DOC-JOB-STREAM] id=%s  AUTH=bad_token  uid_param=%s  ip=%s", doc_id, uid_int, request.remote_addr)
+            return redirect(url_for("m_login"))
+        conn_t = db()
+        user_r = conn_t.execute("SELECT role FROM users WHERE id=? AND active=1", (uid_int,)).fetchone()
+        conn_t.close()
+        if not user_r:
+            return redirect(url_for("m_login"))
+        uid = uid_int
+        role = user_r["role"]
+        _log.info("[DOC-JOB-STREAM] id=%s  AUTH=token_ok  uid=%s", doc_id, uid)
+    else:
+        _log.info("[DOC-JOB-STREAM] id=%s  AUTH=session_ok  uid=%s", doc_id, uid)
     conn = db()
     row = conn.execute(
         "SELECT id, job_id, original_filename, stored_filename, mime_type, file_status FROM job_documents WHERE id=?",
@@ -16756,6 +16847,12 @@ def mobile_login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get("user_id"):
+            import logging as _mlr_log
+            _mlr_log.warning(
+                "[AUTH] mobile_login_required redirect  path=%s  cookie_present=%s",
+                request.path,
+                bool(request.cookies.get("session")),
+            )
             next_path = request.path
             return redirect(url_for("m_login") + f"?next={next_path}")
         return f(*args, **kwargs)
@@ -17434,12 +17531,16 @@ def m_job_detail(job_id):
     conn.close()
 
     is_admin = role in ("admin", "both")
+    mob_uid = session.get("user_id") or 0
+    mob_view_tok = _make_mobile_view_token(mob_uid) if mob_uid else ""
+
     return render_template("mobile/job_detail.html",
                            job=job, customer=customer, customer_mobile=customer_mobile,
                            client=client, bill_client=bill_client,
                            assets=assets, notes=notes, note_files_map=_note_files_map,
                            has_draft=has_draft, repo_lock_map=repo_lock_map,
-                           assigned_agent_name=assigned_agent_name, is_admin=is_admin)
+                           assigned_agent_name=assigned_agent_name, is_admin=is_admin,
+                           mob_uid=mob_uid, mob_view_tok=mob_view_tok)
 
 
 @app.get("/m/job/<int:job_id>/note/new")

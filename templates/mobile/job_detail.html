@@ -485,9 +485,9 @@
           {% if ns_imgs %}
             <div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;-webkit-overflow-scrolling:touch;margin-bottom:{% if ns_docs %}4px{% else %}0{% endif %};">
               {% for f in ns_imgs %}
-                <div onclick="axMobilePreview('/m/documents/{{ f.id }}/preview','{{ f.filename }}')"
+                <div onclick="axMobilePreview('/m/documents/{{ f.id }}/preview?tok={{ mob_view_tok }}&amp;uid={{ mob_uid }}','{{ f.filename }}')"
                      style="flex-shrink:0;border-radius:10px;overflow:hidden;border:1.5px solid #e5e7eb;cursor:pointer;max-width:200px;">
-                  <img src="/m/documents/{{ f.id }}/preview" alt="" loading="lazy"
+                  <img src="/m/documents/{{ f.id }}/preview?tok={{ mob_view_tok }}&amp;uid={{ mob_uid }}" alt="" loading="lazy"
                        style="display:block;width:auto;height:130px;max-width:200px;object-fit:cover;">
                 </div>
               {% endfor %}
@@ -504,12 +504,12 @@
             {% if is_audio %}
             <div style="margin-bottom:4px;margin-top:4px;">
               <audio controls preload="none" style="width:100%;height:36px;">
-                <source src="/m/documents/{{ f.id }}/preview">
+                <source src="/m/documents/{{ f.id }}/preview?tok={{ mob_view_tok }}&amp;uid={{ mob_uid }}">
               </audio>
               <div style="font-size:.68rem;color:#6b7280;margin-top:2px;">{{ disp }}</div>
             </div>
             {% else %}
-            <div onclick="axMobilePreview('/m/documents/{{ f.id }}/preview','{{ f.filename }}')"
+            <div onclick="axMobilePreview('/m/documents/{{ f.id }}/preview?tok={{ mob_view_tok }}&amp;uid={{ mob_uid }}','{{ f.filename }}')"
                  style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:4px;
                         background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;cursor:pointer;">
               {% if is_pdf %}
