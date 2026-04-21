@@ -18548,6 +18548,8 @@ def _recovery_targets_ensure(conn):
         add_column_if_missing(cur, "recovery_target_notes", col, coltype)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_targets_status ON recovery_targets(status, repossession_active)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_assets_reg ON recovery_target_assets(registration_number)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_assets_vin ON recovery_target_assets(vin)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_reg_history_reg ON recovery_target_asset_reg_history(registration_number)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_people_name ON recovery_target_people(full_legal_name)")
     conn.commit()
 
@@ -18666,6 +18668,7 @@ def _lookup_recovery_target_for_lpr(reg_norm: str) -> dict:
         WHERE rt.status='Active' AND COALESCE(rt.repossession_active,1)=1
           AND (
             UPPER(REPLACE(REPLACE(COALESCE(a.registration_number,''),' ',''),'-',''))=?
+            OR UPPER(REPLACE(REPLACE(COALESCE(a.vin,''),' ',''),'-',''))=?
             OR EXISTS (
                 SELECT 1 FROM recovery_target_asset_reg_history rh
                 WHERE rh.asset_id=a.id
@@ -18673,7 +18676,7 @@ def _lookup_recovery_target_for_lpr(reg_norm: str) -> dict:
             )
           )
         ORDER BY a.is_primary_asset DESC, a.id
-    """, (reg_norm, reg_norm)).fetchall()
+    """, (reg_norm, reg_norm, reg_norm)).fetchall()
     conn.close()
     by_target = {}
     for row in rows:
@@ -18685,7 +18688,7 @@ def _lookup_recovery_target_for_lpr(reg_norm: str) -> dict:
             "result_type": "recovery_target_conflict",
             "searched_registration": reg_norm,
             "match_count": len(by_target),
-            "message": f"{len(by_target)} active Recovery Targets share this registration. Contact the office before action.",
+            "message": f"{len(by_target)} active Recovery Targets share this registration/VIN. Contact the office before action.",
         }
     row = list(by_target.values())[0]
     asset_label = " ".join([x for x in [row["year"], row["colour"], row["make"], row["model"]] if x])
@@ -18736,17 +18739,20 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
         JOIN jobs j ON j.id = ji.job_id
         LEFT JOIN users u ON u.id = j.assigned_user_id
         WHERE j.status NOT IN ('Completed','Invoiced','Cancelled')
-          AND ji.reg IS NOT NULL AND ji.reg != ''
+          AND ((ji.reg IS NOT NULL AND ji.reg != '') OR (ji.vin IS NOT NULL AND ji.vin != ''))
     """).fetchall()
 
-    matches = [row for row in rows if normalise_registration(row["reg"]) == reg_norm]
+    matches = [
+        row for row in rows
+        if normalise_registration(row["reg"]) == reg_norm or normalise_registration(row["vin"]) == reg_norm
+    ]
 
     if not matches:
         conn.close()
         return {
             "result_type": "no_match",
             "searched_registration": reg_norm,
-            "message": "No active registration found.",
+            "message": "No active registration/VIN found.",
             **wl,
         }
 
@@ -18756,7 +18762,7 @@ def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: s
             "result_type": "conflict",
             "searched_registration": reg_norm,
             "match_count": len(matches),
-            "message": f"{len(matches)} active files share this registration. Contact the office for instructions.",
+            "message": f"{len(matches)} active files share this registration/VIN. Contact the office for instructions.",
             **wl,
         }
 
