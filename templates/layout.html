@@ -552,6 +552,7 @@
     <a href="/reports/aged-suspended"{% if request.path.startswith('/reports/aged') %} class="active"{% endif %}>Aged Suspended</a>
     <div class="ax-popup-divider"></div>
     <a href="/admin/settings"{% if request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} class="active"{% endif %}>Settings & Resources</a>
+    <a href="/admin/cleanup-ai-drafts"{% if request.path.startswith('/admin/cleanup-ai-drafts') %} class="active"{% endif %}>Clean Up AI Drafts</a>
   </div>
   {% endif %}
   <script>

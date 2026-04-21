@@ -467,12 +467,20 @@ Update Builder
     .catch(function(){ btn.textContent = 'Generate AI Update'; btn.disabled = false; alert('Network error. Please try again.'); });
   }
 
+  function _doDiscard(cb) {
+    fetch('/jobs/' + JOB_ID + '/update-builder/discard', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({draft_id: DRAFT_ID})
+    }).finally(cb);
+  }
+
   function cancelAI() {
     var hasContent = _narrativeHasContent && ($$('final_narrative') && $$('final_narrative').value.trim() !== '');
     if (!hasContent) {
       _applied = true;
       clearInterval(_timer);
-      window.location.href = '/m/job/' + JOB_ID;
+      _doDiscard(function() { window.location.href = '/m/job/' + JOB_ID; });
       return;
     }
     // Content present — show discard confirmation overlay
@@ -492,7 +500,7 @@ Update Builder
       overlay.remove();
       _applied = true;
       clearInterval(_timer);
-      window.location.href = '/m/job/' + JOB_ID;
+      _doDiscard(function() { window.location.href = '/m/job/' + JOB_ID; });
     };
   }
 

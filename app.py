@@ -31,6 +31,12 @@ _melbourne = pytz.timezone("Australia/Melbourne")
 
 ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
 
+INACTIVE_JOB_STATUSES = (
+    "Closed", "Closed Field Call", "Invoiced", "Cancelled",
+    "Completed", "Repossessed", "Surrendered",
+    "Archived - Invoiced", "Cold Stored",
+)
+
 _HEIC_EXTENSIONS = {"heic", "heif"}
 _HEIC_QUALITY = 88
 
@@ -1403,7 +1409,8 @@ def _migrate_update_builder():
     )
     """)
     add_column_if_missing(cur, "job_updates", "photos_count", "INTEGER NOT NULL DEFAULT 0")
-    add_column_if_missing(cur, "job_updates", "agent_notes", "TEXT DEFAULT ''")
+    add_column_if_missing(cur, "job_updates", "agent_notes",  "TEXT DEFAULT ''")
+    add_column_if_missing(cur, "job_updates", "is_ai_draft",  "INTEGER NOT NULL DEFAULT 1")
     _abs_rows2 = cur.execute("SELECT id, filepath FROM job_update_photos WHERE filepath LIKE '/%'").fetchall()
     for _ar2 in _abs_rows2:
         _bn2 = os.path.basename(_ar2["filepath"]) if _ar2["filepath"] else ""
@@ -1503,10 +1510,17 @@ def inject_globals():
     uid = session.get("user_id")
     if uid:
         try:
+            _ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
             conn = db()
             row = conn.execute(
-                "SELECT COUNT(*) c FROM job_updates WHERE created_by_user_id=? AND status='draft'",
-                (uid,)
+                f"""SELECT COUNT(*) c
+                    FROM job_updates ju
+                    JOIN jobs j ON j.id = ju.job_id
+                    WHERE ju.created_by_user_id = ?
+                      AND ju.status = 'draft'
+                      AND j.status NOT IN ({_ph})
+                      AND TRIM(COALESCE(ju.agent_notes,'')) != ''""",
+                (uid, *INACTIVE_JOB_STATUSES)
             ).fetchone()
             pending_drafts = row["c"] if row else 0
             conn.close()
@@ -1523,11 +1537,25 @@ def inject_globals():
 DRAFT_LOCKOUT_THRESHOLD = 5
 
 def _agent_draft_count(uid):
+    """Count draft AI update sessions that represent genuine in-progress work.
+
+    Excludes:
+      - Drafts on inactive/closed jobs (any status in INACTIVE_JOB_STATUSES)
+      - Blank sessions (no agent_notes written — opening the builder alone)
+      - Records with status='discarded'
+    """
     try:
+        placeholders = ",".join("?" * len(INACTIVE_JOB_STATUSES))
         conn = db()
         row = conn.execute(
-            "SELECT COUNT(*) c FROM job_updates WHERE created_by_user_id=? AND status='draft'",
-            (uid,)
+            f"""SELECT COUNT(*) c
+                FROM job_updates ju
+                JOIN jobs j ON j.id = ju.job_id
+                WHERE ju.created_by_user_id = ?
+                  AND ju.status = 'draft'
+                  AND j.status NOT IN ({placeholders})
+                  AND TRIM(COALESCE(ju.agent_notes,'')) != ''""",
+            (uid, *INACTIVE_JOB_STATUSES)
         ).fetchone()
         conn.close()
         return row["c"] if row else 0
@@ -4759,6 +4787,10 @@ def job_detail(job_id: int):
     except Exception:
         known_referrals = []
 
+    ai_draft_count = conn.execute(
+        "SELECT COUNT(*) c FROM job_updates WHERE job_id=? AND status='draft'", (job_id,)
+    ).fetchone()["c"]
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -4781,6 +4813,7 @@ def job_detail(job_id: int):
                            payments_total_cents=payments_total_cents,
                            known_referrals=known_referrals,
                            from_cue=from_cue,
+                           ai_draft_count=ai_draft_count,
                            client_update_info=_client_update_request_eligibility(conn, job_id))
 
 
@@ -6043,6 +6076,14 @@ def job_status_update(job_id: int):
             UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
             WHERE job_id=? AND status IN ('Pending','In Progress')
         """, (now, now, job_id))
+
+    # Auto-discard any open AI draft sessions when job moves to any inactive status
+    if status in INACTIVE_JOB_STATUSES:
+        cur.execute("""
+            UPDATE job_updates SET status='discarded', updated_at=?
+            WHERE job_id=? AND status='draft'
+        """, (now, job_id))
+
     conn.commit()
     conn.close()
     return redirect(url_for("job_detail", job_id=job_id))
@@ -11365,8 +11406,8 @@ def update_builder(job_id: int):
         ts = now_ts()
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO job_updates (job_id, created_by_user_id, status, customer_mobile, created_at, updated_at)
-            VALUES (?, ?, 'draft', ?, ?, ?)
+            INSERT INTO job_updates (job_id, created_by_user_id, status, is_ai_draft, customer_mobile, created_at, updated_at)
+            VALUES (?, ?, 'draft', 1, ?, ?, ?)
         """, (job_id, uid, customer_mobile, ts, ts))
         draft_id = cur.lastrowid
         conn.commit()
@@ -11716,6 +11757,55 @@ def update_builder_autosave(job_id: int):
     return jsonify({"ok": True})
 
 
+@app.post("/jobs/<int:job_id>/update-builder/discard")
+@login_required
+def update_builder_discard(job_id: int):
+    """Mark an AI draft session as discarded so it is removed from lockout counts."""
+    conn = db()
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    job  = conn.execute("SELECT id, assigned_user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found"}), 404
+    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+        conn.close()
+        return jsonify({"ok": False, "error": "Access denied"}), 403
+    data     = request.get_json(force=True) or {}
+    draft_id = data.get("draft_id")
+    ts = now_ts()
+    if draft_id:
+        conn.execute(
+            "UPDATE job_updates SET status='discarded', updated_at=? WHERE id=? AND job_id=? AND created_by_user_id=? AND status='draft'",
+            (ts, draft_id, job_id, uid)
+        )
+    else:
+        conn.execute(
+            "UPDATE job_updates SET status='discarded', updated_at=? WHERE job_id=? AND created_by_user_id=? AND status='draft'",
+            (ts, job_id, uid)
+        )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.post("/jobs/<int:job_id>/admin/discard-ai-drafts")
+@login_required
+@admin_required
+def admin_discard_job_ai_drafts(job_id: int):
+    """Admin: discard all open AI draft sessions on a specific job."""
+    conn = db()
+    ts = now_ts()
+    result = conn.execute(
+        "UPDATE job_updates SET status='discarded', updated_at=? WHERE job_id=? AND status='draft'",
+        (ts, job_id)
+    )
+    conn.commit()
+    conn.close()
+    flash(f"Discarded {result.rowcount} AI draft session(s) on this job.", "success")
+    return redirect(url_for("job_detail", job_id=job_id))
+
+
 _UPDATE_PHOTO_DIR = os.path.join(UPLOAD_FOLDER, "update_photos")
 os.makedirs(_UPDATE_PHOTO_DIR, exist_ok=True)
 
@@ -11894,21 +11984,93 @@ def update_builder_serve_photo(job_id, photo_id):
 @login_required
 def my_drafts():
     uid = session.get("user_id")
+    _ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
     conn = db()
-    drafts = conn.execute("""
-        SELECT ju.id AS draft_id, ju.job_id, ju.attend_date, ju.attend_time,
-               ju.created_at, ju.updated_at,
-               j.display_ref, j.internal_job_number, j.client_reference, j.job_address,
-               COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
-                        NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name
-        FROM job_updates ju
-        JOIN jobs j ON j.id = ju.job_id
-        LEFT JOIN customers cu ON cu.id = j.customer_id
-        WHERE ju.created_by_user_id = ? AND ju.status = 'draft'
-        ORDER BY ju.updated_at DESC
-    """, (uid,)).fetchall()
+    drafts = conn.execute(
+        f"""SELECT ju.id AS draft_id, ju.job_id, ju.attend_date, ju.attend_time,
+                   ju.agent_notes, ju.created_at, ju.updated_at,
+                   j.display_ref, j.internal_job_number, j.client_reference,
+                   j.job_address, j.status AS job_status,
+                   COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
+                            NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name
+            FROM job_updates ju
+            JOIN jobs j ON j.id = ju.job_id
+            LEFT JOIN customers cu ON cu.id = j.customer_id
+            WHERE ju.created_by_user_id = ?
+              AND ju.status = 'draft'
+              AND j.status NOT IN ({_ph})
+            ORDER BY ju.updated_at DESC""",
+        (uid, *INACTIVE_JOB_STATUSES)
+    ).fetchall()
     conn.close()
     return render_template("my_drafts.html", drafts=drafts)
+
+
+@app.get("/admin/cleanup-ai-drafts")
+@login_required
+@admin_required
+def admin_cleanup_ai_drafts():
+    """Admin bulk cleanup: show stale AI draft stats before executing."""
+    _ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
+    conn = db()
+    total_drafts = conn.execute(
+        "SELECT COUNT(*) c FROM job_updates WHERE status='draft'"
+    ).fetchone()["c"]
+    on_inactive = conn.execute(
+        f"SELECT COUNT(*) c FROM job_updates ju JOIN jobs j ON j.id=ju.job_id WHERE ju.status='draft' AND j.status IN ({_ph})",
+        INACTIVE_JOB_STATUSES
+    ).fetchone()["c"]
+    blank_drafts = conn.execute(
+        f"""SELECT COUNT(*) c FROM job_updates ju JOIN jobs j ON j.id=ju.job_id
+            WHERE ju.status='draft'
+              AND j.status NOT IN ({_ph})
+              AND TRIM(COALESCE(ju.agent_notes,''))=''""",
+        INACTIVE_JOB_STATUSES
+    ).fetchone()["c"]
+    affected_records = conn.execute(
+        f"""SELECT ju.id, ju.job_id, ju.created_at, ju.updated_at, ju.agent_notes,
+                   j.display_ref, j.status AS job_status, u.full_name AS agent_name
+            FROM job_updates ju
+            JOIN jobs j ON j.id=ju.job_id
+            LEFT JOIN users u ON u.id=ju.created_by_user_id
+            WHERE ju.status='draft'
+              AND (j.status IN ({_ph}) OR TRIM(COALESCE(ju.agent_notes,''))='')
+            ORDER BY ju.updated_at DESC""",
+        INACTIVE_JOB_STATUSES
+    ).fetchall()
+    conn.close()
+    return render_template(
+        "admin_cleanup_ai_drafts.html",
+        total_drafts=total_drafts,
+        on_inactive=on_inactive,
+        blank_drafts=blank_drafts,
+        will_discard=on_inactive + blank_drafts,
+        affected_records=affected_records,
+    )
+
+
+@app.post("/admin/cleanup-ai-drafts")
+@login_required
+@admin_required
+def admin_cleanup_ai_drafts_run():
+    """Execute the bulk cleanup."""
+    _ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
+    conn = db()
+    ts = now_ts()
+    result = conn.execute(
+        f"""UPDATE job_updates SET status='discarded', updated_at=?
+            WHERE status='draft'
+              AND (job_id IN (
+                  SELECT j.id FROM jobs j WHERE j.status IN ({_ph})
+              )
+              OR TRIM(COALESCE(agent_notes,''))='')""",
+        (ts, *INACTIVE_JOB_STATUSES)
+    )
+    discarded = result.rowcount
+    conn.commit()
+    conn.close()
+    flash(f"Bulk cleanup complete: {discarded} stale AI draft session(s) discarded.", "success")
+    return redirect(url_for("admin_cleanup_ai_drafts"))
 
 
 # -------- Users (admin only) --------
@@ -17655,8 +17817,8 @@ def m_update_builder(job_id):
         ts = now_ts()
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO job_updates (job_id, created_by_user_id, status, customer_mobile, created_at, updated_at)
-            VALUES (?, ?, 'draft', ?, ?, ?)
+            INSERT INTO job_updates (job_id, created_by_user_id, status, is_ai_draft, customer_mobile, created_at, updated_at)
+            VALUES (?, ?, 'draft', 1, ?, ?, ?)
         """, (job_id, uid, customer_mobile, ts, ts))
         draft_id = cur.lastrowid
         conn.commit()

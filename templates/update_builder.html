@@ -551,7 +551,13 @@
     if (!hasContent) {
       _applied = true;
       clearInterval(_autosaveTimer);
-      window.location.href = '/jobs/{{ job.id }}';
+      fetch('/jobs/{{ job.id }}/update-builder/discard', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({draft_id: {{ draft.id }}})
+      }).finally(function() {
+        window.location.href = '/jobs/{{ job.id }}';
+      });
       return;
     }
     // Content present — confirm discard
@@ -573,7 +579,13 @@
       modal.remove();
       _applied = true;
       clearInterval(_autosaveTimer);
-      window.location.href = '/jobs/{{ job.id }}';
+      fetch('/jobs/{{ job.id }}/update-builder/discard', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({draft_id: {{ draft.id }}})
+      }).finally(function() {
+        window.location.href = '/jobs/{{ job.id }}';
+      });
     };
   });
 

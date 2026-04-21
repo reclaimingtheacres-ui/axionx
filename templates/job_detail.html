@@ -1087,6 +1087,15 @@
       </svg>
       Full Attendance Update
     </a>
+    {% if session.get('role') in ('admin','both') and ai_draft_count > 0 %}
+    <form method="POST" action="/jobs/{{ job.id }}/admin/discard-ai-drafts" style="display:inline"
+          onsubmit="return confirm('Discard {{ ai_draft_count }} open AI draft session(s) on this job? This cannot be undone.')">
+      <button type="submit" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-1" title="Discard open AI draft sessions on this job">
+        <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2" style="flex-shrink:0"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        Discard AI Drafts ({{ ai_draft_count }})
+      </button>
+    </form>
+    {% endif %}
     <div class="btn-group btn-group-sm" role="group" style="margin-left:auto">
       <button type="button" class="btn btn-outline-secondary active" onclick="axNoteFilter('all',this)">All</button>
       <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('field_note',this)">Field Notes</button>
