@@ -418,6 +418,9 @@ def _schema_is_current():
                 return False
             if "status_changed_at" not in cols:
                 return False
+            ji_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()]
+            if "arrears_cents" not in ji_cols:
+                return False
             nf_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_note_files)").fetchall()]
             return "file_status" in nf_cols
         except Exception:
@@ -858,8 +861,8 @@ def init_db():
         ("engine_number",  "TEXT"),
         ("deliver_to",     "TEXT"),
         ("colour",         "TEXT"),
-        ("arrears_cents",  "INTEGER"),
-        ("costs_cents",    "INTEGER"),
+        ("arrears_cents",  "INTEGER DEFAULT 0"),
+        ("costs_cents",    "INTEGER DEFAULT 0"),
     ]:
         add_column_if_missing(cur, "job_items", col, coltype)
 
