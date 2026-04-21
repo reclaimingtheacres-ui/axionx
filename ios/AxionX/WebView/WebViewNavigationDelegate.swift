@@ -55,6 +55,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             && navType == .linkActivated {
             let filename = url.lastPathComponent
             print("[NavDelegate]   → CANCEL (document link: \(filename))")
+            DocumentPreviewHandler.shared.captureReturnURL(from: webView.url, reason: "document extension link before cancel")
             DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
             decisionHandler(.cancel)
             return
@@ -64,6 +65,8 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             let filename = url.lastPathComponent
             print("[NavDelegate]   → CANCEL (document preview route: \(url.path)) navType=\(navType.rawValue)")
             print("[NavDelegate]   PDF_REQUEST_INTERCEPT = YES")
+            print("[NavDelegate]   web modal/viewer attempt intercepted before web load")
+            DocumentPreviewHandler.shared.captureReturnURL(from: webView.url, reason: "document preview route before cancel")
             DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
             decisionHandler(.cancel)
             return
@@ -124,10 +127,11 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         print("[NavDelegate]   isPreviewRoute=\(isPreviewRoute)")
         print("[NavDelegate]   isDocMime=\(isDocMime)")
 
-        if isTrusted && (isPreviewRoute || isDocMime) && isMainFrame {
+        if isTrusted && (isPreviewRoute || isDocMime) {
             print("[NavDelegate]   ╔══════════════════════════════════════╗")
             print("[NavDelegate]   ║  PDF_INTERCEPT_ACTIVE = YES          ║")
             print("[NavDelegate]   ╚══════════════════════════════════════╝")
+            print("[NavDelegate]   web modal/viewer response intercepted isMainFrame=\(isMainFrame)")
 
             let cd = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition") ?? ""
             var filename = url.lastPathComponent
@@ -138,6 +142,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             print("[NavDelegate]   calling decisionHandler(.cancel)")
             decisionHandler(.cancel)
             print("[NavDelegate]   calling DocumentPreviewHandler.previewFile")
+            DocumentPreviewHandler.shared.captureReturnURL(from: webView.url, reason: "document response before cancel")
             DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
             return
         }
@@ -170,10 +175,9 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             "document.body && (document.body.style.backgroundColor='#ffffff');",
             completionHandler: nil
         )
-        // Track last known Job Notes URL so DocumentPreviewHandler can restore it after dismiss
-        if let url = webView.url, DocumentPreviewHandler.isJobNotesURL(url) {
-            DocumentPreviewHandler.shared.setReturnURL(url)
-            print("[NavDelegate] Job Notes URL tracked for return: \(url.absoluteString)")
+        if let url = webView.url, DocumentPreviewHandler.isRestorableReturnURL(url) {
+            DocumentPreviewHandler.shared.setReturnURL(url, reason: "successful page load")
+            print("[NavDelegate] Return URL tracked after load: \(url.absoluteString)")
         }
     }
 
@@ -214,6 +218,8 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
                 if Self.documentExtensions.contains(ext) || Self.isDocumentPreviewPath(url) {
                     let filename = url.lastPathComponent
                     print("[NavDelegate]   → document preview: \(filename)")
+                    print("[NavDelegate]   web modal/window.open attempt intercepted")
+                    DocumentPreviewHandler.shared.captureReturnURL(from: webView.url, reason: "window.open document before cancel")
                     DocumentPreviewHandler.shared.previewFile(at: url, filename: filename)
                 } else {
                     print("[NavDelegate]   → loading in webview")
@@ -232,10 +238,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
     ]
 
     private static func isDocumentPreviewPath(_ url: URL) -> Bool {
-        let path = url.path
-        let pattern = "/m/documents/"
-        let suffix = "/preview"
-        return path.hasPrefix(pattern) && path.hasSuffix(suffix)
+        return DocumentPreviewHandler.isDocumentPreviewURL(url)
     }
 
     /// Native alert() support so JS dialogs work inside the WebView.

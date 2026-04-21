@@ -195,11 +195,18 @@
 
   function openGeneratedDocument(url, filename) {
     var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+    var isNativeApp = hasNative || /\bAxionXiOS\b/.test(navigator.userAgent || '');
     if (hasNative) {
       try {
         window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename || 'Form 13.pdf', returnTo: window.location.href});
         return;
-      } catch(e) {}
+      } catch(e) {
+        console.warn('Native document preview handoff failed', e);
+      }
+    }
+    if (isNativeApp) {
+      showForm13Error('The document was generated, but native preview was unavailable. Please close and reopen the app, then try again.');
+      return;
     }
     window.location.href = url;
   }
@@ -247,6 +254,10 @@
         return;
       }
       if (ct.indexOf('application/pdf') !== -1) {
+        if (/\bAxionXiOS\b/.test(navigator.userAgent || '') || (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview)) {
+          showForm13Error('The document was generated, but the app did not receive a native preview URL. Please refresh and try again.');
+          return;
+        }
         var blob = await res.blob();
         var url = URL.createObjectURL(blob);
         window.open(url, '_blank');

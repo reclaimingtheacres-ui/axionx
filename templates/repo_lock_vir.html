@@ -223,11 +223,18 @@
 
   function openGeneratedDocument(url, filename) {
     var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+    var isNativeApp = hasNative || /\bAxionXiOS\b/.test(navigator.userAgent || '');
     if (hasNative) {
       try {
         window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename || 'VIR.pdf', returnTo: window.location.href});
         return;
-      } catch(e) {}
+      } catch(e) {
+        console.warn('Native document preview handoff failed', e);
+      }
+    }
+    if (isNativeApp) {
+      showVirError('The document was generated, but native preview was unavailable. Please close and reopen the app, then try again.');
+      return;
     }
     window.location.href = url;
   }
