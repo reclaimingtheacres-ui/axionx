@@ -12,18 +12,23 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     private var isPresentingDocument = false
     private var isPreviewInFlight = false
     private var returnURL: URL?
+    private var returnURLFrozen = false
 
     func setWebView(_ wv: WKWebView) {
         self.webView = wv
     }
 
     func setReturnURL(_ url: URL, reason: String = "unspecified") {
+        if returnURLFrozen {
+            print("[DocPreview] returnURL overwrite blocked during preview (\(reason)): attempted=\(url.absoluteString), frozen=\(returnURL?.absoluteString ?? "nil")")
+            return
+        }
         guard Self.isRestorableReturnURL(url) else {
             print("[DocPreview] returnURL ignored (\(reason)): \(url.absoluteString)")
             return
         }
         returnURL = url
-        print("[DocPreview] returnURL saved (\(reason)): \(url.absoluteString)")
+        print("[DocPreview] source URL captured before native preview starts (\(reason)): \(url.absoluteString)")
     }
 
     func captureReturnURL(from url: URL?, reason: String) {
@@ -41,11 +46,21 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     }
 
     static func isDocumentPreviewURL(_ url: URL) -> Bool {
+        guard url.isFileURL == false,
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return true
+        }
         let path = url.path
         return (path.hasPrefix("/m/documents/") && path.hasSuffix("/preview"))
             || path.hasPrefix("/m/doc-stream/")
             || path.hasPrefix("/m/doc-preview-render/")
             || path.range(of: "^/jobs/\\d+/documents/\\d+/download/?$", options: .regularExpression) != nil
+    }
+
+    static func isRepoLockGeneratedFormURL(_ url: URL) -> Bool {
+        let path = url.path
+        return path.range(of: "^/jobs/\\d+/repo-lock/\\d+/(vir|transport-instructions|form-13)/?$", options: .regularExpression) != nil
     }
 
     static func isRestorableReturnURL(_ url: URL) -> Bool {
@@ -55,6 +70,9 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             return false
         }
         let path = url.path
+        if path == "/m" || path == "/m/" || path == "/m/schedule/today" {
+            return false
+        }
         if path == "/login" || path.hasPrefix("/login") || path == "/m/login" || path.hasPrefix("/m/login") {
             return false
         }
@@ -80,6 +98,12 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         print("[DocPreview] webView nil=\(webView == nil), webView.url=\(webView?.url?.absoluteString ?? "nil")")
         print("[DocPreview] source page before JS preview: \(webView?.url?.absoluteString ?? "nil")")
 
+        guard let docURL = resolveURL(urlString) else {
+            print("[DocPreview] ABORT: could not build docURL from '\(urlString)' baseURL=\(webView?.url?.absoluteString ?? "nil")")
+            return
+        }
+        print("[DocPreview] preview URL opened: \(docURL.absoluteString)")
+
         // Capture return URL from JS message (most reliable) or fall back to current webView URL
         if let returnToStr = body["returnTo"] as? String,
            let returnToURL = resolveURL(returnToStr) {
@@ -90,13 +114,6 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
 
         jsDebug("DocumentPreviewHandler: called=YES, url=\(urlString), filename=\(filename)")
-
-        guard let docURL = resolveURL(urlString) else {
-            print("[DocPreview] ABORT: could not build docURL from '\(urlString)' baseURL=\(webView?.url?.absoluteString ?? "nil")")
-            return
-        }
-
-        print("[DocPreview] resolved docURL=\(docURL.absoluteString)")
         beginPreview(remoteURL: docURL, filename: filename, source: "JS message")
     }
 
@@ -127,8 +144,10 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             return
         }
         isPreviewInFlight = true
+        returnURLFrozen = true
         print("[DocPreview] preview lifecycle started source=\(source)")
-        print("[DocPreview] returned preview URL: \(remoteURL.absoluteString)")
+        print("[DocPreview] preview URL opened: \(remoteURL.absoluteString)")
+        print("[DocPreview] frozen return target: \(returnURL?.absoluteString ?? "nil")")
         fetchCookiesAndDownload(remoteURL: remoteURL, filename: filename)
     }
 
@@ -402,12 +421,14 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         guard !isPresentingDocument else {
             print("[DocPreview] ABORT presentDocument: already presenting (guard)")
             isPreviewInFlight = false
+            returnURLFrozen = false
             return
         }
 
         guard let vc = topViewController() else {
             print("[DocPreview] ABORT presentDocument: no topViewController found")
             isPreviewInFlight = false
+            returnURLFrozen = false
             return
         }
 
@@ -433,16 +454,17 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             self?.logCookiesAfterPreview()
             if let url = self?.returnURL {
                 self?.returnURL = nil
-                print("[DocPreview] Restoring webView to returnURL: \(url.absoluteString)")
+                print("[DocPreview] actual URL restored after Quick Look closes: \(url.absoluteString)")
                 DispatchQueue.main.async {
                     self?.webView?.load(URLRequest(url: url))
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        print("[DocPreview] actual webView URL after close restore: \(self?.webView?.url?.absoluteString ?? "nil")")
+                        print("[DocPreview] final webView URL after restore: \(self?.webView?.url?.absoluteString ?? "nil")")
                     }
                 }
             } else {
                 print("[DocPreview] No returnURL stored — webView stays at current page")
             }
+            self?.returnURLFrozen = false
         }
 
         vc.present(ql, animated: true) {
@@ -459,6 +481,7 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
                 print("[DocPreview] WARNING: presentation appears to have failed — resetting isPresentingDocument")
                 self.isPresentingDocument = false
                 self.isPreviewInFlight = false
+                self.returnURLFrozen = false
                 self.previewCoordinator = nil
             }
         }
@@ -467,6 +490,7 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     private func failPreview(_ message: String) {
         isPreviewInFlight = false
         isPresentingDocument = false
+        returnURLFrozen = false
         showError(message)
     }
 
