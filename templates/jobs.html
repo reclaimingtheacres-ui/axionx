@@ -341,11 +341,6 @@
         <div style="width:120px;flex-shrink:0;text-align:center">
           {% if bt %}
             <span class="ax-booking-pill" style="background:{{ bt_color }};display:inline-block">{{ bt }}</span>
-            {% if 'Update' in bt and j.next_sched_id %}
-              <form method="post" action="/jobs/{{ j.id }}/note-update-emailed" style="margin:2px 0 0">
-                <button type="submit" style="font-size:.6rem;padding:1px 6px;border:1px solid #2563eb;color:#2563eb;background:#fff;border-radius:99px;cursor:pointer;white-space:nowrap">✉ Emailed</button>
-              </form>
-            {% endif %}
           {% else %}
             <span style="font-size:.68rem;color:var(--muted)">No booking</span>
           {% endif %}
