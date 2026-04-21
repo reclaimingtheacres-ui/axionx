@@ -54,13 +54,17 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         return false
     }
 
-    func shouldBlockNavigation(to url: URL, reason: String) -> Bool {
+    func shouldBlockNavigation(to url: URL, reason: String, isMainFrame: Bool = true) -> Bool {
         guard isReturnNavigationProtected else { return false }
         if let returnURL = returnURL, Self.urlsEquivalent(url, returnURL) {
             return false
         }
+        if isMainFrame {
+            print("[DocPreview] BLOCKED post-preview redirect: \(url.absoluteString) reason=\(reason), frozen=\(returnURL?.absoluteString ?? "nil")")
+            return true
+        }
         guard Self.isBlockedDuringPreviewLifecycle(url) else { return false }
-        print("[DocPreview] blocked background navigation during preview/restore (\(reason)): attempted=\(url.absoluteString), frozen=\(returnURL?.absoluteString ?? "nil")")
+        print("[DocPreview] BLOCKED post-preview redirect: \(url.absoluteString) reason=\(reason), frozen=\(returnURL?.absoluteString ?? "nil")")
         return true
     }
 

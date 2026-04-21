@@ -133,6 +133,10 @@
 <script>
 (function(){
   var _drawing = {};
+  var _isNativeApp = /\bAxionXiOS\b/.test(navigator.userAgent || '');
+  if (_isNativeApp) {
+    window.__AXION_PREVIEW_ACTIVE = false;
+  }
   function _pos(canvas, e) {
     var r = canvas.getBoundingClientRect();
     var sx = canvas.width/r.width, sy = canvas.height/r.height;
@@ -198,6 +202,11 @@
     var isNativeApp = hasNative || /\bAxionXiOS\b/.test(navigator.userAgent || '');
     if (hasNative) {
       try {
+        if (isNativeApp) {
+          window.__AXION_PREVIEW_ACTIVE = true;
+          window.__AXION_PREVIEW_SOURCE_URL = window.location.href;
+          console.log('Preview active - native handoff starting');
+        }
         window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename || 'Form 13.pdf', returnTo: window.location.href});
         return;
       } catch(e) {

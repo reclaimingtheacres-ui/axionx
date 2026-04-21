@@ -29,7 +29,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         print("[NavDelegate] decidePolicyFor: \(url.absoluteString)")
         print("[NavDelegate]   ext='\(ext)' navType=\(navType.rawValue) isMainFrame=\(isMainFrame)")
 
-        if DocumentPreviewHandler.shared.shouldBlockNavigation(to: url, reason: "navigation action") {
+        if DocumentPreviewHandler.shared.shouldBlockNavigation(to: url, reason: "navigation action", isMainFrame: isMainFrame) {
             print("[NavDelegate]   → CANCEL (blocked during document preview/restore)")
             decisionHandler(.cancel)
             return
@@ -121,7 +121,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
 
-        if DocumentPreviewHandler.shared.shouldBlockNavigation(to: url, reason: "navigation response") {
+        if DocumentPreviewHandler.shared.shouldBlockNavigation(to: url, reason: "navigation response", isMainFrame: isMainFrame) {
             print("[NavDelegate]   → CANCEL RESPONSE (blocked during document preview/restore)")
             decisionHandler(.cancel)
             return
