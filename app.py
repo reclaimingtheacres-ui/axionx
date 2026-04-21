@@ -18297,12 +18297,433 @@ def _lpr_watchlist_check(reg_norm: str) -> dict:
     return {"watchlist_hit": False, "watchlist_reason": None, "watchlist_priority": None}
 
 
+def _recovery_targets_ensure(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            record_type TEXT DEFAULT 'Recovery Target',
+            status TEXT NOT NULL DEFAULT 'Active',
+            created_at TEXT NOT NULL,
+            created_by INTEGER,
+            updated_at TEXT,
+            updated_by INTEGER,
+            assigned_agency TEXT,
+            assigned_staff_user_id INTEGER,
+            internal_reference TEXT,
+            agency_reference TEXT,
+            lender_reference TEXT,
+            liquidator_reference TEXT,
+            repossession_active INTEGER NOT NULL DEFAULT 1,
+            repossession_completed_at TEXT,
+            outcome_note TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_parties (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            party_type TEXT,
+            organisation_name TEXT,
+            contact_person TEXT,
+            phone TEXT,
+            email TEXT,
+            reference_number TEXT,
+            notes TEXT,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_people (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            full_legal_name TEXT,
+            aliases TEXT,
+            date_of_birth TEXT,
+            driver_licence_number TEXT,
+            licence_state TEXT,
+            email_primary TEXT,
+            risk_notes TEXT,
+            general_notes TEXT,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_phones (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            phone_number TEXT,
+            label TEXT,
+            is_primary INTEGER DEFAULT 0,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_addresses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            address_type TEXT,
+            full_address TEXT,
+            suburb TEXT,
+            state TEXT,
+            postcode TEXT,
+            notes TEXT,
+            is_primary INTEGER DEFAULT 0,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_associates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            full_name TEXT,
+            relationship TEXT,
+            phone TEXT,
+            address TEXT,
+            notes TEXT,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            asset_type TEXT,
+            make TEXT,
+            model TEXT,
+            year TEXT,
+            colour TEXT,
+            registration_number TEXT,
+            vin TEXT,
+            engine_number TEXT,
+            contract_number TEXT,
+            distinguishing_features TEXT,
+            accessories TEXT,
+            current_security_status TEXT,
+            operational_notes TEXT,
+            is_primary_asset INTEGER DEFAULT 0,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_asset_reg_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id INTEGER NOT NULL,
+            registration_number TEXT,
+            notes TEXT,
+            FOREIGN KEY(asset_id) REFERENCES recovery_target_assets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            asset_id INTEGER,
+            document_type TEXT,
+            category TEXT,
+            original_filename TEXT NOT NULL,
+            stored_filename TEXT NOT NULL,
+            content_type TEXT,
+            uploaded_at TEXT NOT NULL,
+            uploaded_by INTEGER,
+            description TEXT,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id),
+            FOREIGN KEY(asset_id) REFERENCES recovery_target_assets(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS recovery_target_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_id INTEGER NOT NULL,
+            note_type TEXT,
+            note_text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            created_by INTEGER,
+            FOREIGN KEY(target_id) REFERENCES recovery_targets(id)
+        )
+    """)
+    cur = conn.cursor()
+    for col, coltype in [
+        ("record_type", "TEXT DEFAULT 'Recovery Target'"),
+        ("status", "TEXT DEFAULT 'Active'"),
+        ("created_at", "TEXT"),
+        ("created_by", "INTEGER"),
+        ("updated_at", "TEXT"),
+        ("updated_by", "INTEGER"),
+        ("assigned_agency", "TEXT"),
+        ("assigned_staff_user_id", "INTEGER"),
+        ("internal_reference", "TEXT"),
+        ("agency_reference", "TEXT"),
+        ("lender_reference", "TEXT"),
+        ("liquidator_reference", "TEXT"),
+        ("repossession_active", "INTEGER NOT NULL DEFAULT 1"),
+        ("repossession_completed_at", "TEXT"),
+        ("outcome_note", "TEXT"),
+    ]:
+        add_column_if_missing(cur, "recovery_targets", col, coltype)
+    for col, coltype in [
+        ("party_type", "TEXT"),
+        ("organisation_name", "TEXT"),
+        ("contact_person", "TEXT"),
+        ("phone", "TEXT"),
+        ("email", "TEXT"),
+        ("reference_number", "TEXT"),
+        ("notes", "TEXT"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_parties", col, coltype)
+    for col, coltype in [
+        ("full_legal_name", "TEXT"),
+        ("aliases", "TEXT"),
+        ("date_of_birth", "TEXT"),
+        ("driver_licence_number", "TEXT"),
+        ("licence_state", "TEXT"),
+        ("email_primary", "TEXT"),
+        ("risk_notes", "TEXT"),
+        ("general_notes", "TEXT"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_people", col, coltype)
+    for col, coltype in [
+        ("phone_number", "TEXT"),
+        ("label", "TEXT"),
+        ("is_primary", "INTEGER DEFAULT 0"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_phones", col, coltype)
+    for col, coltype in [
+        ("address_type", "TEXT"),
+        ("full_address", "TEXT"),
+        ("suburb", "TEXT"),
+        ("state", "TEXT"),
+        ("postcode", "TEXT"),
+        ("notes", "TEXT"),
+        ("is_primary", "INTEGER DEFAULT 0"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_addresses", col, coltype)
+    for col, coltype in [
+        ("full_name", "TEXT"),
+        ("relationship", "TEXT"),
+        ("phone", "TEXT"),
+        ("address", "TEXT"),
+        ("notes", "TEXT"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_associates", col, coltype)
+    for col, coltype in [
+        ("asset_type", "TEXT"),
+        ("make", "TEXT"),
+        ("model", "TEXT"),
+        ("year", "TEXT"),
+        ("colour", "TEXT"),
+        ("registration_number", "TEXT"),
+        ("vin", "TEXT"),
+        ("engine_number", "TEXT"),
+        ("contract_number", "TEXT"),
+        ("distinguishing_features", "TEXT"),
+        ("accessories", "TEXT"),
+        ("current_security_status", "TEXT"),
+        ("operational_notes", "TEXT"),
+        ("is_primary_asset", "INTEGER DEFAULT 0"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_assets", col, coltype)
+    for col, coltype in [
+        ("registration_number", "TEXT"),
+        ("notes", "TEXT"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_asset_reg_history", col, coltype)
+    for col, coltype in [
+        ("asset_id", "INTEGER"),
+        ("document_type", "TEXT"),
+        ("category", "TEXT"),
+        ("original_filename", "TEXT"),
+        ("stored_filename", "TEXT"),
+        ("content_type", "TEXT"),
+        ("uploaded_at", "TEXT"),
+        ("uploaded_by", "INTEGER"),
+        ("description", "TEXT"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_documents", col, coltype)
+    for col, coltype in [
+        ("note_type", "TEXT"),
+        ("note_text", "TEXT"),
+        ("created_at", "TEXT"),
+        ("created_by", "INTEGER"),
+    ]:
+        add_column_if_missing(cur, "recovery_target_notes", col, coltype)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_targets_status ON recovery_targets(status, repossession_active)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_assets_reg ON recovery_target_assets(registration_number)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_people_name ON recovery_target_people(full_legal_name)")
+    conn.commit()
+
+
+def _recovery_can_manage():
+    return session.get("role") in ("admin", "both")
+
+
+def _table_columns(conn, table: str) -> set:
+    return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _row_value(row, key: str, default=None):
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
+def _recovery_target_label(row):
+    if not row:
+        return "RT"
+    return (_row_value(row, "internal_reference") or _row_value(row, "agency_reference")
+            or _row_value(row, "lender_reference") or _row_value(row, "ref")
+            or f"RT-{row['id']:05d}")
+
+
+def _recovery_target_detail(conn, target_id: int):
+    _recovery_targets_ensure(conn)
+    target = conn.execute("SELECT * FROM recovery_targets WHERE id=?", (target_id,)).fetchone()
+    if not target:
+        return None
+    detail = {"target": target}
+    detail["parties"] = conn.execute("SELECT * FROM recovery_target_parties WHERE target_id=? ORDER BY id", (target_id,)).fetchall()
+    detail["people"] = conn.execute("SELECT * FROM recovery_target_people WHERE target_id=? ORDER BY id", (target_id,)).fetchall()
+    detail["phones"] = conn.execute("SELECT * FROM recovery_target_phones WHERE target_id=? ORDER BY is_primary DESC, id", (target_id,)).fetchall()
+    detail["addresses"] = conn.execute("SELECT * FROM recovery_target_addresses WHERE target_id=? ORDER BY is_primary DESC, id", (target_id,)).fetchall()
+    detail["associates"] = conn.execute("SELECT * FROM recovery_target_associates WHERE target_id=? ORDER BY id", (target_id,)).fetchall()
+    assets = conn.execute("SELECT * FROM recovery_target_assets WHERE target_id=? ORDER BY is_primary_asset DESC, id", (target_id,)).fetchall()
+    detail["assets"] = []
+    for asset in assets:
+        detail["assets"].append({
+            "row": asset,
+            "reg_history": conn.execute("SELECT * FROM recovery_target_asset_reg_history WHERE asset_id=? ORDER BY id", (asset["id"],)).fetchall(),
+        })
+    detail["documents"] = conn.execute("""
+        SELECT d.*, u.full_name AS uploaded_by_name
+        FROM recovery_target_documents d
+        LEFT JOIN users u ON u.id=d.uploaded_by
+        WHERE d.target_id=?
+        ORDER BY d.uploaded_at DESC, d.id DESC
+    """, (target_id,)).fetchall()
+    detail["notes"] = conn.execute("""
+        SELECT n.*, u.full_name AS created_by_name
+        FROM recovery_target_notes n
+        LEFT JOIN users u ON u.id=n.created_by
+        WHERE n.target_id=?
+        ORDER BY n.created_at DESC, n.id DESC
+    """, (target_id,)).fetchall()
+    return detail
+
+
+def _recovery_search(conn, q: str, limit: int = 100):
+    _recovery_targets_ensure(conn)
+    q = (q or "").strip()
+    like = f"%{q}%"
+    if not q:
+        return conn.execute("""
+            SELECT rt.*,
+                   (SELECT p.full_legal_name FROM recovery_target_people p WHERE p.target_id=rt.id ORDER BY id LIMIT 1) AS person_name,
+                   (SELECT a.registration_number FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS primary_reg,
+                   (SELECT a.make || ' ' || a.model FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS asset_label
+            FROM recovery_targets rt
+            ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END, rt.updated_at DESC, rt.id DESC
+            LIMIT ?
+        """, (limit,)).fetchall()
+    return conn.execute("""
+        SELECT DISTINCT rt.*,
+               (SELECT p.full_legal_name FROM recovery_target_people p WHERE p.target_id=rt.id ORDER BY id LIMIT 1) AS person_name,
+               (SELECT a.registration_number FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS primary_reg,
+               (SELECT a.make || ' ' || a.model FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS asset_label
+        FROM recovery_targets rt
+        LEFT JOIN recovery_target_people p ON p.target_id=rt.id
+        LEFT JOIN recovery_target_parties par ON par.target_id=rt.id
+        LEFT JOIN recovery_target_phones ph ON ph.target_id=rt.id
+        LEFT JOIN recovery_target_addresses ad ON ad.target_id=rt.id
+        LEFT JOIN recovery_target_assets a ON a.target_id=rt.id
+        LEFT JOIN recovery_target_asset_reg_history rh ON rh.asset_id=a.id
+        WHERE rt.internal_reference LIKE ? OR rt.agency_reference LIKE ? OR rt.lender_reference LIKE ? OR rt.liquidator_reference LIKE ?
+           OR rt.assigned_agency LIKE ?
+           OR p.full_legal_name LIKE ? OR p.aliases LIKE ? OR p.date_of_birth LIKE ? OR p.driver_licence_number LIKE ?
+           OR par.organisation_name LIKE ? OR par.reference_number LIKE ?
+           OR ph.phone_number LIKE ?
+           OR ad.full_address LIKE ? OR ad.suburb LIKE ? OR ad.postcode LIKE ?
+           OR a.registration_number LIKE ? OR a.vin LIKE ? OR a.contract_number LIKE ?
+           OR rh.registration_number LIKE ?
+        ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END, rt.updated_at DESC, rt.id DESC
+        LIMIT ?
+    """, (like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, limit)).fetchall()
+
+
+def _lookup_recovery_target_for_lpr(reg_norm: str) -> dict:
+    conn = db()
+    _recovery_targets_ensure(conn)
+    rows = conn.execute("""
+        SELECT rt.id AS target_id, rt.status, rt.repossession_active, rt.internal_reference,
+               rt.agency_reference, rt.lender_reference, rt.liquidator_reference,
+               rt.assigned_agency, p.full_legal_name, p.aliases, p.risk_notes,
+               a.id AS asset_id, a.asset_type, a.make, a.model, a.year, a.colour,
+               a.registration_number, a.vin, a.current_security_status, a.operational_notes,
+               par.organisation_name AS instructing_party
+        FROM recovery_targets rt
+        JOIN recovery_target_assets a ON a.target_id=rt.id
+        LEFT JOIN recovery_target_people p ON p.target_id=rt.id
+        LEFT JOIN recovery_target_parties par ON par.target_id=rt.id
+        WHERE rt.status='Active' AND COALESCE(rt.repossession_active,1)=1
+          AND (
+            UPPER(REPLACE(REPLACE(COALESCE(a.registration_number,''),' ',''),'-',''))=?
+            OR EXISTS (
+                SELECT 1 FROM recovery_target_asset_reg_history rh
+                WHERE rh.asset_id=a.id
+                  AND UPPER(REPLACE(REPLACE(COALESCE(rh.registration_number,''),' ',''),'-',''))=?
+            )
+          )
+        ORDER BY a.is_primary_asset DESC, a.id
+    """, (reg_norm, reg_norm)).fetchall()
+    conn.close()
+    by_target = {}
+    for row in rows:
+        by_target.setdefault(row["target_id"], row)
+    if not by_target:
+        return {}
+    if len(by_target) > 1:
+        return {
+            "result_type": "recovery_target_conflict",
+            "searched_registration": reg_norm,
+            "match_count": len(by_target),
+            "message": f"{len(by_target)} active Recovery Targets share this registration. Contact the office before action.",
+        }
+    row = list(by_target.values())[0]
+    asset_label = " ".join([x for x in [row["year"], row["colour"], row["make"], row["model"]] if x])
+    return {
+        "result_type": "recovery_target_match",
+        "searched_registration": reg_norm,
+        "record_kind": "Recovery Target",
+        "recovery_target_id": row["target_id"],
+        "linked_record_reference": _recovery_target_label(row),
+        "customer_name": row["full_legal_name"],
+        "status": row["status"],
+        "repossession_active": bool(row["repossession_active"]),
+        "instructing_party": row["instructing_party"] or row["assigned_agency"],
+        "risk_notes": row["risk_notes"],
+        "asset": {
+            "registration": row["registration_number"],
+            "year": row["year"],
+            "make": row["make"],
+            "model": row["model"],
+            "colour": row["colour"],
+            "vin": row["vin"],
+            "label": asset_label,
+            "security_status": row["current_security_status"],
+            "operational_notes": row["operational_notes"],
+        },
+        "open_url": url_for("m_recovery_target_detail", target_id=row["target_id"]),
+    }
+
+
 def lookup_registration_for_lpr(uid: int, role: str, username: str, reg_input: str) -> dict:
     reg_norm = normalise_registration(reg_input)
     if not reg_norm:
         return {"result_type": "invalid", "message": "Enter a valid registration."}
 
     wl = _lpr_watchlist_check(reg_norm)
+    recovery_match = _lookup_recovery_target_for_lpr(reg_norm)
+    if recovery_match:
+        return {**recovery_match, **wl}
 
     conn = db()
     _lpr_ensure_table(conn)
@@ -18914,6 +19335,386 @@ def m_api_lpr_lookup():
             exclude_uid=uid,
         )
     return jsonify(result), 200
+
+
+def _rt_form_list(name):
+    return [x.strip() for x in request.form.getlist(name)]
+
+
+def _rt_save_children(conn, target_id: int):
+    for tbl in (
+        "recovery_target_parties",
+        "recovery_target_people",
+        "recovery_target_phones",
+        "recovery_target_addresses",
+        "recovery_target_associates",
+        "recovery_target_asset_reg_history",
+        "recovery_target_assets",
+    ):
+        if tbl == "recovery_target_asset_reg_history":
+            conn.execute("""
+                DELETE FROM recovery_target_asset_reg_history
+                WHERE asset_id IN (SELECT id FROM recovery_target_assets WHERE target_id=?)
+            """, (target_id,))
+        elif tbl != "recovery_target_assets":
+            conn.execute(f"DELETE FROM {tbl} WHERE target_id=?", (target_id,))
+    conn.execute("DELETE FROM recovery_target_assets WHERE target_id=?", (target_id,))
+
+    party_types = _rt_form_list("party_type[]")
+    orgs = _rt_form_list("organisation_name[]")
+    contacts = _rt_form_list("contact_person[]")
+    pphones = _rt_form_list("party_phone[]")
+    emails = _rt_form_list("party_email[]")
+    refs = _rt_form_list("party_reference_number[]")
+    pnotes = _rt_form_list("party_notes[]")
+    for i, org in enumerate(orgs):
+        if not any([(org or ""), contacts[i] if i < len(contacts) else "", refs[i] if i < len(refs) else ""]):
+            continue
+        conn.execute("""
+            INSERT INTO recovery_target_parties
+                (target_id, party_type, organisation_name, contact_person, phone, email, reference_number, notes)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (target_id, party_types[i] if i < len(party_types) else "", org,
+              contacts[i] if i < len(contacts) else "", pphones[i] if i < len(pphones) else "",
+              emails[i] if i < len(emails) else "", refs[i] if i < len(refs) else "",
+              pnotes[i] if i < len(pnotes) else ""))
+
+    full_name = (request.form.get("full_legal_name") or "").strip()
+    if full_name or (request.form.get("aliases") or "").strip():
+        conn.execute("""
+            INSERT INTO recovery_target_people
+                (target_id, full_legal_name, aliases, date_of_birth, driver_licence_number, licence_state, email_primary, risk_notes, general_notes)
+            VALUES (?,?,?,?,?,?,?,?,?)
+        """, (target_id, full_name, (request.form.get("aliases") or "").strip(),
+              (request.form.get("date_of_birth") or "").strip(), (request.form.get("driver_licence_number") or "").strip(),
+              (request.form.get("licence_state") or "").strip(), (request.form.get("email_primary") or "").strip(),
+              (request.form.get("risk_notes") or "").strip(), (request.form.get("general_notes") or "").strip()))
+
+    phone_numbers = _rt_form_list("phone_number[]")
+    phone_labels = _rt_form_list("phone_label[]")
+    primary_phone = request.form.get("primary_phone", "")
+    for i, number in enumerate(phone_numbers):
+        if not number:
+            continue
+        conn.execute("""
+            INSERT INTO recovery_target_phones (target_id, phone_number, label, is_primary)
+            VALUES (?,?,?,?)
+        """, (target_id, number, phone_labels[i] if i < len(phone_labels) else "", 1 if primary_phone == str(i) else 0))
+
+    addr_types = _rt_form_list("address_type[]")
+    addresses = _rt_form_list("full_address[]")
+    suburbs = _rt_form_list("suburb[]")
+    states = _rt_form_list("state[]")
+    postcodes = _rt_form_list("postcode[]")
+    addr_notes = _rt_form_list("address_notes[]")
+    primary_addr = request.form.get("primary_address", "")
+    for i, address in enumerate(addresses):
+        if not address:
+            continue
+        conn.execute("""
+            INSERT INTO recovery_target_addresses
+                (target_id, address_type, full_address, suburb, state, postcode, notes, is_primary)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (target_id, addr_types[i] if i < len(addr_types) else "", address,
+              suburbs[i] if i < len(suburbs) else "", states[i] if i < len(states) else "",
+              postcodes[i] if i < len(postcodes) else "", addr_notes[i] if i < len(addr_notes) else "",
+              1 if primary_addr == str(i) else 0))
+
+    assoc_names = _rt_form_list("associate_name[]")
+    assoc_rels = _rt_form_list("associate_relationship[]")
+    assoc_phones = _rt_form_list("associate_phone[]")
+    assoc_addresses = _rt_form_list("associate_address[]")
+    assoc_notes = _rt_form_list("associate_notes[]")
+    for i, name in enumerate(assoc_names):
+        if not name:
+            continue
+        conn.execute("""
+            INSERT INTO recovery_target_associates (target_id, full_name, relationship, phone, address, notes)
+            VALUES (?,?,?,?,?,?)
+        """, (target_id, name, assoc_rels[i] if i < len(assoc_rels) else "",
+              assoc_phones[i] if i < len(assoc_phones) else "", assoc_addresses[i] if i < len(assoc_addresses) else "",
+              assoc_notes[i] if i < len(assoc_notes) else ""))
+
+    asset_types = _rt_form_list("asset_type[]")
+    makes = _rt_form_list("make[]")
+    models = _rt_form_list("model[]")
+    years = _rt_form_list("year[]")
+    colours = _rt_form_list("colour[]")
+    regs = _rt_form_list("registration_number[]")
+    vins = _rt_form_list("vin[]")
+    engines = _rt_form_list("engine_number[]")
+    contracts = _rt_form_list("contract_number[]")
+    features = _rt_form_list("distinguishing_features[]")
+    accessories = _rt_form_list("accessories[]")
+    security = _rt_form_list("current_security_status[]")
+    ops = _rt_form_list("operational_notes[]")
+    histories = _rt_form_list("reg_history[]")
+    primary_asset = request.form.get("primary_asset", "0")
+    for i, reg in enumerate(regs):
+        if not any([reg, vins[i] if i < len(vins) else "", makes[i] if i < len(makes) else "", models[i] if i < len(models) else ""]):
+            continue
+        cur = conn.execute("""
+            INSERT INTO recovery_target_assets
+                (target_id, asset_type, make, model, year, colour, registration_number, vin, engine_number,
+                 contract_number, distinguishing_features, accessories, current_security_status, operational_notes, is_primary_asset)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (target_id, asset_types[i] if i < len(asset_types) else "", makes[i] if i < len(makes) else "",
+              models[i] if i < len(models) else "", years[i] if i < len(years) else "", colours[i] if i < len(colours) else "",
+              reg, vins[i] if i < len(vins) else "", engines[i] if i < len(engines) else "",
+              contracts[i] if i < len(contracts) else "", features[i] if i < len(features) else "",
+              accessories[i] if i < len(accessories) else "", security[i] if i < len(security) else "",
+              ops[i] if i < len(ops) else "", 1 if primary_asset == str(i) else 0))
+        asset_id = cur.lastrowid
+        history_text = histories[i] if i < len(histories) else ""
+        for line in history_text.replace(",", "\n").splitlines():
+            old_reg = line.strip()
+            if old_reg:
+                conn.execute("""
+                    INSERT INTO recovery_target_asset_reg_history (asset_id, registration_number, notes)
+                    VALUES (?,?,?)
+                """, (asset_id, old_reg, "Previous registration"))
+
+
+@app.get("/recovery-targets")
+@login_required
+def recovery_targets_list():
+    conn = db()
+    rows = _recovery_search(conn, request.args.get("q", ""), 250)
+    conn.close()
+    return render_template("recovery_targets/list.html", rows=rows, q=request.args.get("q", ""), can_manage=_recovery_can_manage())
+
+
+@app.get("/recovery-targets/new")
+@login_required
+def recovery_target_new():
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_targets_list"))
+    return render_template("recovery_targets/form.html", detail=None, can_manage=True)
+
+
+@app.post("/recovery-targets/new")
+@login_required
+def recovery_target_create():
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_targets_list"))
+    conn = db()
+    _recovery_targets_ensure(conn)
+    ts = now_ts()
+    target_cols = _table_columns(conn, "recovery_targets")
+    internal_ref = (request.form.get("internal_reference") or "").strip()
+    agency_ref = (request.form.get("agency_reference") or "").strip()
+    lender_ref = (request.form.get("lender_reference") or "").strip()
+    liquidator_ref = (request.form.get("liquidator_reference") or "").strip()
+    values = {
+        "record_type": "Recovery Target",
+        "status": request.form.get("status") or "Active",
+        "created_at": ts,
+        "created_by": session.get("user_id"),
+        "created_by_user_id": session.get("user_id"),
+        "updated_at": ts,
+        "updated_by": session.get("user_id"),
+        "assigned_agency": (request.form.get("assigned_agency") or "").strip(),
+        "assigned_staff_user_id": request.form.get("assigned_staff_user_id") or None,
+        "internal_reference": internal_ref,
+        "agency_reference": agency_ref,
+        "lender_reference": lender_ref,
+        "liquidator_reference": liquidator_ref,
+        "repossession_active": 1 if request.form.get("repossession_active") == "1" else 0,
+        "ref": internal_ref or agency_ref or lender_ref or liquidator_ref or f"RT-{uuid.uuid4().hex[:8].upper()}",
+    }
+    cols = [c for c in values.keys() if c in target_cols]
+    placeholders = ",".join("?" for _ in cols)
+    cur = conn.execute(
+        f"INSERT INTO recovery_targets ({','.join(cols)}) VALUES ({placeholders})",
+        [values[c] for c in cols]
+    )
+    target_id = cur.lastrowid
+    _rt_save_children(conn, target_id)
+    conn.commit()
+    conn.close()
+    flash("Recovery Target created.", "success")
+    return redirect(url_for("recovery_target_detail", target_id=target_id))
+
+
+@app.get("/recovery-targets/<int:target_id>")
+@login_required
+def recovery_target_detail(target_id: int):
+    conn = db()
+    detail = _recovery_target_detail(conn, target_id)
+    conn.close()
+    if not detail:
+        flash("Recovery Target not found.", "warning")
+        return redirect(url_for("recovery_targets_list"))
+    return render_template("recovery_targets/detail.html", **detail, can_manage=_recovery_can_manage(), label=_recovery_target_label(detail["target"]))
+
+
+@app.get("/recovery-targets/<int:target_id>/edit")
+@login_required
+def recovery_target_edit(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    conn = db()
+    detail = _recovery_target_detail(conn, target_id)
+    conn.close()
+    if not detail:
+        flash("Recovery Target not found.", "warning")
+        return redirect(url_for("recovery_targets_list"))
+    return render_template("recovery_targets/form.html", detail=detail, can_manage=True)
+
+
+@app.post("/recovery-targets/<int:target_id>/edit")
+@login_required
+def recovery_target_update(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    conn = db()
+    _recovery_targets_ensure(conn)
+    ts = now_ts()
+    conn.execute("""
+        UPDATE recovery_targets
+        SET status=?, updated_at=?, updated_by=?, assigned_agency=?, assigned_staff_user_id=?,
+            internal_reference=?, agency_reference=?, lender_reference=?, liquidator_reference=?,
+            repossession_active=?
+        WHERE id=?
+    """, (request.form.get("status") or "Active", ts, session.get("user_id"),
+          (request.form.get("assigned_agency") or "").strip(), request.form.get("assigned_staff_user_id") or None,
+          (request.form.get("internal_reference") or "").strip(), (request.form.get("agency_reference") or "").strip(),
+          (request.form.get("lender_reference") or "").strip(), (request.form.get("liquidator_reference") or "").strip(),
+          1 if request.form.get("repossession_active") == "1" else 0, target_id))
+    _rt_save_children(conn, target_id)
+    conn.commit()
+    conn.close()
+    flash("Recovery Target updated.", "success")
+    return redirect(url_for("recovery_target_detail", target_id=target_id))
+
+
+@app.post("/recovery-targets/<int:target_id>/notes")
+@login_required
+def recovery_target_add_note(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target notes are restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    note_text = (request.form.get("note_text") or "").strip()
+    if note_text:
+        conn = db()
+        _recovery_targets_ensure(conn)
+        conn.execute("""
+            INSERT INTO recovery_target_notes (target_id, note_type, note_text, created_at, created_by)
+            VALUES (?,?,?,?,?)
+        """, (target_id, request.form.get("note_type") or "Operational", note_text, now_ts(), session.get("user_id")))
+        conn.commit()
+        conn.close()
+        flash("Note added.", "success")
+    return redirect(url_for("recovery_target_detail", target_id=target_id) + "#notes")
+
+
+@app.post("/recovery-targets/<int:target_id>/documents")
+@login_required
+def recovery_target_upload_document(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target documents are restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    files = request.files.getlist("documents")
+    conn = db()
+    _recovery_targets_ensure(conn)
+    count = 0
+    for file in files:
+        if not file or not file.filename:
+            continue
+        original = secure_filename(file.filename)
+        ext = os.path.splitext(original)[1].lower()
+        if ext and ext[1:] not in ALLOWED_EXTENSIONS:
+            continue
+        stored = f"recovery_target_{target_id}_{uuid.uuid4().hex}_{original}"
+        size = upload_to_blob(file, stored)
+        conn.execute("""
+            INSERT INTO recovery_target_documents
+                (target_id, asset_id, document_type, category, original_filename, stored_filename,
+                 content_type, uploaded_at, uploaded_by, description)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        """, (target_id, request.form.get("asset_id") or None, request.form.get("document_type") or "",
+              request.form.get("category") or "General", file.filename, stored,
+              file.mimetype or mimetypes.guess_type(original)[0] or "application/octet-stream",
+              now_ts(), session.get("user_id"), request.form.get("description") or ""))
+        count += 1
+    conn.commit()
+    conn.close()
+    flash(f"{count} document{'s' if count != 1 else ''} uploaded.", "success" if count else "warning")
+    return redirect(url_for("recovery_target_detail", target_id=target_id) + "#documents")
+
+
+@app.get("/recovery-targets/<int:target_id>/documents/<int:doc_id>/download")
+@login_required
+def recovery_target_download_document(target_id: int, doc_id: int):
+    conn = db()
+    _recovery_targets_ensure(conn)
+    doc = conn.execute("""
+        SELECT * FROM recovery_target_documents WHERE id=? AND target_id=?
+    """, (doc_id, target_id)).fetchone()
+    conn.close()
+    if not doc:
+        abort(404)
+    mime = doc["content_type"] or mimetypes.guess_type(doc["original_filename"])[0] or "application/octet-stream"
+    if _uploads_container:
+        try:
+            data = _uploads_container.get_blob_client(doc["stored_filename"]).download_blob().readall()
+            return Response(data, mimetype=mime, headers={"Content-Disposition": f"inline; filename={doc['original_filename']}"})
+        except Exception:
+            pass
+    path = _find_upload_file(doc["stored_filename"])
+    if not path:
+        abort(404)
+    return send_file(path, mimetype=mime, as_attachment=False, download_name=doc["original_filename"])
+
+
+@app.post("/recovery-targets/<int:target_id>/repossessed")
+@login_required
+def recovery_target_mark_repossessed(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    completed_at = (request.form.get("repossession_completed_at") or "").strip() or now_ts()
+    outcome_note = (request.form.get("outcome_note") or "").strip()
+    conn = db()
+    _recovery_targets_ensure(conn)
+    conn.execute("""
+        UPDATE recovery_targets
+        SET status='Repossessed', repossession_active=0, repossession_completed_at=?,
+            outcome_note=?, updated_at=?, updated_by=?
+        WHERE id=?
+    """, (completed_at, outcome_note, now_ts(), session.get("user_id"), target_id))
+    conn.commit()
+    conn.close()
+    flash("Recovery Target marked Repossessed.", "success")
+    return redirect(url_for("recovery_target_detail", target_id=target_id))
+
+
+@app.get("/m/recovery-targets")
+@mobile_login_required
+def m_recovery_targets_search():
+    q = request.args.get("q", "")
+    rows = []
+    if q.strip():
+        conn = db()
+        rows = _recovery_search(conn, q, 50)
+        conn.close()
+    return render_template("mobile/recovery_targets_search.html", q=q, rows=rows)
+
+
+@app.get("/m/recovery-targets/<int:target_id>")
+@mobile_login_required
+def m_recovery_target_detail(target_id: int):
+    conn = db()
+    detail = _recovery_target_detail(conn, target_id)
+    conn.close()
+    if not detail:
+        flash("Recovery Target not found.", "warning")
+        return redirect(url_for("m_recovery_targets_search"))
+    return render_template("mobile/recovery_target_detail.html", **detail, label=_recovery_target_label(detail["target"]))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

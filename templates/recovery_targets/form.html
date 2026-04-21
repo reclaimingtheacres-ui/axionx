@@ -1,0 +1,156 @@
+{% extends "layout.html" %}
+{% block title %}{{ 'Edit' if detail else 'New' }} Recovery Target{% endblock %}
+{% block page_title %}{{ 'Edit' if detail else 'New' }} Recovery Target{% endblock %}
+{% block content %}
+{% set target = detail.target if detail else none %}
+{% set person = detail.people[0] if detail and detail.people else none %}
+<form method="post" class="mb-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h2 class="mb-1">{{ 'Edit Recovery Target' if detail else 'New Recovery Target' }}</h2>
+      <div class="text-muted small">Separate target database record. This does not create or modify a normal job.</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('recovery_target_detail', target_id=target.id) if target else url_for('recovery_targets_list') }}" class="btn btn-outline-secondary">Cancel</a>
+      <button class="btn btn-primary">Save Recovery Target</button>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Target Control</div>
+    <div class="card-body row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Status</label>
+        <select name="status" class="form-select">
+          {% for s in ["Active","On Hold","Repossessed","Closed","Archived"] %}
+          <option value="{{ s }}" {% if target and target.status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Repossession Active</label>
+        <select name="repossession_active" class="form-select">
+          <option value="1" {% if not target or target.repossession_active %}selected{% endif %}>Yes</option>
+          <option value="0" {% if target and not target.repossession_active %}selected{% endif %}>No</option>
+        </select>
+      </div>
+      <div class="col-md-3"><label class="form-label">Internal Reference</label><input name="internal_reference" class="form-control" value="{{ target.internal_reference if target else '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Assigned Agency</label><input name="assigned_agency" class="form-control" value="{{ target.assigned_agency if target else '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Agency Reference</label><input name="agency_reference" class="form-control" value="{{ target.agency_reference if target else '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Lender Reference</label><input name="lender_reference" class="form-control" value="{{ target.lender_reference if target else '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Liquidator Reference</label><input name="liquidator_reference" class="form-control" value="{{ target.liquidator_reference if target else '' }}"></div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Customer / Person</div>
+    <div class="card-body row g-3">
+      <div class="col-md-6"><label class="form-label">Full Legal Name</label><input name="full_legal_name" class="form-control" value="{{ person.full_legal_name if person else '' }}"></div>
+      <div class="col-md-6"><label class="form-label">Aliases</label><input name="aliases" class="form-control" value="{{ person.aliases if person else '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Date of Birth</label><input name="date_of_birth" class="form-control" value="{{ person.date_of_birth if person else '' }}"></div>
+      <div class="col-md-3"><label class="form-label">Driver Licence</label><input name="driver_licence_number" class="form-control" value="{{ person.driver_licence_number if person else '' }}"></div>
+      <div class="col-md-2"><label class="form-label">Licence State</label><input name="licence_state" class="form-control" value="{{ person.licence_state if person else '' }}"></div>
+      <div class="col-md-4"><label class="form-label">Email</label><input name="email_primary" class="form-control" value="{{ person.email_primary if person else '' }}"></div>
+      <div class="col-md-6"><label class="form-label">Caution / Risk Notes</label><textarea name="risk_notes" class="form-control" rows="4">{{ person.risk_notes if person else '' }}</textarea></div>
+      <div class="col-md-6"><label class="form-label">General Notes</label><textarea name="general_notes" class="form-control" rows="4">{{ person.general_notes if person else '' }}</textarea></div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Instructing Parties</div>
+    <div class="card-body">
+      {% set party_rows = detail.parties if detail and detail.parties else [] %}
+      {% for p in party_rows + [none] %}
+      <div class="row g-2 mb-2">
+        <div class="col-md-2"><select name="party_type[]" class="form-select"><option value="">Type</option>{% for t in ["agency","lender","liquidator"] %}<option value="{{ t }}" {% if p and p.party_type == t %}selected{% endif %}>{{ t|title }}</option>{% endfor %}</select></div>
+        <div class="col-md-3"><input name="organisation_name[]" class="form-control" placeholder="Organisation" value="{{ p.organisation_name if p else '' }}"></div>
+        <div class="col-md-2"><input name="contact_person[]" class="form-control" placeholder="Contact" value="{{ p.contact_person if p else '' }}"></div>
+        <div class="col-md-2"><input name="party_phone[]" class="form-control" placeholder="Phone" value="{{ p.phone if p else '' }}"></div>
+        <div class="col-md-3"><input name="party_email[]" class="form-control" placeholder="Email" value="{{ p.email if p else '' }}"></div>
+        <div class="col-md-3"><input name="party_reference_number[]" class="form-control" placeholder="Reference" value="{{ p.reference_number if p else '' }}"></div>
+        <div class="col-md-9"><input name="party_notes[]" class="form-control" placeholder="Notes" value="{{ p.notes if p else '' }}"></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Phones</div>
+    <div class="card-body">
+      {% set phone_rows = detail.phones if detail and detail.phones else [] %}
+      {% for p in phone_rows + [none] %}
+      <div class="row g-2 mb-2 align-items-center">
+        <div class="col-md-2"><input type="radio" name="primary_phone" value="{{ loop.index0 }}" {% if p and p.is_primary %}checked{% endif %}> Primary</div>
+        <div class="col-md-4"><input name="phone_number[]" class="form-control" placeholder="Phone number" value="{{ p.phone_number if p else '' }}"></div>
+        <div class="col-md-6"><input name="phone_label[]" class="form-control" placeholder="Label" value="{{ p.label if p else '' }}"></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Addresses</div>
+    <div class="card-body">
+      {% set address_rows = detail.addresses if detail and detail.addresses else [] %}
+      {% for a in address_rows + [none] %}
+      <div class="row g-2 mb-2 align-items-center">
+        <div class="col-md-1"><input type="radio" name="primary_address" value="{{ loop.index0 }}" {% if a and a.is_primary %}checked{% endif %}></div>
+        <div class="col-md-2"><input name="address_type[]" class="form-control" placeholder="Type" value="{{ a.address_type if a else '' }}"></div>
+        <div class="col-md-4"><input name="full_address[]" class="form-control" placeholder="Address" value="{{ a.full_address if a else '' }}"></div>
+        <div class="col-md-2"><input name="suburb[]" class="form-control" placeholder="Suburb" value="{{ a.suburb if a else '' }}"></div>
+        <div class="col-md-1"><input name="state[]" class="form-control" placeholder="State" value="{{ a.state if a else '' }}"></div>
+        <div class="col-md-2"><input name="postcode[]" class="form-control" placeholder="Postcode" value="{{ a.postcode if a else '' }}"></div>
+        <div class="col-md-12"><input name="address_notes[]" class="form-control" placeholder="Address notes" value="{{ a.notes if a else '' }}"></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Assets</div>
+    <div class="card-body">
+      {% set asset_rows = detail.assets if detail and detail.assets else [] %}
+      {% for item in asset_rows + [none] %}
+      {% set a = item.row if item else none %}
+      <div class="border rounded p-3 mb-3">
+        <div class="row g-2">
+          <div class="col-md-2"><input type="radio" name="primary_asset" value="{{ loop.index0 }}" {% if a and a.is_primary_asset %}checked{% endif %}> Primary</div>
+          <div class="col-md-2"><input name="asset_type[]" class="form-control" placeholder="Asset type" value="{{ a.asset_type if a else '' }}"></div>
+          <div class="col-md-2"><input name="registration_number[]" class="form-control" placeholder="Current reg" value="{{ a.registration_number if a else '' }}"></div>
+          <div class="col-md-3"><input name="vin[]" class="form-control" placeholder="VIN" value="{{ a.vin if a else '' }}"></div>
+          <div class="col-md-3"><input name="engine_number[]" class="form-control" placeholder="Engine number" value="{{ a.engine_number if a else '' }}"></div>
+          <div class="col-md-2"><input name="year[]" class="form-control" placeholder="Year" value="{{ a.year if a else '' }}"></div>
+          <div class="col-md-2"><input name="make[]" class="form-control" placeholder="Make" value="{{ a.make if a else '' }}"></div>
+          <div class="col-md-2"><input name="model[]" class="form-control" placeholder="Model" value="{{ a.model if a else '' }}"></div>
+          <div class="col-md-2"><input name="colour[]" class="form-control" placeholder="Colour" value="{{ a.colour if a else '' }}"></div>
+          <div class="col-md-4"><input name="contract_number[]" class="form-control" placeholder="Contract number" value="{{ a.contract_number if a else '' }}"></div>
+          <div class="col-md-6"><textarea name="reg_history[]" class="form-control" rows="2" placeholder="Previous registrations, one per line">{{ item.reg_history | map(attribute='registration_number') | join('\n') if item else '' }}</textarea></div>
+          <div class="col-md-6"><textarea name="distinguishing_features[]" class="form-control" rows="2" placeholder="Distinguishing features">{{ a.distinguishing_features if a else '' }}</textarea></div>
+          <div class="col-md-4"><textarea name="accessories[]" class="form-control" rows="2" placeholder="Accessories">{{ a.accessories if a else '' }}</textarea></div>
+          <div class="col-md-4"><textarea name="current_security_status[]" class="form-control" rows="2" placeholder="Current security status">{{ a.current_security_status if a else '' }}</textarea></div>
+          <div class="col-md-4"><textarea name="operational_notes[]" class="form-control" rows="2" placeholder="Operational notes">{{ a.operational_notes if a else '' }}</textarea></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header fw-semibold">Associates / Linked Persons</div>
+    <div class="card-body">
+      {% set assoc_rows = detail.associates if detail and detail.associates else [] %}
+      {% for a in assoc_rows + [none] %}
+      <div class="row g-2 mb-2">
+        <div class="col-md-3"><input name="associate_name[]" class="form-control" placeholder="Name" value="{{ a.full_name if a else '' }}"></div>
+        <div class="col-md-2"><input name="associate_relationship[]" class="form-control" placeholder="Relationship" value="{{ a.relationship if a else '' }}"></div>
+        <div class="col-md-2"><input name="associate_phone[]" class="form-control" placeholder="Phone" value="{{ a.phone if a else '' }}"></div>
+        <div class="col-md-3"><input name="associate_address[]" class="form-control" placeholder="Address" value="{{ a.address if a else '' }}"></div>
+        <div class="col-md-2"><input name="associate_notes[]" class="form-control" placeholder="Notes" value="{{ a.notes if a else '' }}"></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <button class="btn btn-primary">Save Recovery Target</button>
+</form>
+{% endblock %}

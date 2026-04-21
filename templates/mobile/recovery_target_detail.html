@@ -1,0 +1,111 @@
+{% extends "mobile/base.html" %}
+{% block title %}Recovery Target {{ label }} — AxionX{% endblock %}
+{% block header_title %}
+<a href="{{ url_for('m_recovery_targets_search') }}" style="color:var(--muted);margin-right:8px;">‹</a>
+Recovery Target
+{% endblock %}
+{% block content %}
+<div style="background:#fff7ed;border:2px solid #fb923c;border-radius:12px;padding:13px 16px;margin-bottom:14px;">
+  <div style="font-size:.72rem;font-weight:800;color:#c2410c;text-transform:uppercase;letter-spacing:.08em;">Recovery Target · Not a Job</div>
+  <div style="font-size:1.05rem;font-weight:800;margin-top:4px;">{{ label }}</div>
+  <div style="font-size:.85rem;color:#9a3412;margin-top:2px;">{{ target.status }} · Repossession {{ "active" if target.repossession_active else "inactive" }}</div>
+</div>
+
+{% for p in people %}
+{% if p.risk_notes %}
+<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:13px 16px;margin-bottom:14px;">
+  <div style="font-size:.72rem;font-weight:800;color:#b91c1c;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Caution / Risk Notes</div>
+  <div style="font-size:.9rem;color:#7f1d1d;white-space:pre-wrap;">{{ p.risk_notes }}</div>
+</div>
+{% endif %}
+<div class="m-card">
+  <div class="m-card-header">Customer</div>
+  <div class="m-card-body">
+    <div style="font-size:1.1rem;font-weight:800;">{{ p.full_legal_name or "Unknown" }}</div>
+    {% if p.aliases %}<div style="font-size:.86rem;color:var(--muted);margin-top:3px;">Aliases: {{ p.aliases }}</div>{% endif %}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+      <div><div class="m-label">DOB</div><div>{{ p.date_of_birth or "—" }}</div></div>
+      <div><div class="m-label">Licence</div><div>{{ p.driver_licence_number or "—" }} {{ p.licence_state or "" }}</div></div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="m-card">
+  <div class="m-card-header">Assets</div>
+  <div class="m-card-body">
+    {% for item in assets %}
+    {% set a = item.row %}
+    <div style="border-bottom:1px solid var(--line);padding:0 0 12px;margin-bottom:12px;">
+      <div style="font-size:1.45rem;font-weight:800;letter-spacing:.1em;">{{ a.registration_number or "NO REG" }}</div>
+      <div style="font-weight:700;margin-top:4px;">{{ [a.year, a.colour, a.make, a.model] | select | join(' ') or a.asset_type or "Asset" }}</div>
+      {% if a.vin %}<div style="font-size:.84rem;color:var(--muted);margin-top:4px;">VIN {{ a.vin }}</div>{% endif %}
+      {% if item.reg_history %}<div style="font-size:.84rem;color:var(--muted);margin-top:4px;">Previous reg: {{ item.reg_history | map(attribute='registration_number') | join(', ') }}</div>{% endif %}
+      {% if a.current_security_status %}<div style="font-size:.86rem;margin-top:6px;"><strong>Security:</strong> {{ a.current_security_status }}</div>{% endif %}
+      {% if a.operational_notes %}<div style="font-size:.86rem;margin-top:6px;white-space:pre-wrap;"><strong>Operational:</strong> {{ a.operational_notes }}</div>{% endif %}
+    </div>
+    {% else %}
+    <div style="color:var(--muted);">No assets recorded.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-header">Instructing Parties</div>
+  <div class="m-card-body">
+    {% for p in parties %}
+    <div style="border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px;">
+      <div style="font-weight:800;">{{ p.organisation_name or "—" }}</div>
+      <div style="font-size:.84rem;color:var(--muted);">{{ p.party_type or "party" }}{% if p.reference_number %} · Ref {{ p.reference_number }}{% endif %}</div>
+      {% if p.contact_person or p.phone %}<div style="font-size:.86rem;margin-top:4px;">{{ p.contact_person or "" }} {{ p.phone or "" }}</div>{% endif %}
+    </div>
+    {% else %}
+    <div style="color:var(--muted);">No instructing parties recorded.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-header">Phones & Addresses</div>
+  <div class="m-card-body">
+    {% for p in phones %}
+    <div style="margin-bottom:8px;"><strong>{{ p.phone_number }}</strong> <span style="color:var(--muted);font-size:.84rem;">{{ p.label }}{% if p.is_primary %} · Primary{% endif %}</span></div>
+    {% endfor %}
+    {% for a in addresses %}
+    <div style="border-top:1px solid var(--line);padding-top:8px;margin-top:8px;">
+      <div style="font-weight:700;">{{ a.full_address }}</div>
+      <div style="font-size:.84rem;color:var(--muted);">{{ a.address_type }} {{ a.suburb }} {{ a.state }} {{ a.postcode }}</div>
+      {% if a.notes %}<div style="font-size:.84rem;margin-top:3px;">{{ a.notes }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-header">Documents</div>
+  <div class="m-card-body">
+    {% for d in documents %}
+    <a href="{{ url_for('recovery_target_download_document', target_id=target.id, doc_id=d.id) }}" style="display:block;padding:10px 0;border-bottom:1px solid var(--line);">
+      <div style="font-weight:700;">{{ d.original_filename }}</div>
+      <div style="font-size:.8rem;color:var(--muted);">{{ d.category or "General" }} · {{ d.uploaded_at }}</div>
+    </a>
+    {% else %}
+    <div style="color:var(--muted);">No documents uploaded.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="m-card">
+  <div class="m-card-header">Operational Notes</div>
+  <div class="m-card-body">
+    {% for n in notes %}
+    <div style="border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px;">
+      <div style="font-size:.78rem;color:var(--muted);">{{ n.created_at }} · {{ n.note_type or "Note" }}</div>
+      <div style="font-size:.9rem;white-space:pre-wrap;margin-top:4px;">{{ n.note_text }}</div>
+    </div>
+    {% else %}
+    <div style="color:var(--muted);">No operational notes recorded.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

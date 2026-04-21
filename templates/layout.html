@@ -347,6 +347,7 @@
           Queue
           <span id="ax-queue-badge" style="display:none;background:#dc2626;color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
         </a>
+        <a href="/recovery-targets" class="{% if request.path.startswith('/recovery-targets') %}active{% endif %}">Recovery Targets</a>
         {% endif %}
         {% if session.get('user_id') %}
         <a href="/messages" class="{% if request.path.startswith('/messages') %}active{% endif %}" style="position:relative">

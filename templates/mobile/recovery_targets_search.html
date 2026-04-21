@@ -1,0 +1,39 @@
+{% extends "mobile/base.html" %}
+{% block title %}Recovery Targets — AxionX{% endblock %}
+{% block header_title %}Recovery Targets{% endblock %}
+{% block content %}
+<div class="m-card">
+  <div class="m-card-header">Direct Search</div>
+  <div class="m-card-body">
+    <form method="get" action="{{ url_for('m_recovery_targets_search') }}">
+      <div class="m-form-group">
+        <label class="m-label">Search</label>
+        <input name="q" value="{{ q }}" class="m-input" placeholder="Name, reg, VIN, phone, address, licence, reference">
+      </div>
+      <button class="m-btn m-btn-primary">Search Recovery Targets</button>
+    </form>
+  </div>
+</div>
+
+{% if q %}
+  {% for r in rows %}
+  <a href="{{ url_for('m_recovery_target_detail', target_id=r.id) }}" class="m-card" style="display:block;color:inherit;text-decoration:none;">
+    <div class="m-card-body">
+      <div style="display:flex;justify-content:space-between;gap:10px;">
+        <div>
+          <div style="font-size:.72rem;font-weight:800;color:#ea580c;text-transform:uppercase;letter-spacing:.08em;">Recovery Target</div>
+          <div style="font-size:1rem;font-weight:800;margin-top:3px;">{{ r.person_name or "Unknown customer" }}</div>
+          <div style="font-size:.86rem;color:var(--muted);margin-top:3px;">{{ r.internal_reference or r.agency_reference or r.lender_reference or ("RT-%05d"|format(r.id)) }}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:1.05rem;font-weight:800;letter-spacing:.08em;">{{ r.primary_reg or "—" }}</div>
+          <div style="font-size:.78rem;color:var(--muted);">{{ r.status }}</div>
+        </div>
+      </div>
+    </div>
+  </a>
+  {% else %}
+  <div class="m-card"><div class="m-card-body" style="color:var(--muted);">No Recovery Targets found.</div></div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

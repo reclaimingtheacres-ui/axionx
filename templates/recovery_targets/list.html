@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block title %}Recovery Targets{% endblock %}
+{% block page_title %}Recovery Targets{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h2 class="mb-1">Recovery Targets</h2>
+    <div class="text-muted small">Standalone LPR repossession targets, separate from normal jobs.</div>
+  </div>
+  {% if can_manage %}
+  <a href="{{ url_for('recovery_target_new') }}" class="btn btn-primary">+ New Recovery Target</a>
+  {% endif %}
+</div>
+
+<form method="get" class="card card-body mb-3">
+  <div class="input-group">
+    <input name="q" value="{{ q }}" class="form-control" placeholder="Search name, alias, DOB, licence, reg, VIN, phone, address, agency, lender, liquidator, reference">
+    <button class="btn btn-outline-primary">Search</button>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Reference</th>
+          <th>Customer</th>
+          <th>Asset</th>
+          <th>Status</th>
+          <th>Agency</th>
+          <th>Repossession</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="fw-semibold">{{ r.internal_reference or r.agency_reference or r.lender_reference or ("RT-%05d"|format(r.id)) }}</td>
+          <td>{{ r.person_name or "—" }}</td>
+          <td>
+            <div class="fw-semibold">{{ r.primary_reg or "—" }}</div>
+            <div class="text-muted small">{{ r.asset_label or "" }}</div>
+          </td>
+          <td><span class="badge text-bg-{{ 'success' if r.status == 'Active' else 'secondary' }}">{{ r.status }}</span></td>
+          <td>{{ r.assigned_agency or "—" }}</td>
+          <td>{{ "Active" if r.repossession_active else "Inactive" }}</td>
+          <td class="text-end"><a href="{{ url_for('recovery_target_detail', target_id=r.id) }}" class="btn btn-sm btn-outline-primary">Open</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No Recovery Targets found.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

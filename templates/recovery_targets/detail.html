@@ -1,0 +1,210 @@
+{% extends "layout.html" %}
+{% block title %}Recovery Target {{ label }}{% endblock %}
+{% block page_title %}Recovery Target {{ label }}{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h2 class="mb-1">{{ label }}</h2>
+    <div class="text-muted small">Standalone recovery target. Not a standard job file.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('recovery_targets_list') }}" class="btn btn-outline-secondary">Back</a>
+    {% if can_manage %}
+    <a href="{{ url_for('recovery_target_edit', target_id=target.id) }}" class="btn btn-primary">Edit</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">Status</div>
+      <div class="card-body">
+        <div class="mb-2"><span class="badge text-bg-{{ 'success' if target.status == 'Active' else 'secondary' }}">{{ target.status }}</span></div>
+        <div class="small text-muted">Repossession active</div>
+        <div class="fw-semibold">{{ "Yes" if target.repossession_active else "No" }}</div>
+        {% if target.repossession_completed_at %}
+        <div class="small text-muted mt-2">Repossessed at</div>
+        <div>{{ target.repossession_completed_at }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">References</div>
+      <div class="card-body small">
+        <div><strong>Internal:</strong> {{ target.internal_reference or "—" }}</div>
+        <div><strong>Agency:</strong> {{ target.agency_reference or "—" }}</div>
+        <div><strong>Lender:</strong> {{ target.lender_reference or "—" }}</div>
+        <div><strong>Liquidator:</strong> {{ target.liquidator_reference or "—" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">Instructing Parties</div>
+      <div class="card-body small">
+        {% for p in parties %}
+        <div class="mb-2">
+          <div class="fw-semibold">{{ p.organisation_name or "—" }} <span class="text-muted">({{ p.party_type or "party" }})</span></div>
+          <div>{{ p.contact_person or "" }} {{ p.phone or "" }}</div>
+          <div>{{ p.email or "" }}</div>
+          <div class="text-muted">{{ p.reference_number or "" }}</div>
+        </div>
+        {% else %}
+        <div class="text-muted">No parties recorded.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for p in people %}
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Customer / Person</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4"><div class="text-muted small">Full Legal Name</div><div class="fw-semibold">{{ p.full_legal_name or "—" }}</div></div>
+      <div class="col-md-4"><div class="text-muted small">Aliases</div><div>{{ p.aliases or "—" }}</div></div>
+      <div class="col-md-2"><div class="text-muted small">DOB</div><div>{{ p.date_of_birth or "—" }}</div></div>
+      <div class="col-md-2"><div class="text-muted small">Licence</div><div>{{ p.driver_licence_number or "—" }} {{ p.licence_state or "" }}</div></div>
+      {% if p.risk_notes %}
+      <div class="col-12"><div class="alert alert-danger mb-0"><strong>Caution / Risk Notes:</strong><br>{{ p.risk_notes | replace('\n','<br>') | safe }}</div></div>
+      {% endif %}
+      {% if p.general_notes %}
+      <div class="col-12"><div class="text-muted small">General Notes</div><div style="white-space:pre-wrap">{{ p.general_notes }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">Phones</div>
+      <div class="card-body">
+        {% for p in phones %}
+        <div class="d-flex justify-content-between border-bottom py-2">
+          <span>{{ p.phone_number }}</span>
+          <span class="text-muted small">{{ p.label }}{% if p.is_primary %} · Primary{% endif %}</span>
+        </div>
+        {% else %}<div class="text-muted">No phone numbers recorded.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-semibold">Addresses</div>
+      <div class="card-body">
+        {% for a in addresses %}
+        <div class="border-bottom py-2">
+          <div class="fw-semibold">{{ a.full_address }}</div>
+          <div class="text-muted small">{{ a.address_type }} {{ a.suburb }} {{ a.state }} {{ a.postcode }}{% if a.is_primary %} · Primary{% endif %}</div>
+          {% if a.notes %}<div class="small">{{ a.notes }}</div>{% endif %}
+        </div>
+        {% else %}<div class="text-muted">No addresses recorded.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Assets</div>
+  <div class="card-body">
+    {% for item in assets %}
+    {% set a = item.row %}
+    <div class="border rounded p-3 mb-3">
+      <div class="d-flex justify-content-between">
+        <h5 class="mb-1">{{ a.registration_number or "No reg" }}{% if a.is_primary_asset %} <span class="badge text-bg-primary">Primary</span>{% endif %}</h5>
+        <span class="text-muted small">{{ a.asset_type or "Asset" }}</span>
+      </div>
+      <div class="row g-2 small">
+        <div class="col-md-4"><strong>Asset:</strong> {{ [a.year, a.colour, a.make, a.model] | select | join(' ') or "—" }}</div>
+        <div class="col-md-4"><strong>VIN:</strong> {{ a.vin or "—" }}</div>
+        <div class="col-md-4"><strong>Engine:</strong> {{ a.engine_number or "—" }}</div>
+        <div class="col-md-4"><strong>Contract:</strong> {{ a.contract_number or "—" }}</div>
+        <div class="col-md-8"><strong>Previous regs:</strong> {{ item.reg_history | map(attribute='registration_number') | join(', ') or "—" }}</div>
+        {% if a.distinguishing_features %}<div class="col-md-6"><strong>Features:</strong> {{ a.distinguishing_features }}</div>{% endif %}
+        {% if a.accessories %}<div class="col-md-6"><strong>Accessories:</strong> {{ a.accessories }}</div>{% endif %}
+        {% if a.current_security_status %}<div class="col-md-6"><strong>Security:</strong> {{ a.current_security_status }}</div>{% endif %}
+        {% if a.operational_notes %}<div class="col-md-6"><strong>Operational:</strong> {{ a.operational_notes }}</div>{% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="text-muted">No assets recorded.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div id="documents" class="card mb-3">
+  <div class="card-header fw-semibold">Documents</div>
+  <div class="card-body">
+    {% if can_manage %}
+    <form method="post" action="{{ url_for('recovery_target_upload_document', target_id=target.id) }}" enctype="multipart/form-data" class="border rounded p-3 mb-3">
+      <div class="row g-2">
+        <div class="col-md-3"><input name="category" class="form-control" placeholder="Category e.g. PPSR"></div>
+        <div class="col-md-3"><input name="document_type" class="form-control" placeholder="Document type"></div>
+        <div class="col-md-4"><input type="file" name="documents" class="form-control" multiple></div>
+        <div class="col-md-2"><button class="btn btn-outline-primary w-100">Upload</button></div>
+        <div class="col-12"><input name="description" class="form-control" placeholder="Description"></div>
+      </div>
+    </form>
+    {% endif %}
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead><tr><th>Category</th><th>Filename</th><th>Uploaded</th><th></th></tr></thead>
+        <tbody>
+        {% for d in documents %}
+        <tr>
+          <td>{{ d.category or "General" }}</td>
+          <td>{{ d.original_filename }}</td>
+          <td>{{ d.uploaded_at }}{% if d.uploaded_by_name %} by {{ d.uploaded_by_name }}{% endif %}</td>
+          <td class="text-end"><a href="{{ url_for('recovery_target_download_document', target_id=target.id, doc_id=d.id) }}" class="btn btn-sm btn-outline-secondary">Open</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted">No documents uploaded.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="notes" class="card mb-3">
+  <div class="card-header fw-semibold">Operational Notes</div>
+  <div class="card-body">
+    {% if can_manage %}
+    <form method="post" action="{{ url_for('recovery_target_add_note', target_id=target.id) }}" class="mb-3">
+      <div class="row g-2">
+        <div class="col-md-3"><input name="note_type" class="form-control" value="Operational"></div>
+        <div class="col-md-7"><input name="note_text" class="form-control" placeholder="Add simple operational note"></div>
+        <div class="col-md-2"><button class="btn btn-outline-primary w-100">Add Note</button></div>
+      </div>
+    </form>
+    {% endif %}
+    {% for n in notes %}
+    <div class="border-bottom py-2">
+      <div class="small text-muted">{{ n.created_at }} · {{ n.note_type or "Note" }}{% if n.created_by_name %} · {{ n.created_by_name }}{% endif %}</div>
+      <div style="white-space:pre-wrap">{{ n.note_text }}</div>
+    </div>
+    {% else %}
+    <div class="text-muted">No notes recorded.</div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if can_manage and target.status != 'Repossessed' %}
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Mark Repossessed</div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('recovery_target_mark_repossessed', target_id=target.id) }}" class="row g-2">
+      <div class="col-md-4"><input name="repossession_completed_at" class="form-control" placeholder="YYYY-MM-DDTHH:MM:SS (blank = now)"></div>
+      <div class="col-md-6"><input name="outcome_note" class="form-control" placeholder="Outcome note"></div>
+      <div class="col-md-2"><button class="btn btn-success w-100">Mark Repossessed</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
