@@ -472,13 +472,13 @@ function _renderAgenda(){
     html+='<td style="white-space:nowrap'+(isOverdue?';color:var(--danger);font-weight:600':'')+'">'+_formatDateShort(e.scheduled_for)+(isOverdue?' <span style="font-size:.65rem;background:var(--danger);color:#fff;padding:1px 5px;border-radius:4px">OVERDUE</span>':'')+'</td>';
     html+='<td style="white-space:nowrap">'+_formatTime12(e.scheduled_for)+'</td>';
     html+='<td>'+_esc(e.booking_type)+'</td>';
-    html+='<td><a href="/jobs/'+e.job_id+'" style="color:var(--accent);text-decoration:none;font-weight:600" onclick="event.stopPropagation()">'+_esc(e.display_ref)+'</a></td>';
+    html+='<td><a href="/jobs/'+e.job_id+'" style="color:var(--accent);text-decoration:none;font-weight:600" onclick="event.stopPropagation();try{sessionStorage.setItem(\'ax.jobsReturnUrl\',location.href);}catch(x){}">'+_esc(e.display_ref)+'</a></td>';
     html+='<td>'+_esc(e.customer_name||e.customer_label||'—')+'</td>';
     if(SCH.isAdmin) html+='<td style="color:var(--muted)">'+_esc(e.assigned_to_name||'Unassigned')+'</td>';
     var addrSnippet=e.job_address?(e.job_address.length>35?e.job_address.substr(0,35)+'…':e.job_address):'—';
     html+='<td style="font-size:.82rem;color:var(--muted)">'+_esc(addrSnippet)+'</td>';
     html+='<td><span class="status-badge" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span></td>';
-    html+='<td><a href="/jobs/'+e.job_id+'" class="btn btn-outline-primary btn-sm" style="font-size:.72rem" onclick="event.stopPropagation()">Open</a></td>';
+    html+='<td><a href="/jobs/'+e.job_id+'" class="btn btn-outline-primary btn-sm" style="font-size:.72rem" onclick="event.stopPropagation();try{sessionStorage.setItem(\'ax.jobsReturnUrl\',location.href);}catch(x){}">Open</a></td>';
     html+='</tr>';
   });
 
@@ -578,7 +578,7 @@ function schEvtClick(eid,ev){
   if(SCH.isDragging){SCH.isDragging=false;return}
   if(_touchPreviewActive){_touchPreviewActive=false;return}
   var e=SCH.events.find(function(x){return x.id===eid});
-  if(e&&e.job_id) window.location.href='/jobs/'+e.job_id;
+  if(e&&e.job_id){ try{sessionStorage.setItem('ax.jobsReturnUrl',window.location.href);}catch(_){} window.location.href='/jobs/'+e.job_id; }
 }
 
 function schDragStart(eid,ev){
@@ -692,7 +692,7 @@ function schShowPopup(eid,ev){
   if(isOverdue) body+=' <span style="font-size:.65rem;background:var(--danger);color:#fff;padding:1px 5px;border-radius:4px;margin-left:4px">OVERDUE</span>';
   body+='</span></div>';
   body+='<div class="info-row"><span class="info-label">Type</span><span class="info-val">'+_esc(e.booking_type)+'</span></div>';
-  body+='<div class="info-row"><span class="info-label">Job Ref</span><span class="info-val"><a href="/jobs/'+e.job_id+'" style="color:var(--accent);font-weight:600;text-decoration:none">'+_esc(e.display_ref)+'</a></span></div>';
+  body+='<div class="info-row"><span class="info-label">Job Ref</span><span class="info-val"><a href="/jobs/'+e.job_id+'" style="color:var(--accent);font-weight:600;text-decoration:none" onclick="try{sessionStorage.setItem(\'ax.jobsReturnUrl\',location.href);}catch(x){}">'+_esc(e.display_ref)+'</a></span></div>';
   body+='<div class="info-row"><span class="info-label">Job Type</span><span class="info-val">'+_esc(e.job_type||'—')+'</span></div>';
   body+='<div class="info-row"><span class="info-label">Customer</span><span class="info-val">'+_esc(e.customer_name||e.customer_label||'—')+'</span></div>';
   body+='<div class="info-row"><span class="info-label">Address</span><span class="info-val">'+_esc(e.job_address||'—')+'</span></div>';
@@ -702,7 +702,7 @@ function schShowPopup(eid,ev){
   document.getElementById('schPopupBody').innerHTML=body;
 
   var actions='';
-  actions+='<a href="/jobs/'+e.job_id+'" class="btn btn-primary">View Job</a>';
+  actions+='<a href="/jobs/'+e.job_id+'" class="btn btn-primary" onclick="try{sessionStorage.setItem(\'ax.jobsReturnUrl\',location.href);}catch(x){}">View Job</a>';
   var canEdit=SCH.isAdmin||(e.assigned_to_user_id===SCH.userId);
   if(canEdit&&e.status!=='Completed'&&e.status!=='Cancelled'){
     actions+='<button class="btn btn-outline-secondary" onclick="schShowChange()">Change Booking</button>';
