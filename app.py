@@ -428,7 +428,10 @@ def _schema_is_current():
             if "arrears_cents" not in ji_cols:
                 return False
             nf_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_note_files)").fetchall()]
-            return "file_status" in nf_cols
+            if "file_status" not in nf_cols:
+                return False
+            ju_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_updates)").fetchall()]
+            return "is_ai_draft" in ju_cols
         except Exception:
             if attempt < 2:
                 _t.sleep(0.3 + attempt * 0.3)
@@ -1204,6 +1207,17 @@ def _migrate_update_builder():
     """)
     add_column_if_missing(cur, "job_note_files", "file_status", "TEXT DEFAULT 'ok'")
     add_column_if_missing(cur, "job_documents", "file_status", "TEXT DEFAULT 'ok'")
+
+    # ── job_updates.is_ai_draft ────────────────────────────────────────────────
+    # Logged migration: must be idempotent and always checked here because
+    # _schema_is_current() can short-circuit _lazy_init() on pre-existing DBs.
+    import logging as _mig_log
+    _ju_cols = [r[1] for r in cur.execute("PRAGMA table_info(job_updates)").fetchall()]
+    if "is_ai_draft" not in _ju_cols:
+        cur.execute("ALTER TABLE job_updates ADD COLUMN is_ai_draft INTEGER NOT NULL DEFAULT 0")
+        _mig_log.info("[DB MIGRATION] Added job_updates.is_ai_draft")
+    else:
+        _mig_log.info("[DB MIGRATION] job_updates.is_ai_draft already present")
     _abs_rows = cur.execute("SELECT id, filepath FROM job_note_files WHERE filepath LIKE '/%'").fetchall()
     for _ar in _abs_rows:
         _bn = os.path.basename(_ar["filepath"]) if _ar["filepath"] else ""
@@ -1412,7 +1426,7 @@ def _migrate_update_builder():
     """)
     add_column_if_missing(cur, "job_updates", "photos_count", "INTEGER NOT NULL DEFAULT 0")
     add_column_if_missing(cur, "job_updates", "agent_notes",  "TEXT DEFAULT ''")
-    add_column_if_missing(cur, "job_updates", "is_ai_draft",  "INTEGER NOT NULL DEFAULT 1")
+    add_column_if_missing(cur, "job_updates", "is_ai_draft",  "INTEGER NOT NULL DEFAULT 0")
     _abs_rows2 = cur.execute("SELECT id, filepath FROM job_update_photos WHERE filepath LIKE '/%'").fetchall()
     for _ar2 in _abs_rows2:
         _bn2 = os.path.basename(_ar2["filepath"]) if _ar2["filepath"] else ""
