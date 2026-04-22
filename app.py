@@ -3613,12 +3613,15 @@ def _jobs_list_inner():
     lockout = _check_agent_lockout()
     if lockout:
         return lockout
-    status       = request.args.get("status", "").strip()
-    q            = request.args.get("q", "").strip()
-    sort         = request.args.get("sort", "").strip()
-    filter_client  = request.args.get("client_id", "").strip()
-    filter_agent   = request.args.get("agent_id", "").strip()
-    filter_btype   = request.args.get("booking_type_id", "").strip()
+    statuses_selected = list(dict.fromkeys(
+        s.strip() for s in request.args.getlist("status") if s.strip()
+    ))
+    status        = statuses_selected[0] if len(statuses_selected) == 1 else ""
+    q             = request.args.get("q", "").strip()
+    sort          = request.args.get("sort", "").strip()
+    filter_client   = request.args.get("client_id", "").strip()
+    filter_agent    = request.args.get("agent_id", "").strip()
+    filter_btype    = request.args.get("booking_type_id", "").strip()
     filter_date_from = request.args.get("date_from", "").strip()
     filter_date_to   = request.args.get("date_to", "").strip()
 
@@ -3645,7 +3648,7 @@ def _jobs_list_inner():
     params = []
 
     include_archived = request.args.get("include_archived", "").strip()
-    if status not in ARCHIVED_STATUSES and not include_archived:
+    if not statuses_selected and not include_archived:
         where_clause += f" AND j.status NOT IN {ARCHIVED_STATUSES!r}"
 
     if role == "agent":
@@ -3656,12 +3659,10 @@ def _jobs_list_inner():
         ))"""
         params.extend([user_id, user_id])
 
-    if status:
-        if status == "Active":
-            where_clause += " AND j.status LIKE 'Active%'"
-        else:
-            where_clause += " AND j.status = ?"
-            params.append(status)
+    if statuses_selected:
+        _ph = ','.join('?' * len(statuses_selected))
+        where_clause += f" AND j.status IN ({_ph})"
+        params.extend(statuses_selected)
 
     if q:
         like = f"%{q}%"
@@ -3824,6 +3825,9 @@ def _jobs_list_inner():
 
     conn.close()
 
+    from urllib.parse import quote as _uq
+    status_qs = ''.join(f'&status={_uq(s, safe="")}' for s in statuses_selected)
+
     statuses = [
         "New",
         "Active",
@@ -3841,6 +3845,8 @@ def _jobs_list_inner():
         jobs=rows,
         statuses=statuses,
         status=status,
+        statuses_selected=statuses_selected,
+        status_qs=status_qs,
         q=q,
         sort=sort,
         clients_list=clients_list,
