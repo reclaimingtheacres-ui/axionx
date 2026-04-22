@@ -137,6 +137,7 @@
   var map, geocoder, infoWindow;
   var jobMarkers   = {};
   var agentMarkers = {};
+  var agentTrails  = {};
   var allJobs      = [];
   var activeFilters = new Set(['ALL','Active','New','Pending']);
   var selectedAgents = new Set();
@@ -169,11 +170,16 @@
   }
 
   function _applyAgentFilter() {
-    var names = _selectedAgentNames();
     Object.keys(agentMarkers).forEach(function(id) {
       try {
         var vis = selectedAgents.size === 0 || selectedAgents.has(String(id));
         agentMarkers[id].setVisible(vis);
+      } catch(e) {}
+    });
+    Object.keys(agentTrails).forEach(function(id) {
+      try {
+        var showTrail = selectedAgents.has(String(id));
+        agentTrails[id].setMap(showTrail ? map : null);
       } catch(e) {}
     });
     _updateAgentRowStyles();
@@ -184,6 +190,35 @@
     selectedAgents.clear();
     _applyAgentFilter();
   };
+
+  function drawAgentTrail(agentId, points) {
+    if (agentTrails[agentId]) {
+      try { agentTrails[agentId].setMap(null); } catch(e) {}
+      delete agentTrails[agentId];
+    }
+    if (!Array.isArray(points) || points.length < 2) return;
+    var path = [];
+    points.forEach(function(pt) {
+      try {
+        var lat = _validCoord(pt.lat);
+        var lng = _validCoord(pt.lng);
+        if (lat !== null && lng !== null) path.push({ lat: lat, lng: lng });
+      } catch(e) {}
+    });
+    if (path.length < 2) return;
+    try {
+      agentTrails[agentId] = new google.maps.Polyline({
+        path: path,
+        geodesic: true,
+        strokeColor: '#7c3aed',
+        strokeOpacity: 0.55,
+        strokeWeight: 2.5,
+        map: null
+      });
+    } catch(e) {
+      console.warn('drawAgentTrail: failed for agent', agentId, e);
+    }
+  }
 
   var STATUS_COLORS = {
     'Active':  '#3b82f6',
@@ -353,7 +388,9 @@
             var pos = { lat: lat, lng: lng };
             if (agentMarkers[ag.id]) {
               agentMarkers[ag.id].setPosition(pos);
-              agentMarkers[ag.id].setVisible(true);
+              agentMarkers[ag.id].setVisible(
+                selectedAgents.size === 0 || selectedAgents.has(String(ag.id))
+              );
             } else {
               var m = new google.maps.Marker({
                 position: pos,
@@ -364,13 +401,25 @@
               });
               (function(marker, agentData) {
                 marker.addListener('click', function() {
-                  infoWindow.setContent('<strong>' + (agentData.name||'Agent') + '</strong><br>'
-                    + '<span style="font-size:.75rem;color:#666">Last seen: '
-                    + relativeTime(agentData.updated_at) + '</span>');
+                  var acc = agentData.accuracy ? (' &middot; &plusmn;' + Math.round(agentData.accuracy) + 'm') : '';
+                  infoWindow.setContent(
+                    '<div style="font-size:.83rem;line-height:1.6">'
+                    + '<strong>' + (agentData.name||'Agent') + '</strong><br>'
+                    + '<span style="color:#666">Last seen: ' + relativeTime(agentData.updated_at) + acc + '</span>'
+                    + '</div>'
+                  );
                   infoWindow.open(map, marker);
                 });
               })(m, ag);
               agentMarkers[ag.id] = m;
+            }
+
+            // Draw/update breadcrumb trail
+            if (Array.isArray(ag.trail)) {
+              drawAgentTrail(ag.id, ag.trail);
+              if (agentTrails[ag.id] && selectedAgents.has(String(ag.id))) {
+                agentTrails[ag.id].setMap(map);
+              }
             }
           } catch(e) {
             console.warn('Map: error placing agent marker', ag.id, e);
@@ -379,7 +428,10 @@
 
         Object.keys(agentMarkers).forEach(function(id) {
           var found = agents.some(function(a) { return a.id == id; });
-          if (!found) agentMarkers[id].setVisible(false);
+          if (!found) {
+            try { agentMarkers[id].setVisible(false); } catch(e) {}
+            if (agentTrails[id]) { try { agentTrails[id].setMap(null); } catch(e) {} }
+          }
         });
       })
       .catch(function(e) {

@@ -16923,15 +16923,78 @@ def api_map_data():
         two_hours_ago = (datetime.now(_melbourne) - _td(hours=2)).isoformat()
 
         agents = []
+        agent_trails = {}  # user_id -> [{lat, lng}, ...]
+
         if is_admin:
-            agents = conn.execute("""
-                SELECT u.id, u.full_name, al.lat, al.lng, al.accuracy, al.updated_at
-                FROM users u
-                JOIN agent_locations al ON al.user_id = u.id
-                WHERE u.role IN ('agent', 'both') AND u.active = 1
-                  AND al.updated_at >= ?
-                ORDER BY u.full_name
-            """, (two_hours_ago,)).fetchall()
+            _agent_movement_ensure(conn)
+
+            # Live pin — latest valid point per agent from agent_movement (richer)
+            try:
+                agents = conn.execute("""
+                    SELECT am.user_id AS id, u.full_name,
+                           am.latitude AS lat, am.longitude AS lng,
+                           am.accuracy_m AS accuracy, am.received_at AS updated_at
+                    FROM agent_movement am
+                    JOIN users u ON u.id = am.user_id
+                    WHERE u.role IN ('agent','both') AND u.active = 1
+                      AND am.received_at >= ?
+                      AND am.received_at = (
+                          SELECT MAX(am2.received_at)
+                          FROM agent_movement am2
+                          WHERE am2.user_id = am.user_id
+                            AND am2.received_at >= ?
+                      )
+                    ORDER BY u.full_name
+                """, (two_hours_ago, two_hours_ago)).fetchall()
+            except Exception as _ae:
+                _log.warning("api_map_data: agent_movement live-pin query failed: %s", _ae)
+                agents = []
+
+            # Fallback to agent_locations if agent_movement has no recent rows
+            if not agents:
+                try:
+                    agents = conn.execute("""
+                        SELECT u.id, u.full_name, al.lat, al.lng,
+                               al.accuracy, al.updated_at
+                        FROM users u
+                        JOIN agent_locations al ON al.user_id = u.id
+                        WHERE u.role IN ('agent','both') AND u.active = 1
+                          AND al.updated_at >= ?
+                        ORDER BY u.full_name
+                    """, (two_hours_ago,)).fetchall()
+                except Exception as _ae2:
+                    _log.warning("api_map_data: agent_locations fallback failed: %s", _ae2)
+                    agents = []
+
+            # Breadcrumb trail — last 25 valid points per agent within 2h, oldest→newest
+            try:
+                trail_rows = conn.execute("""
+                    SELECT user_id, lat, lng FROM (
+                        SELECT user_id,
+                               latitude  AS lat,
+                               longitude AS lng,
+                               received_at,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY user_id ORDER BY received_at DESC
+                               ) AS rn
+                        FROM agent_movement
+                        WHERE received_at >= ?
+                          AND latitude  BETWEEN -90  AND 90
+                          AND longitude BETWEEN -180 AND 180
+                          AND NOT (latitude = 0 AND longitude = 0)
+                    ) WHERE rn <= 25
+                    ORDER BY user_id, received_at ASC
+                """, (two_hours_ago,)).fetchall()
+                for tr in trail_rows:
+                    uid2 = tr["user_id"]
+                    if uid2 not in agent_trails:
+                        agent_trails[uid2] = []
+                    agent_trails[uid2].append({"lat": tr["lat"], "lng": tr["lng"]})
+                _log.info("api_map_data: trail rows fetched: %d across %d agents",
+                          len(trail_rows), len(agent_trails))
+            except Exception as _te:
+                _log.warning("api_map_data: trail query failed: %s", _te)
+
         conn.close()
 
         def initials(name):
@@ -16965,22 +17028,41 @@ def api_map_data():
                 skipped += 1
 
         agents_out = []
+        agents_skipped = 0
+        trail_pts_total = 0
         for r in agents:
-            lat = _safe_coord(r["lat"])
-            lng = _safe_coord(r["lng"])
-            if lat is None or lng is None:
-                continue
-            agents_out.append({
-                "id":         r["id"],
-                "name":       r["full_name"] or "",
-                "initials":   initials(r["full_name"]),
-                "lat":        lat,
-                "lng":        lng,
-                "accuracy":   r["accuracy"],
-                "updated_at": r["updated_at"]
-            })
+            try:
+                lat = _safe_coord(r["lat"])
+                lng = _safe_coord(r["lng"])
+                if lat is None or lng is None:
+                    agents_skipped += 1
+                    continue
+                if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+                    _log.warning("api_map_data: agent %s out-of-range coords (%s, %s) skipped", r["id"], lat, lng)
+                    agents_skipped += 1
+                    continue
+                if lat == 0.0 and lng == 0.0:
+                    agents_skipped += 1
+                    continue
+                aid = r["id"]
+                trail = agent_trails.get(aid, [])
+                trail_pts_total += len(trail)
+                agents_out.append({
+                    "id":         aid,
+                    "name":       r["full_name"] or "",
+                    "initials":   initials(r["full_name"]),
+                    "lat":        lat,
+                    "lng":        lng,
+                    "accuracy":   r["accuracy"],
+                    "updated_at": r["updated_at"],
+                    "trail":      trail
+                })
+            except Exception as _re:
+                _log.warning("api_map_data: error processing agent row: %s", _re)
+                agents_skipped += 1
 
-        _log.info("api_map_data: %d jobs (%d need geocoding), %d agents", len(jobs_out), skipped, len(agents_out))
+        _log.info("api_map_data: %d jobs (%d no-coords), %d agents (%d skipped), %d trail pts",
+                  len(jobs_out), skipped, len(agents_out), agents_skipped, trail_pts_total)
         return jsonify({"jobs": jobs_out, "agents": agents_out})
 
     except Exception as exc:
