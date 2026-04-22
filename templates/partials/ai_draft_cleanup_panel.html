@@ -5,11 +5,17 @@
   the system clean.
 </p>
 
+{% if schema_ready == false %}
+<div class="alert alert-secondary mb-4">
+  Database migration pending — AI Draft Cleanup will be available after the next server restart.
+</div>
+{% else %}
+
 <div class="row g-3 mb-4">
   <div class="col-sm-4">
     <div class="card border-0 shadow-sm text-center py-3">
       <div style="font-size:2rem;font-weight:700;color:#6b7280">{{ total_drafts }}</div>
-      <div style="font-size:.8rem;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Total Open Drafts</div>
+      <div style="font-size:.8rem;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Total AI Drafts</div>
     </div>
   </div>
   <div class="col-sm-4">
@@ -85,4 +91,6 @@
     </tbody>
   </table>
 </div>
+{% endif %}
+
 {% endif %}

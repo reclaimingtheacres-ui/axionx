@@ -1053,6 +1053,7 @@ function dupDeleteClient(clientId, name) {
   {% set blank_drafts = ai_draft_cleanup.blank_drafts %}
   {% set will_discard = ai_draft_cleanup.will_discard %}
   {% set affected_records = ai_draft_cleanup.affected_records %}
+  {% set schema_ready = ai_draft_cleanup.schema_ready %}
   {% set ai_drafts_embedded = true %}
   {% include "partials/ai_draft_cleanup_panel.html" %}
 </div>

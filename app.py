@@ -12162,39 +12162,66 @@ def my_drafts():
 
 
 def _ai_draft_cleanup_context(conn):
-    _ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
-    total_drafts = conn.execute(
-        "SELECT COUNT(*) c FROM job_updates WHERE status='draft'"
-    ).fetchone()["c"]
-    on_inactive = conn.execute(
-        f"SELECT COUNT(*) c FROM job_updates ju JOIN jobs j ON j.id=ju.job_id WHERE ju.status='draft' AND j.status IN ({_ph})",
-        INACTIVE_JOB_STATUSES
-    ).fetchone()["c"]
-    blank_drafts = conn.execute(
-        f"""SELECT COUNT(*) c FROM job_updates ju JOIN jobs j ON j.id=ju.job_id
-            WHERE ju.status='draft'
-              AND j.status NOT IN ({_ph})
-              AND TRIM(COALESCE(ju.agent_notes,''))=''""",
-        INACTIVE_JOB_STATUSES
-    ).fetchone()["c"]
-    affected_records = conn.execute(
-        f"""SELECT ju.id, ju.job_id, ju.created_at, ju.updated_at, ju.agent_notes,
-                   j.display_ref, j.status AS job_status, u.full_name AS agent_name
-            FROM job_updates ju
-            JOIN jobs j ON j.id=ju.job_id
-            LEFT JOIN users u ON u.id=ju.created_by_user_id
-            WHERE ju.status='draft'
-              AND (j.status IN ({_ph}) OR TRIM(COALESCE(ju.agent_notes,''))='')
-            ORDER BY ju.updated_at DESC""",
-        INACTIVE_JOB_STATUSES
-    ).fetchall()
-    return {
-        "total_drafts": total_drafts,
-        "on_inactive": on_inactive,
-        "blank_drafts": blank_drafts,
-        "will_discard": on_inactive + blank_drafts,
-        "affected_records": affected_records,
+    """Return stats and records for the AI Draft Cleanup panel.
+
+    Scoped to is_ai_draft=1 rows only (Update Builder sessions).
+    Returns safe zero-defaults if the schema columns are not yet present
+    (graceful degradation on pre-migration databases).
+    """
+    _empty = {
+        "total_drafts": 0,
+        "on_inactive": 0,
+        "blank_drafts": 0,
+        "will_discard": 0,
+        "affected_records": [],
+        "schema_ready": False,
     }
+    try:
+        # Guard: bail out gracefully if required columns are absent
+        ju_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_updates)").fetchall()]
+        if "is_ai_draft" not in ju_cols or "agent_notes" not in ju_cols:
+            return _empty
+
+        _ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
+        total_drafts = conn.execute(
+            "SELECT COUNT(*) c FROM job_updates WHERE status='draft' AND is_ai_draft=1"
+        ).fetchone()["c"]
+        on_inactive = conn.execute(
+            f"""SELECT COUNT(*) c
+                FROM job_updates ju JOIN jobs j ON j.id=ju.job_id
+                WHERE ju.status='draft' AND ju.is_ai_draft=1
+                  AND j.status IN ({_ph})""",
+            INACTIVE_JOB_STATUSES
+        ).fetchone()["c"]
+        blank_drafts = conn.execute(
+            f"""SELECT COUNT(*) c
+                FROM job_updates ju JOIN jobs j ON j.id=ju.job_id
+                WHERE ju.status='draft' AND ju.is_ai_draft=1
+                  AND j.status NOT IN ({_ph})
+                  AND TRIM(COALESCE(ju.agent_notes,''))=''""",
+            INACTIVE_JOB_STATUSES
+        ).fetchone()["c"]
+        affected_records = conn.execute(
+            f"""SELECT ju.id, ju.job_id, ju.created_at, ju.updated_at, ju.agent_notes,
+                       j.display_ref, j.status AS job_status, u.full_name AS agent_name
+                FROM job_updates ju
+                JOIN jobs j ON j.id=ju.job_id
+                LEFT JOIN users u ON u.id=ju.created_by_user_id
+                WHERE ju.status='draft' AND ju.is_ai_draft=1
+                  AND (j.status IN ({_ph}) OR TRIM(COALESCE(ju.agent_notes,''))='')
+                ORDER BY ju.updated_at DESC""",
+            INACTIVE_JOB_STATUSES
+        ).fetchall()
+        return {
+            "total_drafts": total_drafts,
+            "on_inactive": on_inactive,
+            "blank_drafts": blank_drafts,
+            "will_discard": on_inactive + blank_drafts,
+            "affected_records": affected_records,
+            "schema_ready": True,
+        }
+    except Exception:
+        return _empty
 
 
 @app.get("/admin/cleanup-ai-drafts")
@@ -12218,7 +12245,7 @@ def admin_cleanup_ai_drafts_run():
     ts = now_ts()
     result = conn.execute(
         f"""UPDATE job_updates SET status='discarded', updated_at=?
-            WHERE status='draft'
+            WHERE status='draft' AND is_ai_draft=1
               AND (job_id IN (
                   SELECT j.id FROM jobs j WHERE j.status IN ({_ph})
               )
