@@ -17699,7 +17699,8 @@ def _mobile_jobs_query(uid, role, params_in):
                 WHERE s.job_id=j.id AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0
                 ORDER BY s.scheduled_for LIMIT 1) AS next_booking_type,
                (SELECT COUNT(*) FROM job_field_notes fn
-                WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count
+                WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count,
+               cu.company AS customer_company
         FROM jobs j
         LEFT JOIN customers cu ON cu.id = j.customer_id
         LEFT JOIN clients cl ON cl.id = j.client_id

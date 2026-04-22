@@ -232,7 +232,7 @@
        data-lat="{{ j.lat or '' }}"
        data-lng="{{ j.lng or '' }}"
        data-ref="{{ [j.display_ref or '', j.internal_job_number or '', j.client_reference or '', j.account_number or ''] | join(' ') | lower | trim }}"
-       data-customer="{{ (j.customer_name or '') | lower }}"
+       data-customer="{{ ((j.customer_name or '') + ' ' + (j.customer_company or '')) | lower | trim }}"
        data-address="{{ addr | lower }}"
        data-reg="{{ (j.asset_reg or '') | lower }}"
        data-vin="{{ (j.asset_vin or '') | lower }}"
