@@ -59,9 +59,23 @@
     border-radius: 7px;
     cursor: pointer;
     font-size: .83rem;
-    transition: background .1s;
+    transition: background .1s, opacity .1s;
   }
   .ax-agent-row:hover { background: #f0f0f5; }
+  .ax-agent-row.ax-agent-selected { background: #ede9fe; }
+  .ax-agent-row.ax-agent-dimmed { opacity: .4; }
+  .ax-agent-all-btn {
+    font-size: .7rem;
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: #f4f4f6;
+    cursor: pointer;
+    color: var(--text);
+    margin-bottom: 8px;
+    transition: background .15s, color .15s;
+  }
+  .ax-agent-all-btn.on { background: var(--primary); color: #fff; border-color: var(--primary); }
   .ax-agent-dot {
     width: 9px; height: 9px;
     border-radius: 50%;
@@ -92,9 +106,12 @@
       {% if is_admin %}
       <div class="ax-map-panel-section">
         <h6>Agents</h6>
+        {% if agents %}
+        <button class="ax-agent-all-btn on" id="ax-agent-all-btn" onclick="_axAgentAll()">All Agents</button>
+        {% endif %}
         <div id="ax-agent-list">
           {% for a in agents %}
-          <div class="ax-agent-row" data-agent-id="{{ a.id }}" title="{{ a.full_name }}">
+          <div class="ax-agent-row" data-agent-id="{{ a.id }}" data-agent-name="{{ a.full_name }}" title="{{ a.full_name }}">
             <span class="ax-agent-dot offline" id="dot-{{ a.id }}"></span>
             <span class="ax-agent-name">{{ a.full_name }}</span>
             <span class="ax-agent-time" id="atime-{{ a.id }}"></span>
@@ -122,6 +139,51 @@
   var agentMarkers = {};
   var allJobs      = [];
   var activeFilters = new Set(['ALL','Active','New','Pending']);
+  var selectedAgents = new Set();
+
+  function _agentNameById() {
+    var m = {};
+    document.querySelectorAll('.ax-agent-row[data-agent-id]').forEach(function(row) {
+      m[String(row.dataset.agentId)] = row.dataset.agentName || '';
+    });
+    return m;
+  }
+
+  function _selectedAgentNames() {
+    var nameById = _agentNameById();
+    var names = new Set();
+    selectedAgents.forEach(function(id) { if (nameById[id]) names.add(nameById[id]); });
+    return names;
+  }
+
+  function _updateAgentRowStyles() {
+    var allBtn = document.getElementById('ax-agent-all-btn');
+    var anySelected = selectedAgents.size > 0;
+    document.querySelectorAll('.ax-agent-row[data-agent-id]').forEach(function(row) {
+      var id = String(row.dataset.agentId);
+      var isSel = selectedAgents.has(id);
+      row.classList.toggle('ax-agent-selected', isSel);
+      row.classList.toggle('ax-agent-dimmed', anySelected && !isSel);
+    });
+    if (allBtn) allBtn.classList.toggle('on', !anySelected);
+  }
+
+  function _applyAgentFilter() {
+    var names = _selectedAgentNames();
+    Object.keys(agentMarkers).forEach(function(id) {
+      try {
+        var vis = selectedAgents.size === 0 || selectedAgents.has(String(id));
+        agentMarkers[id].setVisible(vis);
+      } catch(e) {}
+    });
+    _updateAgentRowStyles();
+    filterVisible();
+  }
+
+  window._axAgentAll = function() {
+    selectedAgents.clear();
+    _applyAgentFilter();
+  };
 
   var STATUS_COLORS = {
     'Active':  '#3b82f6',
@@ -226,10 +288,13 @@
 
   function filterVisible() {
     var shown = 0;
+    var agentNames = _selectedAgentNames();
     allJobs.forEach(function(job) {
       var marker = jobMarkers[job.id];
       if (!marker) return;
-      var visible = activeFilters.has('ALL') || activeFilters.has(job.status);
+      var statusOk = activeFilters.has('ALL') || activeFilters.has(job.status);
+      var agentOk  = selectedAgents.size === 0 || (job.agent && agentNames.has(job.agent));
+      var visible  = statusOk && agentOk;
       marker.setVisible(visible);
       if (visible) shown++;
     });
@@ -374,12 +439,21 @@
 
     document.querySelectorAll('.ax-agent-row').forEach(function(row) {
       row.addEventListener('click', function() {
-        var id = row.dataset.agentId;
-        var m  = agentMarkers[id];
-        if (m && m.getVisible()) {
-          map.panTo(m.getPosition());
-          map.setZoom(13);
-          google.maps.event.trigger(m, 'click');
+        var id = String(row.dataset.agentId);
+        if (selectedAgents.has(id)) {
+          selectedAgents.delete(id);
+        } else {
+          selectedAgents.add(id);
+        }
+        _applyAgentFilter();
+        if (selectedAgents.has(id)) {
+          var m = agentMarkers[id];
+          try {
+            if (m && m.getVisible && m.getVisible()) {
+              map.panTo(m.getPosition());
+              if (map.getZoom() < 12) map.setZoom(12);
+            }
+          } catch(e) {}
         }
       });
     });
