@@ -16870,82 +16870,114 @@ def geomap_page():
 @app.get("/api/map/data")
 @login_required
 def api_map_data():
+    import logging as _log
     is_admin = session.get("role") in ("admin", "both")
     uid = session.get("user_id")
-    conn = db()
+    _log.info("api_map_data: request from user %s (admin=%s)", uid, is_admin)
+    try:
+        conn = db()
 
-    if is_admin:
-        jobs = conn.execute("""
-            SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
-                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
-                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-                   c.name AS client_name,
-                   ag.full_name AS agent_name
-            FROM jobs j
-            LEFT JOIN customers cu ON cu.id = j.customer_id
-            LEFT JOIN clients   c  ON c.id  = j.client_id
-            LEFT JOIN users     ag ON ag.id = j.assigned_user_id
-            WHERE j.status NOT IN ('Closed','Cancelled','Completed') AND j.status NOT IN {ARCHIVED_STATUSES!r}
-              AND j.job_address IS NOT NULL AND j.job_address != ''
-            ORDER BY j.updated_at DESC
-        """).fetchall()
-    else:
-        jobs = conn.execute("""
-            SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
-                   (cu.first_name || ' ' || cu.last_name) AS customer_name,
-                   COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-                   c.name AS client_name,
-                   ag.full_name AS agent_name
-            FROM jobs j
-            LEFT JOIN customers cu ON cu.id = j.customer_id
-            LEFT JOIN clients   c  ON c.id  = j.client_id
-            LEFT JOIN users     ag ON ag.id = j.assigned_user_id
-            WHERE j.status NOT IN ('Closed','Cancelled','Completed') AND j.status NOT IN {ARCHIVED_STATUSES!r}
-              AND j.job_address IS NOT NULL AND j.job_address != ''
-              AND j.assigned_user_id = ?
-            ORDER BY j.updated_at DESC
-        """, (uid,)).fetchall()
+        if is_admin:
+            jobs = conn.execute(f"""
+                SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
+                       (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                       COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+                       c.name AS client_name,
+                       ag.full_name AS agent_name
+                FROM jobs j
+                LEFT JOIN customers cu ON cu.id = j.customer_id
+                LEFT JOIN clients   c  ON c.id  = j.client_id
+                LEFT JOIN users     ag ON ag.id = j.assigned_user_id
+                WHERE j.status NOT IN ('Closed','Cancelled','Completed')
+                  AND j.status NOT IN {ARCHIVED_STATUSES!r}
+                  AND j.job_address IS NOT NULL AND j.job_address != ''
+                ORDER BY j.updated_at DESC
+            """).fetchall()
+        else:
+            jobs = conn.execute(f"""
+                SELECT j.id, j.display_ref, j.job_address, j.status, j.lat, j.lng,
+                       (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                       COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
+                       c.name AS client_name,
+                       ag.full_name AS agent_name
+                FROM jobs j
+                LEFT JOIN customers cu ON cu.id = j.customer_id
+                LEFT JOIN clients   c  ON c.id  = j.client_id
+                LEFT JOIN users     ag ON ag.id = j.assigned_user_id
+                WHERE j.status NOT IN ('Closed','Cancelled','Completed')
+                  AND j.status NOT IN {ARCHIVED_STATUSES!r}
+                  AND j.job_address IS NOT NULL AND j.job_address != ''
+                  AND j.assigned_user_id = ?
+                ORDER BY j.updated_at DESC
+            """, (uid,)).fetchall()
 
-    two_hours_ago = (datetime.now(_melbourne) - _td(hours=2)).isoformat()
+        two_hours_ago = (datetime.now(_melbourne) - _td(hours=2)).isoformat()
 
-    agents = []
-    if is_admin:
-        agents = conn.execute("""
-            SELECT u.id, u.full_name, al.lat, al.lng, al.accuracy, al.updated_at
-            FROM users u
-            JOIN agent_locations al ON al.user_id = u.id
-            WHERE u.role IN ('agent', 'both') AND u.active = 1
-              AND al.updated_at >= ?
-            ORDER BY u.full_name
-        """, (two_hours_ago,)).fetchall()
-    conn.close()
+        agents = []
+        if is_admin:
+            agents = conn.execute("""
+                SELECT u.id, u.full_name, al.lat, al.lng, al.accuracy, al.updated_at
+                FROM users u
+                JOIN agent_locations al ON al.user_id = u.id
+                WHERE u.role IN ('agent', 'both') AND u.active = 1
+                  AND al.updated_at >= ?
+                ORDER BY u.full_name
+            """, (two_hours_ago,)).fetchall()
+        conn.close()
 
-    def initials(name):
-        parts = (name or "?").split()
-        return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else "")).upper()
+        def initials(name):
+            parts = (name or "?").split()
+            return (parts[0][0] + (parts[-1][0] if len(parts) > 1 else "")).upper()
 
-    return jsonify({
-        "jobs": [{
-            "id": r["id"],
-            "ref": r["display_ref"],
-            "address": r["job_address"],
-            "status": r["status"],
-            "lat": r["lat"],
-            "lng": r["lng"],
-            "customer": r["customer_label"] or r["customer_name"] or "",
-            "client": r["client_name"] or "",
-            "agent": r["agent_name"] or ""
-        } for r in jobs],
-        "agents": [{
-            "id": r["id"],
-            "name": r["full_name"],
-            "initials": initials(r["full_name"]),
-            "lat": r["lat"],
-            "lng": r["lng"],
-            "accuracy": r["accuracy"],
-            "updated_at": r["updated_at"]
-        } for r in agents]
-    })
+        def _safe_coord(v):
+            try:
+                f = float(v)
+                return f if (f == f) else None  # reject NaN
+            except (TypeError, ValueError):
+                return None
+
+        jobs_out = []
+        skipped = 0
+        for r in jobs:
+            lat = _safe_coord(r["lat"])
+            lng = _safe_coord(r["lng"])
+            jobs_out.append({
+                "id":       r["id"],
+                "ref":      r["display_ref"] or "",
+                "address":  r["job_address"] or "",
+                "status":   r["status"] or "",
+                "lat":      lat,
+                "lng":      lng,
+                "customer": r["customer_label"] or r["customer_name"] or "",
+                "client":   r["client_name"] or "",
+                "agent":    r["agent_name"] or ""
+            })
+            if lat is None or lng is None:
+                skipped += 1
+
+        agents_out = []
+        for r in agents:
+            lat = _safe_coord(r["lat"])
+            lng = _safe_coord(r["lng"])
+            if lat is None or lng is None:
+                continue
+            agents_out.append({
+                "id":         r["id"],
+                "name":       r["full_name"] or "",
+                "initials":   initials(r["full_name"]),
+                "lat":        lat,
+                "lng":        lng,
+                "accuracy":   r["accuracy"],
+                "updated_at": r["updated_at"]
+            })
+
+        _log.info("api_map_data: %d jobs (%d need geocoding), %d agents", len(jobs_out), skipped, len(agents_out))
+        return jsonify({"jobs": jobs_out, "agents": agents_out})
+
+    except Exception as exc:
+        import logging as _log2
+        _log2.exception("api_map_data: unhandled error: %s", exc)
+        return jsonify({"jobs": [], "agents": [], "error": "server error"})
 
 
 @app.post("/api/agent/location")

@@ -170,27 +170,42 @@
     return 'offline';
   }
 
+  function _validCoord(v) {
+    var n = parseFloat(v);
+    return isFinite(n) && n !== 0 ? n : null;
+  }
+
   function placeJobMarker(job) {
-    var color = STATUS_COLORS[job.status] || STATUS_COLORS['default'];
-    var marker = new google.maps.Marker({
-      position: { lat: job.lat, lng: job.lng },
-      map: map,
-      icon: markerIcon(color, 10),
-      title: job.ref
-    });
-    var content = '<div style="max-width:220px;font-size:.83rem;line-height:1.6">'
-      + '<strong><a href="/jobs/' + job.id + '" style="color:inherit">' + job.ref + '</a></strong><br>'
-      + (job.customer ? '<span style="color:#555">' + job.customer + '</span><br>' : '')
-      + (job.client ? '<span style="color:#888;font-size:.75rem">' + job.client + '</span><br>' : '')
-      + '<span style="font-size:.73rem;padding:2px 7px;border-radius:10px;background:#eee;color:#333">' + job.status + '</span> '
-      + '<span style="color:#888;font-size:.75rem">' + job.address + '</span>'
-      + (job.agent ? '<br><span style="font-size:.75rem;color:#666">Agent: ' + job.agent + '</span>' : '')
-      + '</div>';
-    marker.addListener('click', function() {
-      infoWindow.setContent(content);
-      infoWindow.open(map, marker);
-    });
-    jobMarkers[job.id] = marker;
+    var lat = _validCoord(job.lat);
+    var lng = _validCoord(job.lng);
+    if (lat === null || lng === null) return false;
+    try {
+      var color = STATUS_COLORS[job.status] || STATUS_COLORS['default'];
+      var marker = new google.maps.Marker({
+        position: { lat: lat, lng: lng },
+        map: map,
+        icon: markerIcon(color, 10),
+        title: job.ref || ''
+      });
+      var ref = job.ref || ('Job ' + job.id);
+      var content = '<div style="max-width:220px;font-size:.83rem;line-height:1.6">'
+        + '<strong><a href="/jobs/' + job.id + '" style="color:inherit">' + ref + '</a></strong><br>'
+        + (job.customer ? '<span style="color:#555">' + job.customer + '</span><br>' : '')
+        + (job.client ? '<span style="color:#888;font-size:.75rem">' + job.client + '</span><br>' : '')
+        + '<span style="font-size:.73rem;padding:2px 7px;border-radius:10px;background:#eee;color:#333">' + (job.status||'') + '</span> '
+        + '<span style="color:#888;font-size:.75rem">' + (job.address||'') + '</span>'
+        + (job.agent ? '<br><span style="font-size:.75rem;color:#666">Agent: ' + job.agent + '</span>' : '')
+        + '</div>';
+      marker.addListener('click', function() {
+        infoWindow.setContent(content);
+        infoWindow.open(map, marker);
+      });
+      jobMarkers[job.id] = marker;
+      return true;
+    } catch(e) {
+      console.warn('placeJobMarker: failed for job', job.id, e);
+      return false;
+    }
   }
 
   function geocodeJob(job) {
@@ -222,58 +237,90 @@
     if (countEl) countEl.textContent = shown + ' job' + (shown !== 1 ? 's' : '') + ' shown';
   }
 
+  function _setJobCount(msg) {
+    var el = document.getElementById('ax-job-count');
+    if (el) el.textContent = msg;
+  }
+
   function loadMapData(initial) {
+    if (initial) _setJobCount('Loading\u2026');
     fetch('/api/map/data', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function(r) { return r.json(); })
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
       .then(function(data) {
+        var jobs    = Array.isArray(data.jobs)   ? data.jobs   : [];
+        var agents  = Array.isArray(data.agents) ? data.agents : [];
+
         if (initial) {
-          allJobs = data.jobs;
-          data.jobs.forEach(function(job) {
-            if (job.lat && job.lng) {
-              placeJobMarker(job);
-            } else {
-              geocodeJob(job);
+          allJobs = jobs;
+          jobs.forEach(function(job) {
+            try {
+              if (_validCoord(job.lat) !== null && _validCoord(job.lng) !== null) {
+                placeJobMarker(job);
+              } else if (job.address) {
+                geocodeJob(job);
+              }
+            } catch(e) {
+              console.warn('Map: error processing job', job.id, e);
             }
           });
-          filterVisible();
+          if (jobs.length === 0) {
+            _setJobCount('No jobs available for map view.');
+          } else {
+            filterVisible();
+          }
         }
 
-        data.agents.forEach(function(ag) {
-          var dot   = document.getElementById('dot-' + ag.id);
-          var atime = document.getElementById('atime-' + ag.id);
-          var st    = agentStatus(ag.updated_at);
-          if (dot)   dot.className  = 'ax-agent-dot ' + st;
-          if (atime) atime.textContent = relativeTime(ag.updated_at);
+        agents.forEach(function(ag) {
+          try {
+            var lat = _validCoord(ag.lat);
+            var lng = _validCoord(ag.lng);
+            if (lat === null || lng === null) return;
 
-          var pos = { lat: ag.lat, lng: ag.lng };
-          if (agentMarkers[ag.id]) {
-            agentMarkers[ag.id].setPosition(pos);
-            agentMarkers[ag.id].setVisible(true);
-          } else {
-            var m = new google.maps.Marker({
-              position: pos,
-              map: map,
-              icon: agentSvg(ag.initials),
-              title: ag.name,
-              zIndex: 100
-            });
-            (function(marker, agentData) {
-              marker.addListener('click', function() {
-                infoWindow.setContent('<strong>' + agentData.name + '</strong><br>'
-                  + '<span style="font-size:.75rem;color:#666">Last seen: ' + relativeTime(agentData.updated_at) + '</span>');
-                infoWindow.open(map, marker);
+            var dot   = document.getElementById('dot-' + ag.id);
+            var atime = document.getElementById('atime-' + ag.id);
+            var st    = agentStatus(ag.updated_at);
+            if (dot)   dot.className     = 'ax-agent-dot ' + st;
+            if (atime) atime.textContent = relativeTime(ag.updated_at);
+
+            var pos = { lat: lat, lng: lng };
+            if (agentMarkers[ag.id]) {
+              agentMarkers[ag.id].setPosition(pos);
+              agentMarkers[ag.id].setVisible(true);
+            } else {
+              var m = new google.maps.Marker({
+                position: pos,
+                map: map,
+                icon: agentSvg(ag.initials || '?'),
+                title: ag.name || '',
+                zIndex: 100
               });
-            })(m, ag);
-            agentMarkers[ag.id] = m;
+              (function(marker, agentData) {
+                marker.addListener('click', function() {
+                  infoWindow.setContent('<strong>' + (agentData.name||'Agent') + '</strong><br>'
+                    + '<span style="font-size:.75rem;color:#666">Last seen: '
+                    + relativeTime(agentData.updated_at) + '</span>');
+                  infoWindow.open(map, marker);
+                });
+              })(m, ag);
+              agentMarkers[ag.id] = m;
+            }
+          } catch(e) {
+            console.warn('Map: error placing agent marker', ag.id, e);
           }
         });
 
         Object.keys(agentMarkers).forEach(function(id) {
-          var found = data.agents.some(function(a) { return a.id == id; });
+          var found = agents.some(function(a) { return a.id == id; });
           if (!found) agentMarkers[id].setVisible(false);
         });
       })
-      .catch(function(e) { console.warn('Map data error', e); });
+      .catch(function(e) {
+        console.error('Map data load error:', e);
+        if (initial) _setJobCount('Unable to load map jobs.');
+      });
   }
 
   function initAxionMap() {
