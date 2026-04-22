@@ -3779,7 +3779,10 @@ def _jobs_list_inner():
                 ORDER BY s.scheduled_for ASC LIMIT 1) AS next_sched_id,
                (SELECT COUNT(*) FROM job_field_notes fn
                 WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review') AS pending_review_count,
-               CAST((julianday('now') - julianday(COALESCE(j.status_changed_at, j.updated_at))) AS INTEGER) AS status_days
+               CAST((julianday('now') - julianday(COALESCE(j.status_changed_at, j.updated_at))) AS INTEGER) AS status_days,
+               CASE WHEN j.last_client_update_request_sent_at IS NOT NULL
+                         AND j.last_client_update_request_sent_at >= datetime('now', '-7 days')
+                    THEN 1 ELSE 0 END AS cur_actioned
         FROM jobs j
         LEFT JOIN clients c ON c.id = j.client_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -6392,7 +6395,6 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
 
 @app.get("/jobs/<int:job_id>/client-update-request/prefill")
 @login_required
-@admin_required
 def client_update_request_prefill(job_id: int):
     """Return eligibility data and prefilled email content as JSON."""
     conn = db()
@@ -6403,7 +6405,6 @@ def client_update_request_prefill(job_id: int):
 
 @app.post("/jobs/<int:job_id>/client-update-request/send")
 @login_required
-@admin_required
 def client_update_request_send(job_id: int):
     """Send a client update request email, record the event, create a published file note.
     Server-side enforces all eligibility and cooldown rules independent of the UI.

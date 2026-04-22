@@ -146,14 +146,14 @@
       </ul>
     </div>
 
-    {% if session.get('role') in ('admin','both') and client_update_info %}
+    {% if session.get('role') in ('admin','both','agent') and client_update_info %}
       {% if client_update_info.eligible %}
     <button class="btn btn-warning btn-sm" type="button" id="btnClientUpdateRequest"
             onclick="openClientUpdateModal()">
       Request Client Update
     </button>
       {% elif client_update_info.get('cooldown_remaining', 0) > 0 %}
-    <button class="btn btn-outline-warning btn-sm" type="button" disabled
+    <button class="btn btn-outline-secondary btn-sm" type="button" disabled
             title="A client update request has already been sent within the last 7 days.">
       Request Client Update
     </button>
@@ -2548,7 +2548,8 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
   <hr style="border-color:var(--line);margin:10px 0">
   <div>
     <div class="fw-bold small mb-1" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">STATUS AGE</div>
-    <span style="font-size:.75rem;background:{% if client_update_info.days_in_status >= 28 %}#fef3c7;color:#92400e;border:1px solid #fcd34d{% else %}#f1f5f9;color:#64748b;border:1px solid #e2e8f0{% endif %};border-radius:4px;padding:2px 7px;font-weight:600">
+    {% set _cur_actioned = client_update_info.get('cooldown_remaining', 0) > 0 %}
+    <span style="font-size:.75rem;background:{% if client_update_info.days_in_status >= 28 %}{% if _cur_actioned %}#f3f4f6;color:#9ca3af;border:1px solid #d1d5db{% else %}#fef3c7;color:#92400e;border:1px solid #fcd34d{% endif %}{% else %}#f1f5f9;color:#64748b;border:1px solid #e2e8f0{% endif %};border-radius:4px;padding:2px 7px;font-weight:600">
       {% if client_update_info.days_in_status >= 28 %}Overdue {% endif %}{{ client_update_info.days_in_status }} day{{ 's' if client_update_info.days_in_status != 1 }}
     </span>
     {% if client_update_info.last_sent_at %}
@@ -6204,7 +6205,7 @@ function axOpenEditRole(jcId, currentRole) {
 }
 </script>
 
-{% if session.get('role') in ('admin','both') and client_update_info and client_update_info.eligible %}
+{% if session.get('role') in ('admin','both','agent') and client_update_info and client_update_info.eligible %}
 <!-- ── Request Client Update Modal ──────────────────────────────────────────── -->
 <div class="modal fade" id="clientUpdateRequestModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
