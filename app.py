@@ -6361,6 +6361,7 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
         f"Should no further action be required, please confirm so we may update our records accordingly.\n\n"
         f"We will continue to monitor pending your advice.\n\n"
         f"Kind regards,\n"
+        f"SWPI"
     )
 
     return {
@@ -6407,8 +6408,7 @@ def client_update_request_send(job_id: int):
     body         = (request.json or {}).get("body",    info["body"]).strip()
     to_email     = info["client_email"]
     reply_to     = "office@swpirecoveries.com"
-    sender_name  = session.get("user_name", "SWPI Recoveries")
-    full_body    = body + f"\n{sender_name}"
+    full_body    = body
 
     # Attempt to send — do NOT create note or update tracking on failure
     ts = now_ts()
