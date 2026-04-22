@@ -622,13 +622,17 @@ function serverSearch(q){
       _searchAbort = null;
       if(searchQ !== q.toLowerCase().trim()) return;
       const newJobs = (data.jobs||[]).filter(j=>!_loadedJobIds.has(String(j.id)));
-      if(newJobs.length === 0) return;
+      const newRTs  = (data.recovery_targets || []);
+      if(newJobs.length === 0 && newRTs.length === 0) return;
       const list = document.getElementById('job-list');
-      const banner = document.createElement('div');
-      banner.id = 'server-results-banner';
-      banner.style.cssText = 'padding:8px 14px;background:#eff6ff;border-bottom:1px solid #bfdbfe;font-size:.78rem;color:#2563eb;text-align:center;font-weight:600;';
-      banner.textContent = newJobs.length + ' additional result' + (newJobs.length!==1?'s':'') + ' from full search';
-      list.appendChild(banner);
+      if(newJobs.length > 0){
+        const banner = document.createElement('div');
+        banner.id = 'server-results-banner';
+        banner.className = 'server-result-row';
+        banner.style.cssText = 'padding:8px 14px;background:#eff6ff;border-bottom:1px solid #bfdbfe;font-size:.78rem;color:#2563eb;text-align:center;font-weight:600;';
+        banner.textContent = newJobs.length + ' additional result' + (newJobs.length!==1?'s':'') + ' from full search';
+        list.appendChild(banner);
+      }
       newJobs.forEach(j=>{
         const statusLc = (j.status||'').toLowerCase();
         let barColor = '#9ca3af';
@@ -717,6 +721,63 @@ function serverSearch(q){
         wrap.appendChild(a);
         list.appendChild(wrap);
       });
+
+      if(newRTs.length > 0){
+        const rtBanner = document.createElement('div');
+        rtBanner.className = 'server-result-row';
+        rtBanner.style.cssText = 'padding:8px 14px;background:#fffbeb;border-bottom:1px solid #fcd34d;border-top:1px solid #fcd34d;font-size:.78rem;color:#92400e;text-align:center;font-weight:600;margin-top:4px;';
+        rtBanner.textContent = newRTs.length + ' Recovery Target match' + (newRTs.length !== 1 ? 'es' : '');
+        list.appendChild(rtBanner);
+        newRTs.forEach(function(rt){
+          const rtWrap = document.createElement('div');
+          rtWrap.className = 'server-result-row';
+          rtWrap.style.cssText = 'display:flex;align-items:stretch;border-bottom:1px solid #fde68a;background:#fffbeb;';
+          const rtBar = document.createElement('div');
+          rtBar.style.cssText = 'width:4px;background:#f59e0b;flex-shrink:0;';
+          rtWrap.appendChild(rtBar);
+          const rtA = document.createElement('a');
+          rtA.href = rt.url;
+          rtA.style.cssText = 'flex:1;padding:12px 14px;text-decoration:none;color:inherit;display:block;';
+          const rtTop = document.createElement('div');
+          rtTop.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;';
+          const rtBadge = document.createElement('span');
+          rtBadge.textContent = 'Recovery Target';
+          rtBadge.style.cssText = 'background:#f59e0b;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:8px;text-transform:uppercase;letter-spacing:.04em;';
+          rtTop.appendChild(rtBadge);
+          const rtLabel = document.createElement('span');
+          rtLabel.style.cssText = 'font-weight:700;font-size:.88rem;color:#1e40af;';
+          rtLabel.textContent = rt.label;
+          rtTop.appendChild(rtLabel);
+          if(rt.registration_number){
+            const rtReg = document.createElement('span');
+            rtReg.textContent = rt.registration_number;
+            rtReg.style.cssText = 'font-size:.75rem;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:5px;font-weight:600;';
+            rtTop.appendChild(rtReg);
+          }
+          rtA.appendChild(rtTop);
+          if(rt.asset_label){
+            const rtAsset = document.createElement('div');
+            rtAsset.style.cssText = 'font-size:.8rem;color:#374151;';
+            rtAsset.textContent = rt.asset_label;
+            rtA.appendChild(rtAsset);
+          }
+          if(rt.person_name || rt.party_name){
+            const rtPerson = document.createElement('div');
+            rtPerson.style.cssText = 'font-size:.75rem;color:#6b7280;margin-top:2px;';
+            rtPerson.textContent = [rt.person_name, rt.party_name].filter(Boolean).join(' \u00b7 ');
+            rtA.appendChild(rtPerson);
+          }
+          if(rt.current_security_status){
+            const rtSec = document.createElement('div');
+            rtSec.style.cssText = 'font-size:.72rem;color:#991b1b;margin-top:2px;font-weight:600;';
+            rtSec.textContent = rt.current_security_status;
+            rtA.appendChild(rtSec);
+          }
+          rtWrap.appendChild(rtA);
+          list.appendChild(rtWrap);
+        });
+      }
+
       updateCount();
     })
     .catch(e=>{ if(e.name !== 'AbortError') _searchAbort = null; });

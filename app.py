@@ -3820,6 +3820,8 @@ def _jobs_list_inner():
         agent_counts["_unassigned"] = unassigned_count
         agent_counts["_all"] = sum(agent_counts.get(str(a["id"]), 0) for a in agents_list) + unassigned_count
 
+    rt_hits = _search_recovery_targets(conn, q) if q else []
+
     conn.close()
 
     statuses = [
@@ -3855,6 +3857,7 @@ def _jobs_list_inner():
         total_pages=total_pages,
         filter_unassigned=filter_unassigned,
         agent_counts=agent_counts,
+        rt_hits=rt_hits,
     )
 
 
@@ -17844,7 +17847,6 @@ def m_api_jobs_search():
         ORDER BY j.created_at DESC
         LIMIT 50
     """, params).fetchall()
-    conn.close()
     results = []
     for r in rows:
         results.append({
@@ -17866,7 +17868,22 @@ def m_api_jobs_search():
             "assigned_agent_name": r["assigned_agent_name"] or "" if is_admin else "",
             "pending_review_count": r["pending_review_count"] or 0,
         })
-    return jsonify({"jobs": results})
+    rt_hits = _search_recovery_targets(conn, q)
+    conn.close()
+    rt_results = []
+    for rt in rt_hits:
+        rt_results.append({
+            "id": rt["id"],
+            "label": rt["label"],
+            "asset_label": rt["asset_label"],
+            "registration_number": rt["registration_number"],
+            "vin": rt["vin"],
+            "person_name": rt["person_name"],
+            "party_name": rt["party_name"],
+            "current_security_status": rt["current_security_status"],
+            "url": rt["mobile_url"],
+        })
+    return jsonify({"jobs": results, "recovery_targets": rt_results})
 
 
 @app.post("/m/jobs/prefs/save")
@@ -18815,6 +18832,79 @@ def _recovery_search(conn, q: str, limit: int = 100):
         ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END, rt.updated_at DESC, rt.id DESC
         LIMIT ?
     """, (like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, limit)).fetchall()
+
+
+def _search_recovery_targets(conn, q: str) -> list:
+    """Return active Recovery Targets matching q against ref/reg/VIN/customer/party.
+    Normalised registration/VIN exact match is attempted alongside LIKE partial match.
+    Only Active + repossession_active targets are returned. Max 20 results.
+    """
+    if not q or len(q) < 2:
+        return []
+    _recovery_targets_ensure(conn)
+    like    = f"%{q}%"
+    q_norm  = normalise_registration(q)
+    rows = conn.execute("""
+        SELECT DISTINCT
+               rt.id, rt.status, rt.internal_reference, rt.agency_reference,
+               rt.lender_reference, rt.liquidator_reference, rt.assigned_agency,
+               a.id AS asset_id, a.registration_number, a.vin,
+               a.make, a.model, a.year, a.colour, a.current_security_status,
+               p.full_legal_name AS person_name, p.aliases,
+               par.organisation_name AS party_name
+        FROM recovery_targets rt
+        JOIN recovery_target_assets a ON a.target_id = rt.id
+        LEFT JOIN recovery_target_people p ON p.target_id = rt.id
+        LEFT JOIN recovery_target_parties par ON par.target_id = rt.id
+        WHERE rt.status = 'Active'
+          AND COALESCE(rt.repossession_active, 1) = 1
+          AND (
+              rt.internal_reference LIKE ?
+           OR rt.agency_reference   LIKE ?
+           OR rt.lender_reference   LIKE ?
+           OR rt.liquidator_reference LIKE ?
+           OR a.registration_number LIKE ?
+           OR UPPER(REPLACE(REPLACE(COALESCE(a.registration_number,''),' ',''),'-','')) = ?
+           OR a.vin LIKE ?
+           OR UPPER(REPLACE(REPLACE(COALESCE(a.vin,''),' ',''),'-','')) = ?
+           OR EXISTS (
+               SELECT 1 FROM recovery_target_asset_reg_history rh
+               WHERE rh.asset_id = a.id
+                 AND (rh.registration_number LIKE ?
+                      OR UPPER(REPLACE(REPLACE(COALESCE(rh.registration_number,''),' ',''),'-','')) = ?)
+           )
+           OR p.full_legal_name LIKE ?
+           OR p.aliases LIKE ?
+           OR par.organisation_name LIKE ?
+          )
+        ORDER BY rt.id DESC
+        LIMIT 20
+    """, (like, like, like, like, like, q_norm, like, q_norm, like, q_norm, like, like, like)).fetchall()
+
+    out = []
+    seen = set()
+    for r in rows:
+        rt_id = r["id"]
+        if rt_id in seen:
+            continue
+        seen.add(rt_id)
+        label = (r["internal_reference"] or r["agency_reference"]
+                 or r["lender_reference"] or f"RT-{rt_id:05d}")
+        asset_label = " ".join([x for x in [r["year"], r["colour"], r["make"], r["model"]] if x])
+        out.append({
+            "id": rt_id,
+            "label": label,
+            "asset_label": asset_label,
+            "registration_number": r["registration_number"] or "",
+            "vin": r["vin"] or "",
+            "person_name": r["person_name"] or "",
+            "party_name": r["party_name"] or r["assigned_agency"] or "",
+            "status": r["status"],
+            "current_security_status": r["current_security_status"] or "",
+            "url": url_for("recovery_target_detail", target_id=rt_id),
+            "mobile_url": url_for("m_recovery_target_detail", target_id=rt_id),
+        })
+    return out
 
 
 def _lookup_recovery_target_for_lpr(reg_norm: str) -> dict:

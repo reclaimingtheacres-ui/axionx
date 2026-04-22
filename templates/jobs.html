@@ -421,4 +421,44 @@
   </nav>
   {% endif %}
 </div>
+
+{% if rt_hits %}
+<div style="margin:18px 0 0 0;padding:0 0 24px 0;">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 16px 8px;border-bottom:2px solid #f59e0b;margin-bottom:4px;">
+    <span style="background:#f59e0b;color:#fff;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.04em;">Recovery Targets</span>
+    <span style="font-size:.82rem;color:var(--muted);">{{ rt_hits|length }} matching Recovery Target{{ 's' if rt_hits|length != 1 else '' }} for &ldquo;{{ q }}&rdquo;</span>
+  </div>
+  {% for rt in rt_hits %}
+  <div style="display:flex;align-items:stretch;border-bottom:1px solid var(--line);padding:0;">
+    <div style="width:4px;background:#f59e0b;flex-shrink:0;border-radius:2px 0 0 2px;"></div>
+    <div style="flex:1;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <a href="{{ rt.url }}" style="font-weight:700;font-size:.9rem;color:var(--accent);text-decoration:none;">{{ rt.label }}</a>
+        {% if rt.registration_number %}
+          <span style="font-size:.78rem;background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:6px;font-weight:600;">{{ rt.registration_number }}</span>
+        {% endif %}
+        {% if rt.vin %}
+          <span style="font-size:.73rem;color:var(--muted);">VIN: {{ rt.vin }}</span>
+        {% endif %}
+        {% if rt.asset_label %}
+          <span style="font-size:.82rem;color:var(--text);">{{ rt.asset_label }}</span>
+        {% endif %}
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        {% if rt.person_name %}
+          <span style="font-size:.8rem;color:var(--muted);">{{ rt.person_name }}</span>
+        {% endif %}
+        {% if rt.party_name %}
+          <span style="font-size:.78rem;color:var(--muted);">({{ rt.party_name }})</span>
+        {% endif %}
+        {% if rt.current_security_status %}
+          <span style="font-size:.75rem;background:#fee2e2;color:#991b1b;padding:1px 7px;border-radius:5px;font-weight:600;">{{ rt.current_security_status }}</span>
+        {% endif %}
+        <a href="{{ rt.url }}" style="font-size:.78rem;color:var(--accent);text-decoration:none;white-space:nowrap;">Open &rsaquo;</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}
