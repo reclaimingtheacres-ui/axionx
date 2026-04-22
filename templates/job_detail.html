@@ -1,6 +1,6 @@
 {% extends "layout.html" %}
 {% block title %}Axion | {{ job.display_ref }}{% endblock %}
-{% block page_title %}{{ job.internal_job_number or job.display_ref }}{% if job.job_type %} - {{ job.job_type }}{% endif %}{% set cx = (job.customer_company or job.customer_last_name or '')|upper %}{% if cx %} - {{ cx }}{% endif %}{% if job.client_job_number %} - {{ job.client_job_number }}{% endif %}{% endblock %}
+{% block page_title %}<a id="ax-back-btn" href="/jobs" title="Back to list" aria-label="Back to list" style="color:var(--muted);margin-right:6px;text-decoration:none;display:inline-flex;align-items:center;vertical-align:middle;flex-shrink:0"><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" fill="none" stroke-width="2.5" style="display:block"><polyline points="15 18 9 12 15 6"/></svg></a>{{ job.internal_job_number or job.display_ref }}{% if job.job_type %} - {{ job.job_type }}{% endif %}{% set cx = (job.customer_company or job.customer_last_name or '')|upper %}{% if cx %} - {{ cx }}{% endif %}{% if job.client_job_number %} - {{ job.client_job_number }}{% endif %}{% endblock %}
 
 {% set s_top = job.status %}
 {% if s_top == 'New' %}{% set sc_top = '#3b82f6' %}
@@ -2380,6 +2380,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <span style="color:var(--muted);font-size:.9rem;">Permanently delete this job and all its data — items, notes, documents, and interactions.</span>
     <form method="post" action="/jobs/{{ job.id }}/delete" style="margin:0;flex-shrink:0;margin-left:1.5rem"
           onsubmit="return confirm('Permanently delete job {{ job.display_ref }}? This cannot be undone.')">
+      <input type="hidden" name="ret" id="ax-job-ret-field">
       <button type="submit" class="btn btn-sm"
               style="background:#ef4444;color:#fff;border:0;border-radius:8px;font-weight:600;white-space:nowrap">
         &#128465; Delete Job
@@ -6294,5 +6295,20 @@ function submitClientUpdateRequest() {
 }
 </script>
 {% endif %}
+
+<script>
+/* ── Jobs-list return URL ───────────────────────────────────────────── */
+(function(){
+  try {
+    var u = sessionStorage.getItem('ax.jobsReturnUrl');
+    if (u) {
+      var btn = document.getElementById('ax-back-btn');
+      if (btn) btn.href = u;
+      var ret = document.getElementById('ax-job-ret-field');
+      if (ret) ret.value = u;
+    }
+  } catch(e) {}
+})();
+</script>
 
 {% endblock %}

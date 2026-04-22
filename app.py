@@ -6105,7 +6105,8 @@ def delete_job(job_id: int):
 
     audit("job", job_id, "delete", "Job deleted", {})
     flash("Job deleted.", "success")
-    return redirect(url_for("jobs_list"))
+    ret = request.form.get("ret", "").strip()
+    return redirect(ret if ret and ret.startswith("/") else url_for("jobs_list"))
 
 
 @app.post("/jobs/<int:job_id>/status")

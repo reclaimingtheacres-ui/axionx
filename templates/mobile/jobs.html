@@ -290,7 +290,8 @@
 
     <a class="job-card"
        href="{{ url_for('m_job_detail', job_id=j.id) }}"
-       data-note-count="{{ nc }}">
+       data-note-count="{{ nc }}"
+       onclick="try{sessionStorage.setItem('ax.jobsReturnUrl',window.location.href);}catch(e){}">
       <div class="job-card-inner">
         <div class="job-status-bar" style="background:{{ bar_color }};"></div>
         <div class="job-inner-content">
@@ -641,6 +642,7 @@ function serverSearch(q){
         const a = document.createElement('a');
         a.href = '/m/job/'+j.id;
         a.className = 'job-card';
+        a.addEventListener('click', function(){ try{ sessionStorage.setItem('ax.jobsReturnUrl', window.location.href); }catch(e){} });
         const inner = document.createElement('div');
         inner.className = 'job-card-inner';
         const bar = document.createElement('div');
@@ -977,5 +979,8 @@ document.addEventListener('touchstart', function(e){
 }, {passive:true});
 
 })();
+
+// Save current mobile jobs URL so job detail can return here
+try{ sessionStorage.setItem('ax.jobsReturnUrl', window.location.href); }catch(e){}
 </script>
 {% endblock %}

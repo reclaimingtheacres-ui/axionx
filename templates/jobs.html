@@ -245,8 +245,11 @@
   }
   function axGoJob(e, id) {
     if (e.target.closest('form, select, button, .ax-add-drop')) return;
+    sessionStorage.setItem('ax.jobsReturnUrl', window.location.href);
     window.location.href = '/jobs/' + id;
   }
+  // Save list URL on load so that direct link-clicks also have a return point
+  (function(){ try{ sessionStorage.setItem('ax.jobsReturnUrl', window.location.href); }catch(e){} })();
   function axToggleDrop(el) {
     var wasOpen = el.classList.contains('open');
     document.querySelectorAll('.ax-add-drop').forEach(function(d){ d.classList.remove('open'); });

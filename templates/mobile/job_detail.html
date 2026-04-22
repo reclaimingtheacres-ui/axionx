@@ -2,7 +2,7 @@
 {% block title %}{{ job.display_ref }} — AxionX{% endblock %}
 
 {% block header_title %}
-<a href="{{ url_for('m_jobs') }}" style="color:var(--muted);margin-right:8px;" aria-label="Back to jobs">
+<a id="m-back-btn" href="{{ url_for('m_jobs') }}" style="color:var(--muted);margin-right:8px;" aria-label="Back to jobs">
   <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2.5" style="vertical-align:middle;"><polyline points="15 18 9 12 15 6"/></svg>
 </a>
 {{ job.display_ref or job.internal_job_number }}
@@ -2118,5 +2118,17 @@ window.notePhotoPreview = function(src) {
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.m-card-body [style*="white-space:pre-wrap"]').forEach(function(el) { axLinkPhones(el); });
 });
+</script>
+<script>
+/* ── Jobs-list return URL ── */
+(function(){
+  try {
+    var u = sessionStorage.getItem('ax.jobsReturnUrl');
+    if (u) {
+      var btn = document.getElementById('m-back-btn');
+      if (btn) btn.href = u;
+    }
+  } catch(e) {}
+})();
 </script>
 {% endblock %}
