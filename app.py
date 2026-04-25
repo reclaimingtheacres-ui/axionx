@@ -431,7 +431,12 @@ def _schema_is_current():
             if "file_status" not in nf_cols:
                 return False
             ju_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_updates)").fetchall()]
-            return "is_ai_draft" in ju_cols
+            if "is_ai_draft" not in ju_cols:
+                return False
+            jon = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job_office_notes'"
+            ).fetchone()
+            return bool(jon)
         except Exception:
             if attempt < 2:
                 _t.sleep(0.3 + attempt * 0.3)
@@ -4775,6 +4780,18 @@ def job_detail(job_id: int):
     # Office-only notes — admin/both users ONLY; never exposed to agents or field views
     office_notes = []
     if role in ("admin", "both"):
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS job_office_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL,
+                note_body TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                created_at TEXT NOT NULL,
+                updated_by_user_id INTEGER,
+                updated_at TEXT,
+                is_deleted INTEGER NOT NULL DEFAULT 0
+            )
+        """)
         cur.execute("""
             SELECT n.*, u.full_name AS author_name
             FROM job_office_notes n
