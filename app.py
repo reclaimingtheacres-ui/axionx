@@ -754,6 +754,22 @@ def init_db():
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_jnf_note_file ON job_note_files(job_field_note_id, filename)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jnf_note_id ON job_note_files(job_field_note_id)")
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_office_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        note_body TEXT NOT NULL,
+        created_by_user_id INTEGER,
+        created_at TEXT NOT NULL,
+        updated_by_user_id INTEGER,
+        updated_at TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(created_by_user_id) REFERENCES users(id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jon_job ON job_office_notes(job_id, is_deleted)")
+
     cur.execute("CREATE INDEX IF NOT EXISTS idx_ju_job ON job_updates(job_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jfn_job ON job_field_notes(job_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_int_job ON interactions(job_id)")
@@ -4756,6 +4772,18 @@ def job_detail(job_id: int):
             _note_files_map.setdefault(_fr["job_field_note_id"], []).append(_fr)
     field_notes = [{"note": n, "files": _note_files_map.get(n["id"], [])} for n in raw_notes]
 
+    # Office-only notes — admin/both users ONLY; never exposed to agents or field views
+    office_notes = []
+    if role in ("admin", "both"):
+        cur.execute("""
+            SELECT n.*, u.full_name AS author_name
+            FROM job_office_notes n
+            LEFT JOIN users u ON u.id = n.created_by_user_id
+            WHERE n.job_id = ? AND n.is_deleted = 0
+            ORDER BY n.created_at DESC
+        """, (job_id,))
+        office_notes = cur.fetchall()
+
     cur.execute("SELECT * FROM booking_types WHERE active = 1 ORDER BY name")
     booking_types = cur.fetchall()
 
@@ -4906,6 +4934,7 @@ def job_detail(job_id: int):
                            known_referrals=known_referrals,
                            from_cue=from_cue,
                            ai_draft_count=ai_draft_count,
+                           office_notes=office_notes,
                            client_update_info=_client_update_request_eligibility(conn, job_id))
 
 
@@ -10272,6 +10301,75 @@ def delete_job_note(job_id: int, note_id: int):
     audit("job_note", note_id, "delete", "Field note deleted", {"job_id": job_id})
     flash("Field note deleted.", "success")
     return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
+
+
+# ─── Office-Only Notes (admin/both only — never exposed to agents) ────────────
+
+@app.post("/jobs/<int:job_id>/office-notes")
+@login_required
+def job_office_note_create(job_id: int):
+    if session.get("role") not in ("admin", "both"):
+        return ("Forbidden", 403)
+    note_body = (request.form.get("note_body") or "").strip()
+    if not note_body:
+        flash("Note cannot be empty.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id) + "#tab-office")
+    conn = db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_office_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL,
+            note_body TEXT NOT NULL,
+            created_by_user_id INTEGER,
+            created_at TEXT NOT NULL,
+            updated_by_user_id INTEGER,
+            updated_at TEXT,
+            is_deleted INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        INSERT INTO job_office_notes (job_id, note_body, created_by_user_id, created_at)
+        VALUES (?,?,?,?)
+    """, (job_id, note_body, session.get("user_id"), now_ts()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("job_detail", job_id=job_id) + "#tab-office")
+
+
+@app.post("/jobs/<int:job_id>/office-notes/<int:note_id>/edit")
+@login_required
+def job_office_note_edit(job_id: int, note_id: int):
+    if session.get("role") not in ("admin", "both"):
+        return ("Forbidden", 403)
+    note_body = (request.form.get("note_body") or "").strip()
+    if not note_body:
+        flash("Note cannot be empty.", "danger")
+        return redirect(url_for("job_detail", job_id=job_id) + "#tab-office")
+    conn = db()
+    conn.execute("""
+        UPDATE job_office_notes
+        SET note_body=?, updated_at=?, updated_by_user_id=?
+        WHERE id=? AND job_id=? AND is_deleted=0
+    """, (note_body, now_ts(), session.get("user_id"), note_id, job_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("job_detail", job_id=job_id) + "#tab-office")
+
+
+@app.post("/jobs/<int:job_id>/office-notes/<int:note_id>/delete")
+@login_required
+def job_office_note_delete(job_id: int, note_id: int):
+    if session.get("role") not in ("admin", "both"):
+        return ("Forbidden", 403)
+    conn = db()
+    conn.execute("""
+        UPDATE job_office_notes
+        SET is_deleted=1, updated_at=?, updated_by_user_id=?
+        WHERE id=? AND job_id=?
+    """, (now_ts(), session.get("user_id"), note_id, job_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("job_detail", job_id=job_id) + "#tab-office")
 
 
 @app.post("/jobs/<int:job_id>/notes/<int:note_id>/edit")
