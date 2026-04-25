@@ -20053,6 +20053,253 @@ def recovery_target_mark_repossessed(target_id: int):
     return redirect(url_for("recovery_target_detail", target_id=target_id))
 
 
+def _rt_build_rec(target, assets, parties, people, addresses):
+    """Build a pseudo repo_lock_records-style dict from Recovery Target data for pre-filling VIR/transport forms."""
+    target = dict(target)
+    pa = dict(assets[0]["row"]) if assets else {}
+    py = dict(parties[0]) if parties else {}
+    pe = dict(people[0]) if people else {}
+    ad = dict(addresses[0]) if addresses else {}
+    return {
+        "id":                      target["id"],
+        "description":             f"RT#{target['id']}",
+        "registration":            pa.get("registration_number") or "",
+        "vin":                     pa.get("vin") or "",
+        "engine_number":           pa.get("engine_number") or "",
+        "make":                    pa.get("make") or "",
+        "model":                   pa.get("model") or "",
+        "year":                    str(pa.get("year") or ""),
+        "colour":                  pa.get("colour") or "",
+        "swpi_ref":                target.get("internal_reference") or target.get("agency_reference") or "",
+        "finance_company":         py.get("organisation_name") or "",
+        "customer_name":           pe.get("full_legal_name") or "",
+        "repo_date":               target.get("repossession_completed_at") or "",
+        "repo_address":            ad.get("full_address") or "",
+        "account_number":          target.get("lender_reference") or "",
+        "agent_name":              session.get("full_name") or "",
+        "agent_signature":         "",
+        "customer_signature":      "",
+        "tow_company_name":        "",
+        "tow_phone":               "",
+        "deliver_to":              "",
+        "delivery_address":        "",
+        "speedometer":             "",
+        "rego_expiry":             "",
+        "person_present":          "",
+        "keys_obtained":           "",
+        "how_many_keys":           "",
+        "vol_surrender":           "",
+        "form_13":                 "",
+        "security_drivable":       "",
+        "police_notified":         "",
+        "station_officer":         "",
+        "personal_effects_removed":"",
+        "personal_effects_list":   "",
+        "tyres":                   "",
+        "body":                    "",
+        "duco":                    "",
+        "interior":                "",
+        "engine_condition":        "",
+        "transmission":            "",
+        "fuel_level":              "",
+        "any_damage":              "",
+        "damage_list":             "",
+        "lien_paid":               "",
+        "tow_costs":               "",
+        "client_name":             "",
+        "client_reference":        "",
+        "wise_case_number":        "",
+    }
+
+
+@app.get("/recovery-targets/<int:target_id>/vir")
+@login_required
+def recovery_target_vir(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    conn = db()
+    detail = _recovery_target_detail(conn, target_id)
+    conn.close()
+    if not detail:
+        return "Not found", 404
+    rec = _rt_build_rec(detail["target"], detail["assets"], detail["parties"],
+                        detail["people"], detail["addresses"])
+    back = url_for("recovery_target_detail", target_id=target_id)
+    return render_template("repo_lock_vir.html",
+                           rec=rec, job_id=None,
+                           back_url=back, back_label="Back to Recovery Target",
+                           form_action=url_for("recovery_target_vir_pdf", target_id=target_id),
+                           transport_url=url_for("recovery_target_transport", target_id=target_id),
+                           agent_name=rec["agent_name"],
+                           item_year=rec["year"], item_make=rec["make"], item_model=rec["model"],
+                           saved_agent_sig="")
+
+
+@app.post("/recovery-targets/<int:target_id>/vir")
+@login_required
+def recovery_target_vir_pdf(target_id: int):
+    import pdf_gen as _pg_vir
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    import re as _re_vsig
+    agent_sig    = (request.form.get("agent_sig", "") or "").strip() or None
+    customer_sig = (request.form.get("customer_sig", "") or "").strip() or None
+    if not agent_sig or not _re_vsig.match(
+            r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$', agent_sig):
+        flash("Agent signature is required.", "error")
+        return redirect(url_for("recovery_target_vir", target_id=target_id))
+    if customer_sig and not _re_vsig.match(
+            r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$', customer_sig):
+        customer_sig = None
+    def _fv(name):
+        return (request.form.get(name) or "").strip()
+    d = {k: _fv(k) for k in (
+        "swpi_ref", "finance_company", "repo_date", "account_number",
+        "customer_name", "repo_address", "registration", "rego_expiry",
+        "vin", "engine_number", "speedometer", "colour", "make", "model", "year",
+        "person_present", "keys_obtained", "how_many_keys", "vol_surrender",
+        "form_13", "security_drivable", "police_notified", "station_officer",
+        "personal_effects_removed", "personal_effects_list",
+        "tyres", "body", "duco", "interior", "engine_condition",
+        "transmission", "fuel_level", "any_damage", "damage_list", "agent_name",
+    )}
+    d.update({"client_name": "", "client_reference": "", "wise_case_number": "",
+               "tow_company_name": "", "tow_phone": "", "deliver_to": ""})
+    pdf_bytes = _pg_vir.generate_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig)
+    from datetime import datetime as _dtvir
+    ref      = (_fv("swpi_ref") or str(target_id)).replace("/", "-")
+    date_str = _dtvir.now().strftime("%d-%m-%y")
+    filename = f"{ref} VIR {date_str}.pdf"
+    conn = db()
+    _recovery_targets_ensure(conn)
+    ts = now_ts()
+    try:
+        import pathlib as _plvir
+        doc_dir  = f"recovery_target_docs/{target_id}"
+        _plvir.Path(doc_dir).mkdir(parents=True, exist_ok=True)
+        doc_path = f"{doc_dir}/VIR_{ts.replace(':', '-')}.pdf"
+        with open(doc_path, "wb") as _fh:
+            _fh.write(pdf_bytes)
+        conn.execute("""
+            INSERT INTO recovery_target_documents
+                (target_id, category, document_type, original_filename, file_path, uploaded_at, uploaded_by)
+            VALUES (?,?,?,?,?,?,?)
+        """, (target_id, "VIR", "Vehicle Condition Report / Repossession Receipt",
+              filename, doc_path, ts, session.get("user_id")))
+        conn.commit()
+    except Exception:
+        pass
+    conn.close()
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=filename)
+
+
+@app.get("/recovery-targets/<int:target_id>/transport")
+@login_required
+def recovery_target_transport(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    conn = db()
+    detail = _recovery_target_detail(conn, target_id)
+    conn.close()
+    if not detail:
+        return "Not found", 404
+    rec = _rt_build_rec(detail["target"], detail["assets"], detail["parties"],
+                        detail["people"], detail["addresses"])
+    back = url_for("recovery_target_detail", target_id=target_id)
+    return render_template("repo_lock_transport.html",
+                           rec=rec, job_id=None,
+                           back_url=back, back_label="Back to Recovery Target",
+                           form_action=url_for("recovery_target_transport_pdf", target_id=target_id),
+                           vir_url=url_for("recovery_target_vir", target_id=target_id),
+                           agent_name=rec["agent_name"],
+                           item_make=rec["make"], item_model=rec["model"],
+                           tow_company_name_db="", tow_phone="",
+                           client_name="", client_email="",
+                           saved_agent_sig="")
+
+
+@app.post("/recovery-targets/<int:target_id>/transport")
+@login_required
+def recovery_target_transport_pdf(target_id: int):
+    import pdf_gen as _pg_trn
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    agent_sig = (request.form.get("agent_sig") or "").strip() or None
+    tow_sig   = (request.form.get("tow_sig")   or "").strip() or None
+    if not agent_sig:
+        flash("Agent signature is required.", "error")
+        return redirect(url_for("recovery_target_transport", target_id=target_id))
+    def _ft(name):
+        return (request.form.get(name) or "").strip()
+    d = {k: _ft(k) for k in (
+        "swpi_ref", "finance_company", "repo_date", "customer_name", "repo_address",
+        "make", "model", "registration", "vin",
+        "tow_company_name", "tow_phone", "tow_costs", "deliver_to", "delivery_address",
+        "agent_name",
+    )}
+    d.update({"client_name": "", "client_email": ""})
+    pdf_bytes = _pg_trn.generate_transport_pdf(d, agent_sig=agent_sig, tow_sig=tow_sig)
+    from datetime import datetime as _dttrn
+    ref      = (_ft("swpi_ref") or str(target_id)).replace("/", "-")
+    date_str = _dttrn.now().strftime("%d-%m-%Y")
+    filename = f"{ref} - Transport Instructions - {date_str}.pdf"
+    conn = db()
+    _recovery_targets_ensure(conn)
+    ts = now_ts()
+    try:
+        import pathlib as _pltrn
+        doc_dir  = f"recovery_target_docs/{target_id}"
+        _pltrn.Path(doc_dir).mkdir(parents=True, exist_ok=True)
+        doc_path = f"{doc_dir}/Transport_{ts.replace(':', '-')}.pdf"
+        with open(doc_path, "wb") as _fh:
+            _fh.write(pdf_bytes)
+        conn.execute("""
+            INSERT INTO recovery_target_documents
+                (target_id, category, document_type, original_filename, file_path, uploaded_at, uploaded_by)
+            VALUES (?,?,?,?,?,?,?)
+        """, (target_id, "Transport", "Transport Instructions / Tow Receipt",
+              filename, doc_path, ts, session.get("user_id")))
+        conn.commit()
+    except Exception:
+        pass
+    conn.close()
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=filename)
+
+
+@app.post("/recovery-targets/<int:target_id>/revert")
+@login_required
+def recovery_target_revert(target_id: int):
+    if not _recovery_can_manage():
+        flash("Recovery Target management is restricted.", "danger")
+        return redirect(url_for("recovery_target_detail", target_id=target_id))
+    revert_note = (request.form.get("revert_note") or "").strip()
+    conn = db()
+    _recovery_targets_ensure(conn)
+    ts = now_ts()
+    conn.execute("""
+        UPDATE recovery_targets
+        SET status='Active', repossession_active=1, repossession_completed_at=NULL,
+            updated_at=?, updated_by=?
+        WHERE id=?
+    """, (ts, session.get("user_id"), target_id))
+    if revert_note:
+        conn.execute("""
+            INSERT INTO recovery_target_notes (target_id, note_type, note_text, created_at, created_by)
+            VALUES (?,?,?,?,?)
+        """, (target_id, "Correction",
+              f"Reverted from Repossessed to Active: {revert_note}", ts, session.get("user_id")))
+    conn.commit()
+    conn.close()
+    flash("Recovery Target reverted to Active. Repossession marking removed.", "warning")
+    return redirect(url_for("recovery_target_detail", target_id=target_id))
+
+
 @app.get("/m/recovery-targets")
 @mobile_login_required
 def m_recovery_targets_search():

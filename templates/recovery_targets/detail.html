@@ -207,4 +207,32 @@
   </div>
 </div>
 {% endif %}
+
+{% if can_manage and target.status == 'Repossessed' %}
+<div class="card mb-3 border-success">
+  <div class="card-header bg-success text-white fw-semibold">Repossession Paperwork</div>
+  <div class="card-body">
+    <p class="small text-muted mb-3">Complete the required paperwork for this repossession. Generated PDFs are automatically saved to the Documents section above.</p>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('recovery_target_vir', target_id=target.id) }}" class="btn btn-outline-primary">
+        VIR / Repossession Receipt
+      </a>
+      <a href="{{ url_for('recovery_target_transport', target_id=target.id) }}" class="btn btn-outline-primary">
+        Transport Instructions
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3 border-warning">
+  <div class="card-header fw-semibold text-warning-emphasis">Correction — Revert Repossession</div>
+  <div class="card-body">
+    <p class="small text-muted mb-3">If the incorrect asset was marked as repossessed, use this to revert the record back to Active status. A correction note will be added to the operational notes.</p>
+    <form method="post" action="{{ url_for('recovery_target_revert', target_id=target.id) }}" class="row g-2">
+      <div class="col-md-10"><input name="revert_note" class="form-control" placeholder="Reason for correction (optional)"></div>
+      <div class="col-md-2"><button class="btn btn-warning w-100" onclick="return confirm('Revert this repossession marking to Active?')">Revert to Active</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

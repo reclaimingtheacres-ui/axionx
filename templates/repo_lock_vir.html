@@ -6,11 +6,11 @@
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
     <div>
-      <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
+      <a href="{{ back_url or '/jobs/' ~ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; {{ back_label or 'Back to Job' }}</a>
       <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Surrendered / Repossession Receipt (VIR)</h2>
       <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">Edit fields below, sign, then generate PDF</div>
     </div>
-    <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/transport-instructions"
+    <a href="{{ transport_url or '/jobs/' ~ job_id ~ '/repo-lock/' ~ rec.id ~ '/transport-instructions' }}"
        style="padding:8px 14px;border:1.5px solid #2563eb;color:#2563eb;border-radius:8px;text-decoration:none;font-size:.82rem;font-weight:600;">
       Transport Instructions &#x2192;
     </a>
@@ -22,7 +22,7 @@
   {% endfor %}{% endif %}
   {% endwith %}
 
-  <form id="virForm" method="POST" action="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/vir">
+  <form id="virForm" method="POST" action="{{ form_action or '/jobs/' ~ job_id ~ '/repo-lock/' ~ rec.id ~ '/vir' }}">
     <input type="hidden" name="agent_sig"    id="agentSigData">
     <input type="hidden" name="customer_sig" id="customerSigData">
 
