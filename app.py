@@ -5108,7 +5108,7 @@ def add_schedule(job_id: int):
         if is_ajax:
             return jsonify({"ok": False, "error": "Date, time and booking type are required."})
         flash("Date, time and booking type are required.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id) + "#tab-schedule")
 
     try:
         dt_str = parse_interaction_datetime(date_str, time_str)
@@ -5116,7 +5116,7 @@ def add_schedule(job_id: int):
         if is_ajax:
             return jsonify({"ok": False, "error": "Invalid date or time format."})
         flash("Invalid date or time format.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id) + "#tab-schedule")
 
     conn = db()
     cur = conn.cursor()
@@ -5126,7 +5126,7 @@ def add_schedule(job_id: int):
         if is_ajax:
             return jsonify({"ok": False, "error": "Invalid booking type."})
         flash("Invalid booking type.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id) + "#tab-schedule")
 
     bt_row = cur.execute("SELECT name FROM booking_types WHERE id = ?", (resolved_bt_id,)).fetchone()
     bt_status = bt_row["name"] if bt_row else "Active"
@@ -5159,7 +5159,7 @@ def add_schedule(job_id: int):
     if is_ajax:
         return jsonify({"ok": True, "bt_id": resolved_bt_id, "bt_name": bt_row["name"] if bt_row else bt_name})
     flash("Booking added.", "success")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id) + "#tab-schedule")
 
 
 @app.post("/jobs/<int:job_id>/schedule/ajax")
@@ -6085,7 +6085,7 @@ def update_schedule_status(job_id: int, sched_id: int):
     allowed = {"Completed", "Cancelled"}
     if new_status not in allowed:
         flash("Invalid status.", "danger")
-        return redirect(url_for("job_detail", job_id=job_id))
+        return redirect(url_for("job_detail", job_id=job_id) + "#tab-schedule")
     conn = db()
     cur = conn.cursor()
     sched = cur.execute("SELECT * FROM schedules WHERE id = ? AND job_id = ?", (sched_id, job_id)).fetchone()
@@ -6116,7 +6116,7 @@ def update_schedule_status(job_id: int, sched_id: int):
     conn.commit()
     conn.close()
     flash("Booking updated.", "success")
-    return redirect(url_for("job_detail", job_id=job_id))
+    return redirect(url_for("job_detail", job_id=job_id) + "#tab-schedule")
 
 
 @app.post("/jobs/<int:job_id>/delete")
