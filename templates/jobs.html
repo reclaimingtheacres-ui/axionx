@@ -171,11 +171,14 @@
         if(_sel.has(sval)){ _sel.delete(sval); } else { _sel.add(sval); }
         window.location = _buildUrl();
       };
-      document.getElementById('jobs-filter-form').addEventListener('submit', function(){
-        _sel.forEach(function(s){
-          var inp = document.createElement('input');
-          inp.type = 'hidden'; inp.name = 'status'; inp.value = s;
-          document.getElementById('jobs-filter-form').appendChild(inp);
+      document.addEventListener('DOMContentLoaded', function(){
+        var _form = document.getElementById('jobs-filter-form');
+        if(_form) _form.addEventListener('submit', function(){
+          _sel.forEach(function(s){
+            var inp = document.createElement('input');
+            inp.type = 'hidden'; inp.name = 'status'; inp.value = s;
+            _form.appendChild(inp);
+          });
         });
       });
     })();
