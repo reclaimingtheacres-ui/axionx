@@ -5614,6 +5614,7 @@ function offNoteCancel(id) {
       if (!data.ok) { alert(data.error || 'Error saving booking.'); return; }
       successEl.textContent = 'Booking saved successfully.';
       successEl.style.display = '';
+      setTimeout(function(){ successEl.style.display = 'none'; }, 3000);
       if (data.bt_id) {
         addBtToData(data.bt_id, data.bt_name || btName);
         pushRecent(data.bt_id);
@@ -5621,8 +5622,7 @@ function offNoteCancel(id) {
       document.getElementById('bt_search').value = '';
       document.getElementById('bt_id_hidden').value = '';
       document.getElementById('sched_notes').value = '';
-      location.hash = 'tab-schedule';
-      location.reload();
+      refreshScheduleTable();
     })
     .catch(function() {
       btn.disabled = false;
