@@ -1441,16 +1441,13 @@
                       {{ s.status }}
                     </span>
                     {% if session.get('role') in ('admin', 'both') %}
-                    <form method="post" action="/jobs/{{ job.id }}/schedule/{{ s.id }}/status"
-                          style="margin:0;display:inline">
-                      <select name="status" class="form-select form-select-sm d-inline-block"
+                      <select class="form-select form-select-sm d-inline-block"
                               style="width:auto;font-size:.75rem;padding:1px 6px;"
-                              onchange="this.form.submit()">
+                              onchange="markSchedStatus(this, {{ s.id }})">
                         <option value="" disabled selected>Mark as…</option>
                         <option value="Completed">Completed</option>
                         <option value="Cancelled">Cancelled</option>
                       </select>
-                    </form>
                     {% endif %}
                   {% endif %}
                 </td>
@@ -5674,6 +5671,33 @@ function offNoteCancel(id) {
     if (row) row.style.display = 'none';
   };
 
+  window.markSchedStatus = function(sel, schedId) {
+    var newStatus = sel.value;
+    if (!newStatus) return;
+    sel.disabled = true;
+    var fd = new FormData();
+    fd.append('status', newStatus);
+    fetch('/jobs/{{ job.id }}/schedule/' + schedId + '/status', {
+      method: 'POST',
+      body: fd,
+      redirect: 'follow'
+    })
+    .then(function(r) {
+      sel.disabled = false;
+      if (r.ok) {
+        refreshScheduleTable();
+      } else {
+        alert('Error updating status. Please try again.');
+        sel.value = '';
+      }
+    })
+    .catch(function() {
+      sel.disabled = false;
+      alert('Network error. Please try again.');
+      sel.value = '';
+    });
+  };
+
   window.saveSchedEdit = function(sid) {
     var dateVal = document.getElementById('se-date-' + sid).value;
     var timeVal = document.getElementById('se-time-' + sid).value || '09:00';
@@ -5704,7 +5728,7 @@ function offNoteCancel(id) {
           return;
         }
         if (msg) { msg.textContent = 'Saved.'; msg.style.display = ''; msg.style.color = '#16a34a'; }
-        setTimeout(function(){ location.hash = 'tab-schedule'; location.reload(); }, 600);
+        setTimeout(function(){ closeSchedEdit(sid); refreshScheduleTable(); }, 600);
       })
       .catch(function(e){
         if (msg) { msg.textContent = 'Network error: ' + (e.message || 'Please try again.'); msg.style.display = ''; msg.style.color = '#dc2626'; }
