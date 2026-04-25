@@ -80,6 +80,8 @@
   .sch-empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:.9rem}
   .sch-loading{text-align:center;padding:30px;color:var(--muted);font-size:.85rem}
 
+  .sch-pr-badge{position:absolute;top:3px;right:4px;background:#f97316;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;line-height:1.4;pointer-events:none;z-index:5}
+
   @media(max-width:768px){
     .sch-toolbar{flex-direction:column;align-items:flex-start}
     .sch-date-label{min-width:auto;text-align:left}
@@ -339,7 +341,8 @@ function _evtHtml(e,compact){
     label+=' '+_esc(cn);
   }
   var dragAttr=canDrag?' draggable="true" ondragstart="schDragStart('+e.id+',event)" ondragend="schDragEnd(event)"':'';
-  return '<span class="'+cls+'" style="background:'+bgColor+'" data-eid="'+e.id+'"'+dragAttr+' onmouseenter="schHoverIn('+e.id+',event)" onmouseleave="schHoverOut()" ontouchstart="schTouchStart('+e.id+',event)" onclick="schEvtClick('+e.id+',event)">'+label+'</span>';
+  var prBadge=e.has_pending_review?'<span class="sch-pr-badge" title="Pending Review">PR</span>':'';
+  return '<span class="'+cls+'" style="background:'+bgColor+'" data-eid="'+e.id+'"'+dragAttr+' onmouseenter="schHoverIn('+e.id+',event)" onmouseleave="schHoverOut()" ontouchstart="schTouchStart('+e.id+',event)" onclick="schEvtClick('+e.id+',event)">'+label+prBadge+'</span>';
 }
 
 function _renderDay(){
@@ -434,7 +437,8 @@ function _renderMonth(){
       dayEvts.forEach(function(e){
         if(shown<3){
           var bgColor=SCH.isAdmin&&document.getElementById('schAgentFilter')&&document.getElementById('schAgentFilter').value==='all'?_agentColor(e.assigned_to_user_id):(e.booking_type_color||'#6b7280');
-          html+='<span class="sch-month-dot" style="background:'+bgColor+'" onmouseenter="schHoverIn('+e.id+',event)" onmouseleave="schHoverOut()" ontouchstart="schTouchStart('+e.id+',event)" onclick="schEvtClick('+e.id+',event)">'+_formatTime12(e.scheduled_for)+' '+_esc(e.display_ref)+'</span>';
+          var dotPr=e.has_pending_review?' <span style="background:#f97316;color:#fff;font-size:8px;font-weight:700;padding:0 3px;border-radius:2px;line-height:1.4">PR</span>':'';
+          html+='<span class="sch-month-dot" style="background:'+bgColor+'" onmouseenter="schHoverIn('+e.id+',event)" onmouseleave="schHoverOut()" ontouchstart="schTouchStart('+e.id+',event)" onclick="schEvtClick('+e.id+',event)">'+_formatTime12(e.scheduled_for)+' '+_esc(e.display_ref)+dotPr+'</span>';
           shown++;
         }
       });
@@ -477,7 +481,7 @@ function _renderAgenda(){
     if(SCH.isAdmin) html+='<td style="color:var(--muted)">'+_esc(e.assigned_to_name||'Unassigned')+'</td>';
     var addrSnippet=e.job_address?(e.job_address.length>35?e.job_address.substr(0,35)+'…':e.job_address):'—';
     html+='<td style="font-size:.82rem;color:var(--muted)">'+_esc(addrSnippet)+'</td>';
-    html+='<td><span class="status-badge" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span></td>';
+    html+='<td><span class="status-badge" style="background:'+_statusColor(e.status)+'">'+_esc(e.status)+'</span>'+(e.has_pending_review?' <span style="background:#f97316;color:#fff;font-size:.65rem;font-weight:700;padding:1px 5px;border-radius:4px" title="Pending Review">PR</span>':'')+'</td>';
     html+='<td><a href="/jobs/'+e.job_id+'" class="btn btn-outline-primary btn-sm" style="font-size:.72rem" onclick="event.stopPropagation();try{sessionStorage.setItem(\'ax.jobsReturnUrl\',location.href);}catch(x){}">Open</a></td>';
     html+='</tr>';
   });

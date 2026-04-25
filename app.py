@@ -5549,7 +5549,11 @@ def schedule_api_events():
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_name,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''),
                         TRIM(COALESCE(cu.first_name,'') || ' ' || COALESCE(cu.last_name,''))) AS customer_label,
-               u.full_name AS assigned_to_name
+               u.full_name AS assigned_to_name,
+               EXISTS (
+                   SELECT 1 FROM job_field_notes fn
+                   WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review'
+               ) AS has_pending_review
         FROM schedules s
         JOIN booking_types bt ON bt.id = s.booking_type_id
         JOIN jobs j ON j.id = s.job_id
@@ -5583,6 +5587,7 @@ def schedule_api_events():
             "status": r["status"] or "Booked",
             "notes": r["notes"] or "",
             "booking_type_color": _BOOKING_TYPE_COLORS.get(bt_name, "#6b7280"),
+            "has_pending_review": bool(r["has_pending_review"]),
         })
 
     agents = []
@@ -17640,7 +17645,11 @@ def m_today():
                j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
                COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
                         NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
+               EXISTS (
+                   SELECT 1 FROM job_field_notes fn
+                   WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review'
+               ) AS has_pending_review
         FROM schedules s
         JOIN booking_types bt ON bt.id = s.booking_type_id
         JOIN jobs j ON j.id = s.job_id
