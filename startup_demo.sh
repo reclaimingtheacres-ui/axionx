@@ -12,6 +12,9 @@
 #   AXIONX_DEMO_MODE=true
 #   AXIONX_DB_PATH=/home/site/data/axion_demo.db
 #   SECRET_KEY=<random-64-char-hex>
+#
+# Optional:
+#   AXIONX_DEMO_RESET_CRON=03:00   # nightly auto-reset time (AEST). Set to "disabled" to turn off.
 #   (All other SMTP/Azure vars can be omitted — comms are intercepted in demo mode)
 
 set -e
@@ -44,6 +47,14 @@ if [ ! -f "$AXIONX_DB_PATH" ]; then
 else
     echo "[demo-startup] Demo DB found at $AXIONX_DB_PATH — skipping seed."
 fi
+
+# ─── Start demo scheduler in background ──────────────────────────────────────
+# demo_scheduler.py exits immediately if AXIONX_DEMO_MODE is not set,
+# so it is safe to unconditionally launch it here.
+echo "[demo-startup] Starting demo auto-reset scheduler..."
+python3 demo_scheduler.py &
+SCHED_PID=$!
+echo "[demo-startup] Demo scheduler started (PID $SCHED_PID, cron=${AXIONX_DEMO_RESET_CRON:-03:00} AEST)"
 
 # ─── Launch gunicorn ─────────────────────────────────────────────────────────
 exec gunicorn \
