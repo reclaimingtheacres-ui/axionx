@@ -370,13 +370,14 @@
                 {% if session.get('role') in ('admin','both') and j.next_sched_id %}
                   {% set already_sent = j.next_sched_id in urgent_sent_sched_ids %}
                   {% set has_pr = j.pending_review_count %}
-                  {% set btn_disabled = already_sent or has_pr %}
+                  {% set active_status = j.status in ('New', 'Active', 'Active - Phone work only') %}
+                  {% set btn_disabled = already_sent or has_pr or not active_status %}
                   <button
                     class="ax-urgent-btn{% if already_sent %} ax-urgent-sent{% endif %}"
                     data-job-id="{{ j.id }}"
                     data-sched-id="{{ j.next_sched_id }}"
                     {% if btn_disabled %}disabled{% endif %}
-                    title="{% if already_sent %}Urgent update already sent{% elif has_pr %}Pending review must be resolved first{% else %}Send urgent update request to agent{% endif %}"
+                    title="{% if already_sent %}Urgent update already sent{% elif has_pr %}Pending review must be resolved first{% elif not active_status %}Not available for {{ j.status }} jobs{% else %}Send urgent update request to agent{% endif %}"
                     onclick="axSendUrgentUpdate(this)">
                     {% if already_sent %}Urgent update sent{% else %}OVERDUE{% endif %}
                   </button>
