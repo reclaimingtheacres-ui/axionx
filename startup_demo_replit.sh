@@ -7,12 +7,15 @@
 #   run = ["bash", "startup_demo_replit.sh"]
 #
 # Required Replit Secrets (set in the forked Replit's Secrets panel):
-#   AXIONX_DEMO_MODE   = true
-#   AXIONX_DB_PATH     = ./axion_demo.db
-#   SECRET_KEY         = <random 64-char hex>
+#   AXIONX_DEMO_MODE       = true
+#   AXIONX_DB_PATH         = ./axion_demo.db
+#   SECRET_KEY             = <random 64-char hex>
 #
-# Optional (leave unset — comms are intercepted in demo mode):
-#   SMTP_HOST, SMTP_USER, SMTP_PASS, AZURE_BLOB_CONNECTION_STRING, APNS_KEY_ID, etc.
+# Optional Secrets:
+#   AXIONX_DEMO_RESET_CRON = 03:00   # default — nightly reset at 3 AM AEST
+#                            disabled # to turn off scheduled resets
+#
+# All other vars (SMTP, Azure, APNs) can be omitted — comms are intercepted.
 
 set -e
 
@@ -43,6 +46,14 @@ if [ ! -f "$AXIONX_DB_PATH" ]; then
 else
     echo "[demo-startup] Demo DB found — skipping seed."
 fi
+
+# ─── Start demo scheduler in background ──────────────────────────────────────
+# demo_scheduler.py exits immediately if AXIONX_DEMO_MODE is not set,
+# so it is safe to unconditionally launch it here.
+echo "[demo-startup] Starting demo auto-reset scheduler..."
+python3 demo_scheduler.py &
+SCHED_PID=$!
+echo "[demo-startup] Demo scheduler started (PID $SCHED_PID, cron=${AXIONX_DEMO_RESET_CRON:-03:00} AEST)"
 
 # ─── Launch gunicorn ─────────────────────────────────────────────────────────
 # Replit deployments use port 5000 by default.

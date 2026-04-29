@@ -32,6 +32,8 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
+# startup_demo_replit.sh seeds the DB, starts demo_scheduler.py in background,
+# then launches gunicorn.  The scheduler performs nightly resets at 03:00 AEST.
 args = "bash startup_demo_replit.sh"
 waitForPort = 5000
 
@@ -43,12 +45,16 @@ externalPort = 80
 # startup_demo_replit.sh handles:
 #   - Setting AXIONX_DEMO_MODE=true
 #   - Auto-seeding axion_demo.db if absent (scripts/seed_demo.py)
+#   - Starting demo_scheduler.py in background (nightly auto-reset)
 #   - Starting gunicorn on port 5000 via wsgi:application
 #
 # Required Secrets (set in fork's Secrets panel before publishing):
-#   AXIONX_DEMO_MODE  = true
-#   AXIONX_DB_PATH    = ./axion_demo.db
-#   SECRET_KEY        = <64-char hex — generate: python3 -c "import secrets; print(secrets.token_hex(32))">
+#   AXIONX_DEMO_MODE       = true
+#   AXIONX_DB_PATH         = ./axion_demo.db
+#   SECRET_KEY             = <64-char hex — run: python3 -c "import secrets; print(secrets.token_hex(32))">
+#
+# Optional Secrets:
+#   AXIONX_DEMO_RESET_CRON = 03:00    # nightly reset time (AEST). Set to "disabled" to turn off.
 #
 # Entry point after publish:  https://<fork>.replit.app/demo
 # (root / redirects to /demo automatically when AXIONX_DEMO_MODE=true)

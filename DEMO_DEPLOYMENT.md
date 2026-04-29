@@ -119,7 +119,8 @@ The safety model has three layers:
 | File | Purpose |
 |------|---------|
 | `.replit.demo` | Drop-in `.replit` config for the demo fork — copy its content into the fork's `.replit` |
-| `startup_demo_replit.sh` | Startup script for Replit demo deployment |
+| `demo_scheduler.py` | Nightly auto-reset scheduler — starts in background from `startup_demo_replit.sh` |
+| `startup_demo_replit.sh` | Startup script for Replit demo deployment (starts gunicorn + scheduler) |
 | `startup_demo.sh` | Startup script for Azure App Service demo deployment |
 | `.env.example` | Documents all required env vars including demo-specific vars |
 | `scripts/seed_demo.py` | Seeds the demo database with realistic fake data |
