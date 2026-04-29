@@ -26843,6 +26843,14 @@ def _demo_required(f):
 @app.route("/demo")
 @_demo_required
 def demo_landing():
+    role = request.args.get("role", "").strip().lower()
+    if role in ("admin", "agent", "client"):
+        from urllib.parse import urlencode
+        params = {k: v for k, v in request.args.items() if k != "role"}
+        login_url = url_for("demo_login_as", role=role)
+        if params:
+            login_url += "?" + urlencode(params)
+        return redirect(login_url)
     return render_template("demo_landing.html")
 
 
@@ -26893,8 +26901,40 @@ def demo_login_as(role):
     session["demo_role"] = role
     flash(f"Signed in as {display_name}. This is a demo environment — no live data.", "success")
 
-    # Client/Lender demo: redirect to jobs filtered for "Demo Finance Group" (client_id=1)
-    # so the experience shows what a lender sees: only their own portfolio.
+    # ------------------------------------------------------------------
+    # Deep-link redirect resolution (priority order):
+    # 1. redirect_to  — explicit sanitised path (must start with / not //)
+    # 2. job          — jump directly to a specific job detail page
+    # 3. view         — named view alias (today, outbox, jobs)
+    # 4. role default — client -> jobs filtered by client, others -> jobs list
+    # ------------------------------------------------------------------
+
+    # 1. redirect_to (explicit path, sanitised for open-redirect safety)
+    redirect_to = request.args.get("redirect_to", "").strip()
+    if redirect_to and redirect_to.startswith("/") and not redirect_to.startswith("//"):
+        return redirect(redirect_to)
+
+    # 2. job — specific job detail page
+    job_param = request.args.get("job", "").strip()
+    if job_param:
+        try:
+            job_id = int(job_param)
+            return redirect(url_for("job_detail", job_id=job_id))
+        except (ValueError, TypeError):
+            pass
+
+    # 3. view — named view alias
+    view = request.args.get("view", "").strip().lower()
+    _view_map = {
+        "today":     lambda: url_for("m_today") if role == "agent" else url_for("my_today"),
+        "outbox":    lambda: url_for("demo_outbox"),
+        "jobs":      lambda: url_for("jobs_list"),
+        "dashboard": lambda: url_for("jobs_list"),
+    }
+    if view in _view_map:
+        return redirect(_view_map[view]())
+
+    # 4. Role defaults
     if role == "client":
         return redirect(url_for("jobs_list") + "?client_id=1")
     return redirect(url_for("jobs_list"))

@@ -162,6 +162,57 @@
     ⚠️ Demo Data Only — No live data is displayed or transmitted in this environment
   </div>
 
+  <!-- Shareable Deep Links -->
+  <div class="card border-0 shadow-sm mb-5">
+    <div class="card-body p-4">
+      <h5 class="fw-bold mb-1">🔗 Shareable Deep Links</h5>
+      <p class="text-muted mb-3" style="font-size:.9rem">
+        Send prospects directly to a specific role and view — no navigation required.
+        Copy any link below or build your own using the URL patterns shown.
+      </p>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="p-3 rounded" style="background:#f1f5f9;border:1px solid #e2e8f0;">
+            <div class="fw-semibold mb-1" style="font-size:.85rem;color:#374151">Agent — Today's Schedule</div>
+            <code id="link-agent-today" class="d-block text-break mb-2" style="font-size:.8rem;color:#1d4ed8;">{{ request.host_url.rstrip('/') }}/demo?role=agent&amp;view=today</code>
+            <button class="btn btn-sm btn-outline-secondary" onclick="copyLink('link-agent-today', this)">Copy</button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 rounded" style="background:#f1f5f9;border:1px solid #e2e8f0;">
+            <div class="fw-semibold mb-1" style="font-size:.85rem;color:#374151">Admin — Jobs List</div>
+            <code id="link-admin-jobs" class="d-block text-break mb-2" style="font-size:.8rem;color:#1d4ed8;">{{ request.host_url.rstrip('/') }}/demo?role=admin&amp;view=jobs</code>
+            <button class="btn btn-sm btn-outline-secondary" onclick="copyLink('link-admin-jobs', this)">Copy</button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 rounded" style="background:#f1f5f9;border:1px solid #e2e8f0;">
+            <div class="fw-semibold mb-1" style="font-size:.85rem;color:#374151">Admin — Specific Job</div>
+            <code id="link-admin-job" class="d-block text-break mb-2" style="font-size:.8rem;color:#1d4ed8;">{{ request.host_url.rstrip('/') }}/demo?role=admin&amp;job=1</code>
+            <button class="btn btn-sm btn-outline-secondary" onclick="copyLink('link-admin-job', this)">Copy</button>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 rounded" style="background:#f1f5f9;border:1px solid #e2e8f0;">
+            <div class="fw-semibold mb-1" style="font-size:.85rem;color:#374151">Admin — Demo Outbox</div>
+            <code id="link-admin-outbox" class="d-block text-break mb-2" style="font-size:.8rem;color:#1d4ed8;">{{ request.host_url.rstrip('/') }}/demo?role=admin&amp;view=outbox</code>
+            <button class="btn btn-sm btn-outline-secondary" onclick="copyLink('link-admin-outbox', this)">Copy</button>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="p-3 rounded" style="background:#fefce8;border:1px solid #fef08a;">
+            <div class="fw-semibold mb-1" style="font-size:.85rem;color:#713f12">URL pattern</div>
+            <code style="font-size:.8rem;color:#713f12">
+              /demo?role=<em>admin|agent|client</em>&amp;view=<em>today|outbox|jobs|dashboard</em><br>
+              /demo?role=<em>admin|agent</em>&amp;job=<em>&lt;job-id&gt;</em><br>
+              /demo/login/<em>role</em>?redirect_to=<em>/any/internal/path</em>
+            </code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {% if session.get('demo_role') == 'admin' %}
   <div class="card border-0 shadow-sm mb-5" style="border-left:4px solid #dc2626 !important;">
     <div class="card-body p-4">
@@ -247,6 +298,22 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function copyLink(elId, btn) {
+  var text = document.getElementById(elId).textContent.trim();
+  navigator.clipboard.writeText(text).then(function () {
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.classList.replace('btn-outline-secondary', 'btn-success');
+    setTimeout(function () {
+      btn.textContent = orig;
+      btn.classList.replace('btn-success', 'btn-outline-secondary');
+    }, 2000);
+  }).catch(function () {
+    prompt('Copy this link:', text);
+  });
+}
+</script>
 <script>
 (function () {
   var pollTimer = null;
