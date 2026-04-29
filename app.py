@@ -6259,6 +6259,74 @@ def job_urgent_update(job_id: int, sched_id: int):
         conn.close()
 
 
+@app.post("/jobs/<int:job_id>/internal-message")
+@login_required
+@admin_required
+def job_internal_message(job_id: int):
+    PROMPTS = {
+        "Update Required": {
+            "subject": "Update required",
+            "body":    "Please provide an update for this file as soon as possible.",
+        },
+        "First Update Required": {
+            "subject": "First update required",
+            "body":    "Please provide the first update for this file as soon as possible.",
+        },
+        "Urgent Update Required": {
+            "subject": "Urgent update required",
+            "body":    "An urgent update is required for this file. Please attend to this job and provide a file update as soon as possible.",
+        },
+    }
+    data    = request.get_json(silent=True) or {}
+    prompt  = (data.get("prompt") or "").strip()
+    subject = (data.get("subject") or "").strip()
+    body    = (data.get("body") or "").strip()
+
+    if not body:
+        return jsonify({"ok": False, "error": "Message body is required."}), 400
+    if prompt not in PROMPTS:
+        return jsonify({"ok": False, "error": "Invalid prompt selection."}), 400
+
+    conn = db()
+    cur  = conn.cursor()
+    try:
+        job = cur.execute(
+            "SELECT id, display_ref, assigned_user_id FROM jobs WHERE id = ?",
+            (job_id,)
+        ).fetchone()
+        if not job:
+            return jsonify({"ok": False, "error": "Job not found."}), 404
+        if not job["assigned_user_id"]:
+            return jsonify({"ok": False, "error": "No assigned agent found for this job."}), 400
+
+        agent_id  = job["assigned_user_id"]
+        caller_id = session["user_id"]
+        ts        = now_ts()
+
+        conv_id, _ = _get_or_create_direct_conv(conn, caller_id, agent_id, job_id=job_id)
+        conn.execute(
+            "UPDATE conversations SET subject = ? WHERE id = ?",
+            (subject or PROMPTS[prompt]["subject"], conv_id)
+        )
+        _post_message(conn, conv_id, caller_id, body)
+
+        note_text = f"Internal message sent to assigned agent: {prompt}."
+        system_uid = _get_system_user_id(conn)
+        cur.execute(
+            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+            (job_id, system_uid, note_text, ts)
+        )
+
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception:
+        import logging as _log
+        _log.exception("[internal_message] job_id=%s", job_id)
+        return jsonify({"ok": False, "error": "An unexpected error occurred. Please try again."}), 500
+    finally:
+        conn.close()
+
+
 @app.post("/jobs/<int:job_id>/delete")
 @login_required
 @admin_required

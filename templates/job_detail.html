@@ -143,6 +143,10 @@
         <li><a class="dropdown-item" href="#" onclick="openSendMsg('email');return false">Send Email</a></li>
         <li><a class="dropdown-item" href="#" onclick="openSendMsg('sms');return false">Send SMS</a></li>
         <li><a class="dropdown-item" href="#" onclick="openSendMsg('both');return false">Send Both</a></li>
+        {% if session.get('role') in ('admin','both') %}
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="#" onclick="openInternalMsg();return false">Internal Message</a></li>
+        {% endif %}
       </ul>
     </div>
 
@@ -4947,6 +4951,15 @@ function adocOpenEditJob() {
             <label class="form-label small fw-semibold">Type</label>
             <div id="msg_type_badge" class="badge" style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.85rem;padding:5px 10px">Email</div>
           </div>
+          <div class="mb-3" id="msg_prompt_row" style="display:none">
+            <label class="form-label small fw-semibold">Prompt</label>
+            <select id="msg_prompt" class="form-select form-select-sm">
+              <option value="">— select prompt —</option>
+              <option value="Update Required">Update Required</option>
+              <option value="First Update Required">First Update Required</option>
+              <option value="Urgent Update Required">Urgent Update Required</option>
+            </select>
+          </div>
           <div class="mb-3">
             <label class="form-label small fw-semibold">To</label>
             <input type="text" id="msg_to" class="form-control" placeholder="Recipient name / number">
@@ -4957,7 +4970,7 @@ function adocOpenEditJob() {
           </div>
           <div class="mb-2">
             <label class="form-label small fw-semibold">Message</label>
-            <textarea id="msg_body" class="form-control" rows="5" placeholder="Type your message…"></textarea>
+            <textarea id="msg_body" class="form-control" rows="5" placeholder="Type your message\u2026"></textarea>
           </div>
         </div>
       </div>
@@ -4972,39 +4985,147 @@ function adocOpenEditJob() {
 <script>
 /* ── Send Message ─────────────────────────────────────────────────────── */
 var _msgType = 'email';
+var _msgDirtySubject = false;
+var _msgDirtyBody    = false;
+
+var _internalPrompts = {
+  'Update Required': {
+    subject: 'Update required',
+    body:    'Please provide an update for this file as soon as possible.'
+  },
+  'First Update Required': {
+    subject: 'First update required',
+    body:    'Please provide the first update for this file as soon as possible.'
+  },
+  'Urgent Update Required': {
+    subject: 'Urgent update required',
+    body:    'An urgent update is required for this file. Please attend to this job and provide a file update as soon as possible.'
+  }
+};
+
+function _msgResetModal() {
+  document.getElementById('msg-sent-alert').style.display  = 'none';
+  document.getElementById('msg-form-body').style.display   = '';
+  document.getElementById('msg_send_btn').style.display    = '';
+  document.getElementById('msg_prompt_row').style.display  = 'none';
+  document.getElementById('msg_prompt').value              = '';
+  document.getElementById('msg_to').value                  = '';
+  document.getElementById('msg_to').readOnly               = false;
+  document.getElementById('msg_subject').value             = '{{ job.display_ref }}';
+  document.getElementById('msg_body').value                = '';
+  _msgDirtySubject = false;
+  _msgDirtyBody    = false;
+  document.getElementById('msg_subject').oninput = null;
+  document.getElementById('msg_body').oninput    = null;
+  document.getElementById('msg_prompt').onchange = null;
+}
+
 function openSendMsg(type) {
   _msgType = type;
   var labels = { email: 'Email', sms: 'SMS', both: 'Email & SMS' };
-  document.getElementById('sendMsgTitle').textContent = 'Send ' + (labels[type] || 'Message');
-  document.getElementById('msg_type_badge').textContent = labels[type] || type;
-  document.getElementById('msg-sent-alert').style.display = 'none';
-  document.getElementById('msg-form-body').style.display = '';
-  document.getElementById('msg_send_btn').style.display = '';
-  document.getElementById('msg_to').value = '';
-  document.getElementById('msg_body').value = '';
+  document.getElementById('sendMsgTitle').textContent     = 'Send ' + (labels[type] || 'Message');
+  document.getElementById('msg_type_badge').textContent   = labels[type] || type;
+  document.getElementById('msg_type_badge').style.display = '';
+  _msgResetModal();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).show();
 }
+
+function openInternalMsg() {
+  {% if not job.assigned_name %}
+  alert('No assigned agent found for this job.');
+  return;
+  {% endif %}
+  _msgType = 'internal';
+  document.getElementById('sendMsgTitle').textContent     = 'Internal Message';
+  document.getElementById('msg_type_badge').style.display = 'none';
+  _msgResetModal();
+  document.getElementById('msg_prompt_row').style.display = '';
+  {% if job.assigned_name %}
+  document.getElementById('msg_to').value    = '{{ job.assigned_name | e }}';
+  document.getElementById('msg_to').readOnly = true;
+  {% else %}
+  document.getElementById('msg_to').value    = '';
+  document.getElementById('msg_to').readOnly = false;
+  {% endif %}
+  document.getElementById('msg_subject').value = '';
+  document.getElementById('msg_body').value    = '';
+
+  document.getElementById('msg_prompt').onchange = function() {
+    var p = this.value;
+    if (!p) return;
+    var tpl = _internalPrompts[p];
+    if (!tpl) return;
+    var subjectEl = document.getElementById('msg_subject');
+    var bodyEl    = document.getElementById('msg_body');
+    var doFill = function() {
+      subjectEl.value  = tpl.subject;
+      bodyEl.value     = tpl.body;
+      _msgDirtySubject = false;
+      _msgDirtyBody    = false;
+    };
+    if ((_msgDirtySubject || _msgDirtyBody) &&
+        !confirm('You have edited the subject or message. Replace with the prompt template?')) {
+      return;
+    }
+    doFill();
+  };
+
+  document.getElementById('msg_subject').oninput = function() { _msgDirtySubject = true; };
+  document.getElementById('msg_body').oninput    = function() { _msgDirtyBody    = true; };
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).show();
+}
+
 function doSendMsg() {
   var to      = document.getElementById('msg_to').value.trim();
   var subject = document.getElementById('msg_subject').value.trim();
   var body    = document.getElementById('msg_body').value.trim();
   if (!body) { alert('Please enter a message.'); return; }
+
+  if (_msgType === 'internal') {
+    var prompt = document.getElementById('msg_prompt').value;
+    if (!prompt) { alert('Please select a prompt.'); return; }
+    {% if not job.assigned_name %}
+    if (!to) { alert('No assigned agent found for this job.'); return; }
+    {% endif %}
+    var btn = document.getElementById('msg_send_btn');
+    btn.disabled = true;
+    fetch('/jobs/{{ job.id }}/internal-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ prompt: prompt, subject: subject, body: body })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      if (data.ok) {
+        document.getElementById('msg-sent-alert').textContent    = 'Internal message sent successfully.';
+        document.getElementById('msg-sent-alert').style.display  = '';
+        document.getElementById('msg-form-body').style.display   = 'none';
+        document.getElementById('msg_send_btn').style.display    = 'none';
+        setTimeout(function(){
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
+        }, 1800);
+      } else {
+        alert(data.error || 'Failed to send internal message.');
+      }
+    })
+    .catch(function() { btn.disabled = false; alert('Network error. Please try again.'); });
+    return;
+  }
+
   var btn = document.getElementById('msg_send_btn');
   btn.disabled = true;
-  var fd = new FormData();
-  fd.append('msg_type', _msgType);
-  fd.append('recipient', to);
-  fd.append('subject', subject);
-  fd.append('body', body);
   fetch('/jobs/{{ job.id }}/notes/new', {
     method: 'POST',
     body: (function(){ var f = new FormData(); f.append('note_text', '[' + _msgType.toUpperCase() + ' TO: ' + to + ']\n' + body); return f; })(),
     headers: { 'X-Requested-With': 'XMLHttpRequest' }
   }).then(function() {
     btn.disabled = false;
+    document.getElementById('msg-sent-alert').textContent   = 'Message logged successfully.';
     document.getElementById('msg-sent-alert').style.display = '';
-    document.getElementById('msg-form-body').style.display = 'none';
-    document.getElementById('msg_send_btn').style.display = 'none';
+    document.getElementById('msg-form-body').style.display  = 'none';
+    document.getElementById('msg_send_btn').style.display   = 'none';
     setTimeout(function(){
       bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
     }, 1800);
