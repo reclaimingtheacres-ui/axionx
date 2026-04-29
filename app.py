@@ -137,6 +137,17 @@ else:
     DB_PATH = _CONFIGURED_DB_PATH
     _PROD_DB_PATH = _CONFIGURED_DB_PATH
 
+# ── Startup banner ────────────────────────────────────────────────────────────
+import logging as _mode_log
+if DEMO_MODE:
+    _mode_log.warning("=" * 64)
+    _mode_log.warning("AxionX DEMO MODE ACTIVE — NO LIVE DATA")
+    _mode_log.warning("DB_PATH : %s", DB_PATH)
+    _mode_log.warning("DEMO_GUARD : active — writes blocked to production DB")
+    _mode_log.warning("=" * 64)
+else:
+    _mode_log.warning("[AxionX] Production mode — DB_PATH: %s", DB_PATH)
+
 
 def _demo_write_guard():
     """Raise RuntimeError if a write is attempted against the production DB in demo mode.
@@ -26904,6 +26915,31 @@ def demo_outbox():
     finally:
         conn.close()
     return render_template("demo_outbox.html", messages=messages)
+
+
+@app.route("/demo/health")
+def demo_health():
+    """Health check endpoint — always available, returns demo guard status.
+    Returns 200 in demo mode with guard active; 503 in production (demo guard off).
+    Consumed by Azure App Service health probes and external monitors.
+    """
+    db_path = DB_PATH
+    demo_guard_active = DEMO_MODE and (
+        not DEMO_DB_PATH or
+        os.path.abspath(db_path) != os.path.abspath(_FALLBACK_PROD_DB)
+    )
+    payload = {
+        "demo_mode": DEMO_MODE,
+        "db_path": db_path,
+        "demo_guard_active": demo_guard_active,
+    }
+    if DEMO_MODE:
+        payload["status"] = "ok"
+        return jsonify(payload), 200
+    # In production mode return 200 but flag that demo guard is inactive.
+    payload["status"] = "production"
+    payload["message"] = "This instance is running in production mode — demo guard is not active."
+    return jsonify(payload), 200
 
 
 @app.route("/demo/reset", methods=["GET", "POST"])

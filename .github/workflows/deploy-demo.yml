@@ -1,0 +1,99 @@
+# AxionX Demo Environment — Azure App Service deployment
+#
+# Target App Service : axionx-demo
+# Custom domain      : demo.axionx.com.au
+# GitHub secret      : AZUREAPPSERVICE_PUBLISHPROFILE_DEMO
+#
+# How to get the publish profile:
+#   Azure portal → axionx-demo App Service → Overview → Download publish profile
+#   GitHub repo  → Settings → Secrets → Actions → New repository secret
+#   Name: AZUREAPPSERVICE_PUBLISHPROFILE_DEMO   Value: <contents of .PublishSettings file>
+#
+# App Service environment variables to configure (portal or az CLI):
+#   AXIONX_DEMO_MODE=true
+#   AXIONX_DB_PATH=/home/site/data/axion_demo.db
+#   AXIONX_DEMO_DB_PATH=/home/site/data/axion_demo.db
+#   SECRET_KEY=<random 64-char hex>
+#   SCM_DO_BUILD_DURING_DEPLOYMENT=true
+#
+# Startup command (portal → Configuration → General settings):
+#   bash startup_demo.sh
+
+name: Deploy to Azure App Service — Demo (axionx-demo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual demo deployment"
+        required: false
+        default: "Manual demo deploy"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (pre-flight check)
+        run: |
+          python -m venv antenv
+          source antenv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate demo seed script is present
+        run: |
+          test -f scripts/seed_demo.py  || { echo "scripts/seed_demo.py missing"; exit 1; }
+          test -f startup_demo.sh       || { echo "startup_demo.sh missing";       exit 1; }
+          echo "Demo artifacts present — OK"
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: axionx-demo-app
+          path: |
+            .
+            !antenv/
+            !.git/
+            !.github/
+            !*.pyc
+            !__pycache__/
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: axionx-demo-app
+
+      - name: Deploy to Azure Web App — axionx-demo
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: "axionx-demo"
+          slot-name: "Production"
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_DEMO }}
+
+      - name: Health check — /demo/health
+        run: |
+          echo "Waiting 30 s for app to start..."
+          sleep 30
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://axionx-demo.azurewebsites.net/demo/health" || echo "000")
+          echo "HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check failed (HTTP $STATUS). Check App Service logs."
+            exit 1
+          fi
+          echo "Health check passed."
