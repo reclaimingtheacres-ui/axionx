@@ -1,0 +1,61 @@
+# AxionX Demo Replit — Deployment Configuration Template
+#
+# HOW TO USE:
+#   1. Fork this Replit (three-dot menu → Fork)
+#   2. In the fork, replace the entire contents of .replit with this file
+#      (copy everything below the dashed line)
+#   3. Set the required Secrets in the fork (see DEMO_DEPLOYMENT.md)
+#   4. Click Publish → Autoscale
+#
+# This file is intentionally standalone. Copy it as-is into a fresh fork.
+# The production .replit is NOT modified by this file.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# BEGIN .replit CONTENT FOR DEMO FORK
+# ──────────────────────────────────────────────────────────────────────────────
+
+modules = ["python-3.11", "nodejs-20"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["cargo", "freetype", "glibcLocales", "hdf5", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "rustc", "tcl", "tesseract", "tk", "zip", "zlib"]
+
+[workflows]
+runButton = "Demo"
+
+[[workflows.workflow]]
+name = "Demo"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash startup_demo_replit.sh"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+# ── Demo deployment ───────────────────────────────────────────────────────────
+# startup_demo_replit.sh handles:
+#   - Setting AXIONX_DEMO_MODE=true
+#   - Auto-seeding axion_demo.db if absent (scripts/seed_demo.py)
+#   - Starting gunicorn on port 5000 via wsgi:application
+#
+# Required Secrets (set in fork's Secrets panel before publishing):
+#   AXIONX_DEMO_MODE  = true
+#   AXIONX_DB_PATH    = ./axion_demo.db
+#   SECRET_KEY        = <64-char hex — generate: python3 -c "import secrets; print(secrets.token_hex(32))">
+#
+# Entry point after publish:  https://<fork>.replit.app/demo
+# (root / redirects to /demo automatically when AXIONX_DEMO_MODE=true)
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "startup_demo_replit.sh"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# END .replit CONTENT FOR DEMO FORK
+# ──────────────────────────────────────────────────────────────────────────────

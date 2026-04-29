@@ -43,18 +43,14 @@ In the forked Replit, open **Secrets** (padlock icon in the sidebar) and add:
 > **Do not set** SMTP credentials, Azure Blob, or APNs keys — the app intercepts all
 > outbound comms in demo mode so these are not needed and not used.
 
-### Step 3 — Configure the deployment run command
+### Step 3 — Apply the demo Replit configuration
 
-In the forked Replit, open `.replit` and update the `[deployment]` section to:
+The repo includes a ready-to-use configuration template at `.replit.demo`. In the
+forked Replit, **replace the entire contents of `.replit`** with the content from
+`.replit.demo` (everything between the `BEGIN` and `END` markers).
 
-```toml
-[deployment]
-deploymentTarget = "autoscale"
-run = ["bash", "startup_demo_replit.sh"]
-```
-
-The startup script will:
-- Set `AXIONX_DEMO_MODE=true` (redundant but explicit)
+This sets the deployment run command to `bash startup_demo_replit.sh`, which will:
+- Export `AXIONX_DEMO_MODE=true`
 - Seed `axion_demo.db` automatically if it does not exist
 - Start gunicorn on port 5000
 
@@ -122,8 +118,10 @@ The safety model has three layers:
 
 | File | Purpose |
 |------|---------|
+| `.replit.demo` | Drop-in `.replit` config for the demo fork — copy its content into the fork's `.replit` |
 | `startup_demo_replit.sh` | Startup script for Replit demo deployment |
 | `startup_demo.sh` | Startup script for Azure App Service demo deployment |
+| `.env.example` | Documents all required env vars including demo-specific vars |
 | `scripts/seed_demo.py` | Seeds the demo database with realistic fake data |
 | `scripts/demo_schema.sql` | Schema used by the seed script |
 | `app.py` lines 116–155 | Demo mode init, safety guard, startup banner |
