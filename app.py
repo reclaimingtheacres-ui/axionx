@@ -3511,6 +3511,9 @@ def index():
         if _is_mobile_request():
             return redirect(url_for("m_today"))
         return redirect(url_for("jobs_list"))
+    # In demo mode, unauthenticated visitors land on the demo entry page.
+    if DEMO_MODE:
+        return redirect(url_for("demo_landing"))
     return _login_redirect()
 
 

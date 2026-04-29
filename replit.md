@@ -61,7 +61,7 @@ Axion Prototype is a Flask-based field operations management application designe
 - **SMTP Configuration Hardening:** Centralized runtime SMTP resolver with robust error handling and logging.
 - **iOS LPR Camera Overlay Suppression:** Native iOS `WebViewContainer` suppresses floating buttons, status pills, banners, and sync badges during active LPR camera contexts.
 - **Demo Environment (AXIONX_DEMO_MODE):** Fully isolated demo mode with separate database, intercepted external communications, visible banner, watermarked PDFs, and guided workflow.
-- **Demo Deployment Infrastructure:** `startup_demo.sh` (auto-seeds DB on first boot, sets demo env vars, logs banner); `/demo/health` JSON endpoint (returns `demo_mode`, `db_path`, `demo_guard_active`); `.github/workflows/deploy-demo.yml` GitHub Actions workflow targeting `axionx-demo` App Service via `AZUREAPPSERVICE_PUBLISHPROFILE_DEMO` secret (`workflow_dispatch` only).
+- **Demo Deployment Infrastructure:** `startup_demo.sh` (Azure App Service); `startup_demo_replit.sh` (Replit fork deployment — auto-seeds DB, starts on port 5000); `/demo/health` JSON endpoint; `.github/workflows/deploy-demo.yml` GitHub Actions workflow for Azure; `DEMO_DEPLOYMENT.md` fork/configure guide; root `/` redirects to `/demo` when `DEMO_MODE=true`.
 
 ## External Dependencies
 - **Database**: SQLite (`axion.db`, `axion_demo.db`)
