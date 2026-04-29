@@ -436,7 +436,12 @@ def _schema_is_current():
             jon = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job_office_notes'"
             ).fetchone()
-            return bool(jon)
+            if not jon:
+                return False
+            uul = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='urgent_update_log'"
+            ).fetchone()
+            return bool(uul)
         except Exception:
             if attempt < 2:
                 _t.sleep(0.3 + attempt * 0.3)
@@ -774,6 +779,23 @@ def init_db():
     )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jon_job ON job_office_notes(job_id, is_deleted)")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS urgent_update_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        sched_id INTEGER NOT NULL UNIQUE,
+        triggered_by_user_id INTEGER NOT NULL,
+        agent_user_id INTEGER NOT NULL,
+        triggered_at TEXT NOT NULL,
+        message_id INTEGER,
+        note_id INTEGER,
+        new_sched_id INTEGER,
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_uul_job ON urgent_update_log(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_uul_sched ON urgent_update_log(sched_id)")
 
     cur.execute("CREATE INDEX IF NOT EXISTS idx_ju_job ON job_updates(job_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jfn_job ON job_field_notes(job_id)")
@@ -3847,6 +3869,21 @@ def _jobs_list_inner():
 
     rt_hits = _search_recovery_targets(conn, q) if q else []
 
+    urgent_sent_sched_ids: set = set()
+    if role in ("admin", "both"):
+        page_sched_ids = [r["next_sched_id"] for r in rows if r.get("next_sched_id")]
+        if page_sched_ids:
+            try:
+                cur.execute("CREATE TABLE IF NOT EXISTS urgent_update_log (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER NOT NULL, sched_id INTEGER NOT NULL UNIQUE, triggered_by_user_id INTEGER NOT NULL, agent_user_id INTEGER NOT NULL, triggered_at TEXT NOT NULL, message_id INTEGER, note_id INTEGER, new_sched_id INTEGER)")
+                ph2 = ",".join("?" * len(page_sched_ids))
+                sent_rows = cur.execute(
+                    f"SELECT sched_id FROM urgent_update_log WHERE sched_id IN ({ph2})",
+                    page_sched_ids
+                ).fetchall()
+                urgent_sent_sched_ids = {r["sched_id"] for r in sent_rows}
+            except Exception:
+                pass
+
     conn.close()
 
     from urllib.parse import quote as _uq
@@ -3888,6 +3925,7 @@ def _jobs_list_inner():
         filter_unassigned=filter_unassigned,
         agent_counts=agent_counts,
         rt_hits=rt_hits,
+        urgent_sent_sched_ids=urgent_sent_sched_ids,
     )
 
 
@@ -6117,6 +6155,108 @@ def update_schedule_status(job_id: int, sched_id: int):
     conn.close()
     flash("Booking updated.", "success")
     return redirect(url_for("job_detail", job_id=job_id) + "#tab-schedule")
+
+
+@app.post("/jobs/<int:job_id>/urgent-update/<int:sched_id>")
+@login_required
+@admin_required
+def job_urgent_update(job_id: int, sched_id: int):
+    conn = db()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS urgent_update_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL,
+                sched_id INTEGER NOT NULL UNIQUE,
+                triggered_by_user_id INTEGER NOT NULL,
+                agent_user_id INTEGER NOT NULL,
+                triggered_at TEXT NOT NULL,
+                message_id INTEGER,
+                note_id INTEGER,
+                new_sched_id INTEGER
+            )
+        """)
+
+        existing = cur.execute(
+            "SELECT id FROM urgent_update_log WHERE sched_id = ?", (sched_id,)
+        ).fetchone()
+        if existing:
+            return jsonify({"ok": False, "error": "Urgent update already sent for this schedule item."})
+
+        sched = cur.execute(
+            "SELECT * FROM schedules WHERE id = ? AND job_id = ? AND hidden = 0",
+            (sched_id, job_id)
+        ).fetchone()
+        if not sched:
+            return jsonify({"ok": False, "error": "Schedule item not found."})
+
+        now = now_ts()
+        if sched["scheduled_for"] >= now:
+            return jsonify({"ok": False, "error": "Schedule item is not overdue."})
+
+        job = cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        if not job or not job["assigned_user_id"]:
+            return jsonify({"ok": False, "error": "Job has no assigned agent."})
+
+        agent_id  = job["assigned_user_id"]
+        caller_id = session.get("user_id")
+        ts        = now_ts()
+
+        system_uid = _get_system_user_id(conn)
+
+        conv_id, _ = _get_or_create_direct_conv(conn, system_uid, agent_id, job_id=job_id)
+        conn.execute(
+            "UPDATE conversations SET subject = ? WHERE id = ?",
+            ("Urgent update required", conv_id)
+        )
+        msg_body = (
+            "An urgent update is required for this file. "
+            "Please attend to this job and provide a file update as soon as possible."
+        )
+        _post_message(conn, conv_id, system_uid, msg_body)
+        msg_row    = conn.execute(
+            "SELECT MAX(id) AS id FROM messages WHERE conversation_id = ?", (conv_id,)
+        ).fetchone()
+        message_id = msg_row["id"] if msg_row else None
+
+        cur.execute(
+            "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
+            (job_id, system_uid, "Urgent update required.", ts)
+        )
+        note_id = cur.lastrowid
+
+        from datetime import datetime as _dt, timedelta as _td
+        tomorrow_str = (_dt.utcnow() + _td(days=1)).strftime("%Y-%m-%d") + " 09:00:00"
+        bt_id = _resolve_booking_type(cur, None, "Urgent update required")
+        bt_name_row = cur.execute("SELECT name FROM booking_types WHERE id = ?", (bt_id,)).fetchone()
+        bt_status   = bt_name_row["name"] if bt_name_row else "Urgent update required"
+        cur.execute("""
+            INSERT INTO schedules
+                (job_id, booking_type_id, scheduled_for, status, notes,
+                 assigned_to_user_id, created_by_user_id, created_at)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (job_id, bt_id, tomorrow_str, bt_status, None, agent_id, caller_id, ts))
+        new_sched_id = cur.lastrowid
+        _write_schedule_history(cur, new_sched_id, job_id, "created",
+                                new_scheduled_for=tomorrow_str, new_status=bt_status,
+                                changed_by_user_id=caller_id)
+
+        cur.execute("""
+            INSERT INTO urgent_update_log
+                (job_id, sched_id, triggered_by_user_id, agent_user_id,
+                 triggered_at, message_id, note_id, new_sched_id)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (job_id, sched_id, caller_id, agent_id, ts, message_id, note_id, new_sched_id))
+
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as _e:
+        import logging as _log
+        _log.exception("[urgent_update] job_id=%s sched_id=%s", job_id, sched_id)
+        return jsonify({"ok": False, "error": "An unexpected error occurred. Please try again."}), 500
+    finally:
+        conn.close()
 
 
 @app.post("/jobs/<int:job_id>/delete")

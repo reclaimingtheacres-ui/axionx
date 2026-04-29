@@ -366,7 +366,22 @@
           {% if j.next_scheduled %}
             {% set is_overdue = j.next_scheduled < now_iso %}
             <div class="ax-sched-tag" style="color:{% if is_overdue %}#ef4444{% else %}var(--muted){% endif %};font-weight:{% if is_overdue %}600{% else %}400{% endif %};justify-content:flex-end">
-              {% if is_overdue %}<span style="font-size:.6rem;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;border-radius:3px;padding:0 3px;margin-right:4px">OVERDUE</span>{% endif %}
+              {% if is_overdue %}
+                {% if session.get('role') in ('admin','both') and j.next_sched_id %}
+                  {% set already_sent = j.next_sched_id in urgent_sent_sched_ids %}
+                  <button
+                    class="ax-urgent-btn{% if already_sent %} ax-urgent-sent{% endif %}"
+                    data-job-id="{{ j.id }}"
+                    data-sched-id="{{ j.next_sched_id }}"
+                    {% if already_sent %}disabled{% endif %}
+                    title="{% if already_sent %}Urgent update already sent{% else %}Send urgent update request to agent{% endif %}"
+                    onclick="axSendUrgentUpdate(this)">
+                    {% if already_sent %}Urgent update sent{% else %}OVERDUE{% endif %}
+                  </button>
+                {% else %}
+                  <span style="font-size:.6rem;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;border-radius:3px;padding:0 3px;margin-right:4px">OVERDUE</span>
+                {% endif %}
+              {% endif %}
               {{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[2:4] }} {{ j.next_scheduled[11:16] }}
             </div>
           {% else %}
@@ -495,3 +510,85 @@
 </div>
 {% endif %}
 {% endblock %}
+<style>
+.ax-urgent-btn {
+  font-size:.6rem;background:#fef2f2;color:#ef4444;
+  border:1px solid #fecaca;border-radius:3px;
+  padding:1px 4px;margin-right:4px;
+  cursor:pointer;font-weight:700;line-height:1.5;
+  transition:background .15s,color .15s;
+  white-space:nowrap;
+}
+.ax-urgent-btn:not(:disabled):hover {
+  background:#ef4444;color:#fff;border-color:#ef4444;
+}
+.ax-urgent-btn:disabled,.ax-urgent-btn.ax-urgent-sent {
+  background:#f3f4f6;color:#9ca3af;border-color:#d1d5db;
+  cursor:default;font-weight:600;
+}
+#ax-toast {
+  position:fixed;bottom:24px;right:24px;z-index:9999;
+  display:flex;flex-direction:column;gap:8px;pointer-events:none;
+}
+.ax-toast-item {
+  padding:10px 18px;border-radius:8px;font-size:.85rem;
+  font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,.18);
+  pointer-events:none;opacity:0;transition:opacity .25s;
+}
+.ax-toast-item.show { opacity:1; }
+.ax-toast-ok  { background:#166534;color:#d1fae5; }
+.ax-toast-err { background:#991b1b;color:#fee2e2; }
+</style>
+<div id="ax-toast"></div>
+<script>
+(function(){
+  function showToast(msg, type) {
+    var container = document.getElementById('ax-toast');
+    var el = document.createElement('div');
+    el.className = 'ax-toast-item ax-toast-' + (type === 'ok' ? 'ok' : 'err');
+    el.textContent = msg;
+    container.appendChild(el);
+    requestAnimationFrame(function(){ el.classList.add('show'); });
+    setTimeout(function(){
+      el.classList.remove('show');
+      setTimeout(function(){ el.remove(); }, 300);
+    }, 4000);
+  }
+
+  window.axSendUrgentUpdate = function(btn) {
+    var jobId   = btn.dataset.jobId;
+    var schedId = btn.dataset.schedId;
+    if (btn.disabled || btn.dataset.processing) return;
+    btn.dataset.processing = '1';
+    btn.disabled = true;
+    var origText = btn.textContent.trim();
+    btn.textContent = 'Sending…';
+
+    var fd = new FormData();
+    fetch('/jobs/' + jobId + '/urgent-update/' + schedId, {
+      method: 'POST', body: fd,
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      delete btn.dataset.processing;
+      if (data.ok) {
+        btn.textContent = 'Urgent update sent';
+        btn.classList.add('ax-urgent-sent');
+        btn.disabled = true;
+        showToast('Urgent update sent to agent.', 'ok');
+      } else {
+        btn.disabled = false;
+        btn.textContent = origText;
+        showToast(data.error || 'Error sending urgent update.', 'err');
+      }
+    })
+    .catch(function(){
+      delete btn.dataset.processing;
+      btn.disabled = false;
+      btn.textContent = origText;
+      showToast('Network error — please try again.', 'err');
+    });
+  };
+})();
+</script>
