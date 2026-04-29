@@ -15,6 +15,8 @@ import mimetypes
 import traceback
 import threading
 import secrets
+import subprocess
+import sys
 import pytesseract
 from PIL import Image, ImageFilter, ImageEnhance, ImageOps
 try:
@@ -26994,10 +26996,56 @@ def _run_demo_reset_background(demo_db_path: str, user_name: str, remote_addr: s
                 _demo_reset_status.update({"state": "error", "message": err})
         else:
             _db_initialized = False
+            reset_at = datetime.now().isoformat()
             _mode_log.warning(
                 "[DEMO RESET] SUCCESS user=%s ip=%s at=%s",
-                user_name, remote_addr, datetime.now().isoformat(),
+                user_name, remote_addr, reset_at,
             )
+
+            # ── Write audit entry to the freshly-seeded demo DB ─────────────
+            try:
+                import sqlite3 as _sqlite3
+                with _sqlite3.connect(demo_db_path, timeout=10) as _lc:
+                    _lc.execute("""
+                        CREATE TABLE IF NOT EXISTS demo_reset_log (
+                            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                            reset_at    TEXT NOT NULL,
+                            triggered_by TEXT NOT NULL DEFAULT 'demo_admin',
+                            role        TEXT NOT NULL DEFAULT 'demo_admin',
+                            ip_address  TEXT,
+                            outcome     TEXT NOT NULL DEFAULT 'success',
+                            notes       TEXT
+                        )
+                    """)
+                    _lc.execute("""
+                        INSERT INTO demo_reset_log
+                            (reset_at, triggered_by, role, ip_address, outcome, notes)
+                        VALUES (?, ?, 'demo_admin', ?, 'success', ?)
+                    """, (
+                        reset_at, user_name, remote_addr,
+                        "Browser-initiated reset completed successfully.",
+                    ))
+                    _lc.commit()
+            except Exception as _log_exc:
+                _mode_log.warning("[DEMO RESET] Could not write DB audit entry: %s", _log_exc)
+
+            # ── Append to persistent JSONL log (survives DB resets) ──────────
+            try:
+                import json as _json
+                _log_dir = os.path.dirname(demo_db_path)
+                _log_file = os.path.join(_log_dir, "demo_reset_log.jsonl")
+                _entry = {
+                    "reset_at": reset_at,
+                    "triggered_by": user_name,
+                    "role": "demo_admin",
+                    "ip_address": remote_addr,
+                    "outcome": "success",
+                }
+                with open(_log_file, "a", encoding="utf-8") as _lf:
+                    _lf.write(_json.dumps(_entry) + "\n")
+            except Exception as _log_exc:
+                _mode_log.warning("[DEMO RESET] Could not write JSONL audit log: %s", _log_exc)
+
             with _demo_reset_lock:
                 _demo_reset_status.update({
                     "state": "done",

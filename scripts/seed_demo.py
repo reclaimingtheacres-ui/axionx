@@ -73,6 +73,20 @@ CREATE TABLE IF NOT EXISTS demo_outbox (
 );
 """
 
+# Persistent reset audit log — survives across resets because it is recreated
+# and populated with the triggering event immediately after each seed run.
+_DEMO_RESET_LOG_DDL = """
+CREATE TABLE IF NOT EXISTS demo_reset_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    reset_at    TEXT NOT NULL,
+    triggered_by TEXT NOT NULL DEFAULT 'demo_admin',
+    role        TEXT NOT NULL DEFAULT 'demo_admin',
+    ip_address  TEXT,
+    outcome     TEXT NOT NULL DEFAULT 'success',
+    notes       TEXT
+);
+"""
+
 # Schemas that are not in production but that older hand-written versions of
 # seed_demo.py created.  We keep them here as fallbacks in case axion.db is
 # unavailable.
@@ -706,8 +720,9 @@ def create_schema(conn):
         _apply_ddl_string(conn, _LEGACY_SCHEMA_SQL)
         conn.commit()
 
-    # Always create the demo-only outbox table
+    # Always create the demo-only outbox and reset-log tables
     _apply_ddl_string(conn, _DEMO_OUTBOX_DDL)
+    _apply_ddl_string(conn, _DEMO_RESET_LOG_DDL)
     conn.commit()
     print("[SEED] Schema created / verified.")
 
@@ -1070,6 +1085,15 @@ def seed(conn):
         "New Job Assigned — DEMO0001",
         "A new job DEMO0001 has been assigned to you. Please attend the address by tomorrow morning.",
         ts(14),
+    ))
+
+    # ── Initial reset-log entry — records this seed run itself
+    cur.execute("""
+        INSERT INTO demo_reset_log (reset_at, triggered_by, role, ip_address, outcome, notes)
+        VALUES (?,?,?,?,?,?)
+    """, (
+        now_ts(), "seed_script", "demo_admin", None, "success",
+        "Initial demo database seed — baseline data created.",
     ))
 
     conn.commit()
