@@ -4961,9 +4961,38 @@ function adocOpenEditJob() {
               <option value="Urgent Update Required">Urgent Update Required</option>
             </select>
           </div>
-          <div class="mb-3">
+          <!-- Text "To" field — email / SMS only -->
+          <div class="mb-3" id="msg_to_text_row">
             <label class="form-label small fw-semibold">To</label>
             <input type="text" id="msg_to" class="form-control" placeholder="Recipient name / number">
+          </div>
+          <!-- Checkbox "To" field — internal messages only -->
+          <div class="mb-3" id="msg_to_internal_row" style="display:none">
+            <label class="form-label small fw-semibold">To</label>
+            <div id="msg_recipients_list" class="border rounded p-2" style="background:var(--panel);max-height:160px;overflow-y:auto">
+              {% if job.assigned_user_id %}
+              <div class="form-check py-1">
+                <input class="form-check-input msg-recipient-cb" type="checkbox"
+                       id="msg_recip_agent" value="{{ job.assigned_user_id }}" checked>
+                <label class="form-check-label" for="msg_recip_agent">
+                  {{ job.assigned_name or 'Assigned Agent' }}
+                  <span class="badge text-bg-secondary ms-1" style="font-size:.7rem">Assigned Agent</span>
+                </label>
+              </div>
+              {% endif %}
+              {% for au in admin_users %}
+              {% if au.id != job.assigned_user_id %}
+              <div class="form-check py-1">
+                <input class="form-check-input msg-recipient-cb" type="checkbox"
+                       id="msg_recip_{{ au.id }}" value="{{ au.id }}">
+                <label class="form-check-label" for="msg_recip_{{ au.id }}">
+                  {{ au.full_name }}
+                  <span class="badge text-bg-info ms-1" style="font-size:.7rem">Admin</span>
+                </label>
+              </div>
+              {% endif %}
+              {% endfor %}
+            </div>
           </div>
           <div class="mb-3">
             <label class="form-label small fw-semibold">Subject / Reference</label>
@@ -5005,15 +5034,17 @@ var _internalPrompts = {
 };
 
 function _msgResetModal() {
-  document.getElementById('msg-sent-alert').style.display  = 'none';
-  document.getElementById('msg-form-body').style.display   = '';
-  document.getElementById('msg_send_btn').style.display    = '';
-  document.getElementById('msg_prompt_row').style.display  = 'none';
-  document.getElementById('msg_prompt').value              = '';
-  document.getElementById('msg_to').value                  = '';
-  document.getElementById('msg_to').readOnly               = false;
-  document.getElementById('msg_subject').value             = '{{ job.display_ref }}';
-  document.getElementById('msg_body').value                = '';
+  document.getElementById('msg-sent-alert').style.display      = 'none';
+  document.getElementById('msg-form-body').style.display       = '';
+  document.getElementById('msg_send_btn').style.display        = '';
+  document.getElementById('msg_prompt_row').style.display      = 'none';
+  document.getElementById('msg_prompt').value                  = '';
+  document.getElementById('msg_to').value                      = '';
+  document.getElementById('msg_to').readOnly                   = false;
+  document.getElementById('msg_to_text_row').style.display     = '';
+  document.getElementById('msg_to_internal_row').style.display = 'none';
+  document.getElementById('msg_subject').value                 = '{{ job.display_ref }}';
+  document.getElementById('msg_body').value                    = '';
   _msgDirtySubject = false;
   _msgDirtyBody    = false;
   document.getElementById('msg_subject').oninput = null;
@@ -5032,24 +5063,20 @@ function openSendMsg(type) {
 }
 
 function openInternalMsg() {
-  {% if not job.assigned_name %}
-  alert('No assigned agent found for this job.');
-  return;
-  {% endif %}
   _msgType = 'internal';
-  document.getElementById('sendMsgTitle').textContent     = 'Internal Message';
-  document.getElementById('msg_type_badge').style.display = 'none';
+  document.getElementById('sendMsgTitle').textContent          = 'Internal Message';
+  document.getElementById('msg_type_badge').style.display      = 'none';
   _msgResetModal();
-  document.getElementById('msg_prompt_row').style.display = '';
-  {% if job.assigned_name %}
-  document.getElementById('msg_to').value    = '{{ job.assigned_name | e }}';
-  document.getElementById('msg_to').readOnly = true;
-  {% else %}
-  document.getElementById('msg_to').value    = '';
-  document.getElementById('msg_to').readOnly = false;
-  {% endif %}
+  document.getElementById('msg_prompt_row').style.display      = '';
+  document.getElementById('msg_to_text_row').style.display     = 'none';
+  document.getElementById('msg_to_internal_row').style.display = '';
   document.getElementById('msg_subject').value = '';
   document.getElementById('msg_body').value    = '';
+
+  // Reset checkboxes: only pre-check assigned agent, uncheck all admins
+  document.querySelectorAll('.msg-recipient-cb').forEach(function(cb) {
+    cb.checked = (cb.id === 'msg_recip_agent');
+  });
 
   document.getElementById('msg_prompt').onchange = function() {
     var p = this.value;
@@ -5086,15 +5113,14 @@ function doSendMsg() {
   if (_msgType === 'internal') {
     var prompt = document.getElementById('msg_prompt').value;
     if (!prompt) { alert('Please select a prompt.'); return; }
-    {% if not job.assigned_name %}
-    if (!to) { alert('No assigned agent found for this job.'); return; }
-    {% endif %}
+    var recipientIds = Array.from(document.querySelectorAll('.msg-recipient-cb:checked')).map(function(cb){ return parseInt(cb.value, 10); });
+    if (!recipientIds.length) { alert('Please select at least one recipient.'); return; }
     var btn = document.getElementById('msg_send_btn');
     btn.disabled = true;
     fetch('/jobs/{{ job.id }}/internal-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-      body: JSON.stringify({ prompt: prompt, subject: subject, body: body })
+      body: JSON.stringify({ prompt: prompt, subject: subject, body: body, recipient_user_ids: recipientIds })
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {

@@ -4967,6 +4967,10 @@ def job_detail(job_id: int):
         "SELECT COUNT(*) c FROM job_updates WHERE job_id=? AND status='draft'", (job_id,)
     ).fetchone()["c"]
 
+    admin_users = conn.execute(
+        "SELECT id, full_name FROM users WHERE active = 1 AND role IN ('admin','both') ORDER BY full_name"
+    ).fetchall()
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -4991,7 +4995,8 @@ def job_detail(job_id: int):
                            from_cue=from_cue,
                            ai_draft_count=ai_draft_count,
                            office_notes=office_notes,
-                           client_update_info=_build_client_update_info(conn, job_id, role))
+                           client_update_info=_build_client_update_info(conn, job_id, role),
+                           admin_users=admin_users)
 
 
 def _sync_job_customer_id(cur, job_id):
@@ -6278,15 +6283,18 @@ def job_internal_message(job_id: int):
             "body":    "An urgent update is required for this file. Please attend to this job and provide a file update as soon as possible.",
         },
     }
-    data    = request.get_json(silent=True) or {}
-    prompt  = (data.get("prompt") or "").strip()
-    subject = (data.get("subject") or "").strip()
-    body    = (data.get("body") or "").strip()
+    data               = request.get_json(silent=True) or {}
+    prompt             = (data.get("prompt") or "").strip()
+    subject            = (data.get("subject") or "").strip()
+    body               = (data.get("body") or "").strip()
+    recipient_user_ids = data.get("recipient_user_ids") or []
 
     if not body:
         return jsonify({"ok": False, "error": "Message body is required."}), 400
     if prompt not in PROMPTS:
         return jsonify({"ok": False, "error": "Invalid prompt selection."}), 400
+    if not recipient_user_ids:
+        return jsonify({"ok": False, "error": "Please select at least one recipient."}), 400
 
     conn = db()
     cur  = conn.cursor()
@@ -6297,21 +6305,57 @@ def job_internal_message(job_id: int):
         ).fetchone()
         if not job:
             return jsonify({"ok": False, "error": "Job not found."}), 404
-        if not job["assigned_user_id"]:
-            return jsonify({"ok": False, "error": "No assigned agent found for this job."}), 400
 
-        agent_id  = job["assigned_user_id"]
+        # Build allowed recipient set: assigned agent + all active admin/both users
+        allowed_ids = set()
+        if job["assigned_user_id"]:
+            allowed_ids.add(job["assigned_user_id"])
+        admin_rows = cur.execute(
+            "SELECT id FROM users WHERE active = 1 AND role IN ('admin','both')"
+        ).fetchall()
+        for r in admin_rows:
+            allowed_ids.add(r["id"])
+
+        # Validate requested recipients
+        recipient_user_ids = [int(uid) for uid in recipient_user_ids if uid]
+        invalid = [uid for uid in recipient_user_ids if uid not in allowed_ids]
+        if invalid:
+            return jsonify({"ok": False, "error": "One or more selected recipients are invalid."}), 400
+
         caller_id = session["user_id"]
         ts        = now_ts()
+        conv_subject = subject or PROMPTS[prompt]["subject"]
 
-        conv_id, _ = _get_or_create_direct_conv(conn, caller_id, agent_id, job_id=job_id)
-        conn.execute(
-            "UPDATE conversations SET subject = ? WHERE id = ?",
-            (subject or PROMPTS[prompt]["subject"], conv_id)
-        )
-        _post_message(conn, conv_id, caller_id, body)
+        # Fetch display names for file note
+        recipient_rows = cur.execute(
+            f"SELECT id, full_name FROM users WHERE id IN ({','.join('?' for _ in recipient_user_ids)})",
+            recipient_user_ids
+        ).fetchall()
+        name_map = {r["id"]: r["full_name"] for r in recipient_rows}
 
-        note_text = f"Internal message sent to assigned agent: {prompt}."
+        # Send a direct message to each recipient
+        for uid in recipient_user_ids:
+            if uid == caller_id:
+                continue  # skip sending to yourself
+            conv_id, _ = _get_or_create_direct_conv(conn, caller_id, uid, job_id=job_id)
+            conn.execute(
+                "UPDATE conversations SET subject = ? WHERE id = ?",
+                (conv_subject, conv_id)
+            )
+            _post_message(conn, conv_id, caller_id, body)
+
+        # Build recipient label for file note
+        recipient_names = [name_map.get(uid, f"#{uid}") for uid in recipient_user_ids]
+        assigned_id = job["assigned_user_id"]
+        labeled = []
+        for uid in recipient_user_ids:
+            label = name_map.get(uid, f"#{uid}")
+            if uid == assigned_id:
+                label += " (assigned agent)"
+            labeled.append(label)
+        recipients_str = ", ".join(labeled) if labeled else "unknown"
+
+        note_text = f"Internal message sent to {recipients_str}: {prompt}."
         system_uid = _get_system_user_id(conn)
         cur.execute(
             "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
