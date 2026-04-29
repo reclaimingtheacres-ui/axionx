@@ -510,6 +510,7 @@
 </div>
 {% endif %}
 {% endblock %}
+{% block scripts %}
 <style>
 .ax-urgent-btn {
   font-size:.6rem;background:#fef2f2;color:#ef4444;
@@ -562,7 +563,7 @@
     btn.dataset.processing = '1';
     btn.disabled = true;
     var origText = btn.textContent.trim();
-    btn.textContent = 'Sending…';
+    btn.textContent = 'Sending\u2026';
 
     var fd = new FormData();
     fetch('/jobs/' + jobId + '/urgent-update/' + schedId, {
@@ -587,8 +588,9 @@
       delete btn.dataset.processing;
       btn.disabled = false;
       btn.textContent = origText;
-      showToast('Network error — please try again.', 'err');
+      showToast('Network error \u2014 please try again.', 'err');
     });
   };
 })();
 </script>
+{% endblock %}
