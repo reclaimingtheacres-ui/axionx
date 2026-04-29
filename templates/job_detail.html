@@ -170,6 +170,17 @@
 
     {% else %}
     <a href="/jobs/{{ job.id }}/update-builder" class="btn btn-primary btn-sm">&#x2728; Create Update (AI Assist)</a>
+
+    <div class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        Send Message
+      </button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="#" onclick="openEmailCustomer();return false">Email Customer</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="#" onclick="openInternalMsg();return false">Internal Message</a></li>
+      </ul>
+    </div>
     {% endif %}
   </div>
 
@@ -5105,6 +5116,24 @@ function openInternalMsg() {
   bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).show();
 }
 
+function openEmailCustomer() {
+  _msgType = 'email_customer';
+  document.getElementById('sendMsgTitle').textContent          = 'Email Customer';
+  document.getElementById('msg_type_badge').style.display      = 'none';
+  _msgResetModal();
+  document.getElementById('msg_prompt_row').style.display      = 'none';
+  document.getElementById('msg_to_text_row').style.display     = '';
+  document.getElementById('msg_to_internal_row').style.display = 'none';
+  {% set _cust_display = ((job.customer_company or '') + ' — ' + (job.customer_name or '')) if job.customer_company else (job.customer_name or 'Customer') %}
+  document.getElementById('msg_to').value    = '{{ _cust_display | e }}';
+  document.getElementById('msg_to').readOnly = true;
+  document.getElementById('msg_subject').value = '{{ job.display_ref | e }}';
+  document.getElementById('msg_body').value    = '';
+  document.getElementById('msg_subject').oninput = function() { _msgDirtySubject = true; };
+  document.getElementById('msg_body').oninput    = function() { _msgDirtyBody    = true; };
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).show();
+}
+
 function doSendMsg() {
   var to      = document.getElementById('msg_to').value.trim();
   var subject = document.getElementById('msg_subject').value.trim();
@@ -5135,6 +5164,34 @@ function doSendMsg() {
         }, 1800);
       } else {
         alert(data.error || 'Failed to send internal message.');
+      }
+    })
+    .catch(function() { btn.disabled = false; alert('Network error. Please try again.'); });
+    return;
+  }
+
+  if (_msgType === 'email_customer') {
+    var btn = document.getElementById('msg_send_btn');
+    btn.disabled = true;
+    fetch('/jobs/{{ job.id }}/email-customer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ to: to, subject: subject, body: body })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      if (data.ok) {
+        document.getElementById('msg-sent-alert').textContent    = 'Email logged as file note successfully.';
+        document.getElementById('msg-sent-alert').style.display  = '';
+        document.getElementById('msg-form-body').style.display   = 'none';
+        document.getElementById('msg_send_btn').style.display    = 'none';
+        setTimeout(function(){
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
+          window.location.reload();
+        }, 1800);
+      } else {
+        alert(data.error || 'Failed to log email.');
       }
     })
     .catch(function() { btn.disabled = false; alert('Network error. Please try again.'); });

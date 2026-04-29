@@ -10557,6 +10557,67 @@ def m_forms():
                            forms=forms_mobile, job=job, job_id=job_id)
 
 
+@app.post("/jobs/<int:job_id>/email-customer")
+@login_required
+def job_email_customer(job_id: int):
+    """Agent (or admin) logs an email to the customer as a published file note visible to all."""
+    uid  = session.get("user_id")
+    role = session.get("role", "")
+    conn = db()
+    cur  = conn.cursor()
+    try:
+        # Access check: admin always OK; agent must be assigned/scheduled
+        job = cur.execute(
+            "SELECT id, display_ref, customer_name, customer_email FROM jobs WHERE id = ?",
+            (job_id,)
+        ).fetchone()
+        if not job:
+            return jsonify({"ok": False, "error": "Job not found."}), 404
+
+        if role == "agent":
+            access = cur.execute(
+                """SELECT 1 FROM jobs WHERE id=? AND (
+                   assigned_user_id=? OR EXISTS (
+                     SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?
+                     AND status NOT IN ('Cancelled') AND hidden = 0))""",
+                (job_id, uid, job_id, uid)
+            ).fetchone()
+            if not access:
+                return jsonify({"ok": False, "error": "Access denied."}), 403
+
+        data    = request.get_json(silent=True) or {}
+        to_name = (data.get("to") or job["customer_name"] or "Customer").strip()
+        subject = (data.get("subject") or "").strip()
+        body    = (data.get("body") or "").strip()
+
+        if not body:
+            return jsonify({"ok": False, "error": "Message body is required."}), 400
+
+        header = f"[EMAIL TO: {to_name}]"
+        if subject:
+            header += f" — {subject}"
+        note_text = f"{header}\n{body}"
+
+        ts = now_ts()
+        cur.execute("""
+            INSERT INTO job_field_notes
+                (job_id, created_by_user_id, note_text, created_at, note_category, review_status, published_at)
+            VALUES (?, ?, ?, ?, 'file_note', 'published', ?)
+        """, (job_id, uid, note_text, ts, ts))
+        note_id = cur.lastrowid
+        conn.commit()
+
+        audit("job", job_id, "email_customer_logged",
+              f"Email to customer '{to_name}' logged as file note.", {"note_id": note_id})
+        return jsonify({"ok": True, "note_id": note_id})
+    except Exception:
+        import logging as _log
+        _log.exception("[email_customer] job_id=%s", job_id)
+        return jsonify({"ok": False, "error": "An unexpected error occurred."}), 500
+    finally:
+        conn.close()
+
+
 # ──────────────────────────────────────────────────────────────────────
 
 # -------- Field Notes --------
