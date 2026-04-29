@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+
+{% block title %}Reset Demo Data — AxionX{% endblock %}
+{% block page_title %}Reset Demo Data{% endblock %}
+
+{% block content %}
+<div class="ax-card" style="max-width:560px;margin:0 auto">
+  <div class="ax-card-h d-flex align-items-center gap-2">
+    <span style="color:#dc2626">⚠️</span> Reset Demo Database
+  </div>
+  <div class="ax-card-b">
+    <div class="alert alert-danger mb-4">
+      <strong>This will permanently delete all demo data and reseed from scratch.</strong>
+      The production database (<code>axion.db</code>) is never affected.
+    </div>
+
+    <p class="text-muted mb-3">
+      All demo jobs, field notes, outbox messages, schedules, and user activity will be
+      replaced with fresh seed data. You will be signed out after the reset.
+    </p>
+
+    <form method="POST" action="/demo/reset">
+      <div class="mb-3">
+        <label class="form-label fw-bold">Type <code>RESET DEMO DATA</code> to confirm:</label>
+        <input type="text" name="confirm_text" class="form-control"
+               placeholder="RESET DEMO DATA" autocomplete="off" required>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-danger">Reset Demo Data</button>
+        <a href="/demo" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

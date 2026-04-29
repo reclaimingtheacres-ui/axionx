@@ -96,7 +96,58 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="None",
 )
 
-DB_PATH = os.path.abspath(os.getenv("DB_PATH", "axion.db"))
+# ── Database path configuration ────────────────────────────────────────────────
+# Production:  AXIONX_DEMO_MODE unset (or false)  + DB_PATH=...axion.db
+# Demo:        AXIONX_DEMO_MODE=true              + AXIONX_DEMO_DB_PATH=...axion_demo.db
+#
+# In demo mode the app switches to a fully isolated SQLite database seeded with
+# fake data. The production axion.db is never touched when demo mode is active.
+
+# AXIONX_DB_PATH is the canonical DB path selector for both demo and production.
+# DB_PATH is accepted as a legacy fallback for backward compatibility.
+_CONFIGURED_DB_PATH = os.path.abspath(
+    os.getenv("AXIONX_DB_PATH") or os.getenv("DB_PATH", "axion.db")
+)
+
+# Hard-coded production default used as a safety reference inside the demo-mode
+# guard. Never overridden by environment variables so it is always reliable.
+_FALLBACK_PROD_DB = os.path.abspath("axion.db")
+
+DEMO_MODE: bool = os.environ.get("AXIONX_DEMO_MODE", "").lower() in ("1", "true", "yes")
+
+if DEMO_MODE:
+    # In demo mode AXIONX_DB_PATH (or AXIONX_DEMO_DB_PATH) points to the demo DB.
+    # AXIONX_DEMO_DB_PATH takes precedence if both variables are set.
+    _demo_db_env = os.environ.get("AXIONX_DEMO_DB_PATH") or _CONFIGURED_DB_PATH
+    DEMO_DB_PATH = os.path.abspath(_demo_db_env)
+    DB_PATH = DEMO_DB_PATH
+    _PROD_DB_PATH = _FALLBACK_PROD_DB  # fixed reference for write-guard checks
+    # Hard-fail at startup if the demo DB resolves to the production default.
+    # This prevents accidental production writes due to misconfigured env vars.
+    if os.path.abspath(DB_PATH) == _FALLBACK_PROD_DB:
+        import sys as _sys
+        _sys.exit(
+            "[DEMO SAFETY] AXIONX_DEMO_MODE=true but AXIONX_DB_PATH (or DB_PATH) "
+            f"resolves to the production database ({_FALLBACK_PROD_DB}). "
+            "Set AXIONX_DB_PATH to a separate demo DB path (e.g. axion_demo.db) "
+            "before starting the server in demo mode."
+        )
+else:
+    DEMO_DB_PATH = None
+    DB_PATH = _CONFIGURED_DB_PATH
+    _PROD_DB_PATH = _CONFIGURED_DB_PATH
+
+
+def _demo_write_guard():
+    """Raise RuntimeError if a write is attempted against the production DB in demo mode.
+    Call this before any destructive operation that should be demo-only."""
+    if not DEMO_MODE:
+        return
+    if os.path.abspath(DB_PATH) == os.path.abspath(_PROD_DB_PATH):
+        raise RuntimeError(
+            "[DEMO SAFETY] Attempted write to production database while in demo mode. Blocked."
+        )
+
 
 _PERSISTENT_BASE = os.path.dirname(os.path.abspath(os.getenv("DB_PATH", "axion.db")))
 UPLOAD_FOLDER = os.path.join(_PERSISTENT_BASE, "uploads")
@@ -194,6 +245,9 @@ def _bg_azure_upload(data: bytes, blob_name: str, content_type: str) -> None:
     """Background thread: push bytes to Azure Blob after the HTTP response has returned.
     Logs outcome. Never raises — caller must not join() this thread."""
     import logging as _log
+    if DEMO_MODE:
+        _log.info("[BG-AZURE] skipped in demo mode (blob=%s)", blob_name)
+        return
     try:
         if not _uploads_container:
             _log.info("[BG-AZURE] skipped — Azure not configured (blob=%s)", blob_name)
@@ -385,6 +439,92 @@ def _ensure_wal_once():
         _log.warning("[DB-WAL] Could not set WAL after 3 attempts — proceeding with default journal mode. DB_PATH=%s", DB_PATH)
 
 
+_DEMO_WRITE_PREFIXES = (
+    "INSERT", "UPDATE", "DELETE", "REPLACE",
+    "CREATE", "DROP", "ALTER", "ATTACH",
+)
+
+
+def _demo_sql_guard(sql: str):
+    """Call _demo_write_guard() if the SQL looks like a write statement."""
+    normalized = sql.strip().lstrip("( \t\n").upper()
+    if any(normalized.startswith(p) for p in _DEMO_WRITE_PREFIXES):
+        _demo_write_guard()
+
+
+class _DemoSafeCursor:
+    """Cursor wrapper used by _DemoSafeConnection — intercepts writes."""
+
+    def __init__(self, cursor):
+        self._cur = cursor
+
+    def execute(self, sql, parameters=()):
+        _demo_sql_guard(sql)
+        return self._cur.execute(sql, parameters)
+
+    def executemany(self, sql, parameters=()):
+        _demo_sql_guard(sql)
+        return self._cur.executemany(sql, parameters)
+
+    def __iter__(self):
+        return iter(self._cur)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cur.fetchmany() if size is None else self._cur.fetchmany(size)
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
+class _DemoSafeConnection:
+    """Wraps a sqlite3.Connection in demo mode.
+
+    Intercepts every execute/executemany call (directly and via cursor) so
+    that any write SQL statement raises immediately if DB_PATH has somehow
+    drifted back to the production database.  In practice DB_PATH is already
+    pointed at axion_demo.db (enforced at startup), so this is a
+    belt-and-suspenders guard that covers all write paths in the app.
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, parameters=()):
+        _demo_sql_guard(sql)
+        return self._conn.execute(sql, parameters)
+
+    def executemany(self, sql, parameters=()):
+        _demo_sql_guard(sql)
+        return self._conn.executemany(sql, parameters)
+
+    def cursor(self):
+        return _DemoSafeCursor(self._conn.cursor())
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return self._conn.__exit__(*args)
+
+
 def _raw_db():
     import time as _t
     last_err = None
@@ -393,6 +533,8 @@ def _raw_db():
             conn = sqlite3.connect(DB_PATH, timeout=30)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout=60000")
+            if DEMO_MODE:
+                return _DemoSafeConnection(conn)
             return conn
         except sqlite3.OperationalError as e:
             last_err = e
@@ -1564,6 +1706,40 @@ def _migrate_update_builder():
     conn.close()
 
 
+def _resolve_demo_links():
+    """Resolve seeded demo job/record IDs by stable display_ref keys.
+
+    Returns a dict that the _demo_panel.html template uses to build links,
+    avoiding hardcoded numeric IDs that can drift after a reseed/reset.
+    """
+    _TRACKED_REFS = [
+        "DEMO0001", "DEMO0003", "DEMO0005",
+        "DEMO0015", "DEMO0017", "DEMO0018",
+    ]
+    links: dict = {}
+    try:
+        conn = db()
+        ph = ",".join("?" * len(_TRACKED_REFS))
+        rows = conn.execute(
+            f"SELECT id, display_ref FROM jobs WHERE display_ref IN ({ph})",
+            _TRACKED_REFS,
+        ).fetchall()
+        links = {row["display_ref"]: row["id"] for row in rows}
+
+        # Resolve the repo lock record id for DEMO0017 (repossessed job)
+        if "DEMO0017" in links:
+            rl = conn.execute(
+                "SELECT id FROM repo_lock_records WHERE job_id=? LIMIT 1",
+                (links["DEMO0017"],),
+            ).fetchone()
+            if rl:
+                links["DEMO0017_REPO_LOCK"] = rl["id"]
+        conn.close()
+    except Exception:
+        pass
+    return links
+
+
 @app.context_processor
 def inject_globals():
     pending_drafts = 0
@@ -1586,11 +1762,14 @@ def inject_globals():
             conn.close()
         except Exception:
             pending_drafts = 0
+    demo_links = _resolve_demo_links() if DEMO_MODE else {}
     return {
         "GOOGLE_MAPS_API_KEY": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
         "google_maps_api_key": os.getenv("GOOGLE_MAPS_API_KEY", ""),
         "pending_draft_count": pending_drafts,
         "now_iso": now_ts(),
+        "DEMO_MODE": DEMO_MODE,
+        "demo_links": demo_links,
     }
 
 
@@ -2901,6 +3080,9 @@ def _geoop_is_unlocked():
 def geoop_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
+        if DEMO_MODE:
+            flash("GeoOp Import is disabled in demo mode.", "warning")
+            return redirect(url_for("index"))
         if not session.get("user_id"):
             return _login_redirect()
         if session.get("role") not in ("admin", "both"):
@@ -2984,6 +3166,14 @@ def smtp_config_present():
 
 
 def send_reset_email(to_addr, reset_link):
+    if DEMO_MODE:
+        _demo_save_outbox(
+            "email",
+            to_addr,
+            "Axion — Password Reset [DEMO — not sent]",
+            f"Password reset link (captured by demo — no email was sent):\n{reset_link}",
+        )
+        return
     smtp = get_smtp_settings()
     host = smtp["host"]
     port = smtp["port"]
@@ -3014,12 +3204,64 @@ def send_reset_email(to_addr, reset_link):
         s.sendmail(frm, to_addr, msg.as_string())
 
 
+# ── Demo communications interception ───────────────────────────────────────────
+# All real external communications are intercepted when DEMO_MODE is active:
+#   • Email (general)     — send_mail() → _demo_save_outbox()
+#   • Email (pwd reset)   — send_reset_email() → _demo_save_outbox()
+#   • APNs push           — _send_apns_push() → _demo_save_outbox()
+#   • Azure blob uploads  — _bg_azure_upload() DEMO_MODE guard (skips upload)
+#   • Azure autofill copy — job autofill block guarded with `not DEMO_MODE`
+#
+# NOTE on SMS: the app records whether an agent sent an SMS during a field visit
+# via a checkbox (sms_sent column). This is a pure data field — no SMS gateway,
+# Twilio, or dispatch API is called anywhere. There is no SMS outbound channel
+# to intercept.
+
+def _demo_save_outbox(msg_type: str, recipient: str, subject: str, body: str):
+    """In demo mode, persist an intercepted message to the demo_outbox table instead of sending it.
+    Also flashes a one-time notice per web request so the user knows comms were captured."""
+    try:
+        conn = _raw_db()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS demo_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                msg_type TEXT NOT NULL,
+                recipient TEXT NOT NULL,
+                subject TEXT NOT NULL DEFAULT '',
+                body TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute(
+            "INSERT INTO demo_outbox (msg_type, recipient, subject, body, created_at) VALUES (?,?,?,?,?)",
+            (msg_type, recipient, subject, body, now_ts()),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as _e:
+        import logging as _lg
+        _lg.warning("[DEMO-OUTBOX] Failed to save outbox record: %s", _e)
+    # Flash a notice once per request so the user can see comms were intercepted.
+    try:
+        from flask import has_request_context, flash as _flash, g as _g
+        if has_request_context() and not getattr(_g, "_demo_intercepted_flash_shown", False):
+            _flash("Demo message created — no external communication was sent.", "info")
+            _g._demo_intercepted_flash_shown = True
+    except Exception:
+        pass
+
+
 def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachments=None, reply_to=None):
     """Generic SMTP helper.
     to_list/cc_list: lists of email strings.
     attachments: list of (filename, bytes_data, mime_type_str) tuples.
     reply_to: optional Reply-To address string.
     """
+    if DEMO_MODE:
+        recipients = ", ".join(to_list or [])
+        _demo_save_outbox("email", recipients, subject, body_txt or "")
+        return
+
     smtp = get_smtp_settings()
     host = smtp["host"]
     port = smtp["port"]
@@ -4630,7 +4872,7 @@ def _job_create_inner():
                     VALUES (?, 'Instruction', 'Auto-fill source document', ?, ?, ?, ?, ?)
                 """, (job_id, pu_row["original_filename"], stored_name,
                       pu_row["content_type"], pu_row["uploaded_by_user_id"] or session.get("user_id"), now))
-                if _uploads_container:
+                if _uploads_container and not DEMO_MODE:
                     with open(pending_path, "rb") as fh:
                         _uploads_container.upload_blob(
                             name=stored_name, data=fh, overwrite=True,
@@ -13326,6 +13568,9 @@ import geoop_import as _geoop
 @app.get("/admin/geoop-import")
 @admin_required
 def geoop_import_page():
+    if DEMO_MODE:
+        flash("GeoOp Import is disabled in demo mode — this tool modifies the live database.", "warning")
+        return redirect(url_for("index"))
     if not _geoop_is_unlocked():
         return render_template("geoop_login.html")
     conn = db()
@@ -21957,6 +22202,10 @@ _FOLLOWUP_VALID_TRANSITIONS: dict = {
 
 def _apns_send_result(device_token: str, title: str, body: str, data: dict = None,
                       badge: int = None) -> dict:
+    if DEMO_MODE:
+        _demo_save_outbox("push", device_token[:12] + "…", title, body)
+        return {"ok": True, "status_code": 200, "error": None}
+
     try:
         import jwt as _jwt
         import httpx as _httpx
@@ -26553,6 +26802,157 @@ def m_messages_reply(conv_id):
         _post_message(conn, conv_id, uid, body)
     conn.close()
     return redirect(url_for("m_message_thread", conv_id=conv_id))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEMO ENVIRONMENT ROUTES
+# These routes are only useful when AXIONX_DEMO_MODE=true.  In production they
+# still exist but immediately redirect away or return 404 if demo mode is off.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _demo_required(f):
+    """Decorator: return 404 if demo mode is not active."""
+    @wraps(f)
+    def _wrapper(*args, **kwargs):
+        if not DEMO_MODE:
+            abort(404)
+        return f(*args, **kwargs)
+    return _wrapper
+
+
+@app.route("/demo")
+@_demo_required
+def demo_landing():
+    return render_template("demo_landing.html")
+
+
+@app.route("/demo/login")
+@_demo_required
+def demo_login_page():
+    return render_template("demo_landing.html", show_login=True)
+
+
+@app.route("/demo/login/<role>", methods=["POST", "GET"])
+@_demo_required
+def demo_login_as(role):
+    """One-click demo login — no password required."""
+    role_map = {
+        "admin":  ("admin",  "Admin Demo"),
+        "agent":  ("agent",  "Agent Demo"),
+        # Client/Lender demo uses admin role so it can see all jobs filtered by
+        # client. There is no dedicated client portal in AxionX — the admin view
+        # filtered by client_id is the closest equivalent to what a lender sees.
+        "client": ("admin",  "Client/Lender Demo"),
+    }
+    if role not in role_map:
+        flash("Invalid demo role.", "danger")
+        return redirect(url_for("demo_landing"))
+
+    user_role, display_name = role_map[role]
+
+    conn = _raw_db()
+    email_map = {
+        "admin":  "demo.admin@axionx.demo",
+        "agent":  "demo.agent@axionx.demo",
+        "client": "demo.client@axionx.demo",
+    }
+    email = email_map[role]
+    user = conn.execute("SELECT * FROM users WHERE email=? AND active=1", (email,)).fetchone()
+    if not user:
+        conn.close()
+        flash("Demo user not found — please run the demo seed script first.", "danger")
+        return redirect(url_for("demo_landing"))
+
+    conn.close()
+
+    session.clear()
+    session.permanent = True
+    session["user_id"]   = user["id"]
+    session["user_name"] = user["full_name"]
+    session["role"]      = user["role"]
+    session["demo_role"] = role
+    flash(f"Signed in as {display_name}. This is a demo environment — no live data.", "success")
+
+    # Client/Lender demo: redirect to jobs filtered for "Demo Finance Group" (client_id=1)
+    # so the experience shows what a lender sees: only their own portfolio.
+    if role == "client":
+        return redirect(url_for("jobs_list") + "?client_id=1")
+    return redirect(url_for("jobs_list"))
+
+
+@app.route("/demo/outbox")
+@_demo_required
+@login_required
+def demo_outbox():
+    conn = _raw_db()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS demo_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                msg_type TEXT NOT NULL,
+                recipient TEXT NOT NULL,
+                subject TEXT NOT NULL DEFAULT '',
+                body TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+        """)
+        messages = conn.execute(
+            "SELECT * FROM demo_outbox ORDER BY id DESC LIMIT 200"
+        ).fetchall()
+    except Exception:
+        messages = []
+    finally:
+        conn.close()
+    return render_template("demo_outbox.html", messages=messages)
+
+
+@app.route("/demo/reset", methods=["GET", "POST"])
+@_demo_required
+def demo_reset():
+    # Only the "admin" demo persona (demo_role=admin) may reset data.
+    # The client/lender persona uses role='admin' internally for filtered access,
+    # so we check the dedicated demo_role session key — not the base role — to
+    # prevent the client persona from performing a reset.
+    if not session.get("user_id") or session.get("demo_role") != "admin":
+        flash("Admin demo persona required for demo reset.", "danger")
+        return redirect(url_for("demo_landing"))
+
+    if request.method == "POST":
+        confirm = request.form.get("confirm_text", "").strip()
+        if confirm != "RESET DEMO DATA":
+            flash("Confirmation text did not match. Type exactly: RESET DEMO DATA", "danger")
+            return redirect(url_for("demo_reset"))
+
+        _demo_write_guard()
+
+        if not DEMO_DB_PATH or os.path.abspath(DB_PATH) == os.path.abspath(_PROD_DB_PATH):
+            flash("Safety check failed — will not reset production database.", "danger")
+            return redirect(url_for("demo_reset"))
+
+        try:
+            import subprocess as _sp
+            seed_script = os.path.join(os.path.dirname(__file__), "scripts", "seed_demo.py")
+            env = os.environ.copy()
+            env["AXIONX_DEMO_MODE"] = "true"
+            env["AXIONX_DEMO_DB_PATH"] = DEMO_DB_PATH
+            result = _sp.run(
+                ["python3", seed_script, "--reset"],
+                capture_output=True, text=True, timeout=60, env=env
+            )
+            if result.returncode != 0:
+                flash(f"Seed script failed: {result.stderr[:400]}", "danger")
+            else:
+                session.clear()
+                flash("Demo data has been reset to its original seeded state.", "success")
+                global _db_initialized
+                _db_initialized = False
+                return redirect(url_for("demo_landing"))
+        except Exception as exc:
+            flash(f"Reset error: {exc}", "danger")
+
+        return redirect(url_for("demo_reset"))
+
+    return render_template("demo_reset.html")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -268,6 +268,12 @@ a { color: var(--accent); text-decoration: none; }
 </head>
 <body>
 
+{% if DEMO_MODE %}
+<div style="background:#1e3a5f;color:#fde68a;text-align:center;padding:7px 12px;font-size:.75rem;font-weight:700;letter-spacing:.07em;position:sticky;top:0;z-index:9999;border-bottom:2px solid rgba(245,158,11,.5)">
+  ⚠️ DEMO — NO LIVE DATA &nbsp;|&nbsp; <a href="/demo" style="color:#fbbf24;text-decoration:underline">Demo Home</a>
+</div>
+{% endif %}
+
 {% block header %}
 <header class="m-header">
   <h1>{% block header_title %}AxionX{% endblock %}</h1>
@@ -1011,5 +1017,10 @@ window.axShowCameraDenied = function() {
   document.body.appendChild(overlay);
 };
 </script>
+{% if DEMO_MODE %}
+<div style="text-align:center;padding:6px 12px;background:#fff7ed;border-top:1px solid rgba(245,158,11,.3);font-size:.7rem;color:#92400e;font-weight:600;letter-spacing:.06em;position:fixed;bottom:calc(var(--nav-h) + var(--safe-bot));left:0;right:0;z-index:295">
+  Demo Data Only
+</div>
+{% endif %}
 </body>
 </html>

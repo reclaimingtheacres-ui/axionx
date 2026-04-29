@@ -1,0 +1,233 @@
+{# Guided Demo Panel — included in layout.html when DEMO_MODE is active #}
+{% if DEMO_MODE %}
+<style>
+  #ax-demo-panel {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  #ax-demo-fab {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1e40af, #2563eb);
+    color: #fff;
+    border: none;
+    box-shadow: 0 4px 18px rgba(37,99,235,.45);
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .15s;
+  }
+  #ax-demo-fab:hover { transform: scale(1.08); }
+  #ax-demo-drawer {
+    position: absolute;
+    bottom: 70px;
+    right: 0;
+    width: 290px;
+    background: #fff;
+    border: 1px solid rgba(0,0,0,.12);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.16);
+    display: none;
+    overflow: hidden;
+  }
+  #ax-demo-drawer.open { display: block; }
+  .demo-drawer-head {
+    background: linear-gradient(90deg, #1e3a5f, #2563eb);
+    color: #fff;
+    padding: 12px 16px;
+    font-weight: 700;
+    font-size: .9rem;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .demo-drawer-badge {
+    background: rgba(255,200,0,.3);
+    border: 1px solid rgba(255,200,0,.5);
+    color: #fde68a;
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    padding: 2px 8px;
+    border-radius: 99px;
+    text-transform: uppercase;
+  }
+  .demo-drawer-body { padding: 10px 0; max-height: 70vh; overflow-y: auto; }
+  .demo-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    font-size: .85rem;
+    color: #111827;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .1s;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+  }
+  .demo-btn:hover { background: #f3f4f6; color: #111827; }
+  .demo-btn .demo-btn-icon {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .demo-sep { height: 1px; background: rgba(0,0,0,.08); margin: 4px 0; }
+  .demo-section-label {
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    padding: 6px 16px 2px;
+  }
+</style>
+
+<div id="ax-demo-panel">
+  <div id="ax-demo-drawer">
+    <div class="demo-drawer-head">
+      🎭 Demo Guide
+      <span class="demo-drawer-badge">DEMO</span>
+    </div>
+    <div class="demo-drawer-body">
+
+      {# All hrefs use demo_links (resolved by display_ref at request time)
+         with hardcoded numeric fallbacks so links never silently break.     #}
+      {% set j0003 = demo_links.get('DEMO0003', 3) %}
+      {% set j0005 = demo_links.get('DEMO0005', 5) %}
+      {% set j0001 = demo_links.get('DEMO0001', 1) %}
+      {% set j0015 = demo_links.get('DEMO0015', 15) %}
+      {% set j0017 = demo_links.get('DEMO0017', 17) %}
+      {% set j0018 = demo_links.get('DEMO0018', 18) %}
+      {% set rl0017 = demo_links.get('DEMO0017_REPO_LOCK', 1) %}
+
+      <div class="demo-section-label">Scheduling</div>
+      <a class="demo-btn" href="/schedule">
+        <span class="demo-btn-icon" style="background:#eff6ff">📅</span>
+        View Today's Schedule
+      </a>
+
+      <div class="demo-sep"></div>
+      <div class="demo-section-label">Jobs</div>
+
+      {# DEMO0003 — Active Repo/Collect job #}
+      <a class="demo-btn" href="/jobs/{{ j0003 }}">
+        <span class="demo-btn-icon" style="background:#fef9c3">🗂️</span>
+        Open Active Job (DEMO0003)
+      </a>
+      {# DEMO0015 — Repossession Ready: open repo lock via forms tab #}
+      <a class="demo-btn" href="/jobs/{{ j0015 }}?tab=forms">
+        <span class="demo-btn-icon" style="background:#fef2f2">🔓</span>
+        Open Repo Lock (DEMO0015)
+      </a>
+
+      <div class="demo-sep"></div>
+      <div class="demo-section-label">Field Updates</div>
+
+      {# DEMO0005 — Active job — Notes tab to submit a field update #}
+      <a class="demo-btn" href="/jobs/{{ j0005 }}#notes" title="Go to Notes tab and click 'New Field Note'">
+        <span class="demo-btn-icon" style="background:#f0fdf4">📝</span>
+        Submit Field Update (DEMO0005)
+      </a>
+      {# DEMO0001 — has a pending note awaiting review #}
+      <a class="demo-btn" href="/jobs/{{ j0001 }}#notes">
+        <span class="demo-btn-icon" style="background:#fff7ed">👁️</span>
+        Review Pending Note (DEMO0001)
+      </a>
+
+      <div class="demo-sep"></div>
+      <div class="demo-section-label">Client &amp; Comms</div>
+
+      {# DEMO0001 — has a client update cue item in the queue #}
+      <a class="demo-btn" href="/jobs/{{ j0001 }}">
+        <span class="demo-btn-icon" style="background:#ecfdf5">📨</span>
+        Request Client Update (DEMO0001)
+      </a>
+      <a class="demo-btn" href="/queue">
+        <span class="demo-btn-icon" style="background:#eff6ff">📋</span>
+        View Queue / Cue Items
+      </a>
+
+      <div class="demo-sep"></div>
+      <div class="demo-section-label">Documents &amp; Records</div>
+
+      {# DEMO0017 — Repossessed job: open repo lock record #}
+      <a class="demo-btn" href="/jobs/{{ j0017 }}?tab=forms">
+        <span class="demo-btn-icon" style="background:#f5f3ff">📋</span>
+        Open Repo Lock — DEMO0017
+      </a>
+      {# DEMO0017 / repo lock — Form 13 (Voluntary Surrender) PDF #}
+      <a class="demo-btn" href="/jobs/{{ j0017 }}/repo-lock/{{ rl0017 }}/form-13">
+        <span class="demo-btn-icon" style="background:#fef9c3">📄</span>
+        Generate Demo Form 13 (DEMO0017)
+      </a>
+      <a class="demo-btn" href="/recovery-targets">
+        <span class="demo-btn-icon" style="background:#fff7ed">🔍</span>
+        Search Recovery Targets
+      </a>
+
+      <div class="demo-sep"></div>
+      <div class="demo-section-label">Urgent Workflows</div>
+
+      {# DEMO0018 — Active overdue job with Urgent Update Required cue item #}
+      <a class="demo-btn" href="/jobs/{{ j0018 }}">
+        <span class="demo-btn-icon" style="background:#fef2f2">🔔</span>
+        Trigger Urgent Update Required (DEMO0018)
+      </a>
+
+      <div class="demo-sep"></div>
+      <div class="demo-section-label">Client / Lender View</div>
+
+      {# Filtered jobs list showing only Demo Finance Group's portfolio #}
+      <a class="demo-btn" href="/jobs?client_id=1">
+        <span class="demo-btn-icon" style="background:#ecfdf5">🏦</span>
+        Demo Finance Group Portfolio
+      </a>
+
+      <div class="demo-sep"></div>
+      <div class="demo-section-label">Demo Tools</div>
+
+      <a class="demo-btn" href="/demo/outbox">
+        <span class="demo-btn-icon" style="background:#f0fdf4">📬</span>
+        View Demo Outbox
+      </a>
+
+      {% if session.get('demo_role') == 'admin' %}
+      <a class="demo-btn" href="/demo/reset" style="color:#dc2626">
+        <span class="demo-btn-icon" style="background:#fef2f2">🔄</span>
+        Reset Demo Data
+      </a>
+      {% endif %}
+
+      <a class="demo-btn" href="/demo">
+        <span class="demo-btn-icon" style="background:#f9fafb">🏠</span>
+        Demo Home
+      </a>
+
+    </div>
+  </div>
+
+  <button id="ax-demo-fab" onclick="axDemoToggle()" title="Demo Guide">
+    🎭
+  </button>
+</div>
+
+<script>
+function axDemoToggle() {
+  var d = document.getElementById('ax-demo-drawer');
+  d.classList.toggle('open');
+}
+document.addEventListener('click', function(e) {
+  var panel = document.getElementById('ax-demo-panel');
+  if (panel && !panel.contains(e.target)) {
+    var d = document.getElementById('ax-demo-drawer');
+    if (d) d.classList.remove('open');
+  }
+});
+</script>
+{% endif %}

@@ -3,9 +3,54 @@ import os
 import base64
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.colors import HexColor, white
+from reportlab.lib.colors import HexColor, white, Color as _RLColor
 from reportlab.lib.utils import ImageReader, simpleSplit
 from pypdf import PdfReader as _PdfReader, PdfWriter as _PdfWriter
+
+# ── Demo mode watermark ────────────────────────────────────────────────────────
+# When AXIONX_DEMO_MODE=true every generated PDF receives a visible watermark so
+# demo documents cannot be confused with operational documents.
+_DEMO_MODE: bool = os.environ.get("AXIONX_DEMO_MODE", "").lower() in ("1", "true", "yes")
+
+
+def _demo_watermark_pdf(pdf_bytes: bytes) -> bytes:
+    """Overlay a visible DEMO watermark on every page of a PDF.
+    Returns pdf_bytes unchanged if demo mode is off."""
+    if not _DEMO_MODE or not pdf_bytes:
+        return pdf_bytes
+    try:
+        reader = _PdfReader(io.BytesIO(pdf_bytes))
+        writer = _PdfWriter()
+        for page in reader.pages:
+            w = float(page.mediabox.width)
+            h = float(page.mediabox.height)
+            overlay_buf = io.BytesIO()
+            c = rl_canvas.Canvas(overlay_buf, pagesize=(w, h))
+            c.saveState()
+            c.setFont("Helvetica-Bold", 38)
+            c.setFillColor(_RLColor(0.80, 0.10, 0.10, alpha=0.22))
+            c.translate(w / 2, h / 2)
+            c.rotate(42)
+            c.drawCentredString(0, 0, "DEMO — NOT FOR OPERATIONAL USE")
+            c.restoreState()
+            c.setFont("Helvetica-Bold", 9)
+            c.setFillColor(_RLColor(0.85, 0.05, 0.05, alpha=0.85))
+            c.drawCentredString(w / 2, h - 16, "DEMO DOCUMENT — NOT FOR OPERATIONAL USE")
+            c.setFont("Helvetica-Bold", 8)
+            c.setFillColor(_RLColor(0.85, 0.05, 0.05, alpha=0.75))
+            c.drawCentredString(w / 2, 10, "DEMO DOCUMENT — NOT FOR OPERATIONAL USE")
+            c.save()
+            overlay_buf.seek(0)
+            overlay_page = _PdfReader(overlay_buf).pages[0]
+            page.merge_page(overlay_page)
+            writer.add_page(page)
+        out = io.BytesIO()
+        writer.write(out)
+        out.seek(0)
+        return out.read()
+    except Exception:
+        return pdf_bytes
+
 
 PAGE_W, PAGE_H = A4
 ML = 40
@@ -1626,3 +1671,27 @@ def generate_repo_pack_pdf(pdfs: list[bytes]) -> bytes:
     except Exception:
         # Fallback: just return the first PDF if merge fails
         return pdfs[0] if pdfs else b''
+
+
+# ── Demo watermark wrappers ────────────────────────────────────────────────────
+# In demo mode (AXIONX_DEMO_MODE=true) wrap every public document generator so
+# its output is stamped "DEMO DOCUMENT — NOT FOR OPERATIONAL USE" on every page.
+if _DEMO_MODE:
+    def _wrap_pdf(fn):
+        from functools import wraps as _fw
+        @_fw(fn)
+        def _inner(*a, **kw):
+            return _demo_watermark_pdf(fn(*a, **kw))
+        return _inner
+
+    generate_vir_pdf             = _wrap_pdf(generate_vir_pdf)
+    generate_transport_pdf       = _wrap_pdf(generate_transport_pdf)
+    generate_wise_vir_pdf        = _wrap_pdf(generate_wise_vir_pdf)
+    generate_wise_auction_pdf    = _wrap_pdf(generate_wise_auction_pdf)
+    generate_wise_tow_pdf        = _wrap_pdf(generate_wise_tow_pdf)
+    generate_form_13_pdf         = _wrap_pdf(generate_form_13_pdf)
+    generate_voluntary_surrender_pdf = _wrap_pdf(generate_voluntary_surrender_pdf)
+    generate_auction_letter_pdf  = _wrap_pdf(generate_auction_letter_pdf)
+    generate_tow_letter_pdf      = _wrap_pdf(generate_tow_letter_pdf)
+    generate_previous_file_notes_pdf = _wrap_pdf(generate_previous_file_notes_pdf)
+    generate_repo_pack_pdf       = _wrap_pdf(generate_repo_pack_pdf)

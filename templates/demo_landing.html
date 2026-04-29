@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AxionX — Demo Environment</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .demo-hero {
+      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      color: #fff;
+      padding: 60px 0 48px;
+    }
+    .demo-badge {
+      display: inline-block;
+      background: rgba(255,200,0,.25);
+      border: 1.5px solid rgba(255,200,0,.6);
+      color: #fde68a;
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 99px;
+      margin-bottom: 20px;
+    }
+    .role-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,.10);
+      border-radius: 18px;
+      padding: 28px 24px;
+      text-align: center;
+      transition: transform .15s, box-shadow .15s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    .role-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,.12); color: inherit; }
+    .role-icon {
+      width: 64px; height: 64px;
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+      font-size: 2rem;
+    }
+    .role-icon-admin  { background: rgba(220,38,38,.12); }
+    .role-icon-agent  { background: rgba(37,99,235,.12); }
+    .role-icon-client { background: rgba(22,163,74,.12); }
+    .fact-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+    .fact-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 2px; }
+    .demo-footer { background: rgba(255,200,0,.15); border: 1.5px solid rgba(245,158,11,.4);
+                   border-radius: 12px; padding: 12px 18px; text-align: center;
+                   color: #92400e; font-weight: 600; font-size: .9rem; }
+  </style>
+</head>
+<body>
+
+<div class="demo-hero text-center">
+  <div class="container">
+    <div class="demo-badge">DEMO ENVIRONMENT — NO LIVE DATA</div>
+    <h1 class="display-5 fw-bold mb-3">AxionX Interactive Demo</h1>
+    <p class="lead mb-2" style="opacity:.85;max-width:560px;margin:0 auto">
+      Explore the full AxionX field operations platform using realistic fictional data.
+      No real customers, vehicles, or financial records appear here.
+    </p>
+    <p class="mt-3" style="opacity:.65;font-size:.88rem">
+      All names, addresses, VINs, phone numbers, and amounts are entirely fabricated.
+    </p>
+  </div>
+</div>
+
+<div class="container py-5">
+
+  <div class="row g-4 mb-5">
+    <div class="col-12">
+      <h2 class="fw-bold mb-1 text-center">Choose a Demo Role</h2>
+      <p class="text-center text-muted mb-4">Each role provides a different view of the platform — no password required.</p>
+    </div>
+
+    <div class="col-md-4">
+      <a href="/demo/login/admin" class="role-card">
+        <div class="role-icon role-icon-admin">🛡️</div>
+        <h4 class="fw-bold mb-1">Admin Demo</h4>
+        <p class="text-muted mb-3" style="font-size:.9rem">
+          Full access: manage jobs, view all agents, approve updates, generate documents, and access admin controls.
+        </p>
+        <span class="btn btn-danger w-100">Sign in as Admin</span>
+      </a>
+    </div>
+
+    <div class="col-md-4">
+      <a href="/demo/login/agent" class="role-card">
+        <div class="role-icon role-icon-agent">🚗</div>
+        <h4 class="fw-bold mb-1">Field Agent Demo</h4>
+        <p class="text-muted mb-3" style="font-size:.9rem">
+          Field-agent view: today's schedule, job list, attendance updates, mobile forms, and LPR scanning tools.
+        </p>
+        <span class="btn btn-primary w-100">Sign in as Agent</span>
+      </a>
+    </div>
+
+    <div class="col-md-4">
+      <a href="/demo/login/client" class="role-card">
+        <div class="role-icon role-icon-client">🏦</div>
+        <h4 class="fw-bold mb-1">Client / Lender Demo</h4>
+        <p class="text-muted mb-3" style="font-size:.9rem">
+          Lender-filtered view: shows only the portfolio for <strong>Demo Finance Group</strong> — track job progress, field updates, and request closures on your accounts.
+        </p>
+        <span class="btn btn-success w-100">Sign in as Client</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-5">
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body p-4">
+          <h5 class="fw-bold mb-3">What is this demo?</h5>
+          <div class="fact-row">
+            <div class="fact-icon">🔒</div>
+            <div>Completely isolated — uses a separate database (<code>axion_demo.db</code>) seeded with fictional data. Your production data is untouched.</div>
+          </div>
+          <div class="fact-row">
+            <div class="fact-icon">📧</div>
+            <div>All emails, SMS, and push notifications are intercepted and stored in the <a href="/demo/outbox">Demo Outbox</a> — nothing is actually sent.</div>
+          </div>
+          <div class="fact-row">
+            <div class="fact-icon">📄</div>
+            <div>All generated documents (Form 13, VIR, Transport Instructions) are stamped <strong>DEMO DOCUMENT — NOT FOR OPERATIONAL USE</strong>.</div>
+          </div>
+          <div class="fact-row">
+            <div class="fact-icon">🌐</div>
+            <div>GeoOp, Azure Blob Storage, APNs, and LPR live data connections are all disabled in demo mode.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body p-4">
+          <h5 class="fw-bold mb-3">Demo data included</h5>
+          <ul class="list-unstyled mb-0">
+            <li class="mb-2">✅ 8 Active jobs with field notes and schedules</li>
+            <li class="mb-2">✅ 3 New jobs (just received from lender)</li>
+            <li class="mb-2">✅ 3 Phone-work-only jobs</li>
+            <li class="mb-2">✅ 2 Repossession-ready jobs</li>
+            <li class="mb-2">✅ 1 Completed/Repossessed job with VIR</li>
+            <li class="mb-2">✅ 2 Overdue update examples</li>
+            <li class="mb-2">✅ 2 Pending review field updates</li>
+            <li class="mb-2">✅ 2 Recovery target records with LPR watchlist</li>
+            <li class="mb-2">✅ 1 Client update request in queue</li>
+            <li class="mb-2">✅ 1 Closure request</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="demo-footer mb-4">
+    ⚠️ Demo Data Only — No live data is displayed or transmitted in this environment
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
