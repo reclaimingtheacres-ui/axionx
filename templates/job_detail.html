@@ -143,10 +143,8 @@
         <li><a class="dropdown-item" href="#" onclick="openSendMsg('email');return false">Send Email</a></li>
         <li><a class="dropdown-item" href="#" onclick="openSendMsg('sms');return false">Send SMS</a></li>
         <li><a class="dropdown-item" href="#" onclick="openSendMsg('both');return false">Send Both</a></li>
-        {% if session.get('role') in ('admin','both') %}
         <li><hr class="dropdown-divider"></li>
         <li><a class="dropdown-item" href="#" onclick="openInternalMsg();return false">Internal Message</a></li>
-        {% endif %}
       </ul>
     </div>
 
@@ -4953,9 +4951,9 @@ function adocOpenEditJob() {
             <div id="msg_type_badge" class="badge" style="background:rgba(96,165,250,.15);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.85rem;padding:5px 10px">Email</div>
           </div>
           <div class="mb-3" id="msg_prompt_row" style="display:none">
-            <label class="form-label small fw-semibold">Prompt</label>
+            <label class="form-label small fw-semibold">Prompt <span class="text-muted fw-normal">(optional)</span></label>
             <select id="msg_prompt" class="form-select form-select-sm">
-              <option value="">— select prompt —</option>
+              <option value="">— no prompt —</option>
               <option value="Update Required">Update Required</option>
               <option value="First Update Required">First Update Required</option>
               <option value="Urgent Update Required">Urgent Update Required</option>
@@ -4970,7 +4968,7 @@ function adocOpenEditJob() {
           <div class="mb-3" id="msg_to_internal_row" style="display:none">
             <label class="form-label small fw-semibold">To</label>
             <div id="msg_recipients_list" class="border rounded p-2" style="background:var(--panel);max-height:160px;overflow-y:auto">
-              {% if job.assigned_user_id %}
+              {% if job.assigned_user_id and job.assigned_user_id != session.get('user_id') %}
               <div class="form-check py-1">
                 <input class="form-check-input msg-recipient-cb" type="checkbox"
                        id="msg_recip_agent" value="{{ job.assigned_user_id }}" checked>
@@ -4981,7 +4979,7 @@ function adocOpenEditJob() {
               </div>
               {% endif %}
               {% for au in admin_users %}
-              {% if au.id != job.assigned_user_id %}
+              {% if au.id != job.assigned_user_id and au.id != session.get('user_id') %}
               <div class="form-check py-1">
                 <input class="form-check-input msg-recipient-cb" type="checkbox"
                        id="msg_recip_{{ au.id }}" value="{{ au.id }}">
@@ -5112,7 +5110,6 @@ function doSendMsg() {
 
   if (_msgType === 'internal') {
     var prompt = document.getElementById('msg_prompt').value;
-    if (!prompt) { alert('Please select a prompt.'); return; }
     var recipientIds = Array.from(document.querySelectorAll('.msg-recipient-cb:checked')).map(function(cb){ return parseInt(cb.value, 10); });
     if (!recipientIds.length) { alert('Please select at least one recipient.'); return; }
     var btn = document.getElementById('msg_send_btn');

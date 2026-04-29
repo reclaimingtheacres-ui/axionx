@@ -6267,7 +6267,6 @@ def job_urgent_update(job_id: int, sched_id: int):
 
 @app.post("/jobs/<int:job_id>/internal-message")
 @login_required
-@admin_required
 def job_internal_message(job_id: int):
     PROMPTS = {
         "Update Required": {
@@ -6291,7 +6290,7 @@ def job_internal_message(job_id: int):
 
     if not body:
         return jsonify({"ok": False, "error": "Message body is required."}), 400
-    if prompt not in PROMPTS:
+    if prompt and prompt not in PROMPTS:
         return jsonify({"ok": False, "error": "Invalid prompt selection."}), 400
     if not recipient_user_ids:
         return jsonify({"ok": False, "error": "Please select at least one recipient."}), 400
@@ -6355,7 +6354,7 @@ def job_internal_message(job_id: int):
             labeled.append(label)
         recipients_str = ", ".join(labeled) if labeled else "unknown"
 
-        note_text = f"Internal message sent to {recipients_str}: {prompt}."
+        note_text = f"Internal message sent to {recipients_str}" + (f": {prompt}." if prompt else ".")
         system_uid = _get_system_user_id(conn)
         cur.execute(
             "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
