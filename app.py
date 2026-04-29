@@ -3871,7 +3871,7 @@ def _jobs_list_inner():
 
     urgent_sent_sched_ids: set = set()
     if role in ("admin", "both"):
-        page_sched_ids = [r["next_sched_id"] for r in rows if r.get("next_sched_id")]
+        page_sched_ids = [r["next_sched_id"] for r in rows if r["next_sched_id"]]
         if page_sched_ids:
             try:
                 cur.execute("CREATE TABLE IF NOT EXISTS urgent_update_log (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id INTEGER NOT NULL, sched_id INTEGER NOT NULL UNIQUE, triggered_by_user_id INTEGER NOT NULL, agent_user_id INTEGER NOT NULL, triggered_at TEXT NOT NULL, message_id INTEGER, note_id INTEGER, new_sched_id INTEGER)")
