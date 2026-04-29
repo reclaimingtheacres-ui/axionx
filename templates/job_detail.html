@@ -5065,7 +5065,7 @@ function openInternalMsg() {
   document.getElementById('sendMsgTitle').textContent          = 'Internal Message';
   document.getElementById('msg_type_badge').style.display      = 'none';
   _msgResetModal();
-  document.getElementById('msg_prompt_row').style.display      = '';
+  document.getElementById('msg_prompt_row').style.display      = {% if session.get('role') in ('admin','both') %}'';{% else %}'none';{% endif %}
   document.getElementById('msg_to_text_row').style.display     = 'none';
   document.getElementById('msg_to_internal_row').style.display = '';
   document.getElementById('msg_subject').value = '';
