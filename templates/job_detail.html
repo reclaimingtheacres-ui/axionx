@@ -151,15 +151,16 @@
     </div>
 
     {% if session.get('role') in ('admin','both','agent') and client_update_info %}
+      {% set _cur_label = client_update_info.get('button_label', 'Request Client Update') %}
       {% if client_update_info.eligible %}
     <button class="btn btn-warning btn-sm" type="button" id="btnClientUpdateRequest"
             onclick="openClientUpdateModal()">
-      Request Client Update
+      {{ _cur_label }}
     </button>
-      {% elif client_update_info.get('cooldown_remaining', 0) > 0 %}
+      {% elif client_update_info.get('cooldown_remaining', 0) > 0 or client_update_info.get('stage') == 3 %}
     <button class="btn btn-outline-secondary btn-sm" type="button" disabled
-            title="A client update request has already been sent within the last 7 days.">
-      Request Client Update
+            title="{{ client_update_info.get('reason', 'Already sent — please wait before sending again.') }}">
+      {{ _cur_label }}
     </button>
       {% endif %}
     {% endif %}
@@ -6432,11 +6433,16 @@ function axOpenEditRole(jcId, currentRole) {
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
       <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title" style="color:var(--text)">Request Client Update</h5>
+        <h5 class="modal-title" style="color:var(--text)">{{ client_update_info.get('button_label', 'Request Client Update') }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <div id="curAlertBox" class="alert d-none mb-3" role="alert"></div>
+        {% if client_update_info.get('stage') == 2 %}
+        <div class="alert alert-warning py-2 mb-3" style="font-size:.8rem">
+          No response was received to the original update request. This will send a closure request to the client.
+        </div>
+        {% endif %}
         <div class="mb-2" style="font-size:.82rem;color:var(--muted)">
           <strong>To:</strong> <span id="curToEmail">{{ client_update_info.client_email or '' }}</span> &nbsp;|&nbsp;
           <strong>Reply-To:</strong> office@swpirecoveries.com &nbsp;|&nbsp;
@@ -6450,7 +6456,7 @@ function axOpenEditRole(jcId, currentRole) {
         </div>
         <div class="mb-2">
           <label class="form-label small fw-semibold">Body</label>
-          <textarea id="curBody" class="form-control" rows="12"
+          <textarea id="curBody" class="form-control" rows="{% if client_update_info.get('stage') == 2 %}8{% else %}12{% endif %}"
                     style="font-size:.84rem;font-family:inherit">{{ client_update_info.body | e }}</textarea>
         </div>
         <div style="font-size:.75rem;color:var(--muted)">

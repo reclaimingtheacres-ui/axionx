@@ -1524,6 +1524,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "jobs", "status_changed_at",                   "TEXT")
     add_column_if_missing(cur, "jobs", "last_client_update_request_sent_at",  "TEXT")
     add_column_if_missing(cur, "jobs", "client_update_request_count",         "INTEGER DEFAULT 0")
+    add_column_if_missing(cur, "client_update_requests", "request_type",      "TEXT NOT NULL DEFAULT 'update_request'")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS client_update_requests (
@@ -4990,7 +4991,7 @@ def job_detail(job_id: int):
                            from_cue=from_cue,
                            ai_draft_count=ai_draft_count,
                            office_notes=office_notes,
-                           client_update_info=_client_update_request_eligibility(conn, job_id))
+                           client_update_info=_build_client_update_info(conn, job_id, role))
 
 
 def _sync_job_customer_id(cur, job_id):
@@ -6520,16 +6521,22 @@ def job_assign_agent(job_id: int):
 # ── Client Update Request ──────────────────────────────────────────────────────
 _CUR_ELIGIBLE_STATUSES = ("Suspended", "Awaiting Advice From Client", "Awaiting Instructions")
 _CUR_STALE_DAYS        = 28   # job must be in eligible status at least this long
-_CUR_COOLDOWN_DAYS     = 7    # minimum gap between repeat sends
+_CUR_COOLDOWN_DAYS     = 7    # days between Stage 1 and Stage 2, and Stage 2 and Stage 3
+
 
 def _client_update_request_eligibility(conn, job_id: int) -> dict:
-    """Return eligibility info for the Request Client Update workflow.
+    """Return eligibility info for the 3-stage client update workflow.
 
-    Returns a dict with keys:
-      eligible (bool), reason (str), days_in_status (int|None),
-      client_email (str|None), last_sent_at (str|None),
-      cooldown_remaining (int), subject (str), body (str)
+    Stage 1 — Request Client Update  (initial, after >= 28 days in eligible status)
+    Stage 2 — Request Closure        (7 days after Stage 1, if no closure sent yet)
+    Stage 3 — Auto-escalate          (7 days after Stage 2 — sets needs_escalation=True)
+
+    Extra return keys vs original:
+      stage (int 1/2/3), request_type ('update_request'/'closure_request'),
+      button_label (str), needs_escalation (bool)
     """
+    from datetime import datetime as _dt, timedelta as _td
+
     job = conn.execute("""
         SELECT j.*, c.name AS client_name, c.email AS client_email,
                cu.first_name || ' ' || cu.last_name AS customer_name
@@ -6546,9 +6553,7 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
     if status not in _CUR_ELIGIBLE_STATUSES:
         return {"eligible": False, "reason": f"Job status '{status}' is not eligible."}
 
-    # Status age: prefer status_changed_at (set on every status change going forward),
-    # then fall back to the most recent lifecycle log entry matching current status,
-    # then fall back to job updated_at.  Document the fallback in a code comment.
+    # Status age
     raw_changed = job["status_changed_at"]
     if not raw_changed:
         ll = conn.execute("""
@@ -6557,12 +6562,10 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
             ORDER BY performed_at DESC LIMIT 1
         """, (job_id, status)).fetchone()
         raw_changed = ll["performed_at"] if ll else job["updated_at"]
-        # fallback: updated_at is not guaranteed to be the status-change timestamp
-        # but is the best available approximation when no lifecycle log entry exists.
 
     try:
-        from datetime import date as _date, datetime as _dt
         changed_date = _dt.fromisoformat(raw_changed[:19]).date()
+        from datetime import date as _date
         days_in_status = (_date.today() - changed_date).days
     except Exception:
         days_in_status = 0
@@ -6574,7 +6577,7 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
             "days_in_status": days_in_status,
         }
 
-    # Client email - prefer contacts email table, fall back to clients.email column
+    # Client email
     client_email = None
     if job["client_id"]:
         ce_row = conn.execute("""
@@ -6593,37 +6596,128 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
             "days_in_status": days_in_status,
         }
 
-    # 7-day cooldown check
-    last_sent_row = conn.execute("""
+    ref         = job["display_ref"] or ""
+    cname       = (job["customer_name"] or "").strip()
+    client_name = (job["client_name"] or "").strip()
+    now_dt      = datetime.now()
+
+    # ── Fetch stage records ──────────────────────────────────────────────────
+    last_update_row = conn.execute("""
         SELECT sent_at FROM client_update_requests
         WHERE job_id = ? AND result_status = 'sent'
+          AND (request_type IS NULL OR request_type = 'update_request')
         ORDER BY sent_at DESC LIMIT 1
     """, (job_id,)).fetchone()
-    last_sent_at = last_sent_row["sent_at"] if last_sent_row else None
-    cooldown_remaining = 0
-    if last_sent_at:
-        try:
-            from datetime import datetime as _dt2, timedelta as _td
-            last_dt = _dt2.fromisoformat(last_sent_at[:19])
-            days_since = (datetime.now() - last_dt).days
-            cooldown_remaining = max(0, _CUR_COOLDOWN_DAYS - days_since)
-        except Exception:
-            cooldown_remaining = 0
-    if cooldown_remaining > 0:
-        return {
-            "eligible": False,
-            "reason": f"A client update request has already been sent within the last {_CUR_COOLDOWN_DAYS} days.",
-            "cooldown_remaining": cooldown_remaining,
-            "days_in_status": days_in_status,
-            "last_sent_at": last_sent_at,
-        }
 
-    # Build prefilled content
-    ref   = job["display_ref"] or ""
-    cname = (job["customer_name"] or "").strip()
-    client_name = (job["client_name"] or "").strip()
-    subject = f"Update Request \u2013 {ref} \u2013 {cname}"
-    body = (
+    last_closure_row = conn.execute("""
+        SELECT sent_at FROM client_update_requests
+        WHERE job_id = ? AND result_status = 'sent'
+          AND request_type = 'closure_request'
+        ORDER BY sent_at DESC LIMIT 1
+    """, (job_id,)).fetchone()
+
+    escalated_row = conn.execute("""
+        SELECT id FROM cue_items
+        WHERE job_id = ? AND visit_type = 'Close and invoice file'
+          AND status IN ('Pending','In Progress')
+        LIMIT 1
+    """, (job_id,)).fetchone()
+
+    # Common ineligible base
+    base_ineligible = {
+        "eligible":           False,
+        "days_in_status":     days_in_status,
+        "client_email":       client_email,
+        "client_name":        client_name,
+        "customer_name":      cname,
+        "status":             status,
+        "cooldown_remaining": 0,
+        "needs_escalation":   False,
+        "last_sent_at":       None,
+    }
+
+    # ── Stage 3: already escalated ───────────────────────────────────────────
+    if escalated_row:
+        return {**base_ineligible, "stage": 3,
+                "reason": "File has been referred to the admin queue for closure and invoicing.",
+                "button_label": "Request Closure",
+                "last_sent_at": (last_closure_row["sent_at"] if last_closure_row else
+                                 last_update_row["sent_at"] if last_update_row else None)}
+
+    # ── Stage 2 sent: check Stage 3 trigger ─────────────────────────────────
+    if last_closure_row:
+        last_closure_at = last_closure_row["sent_at"]
+        try:
+            closure_dt    = _dt.fromisoformat(last_closure_at[:19])
+            days_since_c  = (now_dt - closure_dt).days
+            cooldown_left = max(0, _CUR_COOLDOWN_DAYS - days_since_c)
+        except Exception:
+            days_since_c = 0
+            cooldown_left = _CUR_COOLDOWN_DAYS
+
+        if days_since_c >= _CUR_COOLDOWN_DAYS:
+            # Stage 3 trigger — caller (job_detail route) will create escalation
+            return {**base_ineligible, "stage": 3,
+                    "needs_escalation": True,
+                    "reason": "Awaiting admin escalation.",
+                    "button_label": "Request Closure",
+                    "last_sent_at": last_closure_at}
+
+        return {**base_ineligible, "stage": 2,
+                "cooldown_remaining": cooldown_left,
+                "reason": f"Closure request already sent within the last {_CUR_COOLDOWN_DAYS} days.",
+                "button_label": "Request Closure",
+                "last_sent_at": last_closure_at}
+
+    # ── Stage 1 sent: check Stage 2 eligibility ──────────────────────────────
+    if last_update_row:
+        last_update_at = last_update_row["sent_at"]
+        try:
+            update_dt     = _dt.fromisoformat(last_update_at[:19])
+            days_since_u  = (now_dt - update_dt).days
+            cooldown_left = max(0, _CUR_COOLDOWN_DAYS - days_since_u)
+        except Exception:
+            days_since_u = 0
+            cooldown_left = _CUR_COOLDOWN_DAYS
+
+        if days_since_u >= _CUR_COOLDOWN_DAYS:
+            # Stage 2 eligible — build closure email content
+            closure_subject = f"Closure request \u2013 {ref} \u2013 {cname}"
+            closure_body = (
+                f"Hi {client_name},\n\n"
+                f"Please confirm whether this file can now be closed, as no further instructions "
+                f"or response have been received following our previous update request.\n\n"
+                f"Kind regards,\n"
+                f"SWPI"
+            )
+            return {
+                "eligible":           True,
+                "stage":              2,
+                "request_type":       "closure_request",
+                "button_label":       "Request Closure",
+                "reason":             "",
+                "days_in_status":     days_in_status,
+                "client_email":       client_email,
+                "client_name":        client_name,
+                "customer_name":      cname,
+                "status":             status,
+                "last_sent_at":       last_update_at,
+                "cooldown_remaining": 0,
+                "needs_escalation":   False,
+                "subject":            closure_subject,
+                "body":               closure_body,
+                "ref":                ref,
+            }
+
+        return {**base_ineligible, "stage": 1,
+                "cooldown_remaining": cooldown_left,
+                "reason": f"Update request already sent within the last {_CUR_COOLDOWN_DAYS} days.",
+                "button_label": "Request Client Update",
+                "last_sent_at": last_update_at}
+
+    # ── Stage 1: no request sent yet ─────────────────────────────────────────
+    update_subject = f"Update Request \u2013 {ref} \u2013 {cname}"
+    update_body = (
         f"Hi {client_name},\n\n"
         f"We refer to the above matter currently listed as {status}.\n\n"
         f"To date, no further instructions have been received and the file has now been "
@@ -6635,21 +6729,79 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
         f"Kind regards,\n"
         f"SWPI"
     )
-
     return {
-        "eligible": True,
-        "reason": "",
-        "days_in_status": days_in_status,
-        "client_email": client_email,
-        "client_name": client_name,
-        "customer_name": cname,
-        "status": status,
-        "last_sent_at": last_sent_at,
+        "eligible":           True,
+        "stage":              1,
+        "request_type":       "update_request",
+        "button_label":       "Request Client Update",
+        "reason":             "",
+        "days_in_status":     days_in_status,
+        "client_email":       client_email,
+        "client_name":        client_name,
+        "customer_name":      cname,
+        "status":             status,
+        "last_sent_at":       None,
         "cooldown_remaining": 0,
-        "subject": subject,
-        "body": body,
-        "ref": ref,
+        "needs_escalation":   False,
+        "subject":            update_subject,
+        "body":               update_body,
+        "ref":                ref,
     }
+
+
+def _create_client_update_escalation(conn, job_id: int, user_id: int) -> bool:
+    """Create Stage 3 cue item + file note if not already created. Returns True if newly created."""
+    existing = conn.execute("""
+        SELECT id FROM cue_items
+        WHERE job_id = ? AND visit_type = 'Close and invoice file'
+          AND status IN ('Pending','In Progress')
+        LIMIT 1
+    """, (job_id,)).fetchone()
+    if existing:
+        return False
+
+    ts    = now_ts()
+    today = datetime.now().strftime("%Y-%m-%d")
+    system_uid = _get_system_user_id(conn)
+
+    conn.execute("""
+        INSERT INTO cue_items
+            (job_id, visit_type, due_date, priority, status, instructions,
+             created_by_user_id, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?)
+    """, (
+        job_id,
+        "Close and invoice file",
+        today,
+        "High",
+        "Pending",
+        "No response received from the client following the original update request or the "
+        "follow-up closure request. File requires admin review for closure and invoicing.",
+        system_uid, ts, ts,
+    ))
+
+    note_text = (
+        "No response received from the client following the update request or closure request. "
+        "File referred to admin queue for closure and invoicing."
+    )
+    conn.execute("""
+        INSERT INTO job_field_notes
+            (job_id, created_by_user_id, note_text, created_at, note_category, review_status, published_at)
+        VALUES (?,?,?,?,?,?,?)
+    """, (job_id, system_uid, note_text, ts, "file_note", "published", ts))
+
+    return True
+
+
+def _build_client_update_info(conn, job_id: int, role: str) -> dict:
+    """Call eligibility and, for admin/both users, auto-trigger Stage 3 escalation if due."""
+    info = _client_update_request_eligibility(conn, job_id)
+    if info.get("needs_escalation") and role in ("admin", "both"):
+        created = _create_client_update_escalation(conn, job_id, _get_system_user_id(conn))
+        if created:
+            conn.commit()
+        info = _client_update_request_eligibility(conn, job_id)
+    return info
 
 
 @app.get("/jobs/<int:job_id>/client-update-request/prefill")
@@ -6665,8 +6817,9 @@ def client_update_request_prefill(job_id: int):
 @app.post("/jobs/<int:job_id>/client-update-request/send")
 @login_required
 def client_update_request_send(job_id: int):
-    """Send a client update request email, record the event, create a published file note.
-    Server-side enforces all eligibility and cooldown rules independent of the UI.
+    """Send a client update or closure request email, record the event, create a published file note.
+    Handles Stage 1 (update_request) and Stage 2 (closure_request) automatically based on
+    server-side eligibility — all rules enforced server-side independent of the UI.
     """
     conn = db()
     info = _client_update_request_eligibility(conn, job_id)
@@ -6674,6 +6827,7 @@ def client_update_request_send(job_id: int):
         conn.close()
         return jsonify({"ok": False, "error": info.get("reason", "Not eligible.")})
 
+    request_type = info.get("request_type", "update_request")
     subject      = (request.json or {}).get("subject", info["subject"]).strip()
     body         = (request.json or {}).get("body",    info["body"]).strip()
     to_email     = info["client_email"]
@@ -6691,13 +6845,14 @@ def client_update_request_send(job_id: int):
 </div>"""
         send_email([to_email], subject, full_body, body_html=body_html, reply_to=reply_to)
     except Exception as exc:
-        # Log failed attempt but do NOT create note or update counters
         try:
             conn.execute("""
                 INSERT INTO client_update_requests
-                    (job_id, sent_by_user_id, sent_at, recipient_email, subject, body_snapshot, reply_to, result_status)
-                VALUES (?,?,?,?,?,?,?,'failed')
-            """, (job_id, session.get("user_id"), ts, to_email, subject, full_body, reply_to))
+                    (job_id, sent_by_user_id, sent_at, recipient_email, subject,
+                     body_snapshot, reply_to, result_status, request_type)
+                VALUES (?,?,?,?,?,?,?,'failed',?)
+            """, (job_id, session.get("user_id"), ts, to_email, subject,
+                  full_body, reply_to, request_type))
             conn.commit()
         except Exception:
             pass
@@ -6705,17 +6860,27 @@ def client_update_request_send(job_id: int):
         return jsonify({"ok": False, "error": f"Email send failed: {exc}"})
 
     # ── Success: create published file note ──────────────────────────────────
-    days  = info["days_in_status"]
-    status = info["status"]
+    days        = info["days_in_status"]
+    status      = info["status"]
     client_name = info["client_name"]
-    note_heading = f"{client_name} \\ E"
-    note_body = (
-        f"{note_heading}\n"
-        f"Update request sent to client via email requesting current status of file, "
-        f"which remains {status}. File has been outstanding for over {days} days without "
-        f"further instruction. Awaiting response."
-    )
-    cur = conn.cursor()
+    cur         = conn.cursor()
+
+    if request_type == "closure_request":
+        note_heading = f"{client_name} \\ E"
+        note_body = (
+            f"{note_heading}\n"
+            f"Closure request sent to client via email, following no response to the previous "
+            f"update request after {_CUR_COOLDOWN_DAYS} days."
+        )
+    else:
+        note_heading = f"{client_name} \\ E"
+        note_body = (
+            f"{note_heading}\n"
+            f"Update request sent to client via email requesting current status of file, "
+            f"which remains {status}. File has been outstanding for over {days} days without "
+            f"further instruction. Awaiting response."
+        )
+
     cur.execute("""
         INSERT INTO job_field_notes
             (job_id, created_by_user_id, note_text, created_at, note_category, review_status, published_at)
@@ -6726,9 +6891,11 @@ def client_update_request_send(job_id: int):
     # ── Record the send event ────────────────────────────────────────────────
     cur.execute("""
         INSERT INTO client_update_requests
-            (job_id, sent_by_user_id, sent_at, recipient_email, subject, body_snapshot, reply_to, result_status, related_note_id)
-        VALUES (?,?,?,?,?,?,?,'sent',?)
-    """, (job_id, session.get("user_id"), ts, to_email, subject, full_body, reply_to, note_id))
+            (job_id, sent_by_user_id, sent_at, recipient_email, subject,
+             body_snapshot, reply_to, result_status, related_note_id, request_type)
+        VALUES (?,?,?,?,?,?,?,'sent',?,?)
+    """, (job_id, session.get("user_id"), ts, to_email, subject,
+          full_body, reply_to, note_id, request_type))
     log_id = cur.lastrowid
 
     # ── Update summary fields on job ─────────────────────────────────────────
@@ -6742,9 +6909,9 @@ def client_update_request_send(job_id: int):
     conn.commit()
     conn.close()
     audit("job", job_id, "client_update_request_sent",
-          f"Client update request email sent to {to_email}.",
-          {"note_id": note_id, "days_in_status": days})
-    return jsonify({"ok": True, "note_id": note_id, "sent_to": to_email})
+          f"Client {request_type.replace('_',' ')} email sent to {to_email}.",
+          {"note_id": note_id, "days_in_status": days, "request_type": request_type})
+    return jsonify({"ok": True, "note_id": note_id, "sent_to": to_email, "request_type": request_type})
 
 
 @app.post("/jobs/<int:job_id>/archive")
