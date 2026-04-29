@@ -6619,7 +6619,7 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
         }
 
     # Build prefilled content
-    ref   = job["client_reference"] or job["display_ref"] or ""
+    ref   = job["display_ref"] or ""
     cname = (job["customer_name"] or "").strip()
     client_name = (job["client_name"] or "").strip()
     subject = f"Update Request \u2013 {ref} \u2013 {cname}"
