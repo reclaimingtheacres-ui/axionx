@@ -137,6 +137,10 @@ else:
     DB_PATH = _CONFIGURED_DB_PATH
     _PROD_DB_PATH = _CONFIGURED_DB_PATH
 
+# ── Demo reset state (module-level, lives for the process lifetime) ───────────
+_demo_reset_status: dict = {"state": "idle", "message": "", "started_at": None}
+_demo_reset_lock = threading.Lock()
+
 # ── Startup banner ────────────────────────────────────────────────────────────
 import logging as _mode_log
 if DEMO_MODE:
@@ -26942,53 +26946,195 @@ def demo_health():
     return jsonify(payload), 200
 
 
+def _demo_admin_required():
+    """Return (is_ok, error_response). Abort 404 if not demo mode, 403 if not admin persona."""
+    if not DEMO_MODE:
+        abort(404)
+    if not session.get("user_id") or session.get("demo_role") != "admin":
+        abort(403)
+
+
+def _run_demo_reset_background(demo_db_path: str, user_name: str, remote_addr: str):
+    """Background worker — wipes and re-seeds the demo DB, updates global status dict."""
+    import subprocess as _sp
+    global _db_initialized
+    with _demo_reset_lock:
+        _demo_reset_status.update({
+            "state": "running",
+            "message": "Seeding demo database…",
+            "started_at": datetime.now().isoformat(),
+        })
+    try:
+        # Safety: refuse to operate on the production DB path.
+        if not demo_db_path or os.path.abspath(demo_db_path) == os.path.abspath(_FALLBACK_PROD_DB):
+            raise RuntimeError(
+                f"[DEMO RESET SAFETY] demo_db_path resolves to production DB ({demo_db_path}). "
+                "Aborting reset."
+            )
+
+        seed_script = os.path.join(os.path.dirname(__file__), "scripts", "seed_demo.py")
+        env = os.environ.copy()
+        env["AXIONX_DEMO_MODE"] = "true"
+        env["AXIONX_DEMO_DB_PATH"] = demo_db_path
+
+        result = _sp.run(
+            ["python3", seed_script, "--reset"],
+            capture_output=True, text=True, timeout=120, env=env,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "unknown error")[:500]
+            _mode_log.error(
+                "[DEMO RESET] FAILED user=%s ip=%s at=%s error=%s",
+                user_name, remote_addr, datetime.now().isoformat(), err,
+            )
+            with _demo_reset_lock:
+                _demo_reset_status.update({"state": "error", "message": err})
+        else:
+            _db_initialized = False
+            _mode_log.warning(
+                "[DEMO RESET] SUCCESS user=%s ip=%s at=%s",
+                user_name, remote_addr, datetime.now().isoformat(),
+            )
+            with _demo_reset_lock:
+                _demo_reset_status.update({
+                    "state": "done",
+                    "message": "Demo environment has been reset successfully",
+                })
+    except Exception as exc:
+        msg = str(exc)
+        _mode_log.critical(
+            "[DEMO RESET] EXCEPTION user=%s ip=%s at=%s error=%s",
+            user_name, remote_addr, datetime.now().isoformat(), msg,
+        )
+        with _demo_reset_lock:
+            _demo_reset_status.update({"state": "error", "message": msg})
+
+
 @app.route("/demo/reset", methods=["GET", "POST"])
 @_demo_required
 def demo_reset():
-    # Only the "admin" demo persona (demo_role=admin) may reset data.
-    # The client/lender persona uses role='admin' internally for filtered access,
-    # so we check the dedicated demo_role session key — not the base role — to
-    # prevent the client persona from performing a reset.
-    if not session.get("user_id") or session.get("demo_role") != "admin":
-        flash("Admin demo persona required for demo reset.", "danger")
-        return redirect(url_for("demo_landing"))
+    """Demo data reset — admin persona only.
+    GET  → renders the reset page with confirmation modal.
+    POST → validates confirmation text, performs safety checks, then kicks off a
+           background seed and returns 202 JSON so the UI can poll /demo/reset/status.
+    Non-AJAX POST falls back to synchronous behaviour (waits up to 60 s).
+    """
+    _demo_admin_required()
 
     if request.method == "POST":
-        confirm = request.form.get("confirm_text", "").strip()
+        # Accept JSON body (AJAX) or form data (non-JS fallback).
+        json_body = request.get_json(silent=True) or {}
+        confirm = (
+            json_body.get("confirm_text")
+            or request.form.get("confirm_text", "")
+        ).strip()
+
+        is_ajax = (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or "application/json" in request.accept_mimetypes.best_match(
+                ["application/json", "text/html"]
+            )
+        )
+
+        def _err(msg: str, code: int = 400):
+            if is_ajax:
+                return jsonify({"status": "error", "message": msg}), code
+            flash(msg, "danger")
+            return redirect(url_for("demo_reset"))
+
+        # ── Confirmation text check ──────────────────────────────────────────
         if confirm != "RESET DEMO DATA":
-            flash("Confirmation text did not match. Type exactly: RESET DEMO DATA", "danger")
-            return redirect(url_for("demo_reset"))
+            return _err("Confirmation text did not match. Type exactly: RESET DEMO DATA")
 
-        _demo_write_guard()
-
-        if not DEMO_DB_PATH or os.path.abspath(DB_PATH) == os.path.abspath(_PROD_DB_PATH):
-            flash("Safety check failed — will not reset production database.", "danger")
-            return redirect(url_for("demo_reset"))
+        # ── Safety guard: never touch axion.db ──────────────────────────────
+        if not DEMO_DB_PATH or os.path.abspath(DB_PATH) == os.path.abspath(_FALLBACK_PROD_DB):
+            _mode_log.critical(
+                "[DEMO RESET SAFETY] Production DB path detected. "
+                "DB_PATH=%s PROD_REF=%s user=%s ip=%s",
+                DB_PATH, _FALLBACK_PROD_DB,
+                session.get("user_name", "unknown"), request.remote_addr,
+            )
+            return _err("Safety check failed — reset refused to protect the production database.", 500)
 
         try:
-            import subprocess as _sp
-            seed_script = os.path.join(os.path.dirname(__file__), "scripts", "seed_demo.py")
-            env = os.environ.copy()
-            env["AXIONX_DEMO_MODE"] = "true"
-            env["AXIONX_DEMO_DB_PATH"] = DEMO_DB_PATH
-            result = _sp.run(
-                ["python3", seed_script, "--reset"],
-                capture_output=True, text=True, timeout=60, env=env
-            )
-            if result.returncode != 0:
-                flash(f"Seed script failed: {result.stderr[:400]}", "danger")
-            else:
-                session.clear()
-                flash("Demo data has been reset to its original seeded state.", "success")
-                global _db_initialized
-                _db_initialized = False
-                return redirect(url_for("demo_landing"))
-        except Exception as exc:
-            flash(f"Reset error: {exc}", "danger")
+            _demo_write_guard()
+        except RuntimeError as exc:
+            _mode_log.critical("[DEMO RESET SAFETY] Write guard triggered: %s", exc)
+            return _err(str(exc), 500)
 
-        return redirect(url_for("demo_reset"))
+        # ── Reset already running? ───────────────────────────────────────────
+        with _demo_reset_lock:
+            if _demo_reset_status.get("state") == "running":
+                if is_ajax:
+                    return jsonify({"status": "running", "message": "Reset already in progress…"}), 202
+                flash("A reset is already in progress — please wait.", "info")
+                return redirect(url_for("demo_reset"))
+
+        user_name = session.get("user_name", "unknown")
+        remote_addr = request.remote_addr
+        _mode_log.warning(
+            "[DEMO RESET] Initiated by user=%s ip=%s at=%s",
+            user_name, remote_addr, datetime.now().isoformat(),
+        )
+
+        t = threading.Thread(
+            target=_run_demo_reset_background,
+            args=(DEMO_DB_PATH, user_name, remote_addr),
+            daemon=True,
+        )
+        t.start()
+
+        if is_ajax:
+            return jsonify({"status": "started", "message": "Reset in progress…"}), 202
+
+        # Non-JS fallback: wait synchronously then redirect.
+        t.join(timeout=60)
+        with _demo_reset_lock:
+            state = _demo_reset_status.get("state")
+            msg   = _demo_reset_status.get("message", "")
+        if state == "done":
+            session.clear()
+            flash("Demo environment has been reset successfully", "success")
+            return redirect(url_for("demo_landing"))
+        if state == "error":
+            flash(msg or "Reset failed — see server logs.", "danger")
+            return redirect(url_for("demo_reset"))
+        flash("Reset is taking longer than expected. Check back in a moment.", "info")
+        return redirect(url_for("demo_landing"))
 
     return render_template("demo_reset.html")
+
+
+@app.route("/demo/reset/status")
+@_demo_required
+def demo_reset_status():
+    """Polling endpoint — returns current reset job state as JSON.
+    Front-end polls this after a POST /demo/reset until state is 'done' or 'error'.
+    """
+    _demo_admin_required()
+    with _demo_reset_lock:
+        status = dict(_demo_reset_status)
+    return jsonify(status)
+
+
+@app.route("/demo/reset/complete")
+@_demo_required
+def demo_reset_complete():
+    """Called by the front-end after polling confirms state=='done'.
+    Clears the session and redirects to demo landing with a success flash.
+    """
+    _demo_admin_required()
+    with _demo_reset_lock:
+        state = _demo_reset_status.get("state")
+    if state != "done":
+        flash("Reset has not completed yet — please wait.", "warning")
+        return redirect(url_for("demo_reset"))
+    # Mark idle so subsequent resets are not blocked.
+    with _demo_reset_lock:
+        _demo_reset_status.update({"state": "idle", "message": "", "started_at": None})
+    session.clear()
+    flash("Demo environment has been reset successfully", "success")
+    return redirect(url_for("demo_landing"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
