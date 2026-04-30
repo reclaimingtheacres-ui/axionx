@@ -10618,8 +10618,12 @@ def forms_dashboard():
         conn = db()
         job = _forms_job_context(conn, job_id)
         conn.close()
+    catalogue = (
+        [f for f in _FORMS_CATALOGUE if not f["id"].startswith("wise_")]
+        if DEMO_MODE else _FORMS_CATALOGUE
+    )
     return render_template("forms.html",
-                           forms=_FORMS_CATALOGUE,
+                           forms=catalogue,
                            job=job, job_id=job_id)
 
 
