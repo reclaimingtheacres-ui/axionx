@@ -84,7 +84,7 @@
 <!-- ===== ACTION BAR (blue buttons) ===== -->
 {% if is_demo_client %}
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-  <button class="btn btn-primary btn-sm" type="button" onclick="openSendMsg('email')">&#9993; Message Agency</button>
+  <button class="btn btn-primary btn-sm" type="button" onclick="openDemoClientMsg()">&#9993; Message Agency</button>
   <span style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;border-radius:999px;padding:3px 12px;font-size:.78rem;font-weight:600">{{ s }}</span>
 </div>
 {% else %}
@@ -1120,7 +1120,7 @@
   <!-- Sticky Add Note bar + filter tabs -->
   <div style="position:sticky;top:0;z-index:50;background:var(--bg);padding:10px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
     {% if is_demo_client %}
-    <button class="btn btn-primary btn-sm" type="button" onclick="openSendMsg('email')">&#9993; Message Agency</button>
+    <button class="btn btn-primary btn-sm" type="button" onclick="openDemoClientMsg()">&#9993; Message Agency</button>
     {% else %}
     <button type="button" class="btn btn-primary btn-sm"
             onclick="axOpenAddNote()">+ Add Note</button>
@@ -2586,6 +2586,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     </div>
   </div>
 
+  {% if not is_demo_client %}
   <hr style="border-color:var(--line);margin:10px 0">
 
   <div class="mb-3">
@@ -2612,6 +2613,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <span style="color:var(--muted)">No upcoming booking</span>
     {% endif %}
   </div>
+  {% endif %}
 
   <hr style="border-color:var(--line);margin:10px 0">
 
@@ -5097,6 +5099,16 @@ function openSendMsg(type) {
   document.getElementById('msg_type_badge').style.display = '';
   _msgResetModal();
   bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).show();
+}
+
+function openDemoClientMsg() {
+  openSendMsg('email');
+  document.getElementById('sendMsgTitle').textContent = 'Message Agency';
+  var toEl = document.getElementById('msg_to');
+  toEl.value    = 'admin@swpirecoveries.com';
+  toEl.readOnly = true;
+  toEl.style.background = 'var(--panel)';
+  toEl.style.color      = 'var(--muted)';
 }
 
 function openInternalMsg() {
