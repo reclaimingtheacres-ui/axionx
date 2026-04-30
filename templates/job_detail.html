@@ -2966,9 +2966,11 @@ function axPublishFieldNote(jobId, noteId, noteText) {
   document.getElementById('axRsDate').value        = _axParseEtaDate(noteText || '');
   document.getElementById('axRsTime').value        = '';
   document.getElementById('axRsDeletePrev').checked = false;
-  document.getElementById('axRsError').style.display = 'none';
-  document.getElementById('axRsSaveBtn').disabled  = false;
-  document.getElementById('axRsSaveBtn').textContent = 'Save & Publish File Note';
+  document.getElementById('axRsError').style.display  = 'none';
+  document.getElementById('axRsSaveBtn').disabled      = false;
+  document.getElementById('axRsSaveBtn').textContent   = 'Save & Publish File Note';
+  document.getElementById('axRsPublishOnlyBtn').disabled    = false;
+  document.getElementById('axRsPublishOnlyBtn').textContent = 'Publish Only (no reschedule)';
   bootstrap.Modal.getOrCreateInstance(modal).show();
 }
 
@@ -3033,6 +3035,59 @@ function axRescheduleSave() {
     saveBtn.textContent = 'Save & Publish File Note';
     errEl.textContent   = 'Network error — please try again.';
     errEl.style.display = 'block';
+  });
+}
+
+/* ── Publish as File Note only — no reschedule ───────────────────────────── */
+function axReschedulePublishOnly() {
+  var modal      = document.getElementById('axRescheduleModal');
+  var jobId      = modal.dataset.jobId;
+  var noteId     = modal.dataset.noteId;
+  var errEl      = document.getElementById('axRsError');
+  var publishBtn = document.getElementById('axRsPublishOnlyBtn');
+  var saveBtn    = document.getElementById('axRsSaveBtn');
+
+  var noteText = (document.getElementById('axRsNoteText').value || '').trim();
+  errEl.style.display = 'none';
+  if (!noteText) { errEl.textContent = 'File note text cannot be empty.'; errEl.style.display='block'; return; }
+
+  publishBtn.disabled    = true;
+  publishBtn.textContent = 'Publishing…';
+  saveBtn.disabled       = true;
+
+  fetch('/jobs/' + jobId + '/notes/' + noteId + '/publish-to-file', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+    body: JSON.stringify({note_text: noteText})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (data.ok) {
+      bootstrap.Modal.getOrCreateInstance(modal).hide();
+      if (window._axFromCue) {
+        if (confirm('Note published! Delete the queue entry?')) {
+          fetch('/queue/' + window._axFromCue + '/dismiss', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
+          .then(function(){ window._axCueResolved = true; location.reload(); });
+          return;
+        } else {
+          window._axCueResolved = true;
+        }
+      }
+      location.reload();
+    } else {
+      publishBtn.disabled    = false;
+      publishBtn.textContent = 'Publish Only (no reschedule)';
+      saveBtn.disabled       = false;
+      errEl.textContent      = data.error || 'Publish failed — please try again.';
+      errEl.style.display    = 'block';
+    }
+  })
+  .catch(function(){
+    publishBtn.disabled    = false;
+    publishBtn.textContent = 'Publish Only (no reschedule)';
+    saveBtn.disabled       = false;
+    errEl.textContent      = 'Network error — please try again.';
+    errEl.style.display    = 'block';
   });
 }
 
@@ -6797,8 +6852,9 @@ function submitClientUpdateRequest() {
         </div>
         <div id="axRsError" style="display:none;color:#ef4444;font-size:.8rem;margin-top:10px;padding:7px 10px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca"></div>
       </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line);padding:12px 18px">
+      <div class="modal-footer" style="border-top:1px solid var(--line);padding:12px 18px;gap:8px">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-outline-success btn-sm" id="axRsPublishOnlyBtn" onclick="axReschedulePublishOnly()" title="Publish as a File Note without creating a new schedule entry">Publish Only (no reschedule)</button>
         <button type="button" class="btn btn-primary btn-sm" id="axRsSaveBtn" onclick="axRescheduleSave()">Save &amp; Publish File Note</button>
       </div>
     </div>
