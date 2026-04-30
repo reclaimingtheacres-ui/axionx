@@ -113,13 +113,25 @@
     <div class="ax-card-h">Import Jobs from CSV</div>
     <div class="ax-card-b">
       <p class="small mb-3" style="color:var(--muted)">
+        {% if DEMO_MODE %}
+        Upload a CSV file to bulk-import jobs into AxionX. Duplicate job numbers are automatically skipped.
+        Compatible with exports from most field management systems — the importer recognises the standard column names below.
+        {% else %}
         Upload a GeoOp CSV export to bulk-import jobs. Duplicate job numbers are automatically skipped.
+        {% endif %}
       </p>
+
+      {% if DEMO_MODE %}
+      <div class="alert alert-info py-2 px-3 small mb-3">
+        <strong>CSV import ready:</strong> AxionX can import jobs directly from your existing system's CSV export.
+        Contact us to confirm column mapping for your current software.
+      </div>
+      {% endif %}
 
       <div class="table-responsive mb-3">
         <table class="table table-sm table-bordered small mb-2">
           <thead class="table-light">
-            <tr><th>GeoOp Column</th><th>Maps To</th><th>Notes</th></tr>
+            <tr><th>{% if DEMO_MODE %}CSV Column{% else %}GeoOp Column{% endif %}</th><th>Maps To</th><th>Notes</th></tr>
           </thead>
           <tbody>
             <tr><td><code>InternalJobNumber</code></td><td>Job Number</td><td><strong>Required.</strong> Duplicate numbers are skipped.</td></tr>
@@ -151,6 +163,7 @@
     </div>
   </div>
 
+  {% if not DEMO_MODE %}
   <div class="ax-card mb-4">
     <div class="ax-card-h">GeoOp Import Pipeline</div>
     <div class="ax-card-b">
@@ -161,6 +174,7 @@
       <a href="/admin/geoop-import" class="btn btn-primary btn-sm">Open GeoOp Import</a>
     </div>
   </div>
+  {% endif %}
 
   <div class="ax-card mb-4">
     <div class="ax-card-h">Duplicate Finder</div>
