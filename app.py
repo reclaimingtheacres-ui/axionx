@@ -6993,7 +6993,7 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
                 f"Please confirm whether this file can now be closed, as no further instructions "
                 f"or response have been received following our previous update request.\n\n"
                 f"Kind regards,\n"
-                f"SWPI"
+                f"{'AxionX' if DEMO_MODE else 'SWPI'}"
             )
             return {
                 "eligible":           True,
@@ -7032,7 +7032,7 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
         f"Should no further action be required, please confirm so we may update our records accordingly.\n\n"
         f"We will continue to monitor pending your advice.\n\n"
         f"Kind regards,\n"
-        f"SWPI"
+        f"{'AxionX' if DEMO_MODE else 'SWPI'}"
     )
     return {
         "eligible":           True,
@@ -9769,7 +9769,7 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
     job_num   = (d.get("client_reference") or d.get("swpi_ref") or str(job_id)).replace("/", "-")
     from datetime import datetime as _dt
     date_str  = _dt.now().strftime("%d-%m-%y")
-    form_label = "SWPI VIR"
+    form_label = "AxionX VIR" if DEMO_MODE else "SWPI VIR"
     orig_filename = f"{job_num} VIR {date_str}.pdf"
     attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                                 orig_filename, form_label, ts)
@@ -12332,9 +12332,10 @@ def _build_swpi_prompt(inputs, job_ctx):
 
     has_notes = bool(agent_notes)
 
+    _co_name = "AxionX" if DEMO_MODE else "SWPI"
     if has_notes:
-        prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
-Your task is to write a single paragraph attendance update in SWPI's house style.
+        prompt = f"""You are a compliance writer for {_co_name}, an Australian asset recovery and repossession company.
+Your task is to write a single paragraph attendance update in {_co_name}'s house style.
 
 The agent has provided typed attendance notes describing what occurred during this visit. Your job is to rewrite those notes into a clean, professional narrative in third person, preserving every fact the agent recorded. Do not omit, invent, or alter any detail from the agent's notes.
 
@@ -12367,8 +12368,8 @@ Write the complete narrative now. Start with the mandatory opening, incorporate 
     else:
         neighbour_rule = "12. Do NOT mention any neighbour interaction, interview, or conversation. No neighbour content was provided." if not neighbour else "12. Include the neighbour content exactly as provided in the fixed sentences. Do not expand or invent additional neighbour details."
 
-        prompt = f"""You are a compliance writer for SWPI, an Australian asset recovery and repossession company.
-Your task is to write a single paragraph attendance update in SWPI's house style.
+        prompt = f"""You are a compliance writer for {_co_name}, an Australian asset recovery and repossession company.
+Your task is to write a single paragraph attendance update in {_co_name}'s house style.
 
 MANDATORY RULES:
 1. The narrative MUST begin with EXACTLY this sentence (copy it word for word, do not alter it):
@@ -22392,7 +22393,7 @@ def _notify_agent_job_assigned(agent_id, job_id, job_ref, job_address):
             ORDER BY s.scheduled_for ASC LIMIT 1
         """, (job_id,)).fetchone()
 
-        lines = ["A message from SWPI Admin\n"]
+        lines = [f"A message from {'AxionX' if DEMO_MODE else 'SWPI'} Admin\n"]
         ref = job_ref
         header_parts = [f"Job #{ref}"]
         if job and job["job_type"]:

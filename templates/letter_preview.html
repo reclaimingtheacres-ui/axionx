@@ -31,7 +31,7 @@
     {{ section('Addressed To') }}
     {{ field_row(addressee_label, addressee) }}
     {{ section('Job & Vehicle') }}
-    {{ field_row('SWPI Reference', rec.swpi_ref) }}
+    {{ field_row('AxionX Reference' if DEMO_MODE else 'SWPI Reference', rec.swpi_ref) }}
     {{ field_row('Finance Company', rec.finance_company or rec.client_name) }}
     {{ field_row('Customer Name', rec.customer_name) }}
     {{ field_row('Year / Make / Model', [item_year, item_make, item_model] | select | join(' ')) }}

@@ -56,7 +56,7 @@
     {# ── Job Details ── #}
     {{ section('JOB DETAILS') }}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
-      {{ fi('swpi_ref',        'SWPI Reference',  rec.swpi_ref) }}
+      {{ fi('swpi_ref',        'AxionX Reference' if DEMO_MODE else 'SWPI Reference',  rec.swpi_ref) }}
       {{ fi('finance_company', 'Finance Company', rec.finance_company) }}
       {{ fi('repo_date',       'Date',            rec.repo_date) }}
       {{ fi('account_number',  'Account Number',  rec.account_number) }}
