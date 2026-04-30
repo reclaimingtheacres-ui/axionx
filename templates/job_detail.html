@@ -1142,13 +1142,30 @@
     </form>
     {% endif %}
     {% endif %}
+    {% if is_demo_client %}
+    <div class="btn-group btn-group-sm" role="group" style="margin-left:auto">
+      <button type="button" class="btn btn-outline-secondary active" onclick="axNoteFilter('file_note',this)">File Notes</button>
+      <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('submitted_for_review',this)">Submitted for Review</button>
+    </div>
+    {% else %}
     <div class="btn-group btn-group-sm" role="group" style="margin-left:auto">
       <button type="button" class="btn btn-outline-secondary active" onclick="axNoteFilter('all',this)">All</button>
       <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('field_note',this)">Field Notes</button>
       <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('file_note',this)">File Notes</button>
       <button type="button" class="btn btn-outline-secondary" onclick="axNoteFilter('submitted_for_review',this)">Submitted for Review</button>
     </div>
+    {% endif %}
   </div>
+
+{% if is_demo_client %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.ax-note-row').forEach(function(row) {
+    row.style.display = row.dataset.noteCategory === 'file_note' ? '' : 'none';
+  });
+});
+</script>
+{% endif %}
 
 <div class="d-flex flex-column gap-3">
 
@@ -1163,16 +1180,17 @@
             {% for entry in field_notes %}
               {% set _ncat = entry.note.note_category or 'file_note' %}
               {% set _nrs = entry.note.review_status or 'published' %}
+              {% if not (is_demo_client and _ncat == 'field_note') %}
               <div class="ax-note-row" data-note-id="{{ entry.note.id }}"
                    data-note-category="{{ _ncat }}"
                    data-review-status="{{ _nrs }}"
-                   style="padding:12px 0;{% if not loop.first %}border-top:1px solid var(--line);{% endif %}display:grid;grid-template-columns:24px 88px 1fr auto;gap:10px;align-items:start;cursor:pointer;border-radius:6px;transition:background .15s;"
+                   style="padding:12px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:24px 88px 1fr auto;gap:10px;align-items:start;{% if not is_demo_client %}cursor:pointer;{% endif %}border-radius:6px;transition:background .15s;"
                    onmouseenter="this.style.background='var(--hover, rgba(0,0,0,.04))'" onmouseleave="this.style.background=''"
                    onclick="axOpenNoteEditor({{ entry.note.id }}, event)">
 
                 <!-- Checkbox col -->
                 <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:2px">
-                  {% if session.get('role') in ('admin', 'both') or session.get('user_id') == entry.note.created_by_user_id %}
+                  {% if not is_demo_client and (session.get('role') in ('admin', 'both') or session.get('user_id') == entry.note.created_by_user_id) %}
                   <input type="checkbox"
                          id="note-chk-{{ entry.note.id }}"
                          onchange="axNoteCheck({{ entry.note.id }}, this.checked)"
@@ -1275,6 +1293,9 @@
                     {% endif %}
                   </div>
                   {% if entry.note.note_text %}
+                    {% if is_demo_client and _nrs == 'submitted_for_review' %}
+                    <div class="small mb-1" style="color:var(--muted);font-style:italic">Update submitted to agency for review.</div>
+                    {% else %}
                     <div id="note-text-{{ entry.note.id }}" class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text | strip_ai_prefix }}</div>
                     <div id="note-edit-{{ entry.note.id }}" style="display:none;margin-bottom:6px">
                       <textarea id="note-edit-ta-{{ entry.note.id }}"
@@ -1294,6 +1315,7 @@
                         <span id="note-edit-err-{{ entry.note.id }}" style="font-size:.78rem;color:#ef4444;align-self:center;display:none"></span>
                       </div>
                     </div>
+                    {% endif %}
                   {% endif %}
                   {% if entry.files %}
                     <div class="d-flex flex-wrap gap-2 mt-2" style="align-items:flex-start">
@@ -1386,10 +1408,11 @@
 
                 <!-- Author col -->
                 <div style="font-size:.82rem;font-weight:600;color:var(--text);text-align:right;white-space:nowrap">
-                  {{ entry.note.author_name or "Unknown" }}
+                  {% if not is_demo_client %}{{ entry.note.author_name or "Unknown" }}{% endif %}
                 </div>
 
               </div>
+              {% endif %}
             {% endfor %}
           </div>
         {% else %}
