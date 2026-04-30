@@ -3023,12 +3023,13 @@ function axRescheduleSave() {
       if (window._axFromCue) {
         if (confirm('Note published! Delete the queue entry?')) {
           fetch('/queue/' + window._axFromCue + '/dismiss', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
-          .then(function(){ window._axCueResolved = true; location.reload(); });
+          .then(function(){ window._axCueResolved = true; window._axSaveReload = true; location.reload(); });
           return;
         } else {
           window._axCueResolved = true;
         }
       }
+      window._axSaveReload = true;
       location.reload();
     } else {
       saveBtn.disabled    = false;
@@ -3074,12 +3075,13 @@ function axReschedulePublishOnly() {
       if (window._axFromCue) {
         if (confirm('Note published! Delete the queue entry?')) {
           fetch('/queue/' + window._axFromCue + '/dismiss', {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest'}})
-          .then(function(){ window._axCueResolved = true; location.reload(); });
+          .then(function(){ window._axCueResolved = true; window._axSaveReload = true; location.reload(); });
           return;
         } else {
           window._axCueResolved = true;
         }
       }
+      window._axSaveReload = true;
       location.reload();
     } else {
       publishBtn.disabled    = false;
@@ -4278,6 +4280,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
       if (data.ok) {
         enModal.hide();
         location.hash = 'tab-notes';
+        window._axSaveReload = true;
         location.reload();
       } else {
         alert(data.error || 'Save failed.');
@@ -6239,7 +6242,7 @@ function offNoteCancel(id) {
   var msg = 'This new job is missing ' + missing.join(' and ') + '. Are you sure you want to leave?';
   var allowLeave = false;
   window.addEventListener('beforeunload', function(e) {
-    if (allowLeave) return;
+    if (allowLeave || window._axSaveReload) return;
     e.preventDefault();
     e.returnValue = msg;
     return msg;
@@ -6271,7 +6274,7 @@ document.addEventListener('DOMContentLoaded', function() {
   var warnMsg = 'You have an unresolved queue item. What would you like to do?';
 
   window.addEventListener('beforeunload', function(e) {
-    if (window._axCueResolved) return;
+    if (window._axCueResolved || window._axSaveReload) return;
     e.preventDefault();
     e.returnValue = warnMsg;
     return warnMsg;
