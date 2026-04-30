@@ -2697,7 +2697,7 @@ function saveSidebarCRef(){
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
-    if(data.ok){ location.reload(); }
+    if(data.ok){ window._axSaveReload = true; location.reload(); }
     else { alert(data.error || 'Error saving.'); }
   })
   .catch(function(){ alert('Network error.'); });
@@ -2721,6 +2721,7 @@ function saveSidebarCJN(){
   .then(function(r){ return r.json(); })
   .then(function(data){
     if(data.ok){
+      window._axSaveReload = true;
       location.reload();
     }
   });
@@ -2744,7 +2745,7 @@ function saveSidebarIJN(){
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
-    if(data.ok){ location.reload(); }
+    if(data.ok){ window._axSaveReload = true; location.reload(); }
     else { alert(data.error || 'Error saving.'); }
   })
   .catch(function(){ alert('Network error.'); });
@@ -3108,7 +3109,7 @@ function axMarkReviewed(jobId, noteId) {
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
-    if (data.ok) { location.reload(); }
+    if (data.ok) { window._axSaveReload = true; location.reload(); }
     else { alert(data.error || 'Failed to mark reviewed.'); }
   })
   .catch(function(){ alert('Network error — try again.'); });
@@ -3124,7 +3125,7 @@ document.addEventListener('DOMContentLoaded', function(){
   form.addEventListener('submit', function(e) {
     var editIdEl = document.getElementById('an_edit_note_id');
     var editNoteId = editIdEl ? editIdEl.value.trim() : '';
-    if (!editNoteId) return; /* normal add — let it POST */
+    if (!editNoteId) { window._axSaveReload = true; return; } /* normal add — let it POST */
     e.preventDefault();
 
     var ta = document.getElementById('an_text');
@@ -4057,6 +4058,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
         .then(function() {
           anClear();
           location.hash = 'tab-notes';
+          window._axSaveReload = true;
           location.reload();
         })
         .catch(function() {});
@@ -4524,6 +4526,7 @@ function axCopyVin(btn) {
       document.getElementById('newStatusLabel').textContent = newStatus;
       getScheduleModal().show();
     } else {
+      window._axSaveReload = true;
       sel.closest('form').submit();
     }
   };
@@ -4538,6 +4541,7 @@ function axCopyVin(btn) {
     f.appendChild(inp);
     document.body.appendChild(f);
     getScheduleModal().hide();
+    window._axSaveReload = true;
     f.submit();
   };
 
@@ -5379,6 +5383,7 @@ function doSendMsg() {
         document.getElementById('msg_send_btn').style.display    = 'none';
         setTimeout(function(){
           bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
+          window._axSaveReload = true;
           window.location.reload();
         }, 1800);
       } else {
@@ -5519,6 +5524,7 @@ function offNoteCancel(id) {
       } else {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).hide();
         location.hash = 'tab-schedule';
+        window._axSaveReload = true;
         location.reload();
       }
     })
@@ -5780,6 +5786,7 @@ function offNoteCancel(id) {
         return;
       }
       location.hash = 'tab-job';
+      window._axSaveReload = true;
       location.reload();
     })
     .catch(function(){
@@ -6222,6 +6229,7 @@ function offNoteCancel(id) {
         if (data.ok) {
           var m = bootstrap.Modal.getInstance(document.getElementById('agentSuggestModal'));
           if (m) m.hide();
+          window._axSaveReload = true;
           location.reload();
         } else {
           alert(data.error || 'Error assigning agent.');
@@ -6595,6 +6603,7 @@ document.addEventListener('DOMContentLoaded', function() {
       if (d.ok) {
         status.textContent = '';
         _ecModal.hide();
+        window._axSaveReload = true;
         location.reload();
       } else {
         status.textContent = d.error || 'Save failed';
@@ -6780,7 +6789,7 @@ function submitClientUpdateRequest() {
       alert.className = 'alert alert-success mb-3';
       alert.textContent = 'Request sent to ' + data.sent_to + '. File note created.';
       btn.textContent = 'Sent';
-      setTimeout(function(){ window.location.reload(); }, 1800);
+      setTimeout(function(){ window._axSaveReload = true; window.location.reload(); }, 1800);
     } else {
       alert.className = 'alert alert-danger mb-3';
       alert.textContent = data.error || 'Send failed.';
