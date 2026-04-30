@@ -2971,6 +2971,12 @@ function axPublishFieldNote(jobId, noteId, noteText) {
   document.getElementById('axRsSaveBtn').textContent   = 'Save & Publish File Note';
   document.getElementById('axRsPublishOnlyBtn').disabled    = false;
   document.getElementById('axRsPublishOnlyBtn').textContent = 'Publish Only (no reschedule)';
+  var statusSection = document.getElementById('axRsStatusSection');
+  if (statusSection) {
+    var isNew = (modal.dataset.jobStatus || '') === 'New';
+    statusSection.style.display = isNew ? 'block' : 'none';
+    document.getElementById('axRsChangeStatus').checked = isNew;
+  }
   bootstrap.Modal.getOrCreateInstance(modal).show();
 }
 
@@ -3006,7 +3012,8 @@ function axRescheduleSave() {
       reschedule_time: rsTime || '09:00',
       agent_id: parseInt(agentId, 10),
       booking_type_id: parseInt(btypeId, 10),
-      delete_previous_schedule: deletePrev
+      delete_previous_schedule: deletePrev,
+      change_status_to_active: !!(document.getElementById('axRsChangeStatus') && document.getElementById('axRsChangeStatus').checked)
     })
   })
   .then(function(r){ return r.json(); })
@@ -6804,7 +6811,7 @@ function submitClientUpdateRequest() {
 </script>
 
 {% if session.get('role') in ('admin', 'both') %}
-<div class="modal fade" id="axRescheduleModal" tabindex="-1" data-bs-backdrop="static" aria-labelledby="axRescheduleModalLabel" aria-hidden="true">
+<div class="modal fade" id="axRescheduleModal" tabindex="-1" data-bs-backdrop="static" aria-labelledby="axRescheduleModalLabel" aria-hidden="true" data-job-status="{{ job.status }}">
   <div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-width:640px">
     <div class="modal-content">
       <div class="modal-header" style="border-bottom:1px solid var(--line);padding:14px 18px">
@@ -6849,6 +6856,15 @@ function submitClientUpdateRequest() {
           <label class="form-check-label" for="axRsDeletePrev" style="font-size:.82rem;color:var(--text)">
             Cancel the current active schedule entry for this job
           </label>
+        </div>
+        <div id="axRsStatusSection" style="display:none;margin-top:14px;padding:10px 13px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="axRsChangeStatus" checked>
+            <label class="form-check-label" for="axRsChangeStatus" style="font-size:.82rem;color:var(--text);font-weight:600">
+              Change job status from <span style="color:#dc2626">New</span> to <span style="color:#16a34a">Active</span>
+            </label>
+          </div>
+          <p style="font-size:.74rem;color:#1d4ed8;margin:5px 0 0 24px">A re-attend schedule has been set — updating the status to Active is recommended.</p>
         </div>
         <div id="axRsError" style="display:none;color:#ef4444;font-size:.8rem;margin-top:10px;padding:7px 10px;background:#fef2f2;border-radius:6px;border:1px solid #fecaca"></div>
       </div>

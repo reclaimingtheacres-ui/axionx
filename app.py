@@ -15944,7 +15944,8 @@ def note_publish_and_reschedule(job_id: int, note_id: int):
     note_text          = (data.get("note_text") or "").strip()
     reschedule_date    = (data.get("reschedule_date") or "").strip()
     reschedule_time    = (data.get("reschedule_time") or "09:00").strip()
-    delete_previous    = bool(data.get("delete_previous_schedule"))
+    delete_previous        = bool(data.get("delete_previous_schedule"))
+    change_status_to_active = bool(data.get("change_status_to_active"))
 
     try:
         agent_id       = int(data.get("agent_id"))
@@ -16041,6 +16042,24 @@ def note_publish_and_reschedule(job_id: int, note_id: int):
         """, (job_id, booking_type_id, scheduled_for, agent_id, uid, ts))
         new_sched_id = cur.lastrowid
 
+        # 5. Optionally promote job status from New → Active
+        status_changed = False
+        if change_status_to_active:
+            job_row = cur.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if job_row and job_row["status"] == "New":
+                cur.execute(
+                    "UPDATE jobs SET status='Active', updated_at=?, status_changed_at=? WHERE id=?",
+                    (ts, ts, job_id)
+                )
+                cur.execute("""
+                    INSERT INTO interactions
+                        (job_id, event_type, narrative, occurred_at, created_at)
+                    VALUES (?,?,?,?,?)
+                """, (job_id, "Status Update",
+                      "Status changed to 'Active' (auto-updated when re-attend schedule was set).",
+                      ts, ts))
+                status_changed = True
+
         conn.commit()
     except Exception as _exc:
         conn.close()
@@ -16058,6 +16077,7 @@ def note_publish_and_reschedule(job_id: int, note_id: int):
         "file_note_id": file_note_id,
         "new_schedule_id": new_sched_id,
         "cancelled_schedule_id": cancelled_sched_id,
+        "status_changed": status_changed,
     })
 
 
