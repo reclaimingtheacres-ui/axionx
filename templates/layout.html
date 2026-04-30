@@ -349,29 +349,32 @@
       </a>
 
       <div class="ax-nav">
+        {% set is_demo_client = DEMO_MODE and session.get('demo_role') == 'client' %}
         <div class="hint">Workspace</div>
+        {% if not is_demo_client %}
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
+        {% endif %}
         <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
         <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}" style="position:relative">
           Queue
           <span id="ax-queue-badge" style="display:none;background:#dc2626;color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
         </a>
         {% endif %}
-        {% if session.get('user_id') %}
+        {% if session.get('user_id') and not is_demo_client %}
         <a href="/messages" class="{% if request.path.startswith('/messages') %}active{% endif %}" style="position:relative">
           Messages
           <span id="ax-msg-badge" style="display:none;background:var(--accent);color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
         </a>
         {% endif %}
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
         <button type="button" class="ax-menu-btn{% if request.path.startswith('/schedule') or request.path.startswith('/map') or request.path.startswith('/route-planner') %} active{% endif %}" data-popup="ax-planning-popup">
           Planning
           <svg class="ax-menu-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         {% endif %}
 
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
           <div class="hint">Admin</div>
           <button type="button" class="ax-menu-btn{% if request.path == '/admin' or request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/reports') or request.path.startswith('/forms') or request.path.startswith('/recovery-targets') or request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} active{% endif %}" data-popup="ax-admin-popup">
             Admin

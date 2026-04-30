@@ -79,7 +79,15 @@
 {% elif s == 'Cold Stored' %}{% set sc = '#6366f1' %}
 {% else %}{% set sc = '#6b7280' %}{% endif %}
 
+{% set is_demo_client = DEMO_MODE and session.get('demo_role') == 'client' %}
+
 <!-- ===== ACTION BAR (blue buttons) ===== -->
+{% if is_demo_client %}
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+  <button class="btn btn-primary btn-sm" type="button" onclick="openSendMsg('email')">&#9993; Message Agency</button>
+  <span style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;border-radius:999px;padding:3px 12px;font-size:.78rem;font-weight:600">{{ s }}</span>
+</div>
+{% else %}
 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
   <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
 
@@ -223,20 +231,23 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 
 <div class="d-xl-none" style="color:var(--muted);font-size:.78rem;margin-bottom:6px">
-  {{ job.job_type }} &middot; {{ job.visit_type }} &middot; {{ job.priority }}{% if job.internal_job_number %} &middot; {{ job.internal_job_number }}{% endif %}{% if job.assigned_name %} &middot; {{ job.assigned_name }}{% endif %}{% if next_schedule %} &middot; Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% endif %}
+  {{ job.job_type }} &middot; {{ job.visit_type }} &middot; {{ job.priority }}{% if job.internal_job_number %} &middot; {{ job.internal_job_number }}{% endif %}{% if not is_demo_client %}{% if job.assigned_name %} &middot; {{ job.assigned_name }}{% endif %}{% if next_schedule %} &middot; Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% endif %}{% endif %}
 </div>
 
 <!-- ======== TAB NAV ======== -->
 <ul class="nav mb-3" id="jobTabs" role="tablist"
     style="border-bottom:2px solid var(--line);gap:4px;">
+  {% if not is_demo_client %}
   <li class="nav-item" role="presentation">
     <button class="ax-tab active" id="tab-job-btn" data-bs-toggle="tab"
             data-bs-target="#tab-job" type="button" role="tab">Job</button>
   </li>
+  {% endif %}
   <li class="nav-item" role="presentation">
-    <button class="ax-tab" id="tab-notes-btn" data-bs-toggle="tab"
+    <button class="ax-tab{% if is_demo_client %} active{% endif %}" id="tab-notes-btn" data-bs-toggle="tab"
             data-bs-target="#tab-notes" type="button" role="tab">
       Notes &amp; Docs
       {% set _nf_count = namespace(n=0) %}
@@ -245,6 +256,7 @@
       {% if _nd_count %}<span class="ax-tab-badge">{{ _nd_count }}</span>{% endif %}
     </button>
   </li>
+  {% if not is_demo_client %}
   <li class="nav-item" role="presentation">
     <button class="ax-tab" id="tab-schedule-btn" data-bs-toggle="tab"
             data-bs-target="#tab-schedule" type="button" role="tab">
@@ -268,6 +280,7 @@
       {% if office_notes %}<span class="ax-tab-badge">{{ office_notes|length }}</span>{% endif %}
     </button>
   </li>
+  {% endif %}
   {% endif %}
 </ul>
 
@@ -307,7 +320,7 @@
 <div class="tab-content" style="flex:1;overflow-y:auto;min-height:0;padding-right:16px">
 
 <!-- ======== TAB: JOB ======== -->
-<div class="tab-pane fade show active" id="tab-job" role="tabpanel">
+<div class="tab-pane fade{% if not is_demo_client %} show active{% endif %}" id="tab-job" role="tabpanel">
 <div class="d-flex flex-column gap-3">
 
     {# ── Customer + Client side-by-side ── #}
@@ -1102,10 +1115,13 @@
 </div><!-- /tab-job pane -->
 
 <!-- ======== TAB: NOTES & DOCS ======== -->
-<div class="tab-pane fade" id="tab-notes" role="tabpanel">
+<div class="tab-pane fade{% if is_demo_client %} show active{% endif %}" id="tab-notes" role="tabpanel">
 
   <!-- Sticky Add Note bar + filter tabs -->
   <div style="position:sticky;top:0;z-index:50;background:var(--bg);padding:10px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    {% if is_demo_client %}
+    <button class="btn btn-primary btn-sm" type="button" onclick="openSendMsg('email')">&#9993; Message Agency</button>
+    {% else %}
     <button type="button" class="btn btn-primary btn-sm"
             onclick="axOpenAddNote()">+ Add Note</button>
     <a href="/jobs/{{ job.id }}/update-builder"
@@ -1124,6 +1140,7 @@
         Discard AI Drafts ({{ ai_draft_count }})
       </button>
     </form>
+    {% endif %}
     {% endif %}
     <div class="btn-group btn-group-sm" role="group" style="margin-left:auto">
       <button type="button" class="btn btn-outline-secondary active" onclick="axNoteFilter('all',this)">All</button>

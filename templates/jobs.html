@@ -88,7 +88,8 @@
   .ax-status-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 </style>
 
-{% if session.get('role') in ('admin', 'both') %}
+{% set is_demo_client = DEMO_MODE and session.get('demo_role') == 'client' %}
+{% if session.get('role') in ('admin', 'both') and not is_demo_client %}
 <style>
   .ax-agent-tabs{display:flex;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:2px solid var(--line);margin-bottom:0;padding:0 4px}
   .ax-agent-tabs::-webkit-scrollbar{display:none}
@@ -363,12 +364,15 @@
           </div>
         </div>
 
+        {% if not is_demo_client %}
         <div style="width:110px;flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;gap:4px">
           <span style="font-size:.74rem;font-weight:500;color:{% if j.assigned_name %}var(--text){% elif j.status in ('Cancelled','Completed','Invoiced') %}var(--muted){% else %}#dc2626{% endif %};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{% if j.assigned_name %}{{ j.assigned_name }}{% elif j.status in ('Cancelled','Completed','Invoiced') %}—{% else %}Unassigned{% endif %}</span>
           {% if j.pending_review_count %}<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#d97706;color:#fff;font-size:.55rem;font-weight:700;flex-shrink:0;letter-spacing:.02em;line-height:1">PR</span>{% endif %}
           {% if j.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') and j.status_days is not none and j.status_days >= 28 %}{% if j.cur_actioned %}<span style="font-size:.6rem;background:#f3f4f6;color:#9ca3af;border:1px solid #d1d5db;border-radius:3px;padding:0 4px;font-weight:700;flex-shrink:0;white-space:nowrap" title="{{ j.status_days }} days – update request sent, awaiting response">Stale</span>{% else %}<span style="font-size:.6rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:0 4px;font-weight:700;flex-shrink:0;white-space:nowrap" title="Overdue {{ j.status_days }} days in {{ j.status }}">Stale</span>{% endif %}{% endif %}
         </div>
+        {% endif %}
 
+        {% if not is_demo_client %}
         <div style="width:150px;flex-shrink:0;text-align:right">
           {% if j.next_scheduled %}
             {% set is_overdue = j.next_scheduled < now_iso %}
@@ -398,6 +402,7 @@
             <div style="font-size:.68rem;color:var(--line)">No schedule</div>
           {% endif %}
         </div>
+        {% endif %}
 
         <div style="width:120px;flex-shrink:0;text-align:center">
           {% if bt %}
@@ -408,7 +413,7 @@
         </div>
 
         <div style="width:150px;flex-shrink:0;text-align:center">
-          {% if session.get('role') in ('admin', 'both') %}
+          {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
             <form method="post" action="/jobs/{{ j.id }}/status" style="margin:0">
               <select name="status" onchange="this.form.submit()"
                       class="ax-status-pill"
