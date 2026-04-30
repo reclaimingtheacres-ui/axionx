@@ -5052,6 +5052,11 @@ def job_detail(job_id: int):
     cur.execute("SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name")
     users = cur.fetchall()
 
+    cur.execute(
+        "SELECT id, full_name FROM users WHERE active=1 AND role IN ('agent','both') ORDER BY full_name"
+    )
+    active_field_agents = cur.fetchall()
+
     cur.execute("SELECT id, name, nickname FROM clients ORDER BY name")
     all_clients = cur.fetchall()
 
@@ -5237,6 +5242,7 @@ def job_detail(job_id: int):
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
                            job_types=job_types, users=users,
+                           active_field_agents=active_field_agents,
                            field_notes=field_notes, documents=documents,
                            doc_types=doc_types, booking_types=booking_types,
                            schedules=schedules, next_schedule=next_schedule,
@@ -15923,6 +15929,136 @@ def note_publish_to_file(job_id: int, note_id: int):
     audit("job_note", file_note_id, "publish",
           f"Field note {note_id} published as file note {file_note_id}", {"job_id": job_id})
     return jsonify({"ok": True, "file_note_id": file_note_id})
+
+
+@app.post("/jobs/<int:job_id>/notes/<int:note_id>/publish-and-reschedule")
+@admin_required
+def note_publish_and_reschedule(job_id: int, note_id: int):
+    """Publish a submitted field note as a File Note and create a new schedule entry.
+
+    Optionally cancels the current active schedule when requested.
+    Admin-only. Returns JSON — never raises an HTML 500.
+    """
+    data = request.get_json(silent=True) or {}
+
+    note_text          = (data.get("note_text") or "").strip()
+    reschedule_date    = (data.get("reschedule_date") or "").strip()
+    reschedule_time    = (data.get("reschedule_time") or "09:00").strip()
+    delete_previous    = bool(data.get("delete_previous_schedule"))
+
+    try:
+        agent_id       = int(data.get("agent_id"))
+        booking_type_id = int(data.get("booking_type_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Agent and booking type are required."}), 400
+
+    if not note_text:
+        return jsonify({"ok": False, "error": "File note text is required."}), 400
+    if not reschedule_date:
+        return jsonify({"ok": False, "error": "Reschedule date is required."}), 400
+    try:
+        datetime.strptime(reschedule_date, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"ok": False, "error": "Invalid date — use YYYY-MM-DD format."}), 400
+
+    time_part = reschedule_time if reschedule_time else "09:00"
+    try:
+        datetime.strptime(time_part, "%H:%M")
+    except ValueError:
+        time_part = "09:00"
+    scheduled_for = f"{reschedule_date}T{time_part}:00"
+
+    ts  = now_ts()
+    uid = session.get("user_id")
+    conn = db()
+    cur  = conn.cursor()
+    try:
+        field_note = cur.execute(
+            "SELECT id, job_id FROM job_field_notes WHERE id=? AND job_id=?",
+            (note_id, job_id)
+        ).fetchone()
+        if not field_note:
+            conn.close()
+            return jsonify({"ok": False, "error": "Field note not found."}), 404
+
+        if not cur.execute("SELECT id FROM users WHERE id=? AND active=1", (agent_id,)).fetchone():
+            conn.close()
+            return jsonify({"ok": False, "error": "Selected agent not found or inactive."}), 400
+
+        if not cur.execute("SELECT id FROM booking_types WHERE id=?", (booking_type_id,)).fetchone():
+            conn.close()
+            return jsonify({"ok": False, "error": "Booking type not found."}), 400
+
+        # 1. Create the published File Note
+        cur.execute("""
+            INSERT INTO job_field_notes
+                (job_id, created_by_user_id, note_text, created_at,
+                 note_category, review_status, source_field_note_id,
+                 reviewed_by_user_id, reviewed_at, published_at)
+            VALUES (?,?,?,?,'file_note','published',?,?,?,?)
+        """, (job_id, uid, note_text, ts, note_id, uid, ts, ts))
+        file_note_id = cur.lastrowid
+
+        # 2. Mark the original field note as published
+        cur.execute("""
+            UPDATE job_field_notes
+            SET review_status='published', reviewed_by_user_id=?, reviewed_at=?, published_at=?
+            WHERE id=?
+        """, (uid, ts, ts, note_id))
+
+        # 3. Optionally cancel the earliest active schedule
+        cancelled_sched_id = None
+        if delete_previous:
+            prev = cur.execute("""
+                SELECT id, scheduled_for FROM schedules
+                WHERE job_id=? AND status NOT IN ('Completed','Cancelled') AND hidden=0
+                ORDER BY scheduled_for ASC LIMIT 1
+            """, (job_id,)).fetchone()
+            if prev:
+                cancelled_sched_id = prev["id"]
+                cur.execute(
+                    "UPDATE schedules SET status='Cancelled' WHERE id=?",
+                    (cancelled_sched_id,)
+                )
+                audit_msg = (
+                    f"Schedule entry {cancelled_sched_id} "
+                    f"(date {(prev['scheduled_for'] or '')[:10]}) cancelled and replaced "
+                    f"when file note {file_note_id} was published by admin."
+                )
+                cur.execute("""
+                    INSERT INTO job_field_notes
+                        (job_id, created_by_user_id, note_text, created_at,
+                         note_category, review_status, published_at)
+                    VALUES (?,?,?,?,'file_note','published',?)
+                """, (job_id, uid, audit_msg, ts, ts))
+
+        # 4. Create the new schedule entry
+        cur.execute("""
+            INSERT INTO schedules
+                (job_id, booking_type_id, scheduled_for, status,
+                 assigned_to_user_id, created_by_user_id, created_at)
+            VALUES (?,?,?,'Booked',?,?,?)
+        """, (job_id, booking_type_id, scheduled_for, agent_id, uid, ts))
+        new_sched_id = cur.lastrowid
+
+        conn.commit()
+    except Exception as _exc:
+        conn.close()
+        import traceback as _tb
+        _tb.print_exc()
+        return jsonify({"ok": False, "error": f"Server error: {_exc}"}), 500
+
+    conn.close()
+    audit("job_note", file_note_id, "publish",
+          f"Field note {note_id} published as file note {file_note_id} with reschedule",
+          {"job_id": job_id, "scheduled_for": scheduled_for, "agent_id": agent_id,
+           "cancelled_sched_id": cancelled_sched_id})
+    return jsonify({
+        "ok": True,
+        "file_note_id": file_note_id,
+        "new_schedule_id": new_sched_id,
+        "cancelled_schedule_id": cancelled_sched_id,
+    })
 
 
 @app.get("/api/queue/pending-review-count")
