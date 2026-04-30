@@ -168,6 +168,14 @@
       Add Bookings
     </button>
 
+    {% if DEMO_MODE %}
+    <button class="btn btn-outline-secondary btn-sm" type="button" id="axShareDemoBtn"
+            onclick="axCopyDemoLink(window.location.origin+'/demo?role=admin&job={{ job.id }}', this)"
+            title="Copy a shareable demo link for this job to your clipboard">
+      🔗 Share Demo Link
+    </button>
+    {% endif %}
+
     {% else %}
     <a href="/jobs/{{ job.id }}/update-builder" class="btn btn-primary btn-sm">&#x2728; Create Update (AI Assist)</a>
 

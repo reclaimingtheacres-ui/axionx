@@ -103,6 +103,13 @@
     <span style="font-weight:650;font-size:.95rem">Jobs</span>
     <div style="display:flex;gap:6px;align-items:center">
       <a class="btn btn-outline-primary btn-sm" href="/route-planner">Route Planner</a>
+      {% if DEMO_MODE %}
+      <button class="btn btn-outline-secondary btn-sm" type="button"
+              onclick="axCopyDemoLink(window.location.origin+'/demo?role=admin&view=jobs', this)"
+              title="Copy a shareable demo link for the jobs list">
+        🔗 Share Demo Link
+      </button>
+      {% endif %}
       <a class="btn btn-primary btn-sm" href="/jobs/new">+ New Job</a>
     </div>
   </div>
@@ -596,4 +603,5 @@
   };
 })();
 </script>
+
 {% endblock %}

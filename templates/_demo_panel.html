@@ -229,5 +229,22 @@ document.addEventListener('click', function(e) {
     if (d) d.classList.remove('open');
   }
 });
+
+function axCopyDemoLink(url, btn) {
+  var orig = btn.textContent;
+  (navigator.clipboard
+    ? navigator.clipboard.writeText(url)
+    : Promise.reject()
+  ).then(function () {
+    btn.textContent = '\u2713 Copied!';
+    btn.classList.replace('btn-outline-secondary', 'btn-success');
+    setTimeout(function () {
+      btn.textContent = orig;
+      btn.classList.replace('btn-success', 'btn-outline-secondary');
+    }, 2000);
+  }).catch(function () {
+    prompt('Copy this demo link:', url);
+  });
+}
 </script>
 {% endif %}
