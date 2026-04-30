@@ -262,7 +262,7 @@
         </div>
         {% if has_advanced %}
         <div style="display:flex;align-items:flex-end;padding-bottom:1px">
-          <a href="/jobs" style="font-size:.75rem;color:#ef4444;text-decoration:none;padding:5px 9px;border:1px solid #ef444440;border-radius:7px;white-space:nowrap">Clear</a>
+          <a href="/jobs" onclick="try{sessionStorage.removeItem('ax.jobsReturnUrl');sessionStorage.removeItem('ax.jobsScroll');}catch(_e){}" style="font-size:.75rem;color:#ef4444;text-decoration:none;padding:5px 9px;border:1px solid #ef444440;border-radius:7px;white-space:nowrap">Clear</a>
         </div>
         {% endif %}
       </div>
@@ -286,11 +286,39 @@
   }
   function axGoJob(e, id) {
     if (e.target.closest('form, select, button, .ax-add-drop')) return;
-    sessionStorage.setItem('ax.jobsReturnUrl', window.location.href);
+    try {
+      sessionStorage.setItem('ax.jobsReturnUrl', window.location.href);
+      sessionStorage.setItem('ax.jobsScroll', String(window.scrollY || document.documentElement.scrollTop));
+    } catch(_e) {}
     window.location.href = '/jobs/' + id;
   }
-  // Save list URL on load so that direct link-clicks also have a return point
-  (function(){ try{ sessionStorage.setItem('ax.jobsReturnUrl', window.location.href); }catch(e){} })();
+  /* Persist filter state and restore scroll on return */
+  (function(){
+    try {
+      var search = window.location.search;
+      if (search && search.length > 1) {
+        /* Has filter params — save this URL as the last known filter state */
+        sessionStorage.setItem('ax.jobsReturnUrl', window.location.href);
+        /* Restore scroll position if returning from a job */
+        var savedScroll = sessionStorage.getItem('ax.jobsScroll');
+        if (savedScroll) {
+          sessionStorage.removeItem('ax.jobsScroll');
+          var scrollY = parseInt(savedScroll, 10);
+          if (scrollY > 0) { setTimeout(function(){ window.scrollTo(0, scrollY); }, 80); }
+        }
+      } else {
+        /* No params — redirect to saved filter state if one exists */
+        var saved = sessionStorage.getItem('ax.jobsReturnUrl');
+        if (saved && saved.indexOf('/jobs') !== -1) {
+          var savedQs = saved.split('?')[1];
+          if (savedQs && savedQs.length > 0) {
+            window.location.replace(saved);
+            return;
+          }
+        }
+      }
+    } catch(_e) {}
+  })();
   function axToggleDrop(el) {
     var wasOpen = el.classList.contains('open');
     document.querySelectorAll('.ax-add-drop').forEach(function(d){ d.classList.remove('open'); });

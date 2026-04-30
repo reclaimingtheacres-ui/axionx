@@ -354,7 +354,7 @@
         {% if not is_demo_client %}
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         {% endif %}
-        <a href="/jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
+        <a href="/jobs" id="ax-nav-jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
         {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
         <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}" style="position:relative">
           Queue
@@ -524,6 +524,22 @@
   };
   window.axionInitPlaces = window.initGoogleMaps;
   window.axionSetAddress = function(input, value) { if (input) input.value = value; };
+  </script>
+
+  <script>
+  /* Update "Jobs" nav link to return to last filtered state */
+  (function(){
+    try {
+      var saved = sessionStorage.getItem('ax.jobsReturnUrl');
+      if (saved && saved.indexOf('/jobs') !== -1) {
+        var qs = saved.split('?')[1];
+        if (qs && qs.length > 0) {
+          var el = document.getElementById('ax-nav-jobs');
+          if (el) el.href = saved;
+        }
+      }
+    } catch(e) {}
+  })();
   </script>
 
   {% block scripts %}{% endblock %}
