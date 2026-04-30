@@ -240,12 +240,10 @@
 <!-- ======== TAB NAV ======== -->
 <ul class="nav mb-3" id="jobTabs" role="tablist"
     style="border-bottom:2px solid var(--line);gap:4px;">
-  {% if not is_demo_client %}
   <li class="nav-item" role="presentation">
-    <button class="ax-tab active" id="tab-job-btn" data-bs-toggle="tab"
+    <button class="ax-tab{% if not is_demo_client %} active{% endif %}" id="tab-job-btn" data-bs-toggle="tab"
             data-bs-target="#tab-job" type="button" role="tab">Job</button>
   </li>
-  {% endif %}
   <li class="nav-item" role="presentation">
     <button class="ax-tab{% if is_demo_client %} active{% endif %}" id="tab-notes-btn" data-bs-toggle="tab"
             data-bs-target="#tab-notes" type="button" role="tab">
@@ -332,7 +330,7 @@
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">CUSTOMER(S)</div>
             <div class="d-flex gap-2 align-items-center">
-              {% if session.get('role') in ('admin', 'both') %}
+              {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
                 <button type="button" class="btn btn-primary btn-sm" style="font-size:.68rem;padding:2px 8px"
                         onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addCustomerToJobModal')).show()">
                   Add Customer
@@ -367,11 +365,11 @@
                     {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
                   </div>
                   <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
-                    {% if session.get('role') in ('admin', 'both') %}
+                    {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
                       <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenEditCustomer({{ lc.customer_id }})">Update Customer Details</button>
 
                     {% endif %}
-                    {% if session.get('role') in ('admin', 'both') and job_linked_customers|length > 1 %}
+                    {% if session.get('role') in ('admin', 'both') and not is_demo_client and job_linked_customers|length > 1 %}
                       <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
                         <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.68rem;padding:2px 7px">Remove</button>
                       </form>
@@ -391,7 +389,7 @@
         <div style="padding:.75rem .9rem;border-radius:10px;background:rgba(37,99,235,.06);">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fw-bold small" style="color:#2563eb;letter-spacing:.04em">CLIENT</div>
-            {% if session.get('role') in ('admin', 'both') %}
+            {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
               {% if job.client_id %}
                 <div class="d-flex gap-1">
                   <a href="/clients/{{ job.client_id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" target="_blank">Edit</a>
@@ -498,7 +496,7 @@
             </div>
             {% endif %}
           </div>
-          {% if session.get('role') in ('admin', 'both') %}
+          {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
           <details id="lender-details" class="mt-2">
             <summary class="btn btn-outline-secondary btn-sm" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
             <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-3">
@@ -720,7 +718,7 @@
                       {% elif _rls == 'Draft' %}Draft Saved
                       {% else %}Repo Lock{% endif %}
                     </button>
-                    {% if session.get('role') in ('admin', 'both') %}
+                    {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
                     <button type="button" class="btn btn-outline-secondary btn-sm"
                             onclick="axItemEditToggle({{ item.id }})">Edit</button>
                     <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
@@ -731,7 +729,7 @@
                 </div>
 
                 {# ── Inline edit form (admin, hidden by default) ── #}
-                {% if session.get('role') in ('admin', 'both') %}
+                {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
                 <div id="item-edit-{{ item.id }}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
                   <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/edit">
                     <div class="row g-2 mb-2">
@@ -940,14 +938,14 @@
     <div style="padding:.75rem .9rem;border-radius:10px;background:var(--card);">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">DESCRIPTION &amp; INSTRUCTIONS</div>
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('desc-edit-block').style.display=document.getElementById('desc-edit-block').style.display==='none'?'block':'none';document.getElementById('desc-view-block').style.display=document.getElementById('desc-view-block').style.display==='none'?'block':'none';">Edit</button>
         {% endif %}
       </div>
       <div id="desc-view-block">
         <pre style="white-space:pre-wrap;word-break:break-word;font-size:.82rem;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.6rem .8rem;margin:0;max-height:300px;overflow-y:auto">{{ job.description }}</pre>
       </div>
-      {% if session.get('role') in ('admin', 'both') %}
+      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
       <div id="desc-edit-block" style="display:none">
         <form method="post" action="/jobs/{{ job.id }}/description">
           <textarea class="form-control mb-2" name="description" rows="5" style="resize:vertical;font-size:.85rem">{{ job.description or '' }}</textarea>
@@ -2524,7 +2522,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">JOB INFO</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
       <span style="color:var(--muted)">Type</span>
-      {% if session.get('role') in ('admin', 'both') %}
+      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-jtype-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-jtype-edit').style.display='flex';this.style.display='none';">
         {{ job.job_type }}
@@ -2550,7 +2548,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span style="color:var(--muted)">Priority</span>
       <span class="fw-semibold">{{ job.priority }}</span>
       <span style="color:var(--muted)">AxionX #</span>
-      {% if session.get('role') in ('admin', 'both') %}
+      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-ijn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-ijn-edit').style.display='flex';this.style.display='none';">
         {{ job.internal_job_number }}
@@ -2569,7 +2567,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span class="fw-semibold">{{ job.internal_job_number }}</span>
       {% endif %}
       <span style="color:var(--muted)">Client Ref</span>
-      {% if session.get('role') in ('admin', 'both') %}
+      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-cref-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-cref-edit').style.display='flex';this.style.display='none';">
         {{ job.client_reference or '—' }}
@@ -2588,7 +2586,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span class="fw-semibold">{{ job.client_reference or '—' }}</span>
       {% endif %}
       <span style="color:var(--muted)">Client Job #</span>
-      {% if session.get('role') in ('admin', 'both') %}
+      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-cjn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-cjn-edit').style.display='flex';this.style.display='none';">
         {{ job.client_job_number or '—' }}
