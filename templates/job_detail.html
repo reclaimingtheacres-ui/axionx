@@ -4217,6 +4217,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     document.getElementById('en_upload_error').style.display = 'none';
     document.getElementById('en_delete_form').action = '/jobs/' + JOB_ID + '/notes/' + noteId + '/delete';
 
+    window._enOriginalCategory = '';
     if (!enModal) enModal = new bootstrap.Modal(document.getElementById('editNoteModal'));
     enModal.show();
 
@@ -4240,6 +4241,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
           if (data.note_category === 'field_note') { enCatField.checked = true; }
           else { enCatFile.checked = true; }
         }
+        window._enOriginalCategory = data.note_category || '';
         if (data.created_at && data.created_at.length >= 16) {
           var dateEl = document.getElementById('en_date');
           var hourEl = document.getElementById('en_hour');
@@ -4272,6 +4274,22 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     if (hourEl) fd.append('note_hour', hourEl.value);
     if (minEl) fd.append('note_minute', minEl.value);
     var enCatSel = document.querySelector('input[name="en_note_category"]:checked');
+    var _newCat = enCatSel ? enCatSel.value : '';
+
+    if (_newCat === 'file_note' && (window._enOriginalCategory || '') !== 'file_note') {
+      btn.disabled = false; btn.textContent = 'Save';
+      var _enEl = document.getElementById('editNoteModal');
+      var _noteId = noteId, _text = text;
+      _enEl.addEventListener('hidden.bs.modal', function _onHidden() {
+        _enEl.removeEventListener('hidden.bs.modal', _onHidden);
+        if (typeof axPublishFieldNote === 'function') {
+          axPublishFieldNote(JOB_ID, _noteId, _text);
+        }
+      });
+      enModal.hide();
+      return;
+    }
+
     if (enCatSel) fd.append('note_category', enCatSel.value);
 
     fetch('/jobs/' + JOB_ID + '/notes/' + noteId + '/edit', {
