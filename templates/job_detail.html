@@ -1202,13 +1202,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div id="note-menu-{{ entry.note.id }}"
                          style="display:none;position:absolute;left:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:999;min-width:110px;overflow:hidden">
                       <button type="button"
-                              onclick='axOpenEditNote({{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson }}, {{ entry.note.created_at | tojson }}, {{ entry.note.created_by_user_id or 0 }})'
+                              onclick='axOpenEditNote({{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson | e }}, {{ entry.note.created_at | tojson }}, {{ entry.note.created_by_user_id or 0 }})'
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
                         ✏ Edit
                       </button>
                       {% if session.get('role') in ('admin', 'both') and _ncat == 'field_note' and _nrs not in ('published',) %}
                       <button type="button"
-                              onclick='axPublishFieldNote({{ job.id }}, {{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson }})'
+                              onclick='axPublishFieldNote({{ job.id }}, {{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson | e }})'
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:#16a34a;cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
                         📋 Publish to File Notes
                       </button>
