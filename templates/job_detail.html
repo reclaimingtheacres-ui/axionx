@@ -241,11 +241,11 @@
 <ul class="nav mb-3" id="jobTabs" role="tablist"
     style="border-bottom:2px solid var(--line);gap:4px;">
   <li class="nav-item" role="presentation">
-    <button class="ax-tab{% if not is_demo_client %} active{% endif %}" id="tab-job-btn" data-bs-toggle="tab"
+    <button class="ax-tab active" id="tab-job-btn" data-bs-toggle="tab"
             data-bs-target="#tab-job" type="button" role="tab">Job</button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="ax-tab{% if is_demo_client %} active{% endif %}" id="tab-notes-btn" data-bs-toggle="tab"
+    <button class="ax-tab" id="tab-notes-btn" data-bs-toggle="tab"
             data-bs-target="#tab-notes" type="button" role="tab">
       Notes &amp; Docs
       {% set _nf_count = namespace(n=0) %}
@@ -318,7 +318,7 @@
 <div class="tab-content" style="flex:1;overflow-y:auto;min-height:0;padding-right:16px">
 
 <!-- ======== TAB: JOB ======== -->
-<div class="tab-pane fade{% if not is_demo_client %} show active{% endif %}" id="tab-job" role="tabpanel">
+<div class="tab-pane fade show active" id="tab-job" role="tabpanel">
 <div class="d-flex flex-column gap-3">
 
     {# ── Customer + Client side-by-side ── #}
@@ -1113,7 +1113,7 @@
 </div><!-- /tab-job pane -->
 
 <!-- ======== TAB: NOTES & DOCS ======== -->
-<div class="tab-pane fade{% if is_demo_client %} show active{% endif %}" id="tab-notes" role="tabpanel">
+<div class="tab-pane fade" id="tab-notes" role="tabpanel">
 
   <!-- Sticky Add Note bar + filter tabs -->
   <div style="position:sticky;top:0;z-index:50;background:var(--bg);padding:10px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
