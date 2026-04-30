@@ -9528,8 +9528,73 @@ def repo_lock_submit(job_id: int, item_id: int):
             )
             queue_id = qcur.lastrowid
 
+        # ── Admin queue entry + notification for repossession ───────────────
+        try:
+            _rl_job = conn.execute(
+                """SELECT j.display_ref, j.job_address,
+                          c.name AS client_name,
+                          cu.first_name || ' ' || cu.last_name AS customer_name
+                   FROM jobs j
+                   LEFT JOIN clients c ON c.id = j.client_id
+                   LEFT JOIN job_customers jc ON jc.job_id = j.id AND jc.role = 'Primary'
+                   LEFT JOIN customers cu ON cu.id = jc.customer_id
+                   WHERE j.id = ?""", (job_id,)
+            ).fetchone()
+            _rl_ref       = _rl_job["display_ref"]  if _rl_job else str(job_id)
+            _rl_client    = (_rl_job["client_name"]  or "") if _rl_job else ""
+            _rl_customer  = (_rl_job["customer_name"] or "") if _rl_job else ""
+            _rl_asset     = values.get("registration") or values.get("description") or "—"
+            _rl_agent_nm  = values.get("agent_name") or "—"
+            _rl_instr     = (
+                f"Repossession completed. Asset: {_rl_asset}. "
+                f"Agent: {_rl_agent_nm}."
+            )
+            add_column_if_missing(conn, "cue_items", "cue_status", "TEXT")
+            # Only create a new admin-queue item if one isn't already open for this job
+            _existing_repo_cue = conn.execute(
+                """SELECT id FROM cue_items
+                   WHERE job_id=? AND visit_type='Repossession Completed'
+                   AND status='Pending'""",
+                (job_id,)
+            ).fetchone()
+            if not _existing_repo_cue:
+                conn.execute(
+                    """INSERT INTO cue_items
+                           (job_id, visit_type, due_date, priority, status,
+                            instructions, created_by_user_id, created_at, updated_at, cue_status)
+                       VALUES (?, 'Repossession Completed', ?, 'High', 'Pending', ?, ?, ?, ?, 'open')""",
+                    (job_id, ts[:10], _rl_instr, uid, ts, ts)
+                )
+            else:
+                conn.execute(
+                    """UPDATE cue_items SET instructions=?, updated_at=?, cue_status='open'
+                       WHERE id=?""",
+                    (_rl_instr, ts, _existing_repo_cue["id"])
+                )
+        except Exception as _rl_cue_err:
+            app.logger.warning("repo_lock_submit: failed to create repossession queue item: %s", _rl_cue_err)
+            _rl_ref = str(job_id); _rl_customer = ""; _rl_asset = ""
+        # ────────────────────────────────────────────────────────────────────
+
         conn.commit()
         conn.close()
+
+        # Notify all admin users after commit (separate connections inside _notify_admins)
+        try:
+            _notif_body_parts = [f"Job {_rl_ref}"]
+            if _rl_customer:
+                _notif_body_parts.append(_rl_customer)
+            if _rl_asset and _rl_asset != "—":
+                _notif_body_parts.append(_rl_asset)
+            _notify_admins(
+                "Repossession Completed",
+                " – ".join(_notif_body_parts),
+                "repo_lock",
+                {"job_id": job_id, "type": "repo_lock"}
+            )
+        except Exception as _notif_err:
+            app.logger.warning("repo_lock_submit: admin notification failed: %s", _notif_err)
+
         return jsonify({"ok": True, "id": rec_id, "is_new": is_new,
                         "queue_id": queue_id, "status": "Submitted"})
 
@@ -15513,6 +15578,13 @@ def job_queue():
     """, (note_type,))
     agent_notes = cur.fetchall()
 
+    cur.execute(_queue_row_sql() + f"""
+        WHERE ci.visit_type = 'Repossession Completed' AND ci.status = 'Pending'
+        AND COALESCE(ci.cue_status, 'open') IN ('open', 'in_review', 'held')
+        ORDER BY ci.created_at DESC
+    """)
+    repo_completions = cur.fetchall()
+
     agents_list = cur.execute(
         "SELECT id, full_name, email FROM users WHERE role IN ('agent','both','admin') AND active=1 ORDER BY full_name"
     ).fetchall()
@@ -15525,6 +15597,7 @@ def job_queue():
                            overdue=overdue,
                            due_tomorrow=due_tomorrow,
                            agent_notes=agent_notes,
+                           repo_completions=repo_completions,
                            agents_list=agents_list,
                            clients_list=clients_list,
                            now_melb=mel_now)

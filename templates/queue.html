@@ -38,6 +38,7 @@
   .queue-section-title.overdue   { background: #dc2626; }
   .queue-section-title.due       { background: #d97706; }
   .queue-section-title.notes     { background: #2563eb; }
+  .queue-section-title.repo      { background: #16a34a; }
   .queue-table {
     width: 100%;
     border-collapse: collapse;
@@ -284,6 +285,32 @@
 </tr>
 {% endmacro %}
 
+{% if repo_completions %}
+<div class="queue-section" id="repo-section">
+  <div class="queue-section-title repo">&#x2714; Repossessions Completed – Action Required [{{ repo_completions|length }}]</div>
+  <table class="queue-table">
+    <thead>
+      <tr>
+        <th style="width:24px"></th>
+        <th>Job</th>
+        <th>Date/Time</th>
+        <th>Client</th>
+        <th>Borrower(s)</th>
+        <th>Address</th>
+        <th>Agent</th>
+        <th>Details</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="repo-body">
+      {% for c in repo_completions %}
+      {{ queue_row(c) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if agent_notes %}
 <div class="queue-section" id="notes-section">
   <div class="queue-section-title notes">Agent Notes – Pending Review [{{ agent_notes|length }}]</div>
@@ -424,6 +451,7 @@ function updateCueStatus(sel) {
 
 function updateSectionCounts() {
   [
+    {body: 'repo-body',    cls: '.queue-section-title.repo',    section: 'repo-section'},
     {body: 'notes-body',   cls: '.queue-section-title.notes',   section: 'notes-section'},
     {body: 'overdue-body', cls: '.queue-section-title.overdue'},
     {body: 'due-body',     cls: '.queue-section-title.due'}
