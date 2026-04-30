@@ -116,6 +116,7 @@ _CONFIGURED_DB_PATH = os.path.abspath(
 _FALLBACK_PROD_DB = os.path.abspath("axion.db")
 
 DEMO_MODE: bool = os.environ.get("AXIONX_DEMO_MODE", "").lower() in ("1", "true", "yes")
+MAIN_DOMAIN: str = os.environ.get("AXIONX_MAIN_DOMAIN", "").rstrip("/")
 
 if DEMO_MODE:
     # In demo mode AXIONX_DB_PATH (or AXIONX_DEMO_DB_PATH) points to the demo DB.
@@ -1786,6 +1787,7 @@ def inject_globals():
         "pending_draft_count": pending_drafts,
         "now_iso": now_ts(),
         "DEMO_MODE": DEMO_MODE,
+        "MAIN_DOMAIN": MAIN_DOMAIN,
         "demo_links": demo_links,
     }
 
@@ -3503,6 +3505,19 @@ def logout():
         return redirect(url_for("m_login"))
     if reason == "timeout":
         flash("Your session expired due to inactivity. Please sign in again.", "warning")
+    return redirect(url_for("login"))
+
+
+@app.get("/exit-demo")
+def exit_demo():
+    """Clear the demo session and redirect to the main platform domain.
+
+    If AXIONX_MAIN_DOMAIN is configured, the user is sent directly to the
+    main platform login page. Otherwise they are logged out locally.
+    """
+    session.clear()
+    if MAIN_DOMAIN:
+        return redirect(MAIN_DOMAIN, code=302)
     return redirect(url_for("login"))
 
 
