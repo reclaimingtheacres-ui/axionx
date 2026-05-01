@@ -3325,13 +3325,77 @@ def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachm
         part.add_header("Content-Disposition", "attachment", filename=fname)
         msg.attach(part)
 
+    import socket as _socket
+    import time as _smtp_time
+
     all_recipients = to_list + cc_list
-    with _smtplib.SMTP(host, port, timeout=10) as s:
-        s.ehlo()
-        if smtp["use_tls"]:
-            s.starttls()
-        s.login(user, pswd)
-        s.sendmail(frm, all_recipients, msg.as_string())
+
+    _SMTP_TIMEOUT    = 60
+    _SMTP_MAX_TRIES  = 3
+    _SMTP_RETRY_DELAYS = [3, 6]   # seconds before attempt 2, then attempt 3
+
+    _TRANSIENT_SMTP = (
+        _smtplib.SMTPServerDisconnected,
+        _smtplib.SMTPConnectError,
+    )
+    _NON_RETRY = (
+        _smtplib.SMTPAuthenticationError,
+        _smtplib.SMTPRecipientsRefused,
+        _smtplib.SMTPSenderRefused,
+        _smtplib.SMTPDataError,
+        ValueError,
+    )
+
+    last_exc = None
+    for _attempt in range(1, _SMTP_MAX_TRIES + 1):
+        try:
+            app.logger.warning(
+                "[SMTP] Attempt %d/%d — connecting to %s:%s",
+                _attempt, _SMTP_MAX_TRIES, host, port,
+            )
+            with _smtplib.SMTP(host, port, timeout=_SMTP_TIMEOUT) as s:
+                app.logger.warning("[SMTP] Attempt %d — connection open", _attempt)
+                s.ehlo()
+                if smtp["use_tls"]:
+                    s.starttls()
+                    app.logger.warning("[SMTP] Attempt %d — STARTTLS complete", _attempt)
+                s.login(user, pswd)
+                app.logger.warning("[SMTP] Attempt %d — login succeeded", _attempt)
+                app.logger.warning("[SMTP] Attempt %d — sending message to %s", _attempt, all_recipients)
+                s.sendmail(frm, all_recipients, msg.as_string())
+                app.logger.warning("[SMTP] Attempt %d — send_message complete", _attempt)
+            return  # success
+        except _NON_RETRY as exc:
+            app.logger.error(
+                "[SMTP] Attempt %d — non-retryable error %s: %s",
+                _attempt, type(exc).__name__, exc,
+            )
+            raise
+        except (_TRANSIENT_SMTP[0], _TRANSIENT_SMTP[1],
+                _socket.timeout, TimeoutError, ConnectionResetError,
+                ConnectionError, OSError) as exc:
+            last_exc = exc
+            app.logger.warning(
+                "[SMTP] Attempt %d/%d — transient error %s: %s",
+                _attempt, _SMTP_MAX_TRIES, type(exc).__name__, exc,
+            )
+            if _attempt < _SMTP_MAX_TRIES:
+                delay = _SMTP_RETRY_DELAYS[_attempt - 1]
+                app.logger.warning("[SMTP] Waiting %ds before retry…", delay)
+                _smtp_time.sleep(delay)
+            continue
+        except Exception as exc:
+            app.logger.error(
+                "[SMTP] Attempt %d — unexpected error %s: %s",
+                _attempt, type(exc).__name__, exc,
+            )
+            raise
+
+    app.logger.error(
+        "[SMTP] All %d attempts failed. Last error %s: %s",
+        _SMTP_MAX_TRIES, type(last_exc).__name__, last_exc,
+    )
+    raise last_exc
 
 
 @app.get("/forgot-password")
