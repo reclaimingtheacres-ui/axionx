@@ -607,7 +607,12 @@ def _schema_is_current():
             cur_tbl = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='client_update_requests'"
             ).fetchone()
-            return bool(cur_tbl)
+            if not cur_tbl:
+                return False
+            cur_cols = [c[1] for c in conn.execute("PRAGMA table_info(client_update_requests)").fetchall()]
+            if "request_type" not in cur_cols:
+                return False
+            return True
         except Exception:
             if attempt < 2:
                 _t.sleep(0.3 + attempt * 0.3)
@@ -6921,19 +6926,36 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
     now_dt      = datetime.now()
 
     # ── Fetch stage records ──────────────────────────────────────────────────
-    last_update_row = conn.execute("""
-        SELECT sent_at FROM client_update_requests
-        WHERE job_id = ? AND result_status = 'sent'
-          AND (request_type IS NULL OR request_type = 'update_request')
-        ORDER BY sent_at DESC LIMIT 1
-    """, (job_id,)).fetchone()
+    # Defensive: if request_type column was not yet migrated in production,
+    # fall back to treating all sent rows as update_request and no closure rows.
+    try:
+        _cur_cols = [c[1] for c in conn.execute("PRAGMA table_info(client_update_requests)").fetchall()]
+        _has_request_type = "request_type" in _cur_cols
+    except Exception:
+        _has_request_type = False
 
-    last_closure_row = conn.execute("""
-        SELECT sent_at FROM client_update_requests
-        WHERE job_id = ? AND result_status = 'sent'
-          AND request_type = 'closure_request'
-        ORDER BY sent_at DESC LIMIT 1
-    """, (job_id,)).fetchone()
+    if _has_request_type:
+        last_update_row = conn.execute("""
+            SELECT sent_at FROM client_update_requests
+            WHERE job_id = ? AND result_status = 'sent'
+              AND (request_type IS NULL OR request_type = 'update_request')
+            ORDER BY sent_at DESC LIMIT 1
+        """, (job_id,)).fetchone()
+
+        last_closure_row = conn.execute("""
+            SELECT sent_at FROM client_update_requests
+            WHERE job_id = ? AND result_status = 'sent'
+              AND request_type = 'closure_request'
+            ORDER BY sent_at DESC LIMIT 1
+        """, (job_id,)).fetchone()
+    else:
+        # Column missing — treat all rows as update_request, no closure rows
+        last_update_row = conn.execute("""
+            SELECT sent_at FROM client_update_requests
+            WHERE job_id = ? AND result_status = 'sent'
+            ORDER BY sent_at DESC LIMIT 1
+        """, (job_id,)).fetchone()
+        last_closure_row = None
 
     escalated_row = conn.execute("""
         SELECT id FROM cue_items
