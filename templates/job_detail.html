@@ -1156,7 +1156,7 @@
   </div>
 
 <script>
-var ENABLE_RESCHEDULE_MODAL = {{ enable_reschedule_modal | tojson }};
+var ENABLE_RESCHEDULE_MODAL = {{ enable_reschedule_modal | default(false) | tojson }};
 </script>
 
 {% if is_demo_client %}
