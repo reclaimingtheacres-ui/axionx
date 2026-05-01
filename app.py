@@ -7121,7 +7121,7 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
                 "last_sent_at": last_update_at}
 
     # ── Stage 1: no request sent yet ─────────────────────────────────────────
-    update_subject = f"Update Request \u2013 {ref} \u2013 {cname}"
+    update_subject = f"Update Request \u2013 {ref}"
     update_body = (
         f"Hi {client_name},\n\n"
         f"We refer to the above matter currently listed as {status}.\n\n"
