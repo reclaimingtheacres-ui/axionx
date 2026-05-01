@@ -195,7 +195,7 @@
     {% set has_advanced = filter_client or filter_agent or filter_btype or filter_date_from or filter_date_to %}
     <form method="get" id="jobs-filter-form" style="padding:10px 16px 0">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-        <div style="flex:0 1 300px;min-width:160px;position:relative" class="ax-search-wrap">
+        <div style="flex:1 1 300px;min-width:160px;position:relative" class="ax-search-wrap">
           <input class="form-control form-control-sm{% if q %} has-value{% endif %}" name="q" placeholder="Search job no., client, customer, rego, VIN..." value="{{ q }}" style="padding-left:30px;padding-right:32px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);z-index:2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <button type="button" class="ax-search-clear" onclick="axClearSearch(this)" aria-label="Clear search">&times;</button>
