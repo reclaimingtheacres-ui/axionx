@@ -602,7 +602,12 @@ def _schema_is_current():
             uul = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='urgent_update_log'"
             ).fetchone()
-            return bool(uul)
+            if not uul:
+                return False
+            cur_tbl = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='client_update_requests'"
+            ).fetchone()
+            return bool(cur_tbl)
         except Exception:
             if attempt < 2:
                 _t.sleep(0.3 + attempt * 0.3)
@@ -1685,7 +1690,6 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "jobs", "status_changed_at",                   "TEXT")
     add_column_if_missing(cur, "jobs", "last_client_update_request_sent_at",  "TEXT")
     add_column_if_missing(cur, "jobs", "client_update_request_count",         "INTEGER DEFAULT 0")
-    add_column_if_missing(cur, "client_update_requests", "request_type",      "TEXT NOT NULL DEFAULT 'update_request'")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS client_update_requests (
@@ -1704,6 +1708,7 @@ def _migrate_update_builder():
     )
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_cur_job ON client_update_requests(job_id, sent_at)")
+    add_column_if_missing(cur, "client_update_requests", "request_type", "TEXT NOT NULL DEFAULT 'update_request'")
 
     # Backfill status_changed_at for existing jobs that have no value yet.
     # Use the most recent lifecycle log entry where to_status = current status;
