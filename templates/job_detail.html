@@ -1155,6 +1155,10 @@
     {% endif %}
   </div>
 
+<script>
+var ENABLE_RESCHEDULE_MODAL = {{ enable_reschedule_modal | tojson }};
+</script>
+
 {% if is_demo_client %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -2959,6 +2963,18 @@ function _axParseEtaDate(text) {
 
 /* ── Open reschedule modal before publishing note as File Note ─────────── */
 function axPublishFieldNote(jobId, noteId, noteText) {
+  if (!ENABLE_RESCHEDULE_MODAL) {
+    console.log('Reschedule modal disabled by feature flag');
+    fetch('/jobs/' + jobId + '/notes/' + noteId + '/publish-to-file', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+      body: JSON.stringify({note_text: noteText || ''})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if (d.ok) { window._axSaveReload = true; location.reload(); } else { alert(d.error || 'Publish failed.'); } })
+    .catch(function(){ alert('Network error — please try again.'); });
+    return;
+  }
   var modal = document.getElementById('axRescheduleModal');
   if (!modal) { alert('Reschedule modal not found.'); return; }
   modal.dataset.jobId  = jobId;
@@ -4277,17 +4293,21 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     var _newCat = enCatSel ? enCatSel.value : '';
 
     if (_newCat === 'file_note' && (window._enOriginalCategory || '') !== 'file_note') {
-      btn.disabled = false; btn.textContent = 'Save';
-      var _enEl = document.getElementById('editNoteModal');
-      var _noteId = noteId, _text = text;
-      _enEl.addEventListener('hidden.bs.modal', function _onHidden() {
-        _enEl.removeEventListener('hidden.bs.modal', _onHidden);
-        if (typeof axPublishFieldNote === 'function') {
-          axPublishFieldNote(JOB_ID, _noteId, _text);
-        }
-      });
-      enModal.hide();
-      return;
+      if (ENABLE_RESCHEDULE_MODAL) {
+        btn.disabled = false; btn.textContent = 'Save';
+        var _enEl = document.getElementById('editNoteModal');
+        var _noteId = noteId, _text = text;
+        _enEl.addEventListener('hidden.bs.modal', function _onHidden() {
+          _enEl.removeEventListener('hidden.bs.modal', _onHidden);
+          if (typeof axPublishFieldNote === 'function') {
+            axPublishFieldNote(JOB_ID, _noteId, _text);
+          }
+        });
+        enModal.hide();
+        return;
+      } else {
+        console.log('Reschedule modal disabled by feature flag');
+      }
     }
 
     if (enCatSel) fd.append('note_category', enCatSel.value);

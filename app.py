@@ -117,6 +117,8 @@ _FALLBACK_PROD_DB = os.path.abspath("axion.db")
 
 DEMO_MODE: bool = os.environ.get("AXIONX_DEMO_MODE", "").lower() in ("1", "true", "yes")
 
+ENABLE_RESCHEDULE_MODAL: bool = False
+
 if DEMO_MODE:
     # In demo mode AXIONX_DB_PATH (or AXIONX_DEMO_DB_PATH) points to the demo DB.
     # AXIONX_DEMO_DB_PATH takes precedence if both variables are set.
@@ -5264,7 +5266,8 @@ def job_detail(job_id: int):
                            ai_draft_count=ai_draft_count,
                            office_notes=office_notes,
                            client_update_info=_build_client_update_info(conn, job_id, role),
-                           admin_users=admin_users)
+                           admin_users=admin_users,
+                           enable_reschedule_modal=ENABLE_RESCHEDULE_MODAL)
 
 
 def _sync_job_customer_id(cur, job_id):
