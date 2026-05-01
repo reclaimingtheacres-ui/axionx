@@ -195,10 +195,10 @@
     {% set has_advanced = filter_client or filter_agent or filter_btype or filter_date_from or filter_date_to %}
     <form method="get" id="jobs-filter-form" style="padding:10px 16px 0">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-        <div style="flex:1 1 240px;position:relative" class="ax-search-wrap">
-          <input class="form-control form-control-sm{% if q %} has-value{% endif %}" name="q" placeholder="Search job no., client, customer, rego, VIN..." value="{{ q }}" style="padding-left:30px;padding-right:28px">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:9px;top:8px;z-index:2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <button type="button" class="ax-search-clear" onclick="var i=this.previousElementSibling.previousElementSibling;i.value='';i.classList.remove('has-value');i.form.submit()" aria-label="Clear search">&times;</button>
+        <div style="flex:0 1 300px;min-width:160px;position:relative" class="ax-search-wrap">
+          <input class="form-control form-control-sm{% if q %} has-value{% endif %}" name="q" placeholder="Search job no., client, customer, rego, VIN..." value="{{ q }}" style="padding-left:30px;padding-right:32px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);z-index:2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <button type="button" class="ax-search-clear" onclick="axClearSearch(this)" aria-label="Clear search">&times;</button>
         </div>
         <select class="form-select form-select-sm" name="sort" style="flex:0 0 170px">
           <option value="scheduled"  {% if sort == 'scheduled' %}selected{% endif %}>Sort: Oldest Scheduled</option>
@@ -213,6 +213,7 @@
           Filters{% if has_advanced %} <span style="color:var(--accent)">●</span>{% endif %}
         </button>
         <button class="btn btn-outline-secondary btn-sm" type="submit" style="padding:4px 14px;font-size:.8rem">Filter</button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="axClearFilters()" style="padding:4px 14px;font-size:.8rem;white-space:nowrap">Clear Filters</button>
         <select class="form-select form-select-sm" name="per_page" onchange="document.getElementById('jobs-filter-form').submit()" style="flex:0 0 90px">
           <option value="25"  {% if per_page == 25 %}selected{% endif %}>25</option>
           <option value="50"  {% if per_page == 50 %}selected{% endif %}>50</option>
@@ -279,6 +280,19 @@
   </div>
 
   <script>
+  function axClearSearch(btn) {
+    var input = btn.closest('.ax-search-wrap').querySelector('input[name="q"]');
+    input.value = '';
+    input.classList.remove('has-value');
+    input.form.submit();
+  }
+  function axClearFilters() {
+    try {
+      sessionStorage.removeItem('ax.jobsReturnUrl');
+      sessionStorage.removeItem('ax.jobsScroll');
+    } catch(_e) {}
+    window.location.href = '/jobs';
+  }
   function axToggleAdv() {
     var el = document.getElementById('adv-filters');
     var open = el.style.display !== 'none';
