@@ -15659,12 +15659,35 @@ def job_queue():
         WHERE visit_type = 'Agent Note Review' AND status = 'Pending'
     )"""
 
-    cur.execute(_queue_row_sql() + f"""
+    _overdue_sql = _queue_row_sql().replace(
+        "FROM cue_items ci",
+        """,
+               (SELECT s.id FROM schedules s
+                WHERE s.job_id = j.id
+                  AND s.scheduled_for < DATETIME('now')
+                  AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0
+                ORDER BY s.scheduled_for ASC LIMIT 1) AS overdue_sched_id
+        FROM cue_items ci"""
+    )
+    cur.execute(_overdue_sql + f"""
         WHERE ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')
         {_active_excl} {_note_excl}
         ORDER BY ci.priority DESC, ci.created_at DESC
     """, overdue_types)
     overdue = cur.fetchall()
+
+    overdue_urgent_sent_ids = set()
+    _ov_sched_ids = [r["overdue_sched_id"] for r in overdue if r["overdue_sched_id"]]
+    if _ov_sched_ids:
+        _ph = ",".join("?" * len(_ov_sched_ids))
+        try:
+            _sent = cur.execute(
+                f"SELECT sched_id FROM urgent_update_log WHERE sched_id IN ({_ph})",
+                _ov_sched_ids
+            ).fetchall()
+            overdue_urgent_sent_ids = {r["sched_id"] for r in _sent}
+        except Exception:
+            pass
 
     cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
@@ -15698,6 +15721,7 @@ def job_queue():
     conn.close()
     return render_template("queue.html",
                            overdue=overdue,
+                           overdue_urgent_sent_ids=overdue_urgent_sent_ids,
                            due_tomorrow=due_tomorrow,
                            agent_notes=agent_notes,
                            repo_completions=repo_completions,

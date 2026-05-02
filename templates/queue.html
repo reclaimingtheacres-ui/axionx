@@ -173,8 +173,25 @@
     white-space: nowrap;
   }
   .q-row-hidden { display: none !important; }
+  .ax-urgent-btn {
+    font-size:.6rem;background:#fef2f2;color:#ef4444;
+    border:1px solid #fecaca;border-radius:3px;
+    padding:1px 6px;cursor:pointer;font-weight:700;
+    line-height:1.5;white-space:nowrap;
+    transition:background .15s,color .15s;
+  }
+  .ax-urgent-btn:not(:disabled):hover { background:#ef4444;color:#fff;border-color:#ef4444; }
+  .ax-urgent-btn:disabled,.ax-urgent-btn.ax-urgent-sent {
+    background:#f3f4f6;color:#9ca3af;border-color:#d1d5db;cursor:default;font-weight:600;
+  }
+  #q-toast { position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none; }
+  .q-toast-item { padding:10px 18px;border-radius:8px;font-size:.85rem;font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;opacity:0;transition:opacity .25s; }
+  .q-toast-item.show { opacity:1; }
+  .q-toast-ok  { background:#166534;color:#d1fae5; }
+  .q-toast-err { background:#991b1b;color:#fee2e2; }
 </style>
 
+<div id="q-toast"></div>
 <div class="queue-header-bar">
   <strong>{{ session.get('user_name', 'Admin') }}</strong>
   &nbsp;/&nbsp; Status = logged in
@@ -285,6 +302,51 @@
 </tr>
 {% endmacro %}
 
+{% macro overdue_queue_row(c) %}
+{% set _sched_id = c.overdue_sched_id %}
+{% set _already_sent = _sched_id and _sched_id in overdue_urgent_sent_ids %}
+<tr id="qrow-{{ c.id }}" data-job-id="{{ c.job_id }}" data-cue-id="{{ c.id }}"
+    data-agent="{{ (c.agent_name or '')|e }}"
+    data-agent-id="{{ c.job_assigned_uid or '' }}"
+    data-client="{{ (c.client_name or '')|e }}"
+    data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.resolved_address or c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}"
+    style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions,.q-status-dd')){queueRowClick(this,{{ c.id }},false);}">
+  <td>
+    <button class="q-dismiss" title="Dismiss" onclick="event.stopPropagation();confirmDismiss({{ c.id }})">&#10005;</button>
+  </td>
+  <td>
+    <a class="q-job-link" href="/jobs/{{ c.job_id }}">{{ c.display_ref }}</a>
+  </td>
+  <td style="white-space:nowrap">{{ c.created_at|fmt_queue_dt }}</td>
+  <td>{{ c.client_name or '—' }}</td>
+  <td>{{ c.customer_label or c.customer_name or '—' }}</td>
+  <td>{{ c.resolved_address or c.job_address or '—' }}</td>
+  <td>
+    {% if c.agent_name %}
+    <span class="q-agent-badge">{{ c.agent_name }}</span>
+    {% else %}
+    <span class="q-agent-badge unassigned">Unassigned</span>
+    {% endif %}
+  </td>
+  <td class="q-action-text">{{ c.instructions or c.visit_type }}</td>
+  <td>
+    <div class="q-actions">
+      {% if _sched_id %}
+      <button class="ax-urgent-btn{% if _already_sent %} ax-urgent-sent{% endif %}"
+        data-job-id="{{ c.job_id }}"
+        data-sched-id="{{ _sched_id }}"
+        {% if _already_sent %}disabled{% endif %}
+        title="{% if _already_sent %}Urgent update already sent{% else %}Send urgent update request to agent{% endif %}"
+        onclick="qAxSendUrgentUpdate(this)">
+        {% if _already_sent %}Urgent update sent{% else %}OVERDUE{% endif %}
+      </button>
+      {% endif %}
+      <a class="q-update-btn" href="/jobs/{{ c.job_id }}">Review</a>
+    </div>
+  </td>
+</tr>
+{% endmacro %}
+
 {% if repo_completions %}
 <div class="queue-section" id="repo-section">
   <div class="queue-section-title repo">&#x2714; Repossessions Completed – Action Required [{{ repo_completions|length }}]</div>
@@ -355,7 +417,7 @@
     </thead>
     <tbody id="overdue-body">
       {% for c in overdue %}
-      {{ queue_row(c) }}
+      {{ overdue_queue_row(c) }}
       {% else %}
       <tr class="q-empty"><td colspan="9">No overdue items.</td></tr>
       {% endfor %}
@@ -1224,6 +1286,50 @@ function sendQueueEmail() {
     document.getElementById('em_send_btn').disabled = false;
     errEl.textContent = 'Network error. Please try again.';
     errEl.style.display = '';
+  });
+}
+
+function qShowToast(msg, type) {
+  var c = document.getElementById('q-toast');
+  var el = document.createElement('div');
+  el.className = 'q-toast-item q-toast-' + (type === 'ok' ? 'ok' : 'err');
+  el.textContent = msg;
+  c.appendChild(el);
+  requestAnimationFrame(function(){ el.classList.add('show'); });
+  setTimeout(function(){ el.classList.remove('show'); setTimeout(function(){ el.remove(); }, 300); }, 4000);
+}
+
+function qAxSendUrgentUpdate(btn) {
+  var jobId  = btn.dataset.jobId;
+  var schedId = btn.dataset.schedId;
+  if (btn.disabled || btn.dataset.processing) return;
+  btn.dataset.processing = '1';
+  btn.disabled = true;
+  var origText = btn.textContent.trim();
+  btn.textContent = 'Sending\u2026';
+  fetch('/jobs/' + jobId + '/urgent-update/' + schedId, {
+    method: 'POST', body: new FormData(),
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    delete btn.dataset.processing;
+    if (data.ok) {
+      btn.textContent = 'Urgent update sent';
+      btn.classList.add('ax-urgent-sent');
+      btn.disabled = true;
+      qShowToast('Urgent update sent to agent.', 'ok');
+    } else {
+      btn.disabled = false;
+      btn.textContent = origText;
+      qShowToast(data.error || 'Error sending urgent update.', 'err');
+    }
+  })
+  .catch(function(){
+    delete btn.dataset.processing;
+    btn.disabled = false;
+    btn.textContent = origText;
+    qShowToast('Network error \u2014 please try again.', 'err');
   });
 }
 </script>
