@@ -3629,6 +3629,19 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
           )
     """, (now_str, now_str, today))
 
+    # Auto-complete stale "Schedule Due Tomorrow" items whose scheduled date
+    # is no longer tomorrow (the date has passed or the schedule was moved).
+    cur.execute("""
+        UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+        WHERE visit_type = 'Schedule Due Tomorrow'
+          AND status IN ('Pending', 'In Progress')
+          AND job_id NOT IN (
+              SELECT s.job_id FROM schedules s
+              WHERE date(s.scheduled_for, 'localtime') = ?
+                AND s.status NOT IN ('Cancelled', 'Completed') AND s.hidden = 0
+          )
+    """, (now_str, now_str, tomorrow))
+
     note_job_ids = set()
     cur.execute("""
         SELECT job_id FROM cue_items
@@ -15645,8 +15658,7 @@ def job_queue():
     except Exception:
         pass
 
-    overdue_types = ("Urgent: Schedule Overdue", "Schedule Due Today")
-    tomorrow_type = "Schedule Due Tomorrow"
+    overdue_type  = "Urgent: Schedule Overdue"
     note_type     = "Agent Note Review"
 
     _arch_excl = f"AND j.status NOT IN {ARCHIVED_STATUSES!r}"
@@ -15659,21 +15671,22 @@ def job_queue():
         WHERE visit_type = 'Agent Note Review' AND status = 'Pending'
     )"""
 
+    # Overdue: calendar date strictly before today (Urgent: Schedule Overdue only)
     _overdue_sql = _queue_row_sql().replace(
         "FROM cue_items ci",
         """,
                (SELECT s.id FROM schedules s
                 WHERE s.job_id = j.id
-                  AND s.scheduled_for < DATETIME('now')
+                  AND date(s.scheduled_for) < date('now','localtime')
                   AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0
                 ORDER BY s.scheduled_for ASC LIMIT 1) AS overdue_sched_id
         FROM cue_items ci"""
     )
     cur.execute(_overdue_sql + f"""
-        WHERE ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')
+        WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
         {_active_excl} {_note_excl}
         ORDER BY ci.priority DESC, ci.created_at DESC
-    """, overdue_types)
+    """, (overdue_type,))
     overdue = cur.fetchall()
 
     overdue_urgent_sent_ids = set()
@@ -15689,11 +15702,13 @@ def job_queue():
         except Exception:
             pass
 
+    # Currently Due: schedule date is today OR tomorrow (Schedule Due Today + Schedule Due Tomorrow)
     cur.execute(_queue_row_sql() + f"""
-        WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
+        WHERE ci.visit_type IN ('Schedule Due Today','Schedule Due Tomorrow')
+          AND ci.status IN ('Pending','In Progress')
         {_active_excl} {_note_excl}
-        ORDER BY ci.created_at DESC
-    """, (tomorrow_type,))
+        ORDER BY ci.visit_type DESC, ci.created_at DESC
+    """)
     due_tomorrow = cur.fetchall()
 
     cur.execute(_queue_row_sql() + f"""
