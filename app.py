@@ -15702,12 +15702,12 @@ def job_queue():
         except Exception:
             pass
 
-    # Currently Due: schedule date is today OR tomorrow (Schedule Due Today + Schedule Due Tomorrow)
+    # Currently Due: schedule date is today only (Schedule Due Today)
     cur.execute(_queue_row_sql() + f"""
-        WHERE ci.visit_type IN ('Schedule Due Today','Schedule Due Tomorrow')
+        WHERE ci.visit_type = 'Schedule Due Today'
           AND ci.status IN ('Pending','In Progress')
         {_active_excl} {_note_excl}
-        ORDER BY ci.visit_type DESC, ci.created_at DESC
+        ORDER BY ci.created_at DESC
     """)
     due_tomorrow = cur.fetchall()
 
