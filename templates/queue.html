@@ -698,6 +698,13 @@ function filterByClient(name) {
 updateSummary();
 
 function openEmailQueueModal() {
+  document.getElementById('eqm_step1').style.display = '';
+  document.getElementById('eqm_step2').style.display = 'none';
+  document.getElementById('eqm_footer_step1').style.display = '';
+  document.getElementById('eqm_footer_step2').style.display = 'none';
+  document.getElementById('eqm_dialog').style.maxWidth = '480px';
+  document.getElementById('eqm_title').textContent = 'Email Queue to Agent';
+  document.getElementById('eqm_error').style.display = 'none';
   document.getElementById('eqm_agent').value = '';
   var filterVal = document.getElementById('filterAgent').value;
   if (filterVal && filterVal !== '__unassigned__') {
@@ -711,51 +718,129 @@ function openEmailQueueModal() {
       }
     }
   }
-  document.getElementById('eqm_error').style.display = 'none';
-  document.getElementById('eqm_success').style.display = 'none';
-  document.getElementById('eqm_send_btn').disabled = false;
+  var previewBtn = document.getElementById('eqm_preview_btn');
+  previewBtn.disabled = false;
+  previewBtn.textContent = 'Preview';
   bootstrap.Modal.getOrCreateInstance(document.getElementById('emailQueueModal')).show();
 }
 
-function sendAgentQueue() {
+function eqmBack() {
+  document.getElementById('eqm_step2').style.display = 'none';
+  document.getElementById('eqm_footer_step2').style.display = 'none';
+  document.getElementById('eqm_dialog').style.maxWidth = '480px';
+  document.getElementById('eqm_title').textContent = 'Email Queue to Agent';
+  document.getElementById('eqm_step1').style.display = '';
+  document.getElementById('eqm_footer_step1').style.display = '';
+}
+
+function loadQueuePreview() {
   var agentId = document.getElementById('eqm_agent').value;
   var errEl = document.getElementById('eqm_error');
-  var okEl = document.getElementById('eqm_success');
   errEl.style.display = 'none';
-  okEl.style.display = 'none';
-
   if (!agentId) {
     errEl.textContent = 'Please select an agent.';
     errEl.style.display = '';
     return;
   }
-
-  document.getElementById('eqm_send_btn').disabled = true;
+  var previewBtn = document.getElementById('eqm_preview_btn');
+  previewBtn.disabled = true;
+  previewBtn.textContent = 'Loading\u2026';
   var fd = new FormData();
   fd.append('agent_id', agentId);
   var clientFilter = document.getElementById('filterClient').value;
   if (clientFilter) fd.append('filter_client', clientFilter);
+  fetch('/queue/email-agent-queue/preview', {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}})
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    previewBtn.disabled = false;
+    previewBtn.textContent = 'Preview';
+    if (!data.ok) {
+      errEl.textContent = data.error;
+      errEl.style.display = '';
+      return;
+    }
+    document.getElementById('eqm_prev_recipient').textContent = data.agent_name + ' \u2039' + data.agent_email + '\u203a';
+    document.getElementById('eqm_prev_subject').textContent = data.subject;
+    document.getElementById('eqm_prev_count').textContent = data.item_count;
+    document.getElementById('eqm_prev_error').style.display = 'none';
+    document.getElementById('eqm_prev_success').style.display = 'none';
+    document.getElementById('eqm_send_btn').disabled = false;
+    document.getElementById('eqm_send_btn').textContent = 'Send Email';
+    var tbl = '<table style="width:100%;border-collapse:collapse;font-size:.79rem">';
+    tbl += '<thead><tr style="background:#1e3a5f;color:#fff">';
+    tbl += '<th style="padding:5px 8px;text-align:left;font-weight:600">Job</th>';
+    tbl += '<th style="padding:5px 8px;text-align:left;font-weight:600">Client</th>';
+    tbl += '<th style="padding:5px 8px;text-align:left;font-weight:600">Borrower</th>';
+    tbl += '<th style="padding:5px 8px;text-align:left;font-weight:600">Address</th>';
+    tbl += '<th style="padding:5px 8px;text-align:left;font-weight:600">Action</th>';
+    tbl += '</tr></thead><tbody>';
+    var lastSection = '';
+    for (var i = 0; i < data.items.length; i++) {
+      var it = data.items[i];
+      if (it.section !== lastSection) {
+        lastSection = it.section;
+        tbl += '<tr><td colspan="5" style="background:#f3f4f6;font-weight:700;font-size:.7rem;padding:4px 8px;border-top:2px solid #d1d5db;text-transform:uppercase;letter-spacing:.04em">' + lastSection + '</td></tr>';
+      }
+      tbl += '<tr>';
+      tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-weight:600">' + it.ref + '</td>';
+      tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">' + it.client + '</td>';
+      tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">' + it.borrower + '</td>';
+      tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:.74rem">' + it.address + '</td>';
+      tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:.74rem">' + it.action + '</td>';
+      tbl += '</tr>';
+    }
+    tbl += '</tbody></table>';
+    document.getElementById('eqm_prev_table').innerHTML = tbl;
+    document.getElementById('eqm_step1').style.display = 'none';
+    document.getElementById('eqm_footer_step1').style.display = 'none';
+    document.getElementById('eqm_dialog').style.maxWidth = '720px';
+    document.getElementById('eqm_title').textContent = 'Preview — Queue Email';
+    document.getElementById('eqm_step2').style.display = '';
+    document.getElementById('eqm_footer_step2').style.display = '';
+  })
+  .catch(function(){
+    previewBtn.disabled = false;
+    previewBtn.textContent = 'Preview';
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.style.display = '';
+  });
+}
 
+function sendAgentQueue() {
+  var agentId = document.getElementById('eqm_agent').value;
+  var errEl = document.getElementById('eqm_prev_error');
+  var okEl  = document.getElementById('eqm_prev_success');
+  errEl.style.display = 'none';
+  okEl.style.display  = 'none';
+  var sendBtn = document.getElementById('eqm_send_btn');
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending\u2026';
+  var fd = new FormData();
+  fd.append('agent_id', agentId);
+  var clientFilter = document.getElementById('filterClient').value;
+  if (clientFilter) fd.append('filter_client', clientFilter);
   fetch('/queue/email-agent-queue', {method: 'POST', body: fd, headers: {'X-Requested-With': 'XMLHttpRequest'}})
   .then(function(r){ return r.json(); })
   .then(function(data){
-    document.getElementById('eqm_send_btn').disabled = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send Email';
     if (!data.ok) {
       errEl.textContent = data.error;
       errEl.style.display = '';
     } else {
       var msg = data.smtp_skipped
-        ? 'Logged — will send once SMTP is configured. (' + data.agent_name + ', ' + data.item_count + ' items)'
-        : 'Queue sent to ' + data.agent_name + ' (' + data.sent_to + ') — ' + data.item_count + ' items';
+        ? 'Logged \u2014 will send once SMTP is configured. (' + data.agent_name + ', ' + data.item_count + ' items)'
+        : 'Queue sent to ' + data.agent_name + ' (' + data.sent_to + ') \u2014 ' + data.item_count + ' items';
       okEl.textContent = msg;
       okEl.style.display = '';
       setTimeout(function(){
         bootstrap.Modal.getOrCreateInstance(document.getElementById('emailQueueModal')).hide();
-      }, 3000);
+      }, 2500);
     }
   })
   .catch(function(){
-    document.getElementById('eqm_send_btn').disabled = false;
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send Email';
     errEl.textContent = 'Network error. Please try again.';
     errEl.style.display = '';
   });
@@ -765,28 +850,61 @@ function sendAgentQueue() {
 
 {% block modals %}
 <div class="modal fade" id="emailQueueModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+  <div class="modal-dialog modal-dialog-centered" id="eqm_dialog" style="max-width:480px">
     <div class="modal-content" style="border-radius:14px;border:1px solid var(--line);overflow:hidden">
       <div class="modal-header" style="border-bottom:1px solid var(--line);padding:.75rem 1.25rem">
-        <h5 class="modal-title fw-semibold" style="font-size:.95rem">Email Queue to Agent</h5>
+        <h5 class="modal-title fw-semibold" style="font-size:.95rem" id="eqm_title">Email Queue to Agent</h5>
         <button type="button" class="btn-close btn-close-sm" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" style="padding:1.2rem 1.4rem">
-        <p class="small text-muted mb-3">
-          Send a complete queue summary to the selected agent by email. If client filters are active, only matching items will be included.
-        </p>
-        <label class="form-label small fw-bold">Select Agent</label>
-        <select class="form-select form-select-sm mb-3" id="eqm_agent">
-          <option value="">— Select Agent —</option>
-          {% for a in agents_list %}
-          <option value="{{ a.id }}">{{ a.full_name }} ({{ a.email or 'no email' }})</option>
-          {% endfor %}
-        </select>
-        <div id="eqm_error" class="alert alert-danger py-2 small" style="display:none"></div>
-        <div id="eqm_success" class="alert alert-success py-2 small" style="display:none"></div>
+
+        <!-- Step 1: agent selection -->
+        <div id="eqm_step1">
+          <p class="small text-muted mb-3">
+            Select an agent to preview and send their Overdue and Currently Due queue items.
+          </p>
+          <label class="form-label small fw-bold">Select Agent</label>
+          <select class="form-select form-select-sm mb-3" id="eqm_agent">
+            <option value="">— Select Agent —</option>
+            {% for a in agents_list %}
+            <option value="{{ a.id }}">{{ a.full_name }} ({{ a.email or 'no email' }})</option>
+            {% endfor %}
+          </select>
+          <div id="eqm_error" class="alert alert-danger py-2 small" style="display:none"></div>
+        </div>
+
+        <!-- Step 2: preview -->
+        <div id="eqm_step2" style="display:none">
+          <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:.9rem">
+            <div>
+              <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.2rem">To</div>
+              <div id="eqm_prev_recipient" style="font-size:.9rem;font-weight:600"></div>
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.2rem">Subject</div>
+              <div id="eqm_prev_subject" style="font-size:.82rem;background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:.35rem .6rem;color:var(--text)"></div>
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.4rem">
+                Included Jobs &mdash; <span id="eqm_prev_count">0</span> item(s)
+              </div>
+              <div id="eqm_prev_table" style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;font-size:.8rem"></div>
+            </div>
+          </div>
+          <div id="eqm_prev_error"   class="alert alert-danger py-2 small"  style="display:none"></div>
+          <div id="eqm_prev_success" class="alert alert-success py-2 small" style="display:none"></div>
+        </div>
+
       </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line);padding:.6rem 1.2rem">
-        <button type="button" class="btn btn-primary btn-sm px-4" id="eqm_send_btn" onclick="sendAgentQueue()">Send Queue</button>
+      <!-- Step 1 footer -->
+      <div class="modal-footer" id="eqm_footer_step1" style="border-top:1px solid var(--line);padding:.6rem 1.2rem">
+        <button type="button" class="btn btn-primary btn-sm px-4" id="eqm_preview_btn" onclick="loadQueuePreview()">Preview</button>
+        <button type="button" class="btn btn-link btn-sm ms-auto text-muted" data-bs-dismiss="modal" style="text-decoration:none">Cancel</button>
+      </div>
+      <!-- Step 2 footer -->
+      <div class="modal-footer" id="eqm_footer_step2" style="display:none;border-top:1px solid var(--line);padding:.6rem 1.2rem">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="eqmBack()">&#8592; Back</button>
+        <button type="button" class="btn btn-primary btn-sm px-4" id="eqm_send_btn" onclick="sendAgentQueue()">Send Email</button>
         <button type="button" class="btn btn-link btn-sm ms-auto text-muted" data-bs-dismiss="modal" style="text-decoration:none">Cancel</button>
       </div>
     </div>

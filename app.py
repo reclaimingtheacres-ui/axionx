@@ -16502,6 +16502,71 @@ def queue_email_agent_queue():
                     "item_count": len(all_items), "smtp_skipped": smtp_skipped})
 
 
+@app.post("/queue/email-agent-queue/preview")
+@admin_required
+def queue_email_agent_queue_preview():
+    """Return a preview of the queue email content without sending."""
+    agent_id = request.form.get("agent_id", "").strip()
+    filter_client = request.form.get("filter_client", "").strip()
+    if not agent_id:
+        return jsonify({"ok": False, "error": "Please select an agent."})
+
+    conn = db()
+    agent = conn.execute("SELECT id, full_name, email FROM users WHERE id=?", (agent_id,)).fetchone()
+    if not agent or not agent["email"]:
+        conn.close()
+        return jsonify({"ok": False, "error": "Agent not found or has no email address."})
+
+    cur = conn.cursor()
+    overdue_types = ("Urgent: Schedule Overdue", "Schedule Due Today")
+    tomorrow_type = "Schedule Due Tomorrow"
+    _active_statuses_sql = "('New', 'Active', 'Active - Phone work only')"
+
+    all_items = []
+    for label, sql_where, params in [
+        ("OVERDUE",       f"ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", overdue_types),
+        ("CURRENTLY DUE", f"ci.visit_type = ? AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", (tomorrow_type,)),
+    ]:
+        cur.execute(_queue_row_sql() + " WHERE " + sql_where + " ORDER BY ci.priority DESC, ci.created_at DESC", params)
+        rows = cur.fetchall()
+        for r in rows:
+            if str(r["job_assigned_uid"] or "") != str(agent_id):
+                continue
+            if filter_client and str(r["client_name"] or "") != filter_client:
+                continue
+            all_items.append((label, r))
+
+    conn.close()
+
+    if not all_items:
+        return jsonify({"ok": False, "error": f"No overdue or currently due items to email for {agent['full_name']}."})
+
+    mel_now = datetime.now(_melbourne)
+    date_str = mel_now.strftime("%A %d %B %Y")
+    subject = f"Your AxionX Queue — {date_str} ({len(all_items)} items)"
+
+    items_json = []
+    for section, item in all_items:
+        items_json.append({
+            "section": section,
+            "ref":      item["display_ref"] or item["internal_job_number"] or "",
+            "client":   item["client_name"] or "—",
+            "borrower": item["customer_label"] or item["customer_name"] or "—",
+            "address":  item["resolved_address"] or item["job_address"] or "—",
+            "status":   item["job_status"] or "—",
+            "action":   item["instructions"] or item["visit_type"] or "—",
+        })
+
+    return jsonify({
+        "ok": True,
+        "subject":     subject,
+        "agent_name":  agent["full_name"],
+        "agent_email": agent["email"],
+        "item_count":  len(all_items),
+        "items":       items_json,
+    })
+
+
 # -------- Assignment board --------
 @app.post("/cue/<int:cue_id>/assign")
 @admin_required
