@@ -15651,6 +15651,9 @@ def job_queue():
 
     _arch_excl = f"AND j.status NOT IN {ARCHIVED_STATUSES!r}"
 
+    _active_statuses = ('New', 'Active', 'Active - Phone work only')
+    _active_excl = f"AND j.status IN {_active_statuses!r}"
+
     _note_excl = """AND ci.job_id NOT IN (
         SELECT job_id FROM cue_items
         WHERE visit_type = 'Agent Note Review' AND status = 'Pending'
@@ -15658,14 +15661,14 @@ def job_queue():
 
     cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')
-        {_arch_excl} {_note_excl}
+        {_active_excl} {_note_excl}
         ORDER BY ci.priority DESC, ci.created_at DESC
     """, overdue_types)
     overdue = cur.fetchall()
 
     cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
-        {_arch_excl} {_note_excl}
+        {_active_excl} {_note_excl}
         ORDER BY ci.created_at DESC
     """, (tomorrow_type,))
     due_tomorrow = cur.fetchall()
