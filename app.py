@@ -3649,7 +3649,7 @@ def auto_queue_schedule_alerts(cur, admin_user_id):
               AND status NOT IN ('Cancelled', 'Completed') AND hidden = 0
             GROUP BY job_id
         ) s ON s.job_id = j.id
-        WHERE j.status NOT IN ('Completed', 'Invoiced', 'New', 'Archived - Invoiced', 'Cold Stored')
+        WHERE j.status NOT IN ('Completed', 'Invoiced', 'Archived - Invoiced', 'Cold Stored')
     """, (tomorrow,))
     candidates = cur.fetchall()
 
