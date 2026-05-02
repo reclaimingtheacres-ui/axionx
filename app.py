@@ -16462,8 +16462,9 @@ def queue_email_agent_queue():
         </tr>'''
 
     body_html = f"""<div style="font-family:sans-serif;max-width:800px">
-<h2 style="margin:0 0 4px;font-size:18px">Your Queue — {_h(date_str)}</h2>
-<p style="color:#6b7280;font-size:13px;margin:0 0 16px">Hi {_h(agent['full_name'])}, here is your current queue ({len(all_items)} item{'s' if len(all_items) != 1 else ''}):</p>
+<h2 style="margin:0 0 4px;font-size:18px">OVERDUE Updates — {_h(date_str)}</h2>
+<p style="color:#6b7280;font-size:13px;margin:0 0 4px">Hi {_h(agent['full_name'])}, here is your current queue ({len(all_items)} item{'s' if len(all_items) != 1 else ''}):</p>
+<p style="color:#374151;font-size:13px;margin:0 0 16px">Please review and provide updates (or ETA).</p>
 <table style="width:100%;border-collapse:collapse;font-size:13px;font-family:sans-serif">
 <thead><tr style="background:#1e3a5f;color:#fff">
   <th style="padding:8px 10px;text-align:left">Job</th>
@@ -16479,12 +16480,12 @@ def queue_email_agent_queue():
 <p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
 </div>"""
 
-    body_txt = f"Your Queue — {date_str}\n\nHi {agent['full_name']}, here is your current queue ({len(all_items)} items):\n\n"
+    body_txt = f"OVERDUE Updates — {date_str}\n\nHi {agent['full_name']}, here is your current queue ({len(all_items)} items):\nPlease review and provide updates (or ETA).\n\n"
     for section, item in all_items:
         ref = item["display_ref"] or ""
         body_txt += f"[{section}] {ref} | {item['client_name'] or '—'} | {item['customer_label'] or item['customer_name'] or '—'} | {item['resolved_address'] or item['job_address'] or '—'} | {item['instructions'] or item['visit_type'] or '—'}\n"
 
-    subject = f"Your AxionX Queue — {date_str} ({len(all_items)} items)"
+    subject = f"OVERDUE Updates — {date_str} ({len(all_items)} items)"
     to_list = [agent["email"]]
 
     smtp_ok = smtp_config_present()
@@ -16543,7 +16544,7 @@ def queue_email_agent_queue_preview():
 
     mel_now = datetime.now(_melbourne)
     date_str = mel_now.strftime("%A %d %B %Y")
-    subject = f"Your AxionX Queue — {date_str} ({len(all_items)} items)"
+    subject = f"OVERDUE Updates — {date_str} ({len(all_items)} items)"
 
     items_json = []
     for section, item in all_items:
