@@ -16416,11 +16416,11 @@ def queue_email_agent_queue():
     tomorrow_type = "Schedule Due Tomorrow"
     note_type = "Agent Note Review"
 
+    _active_statuses_sql = "('New', 'Active', 'Active - Phone work only')"
     all_items = []
     for label, sql_where, params in [
-        ("OVERDUE", "ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress')", overdue_types),
-        ("CURRENTLY DUE", "ci.visit_type = ? AND ci.status IN ('Pending','In Progress')", (tomorrow_type,)),
-        ("AGENT NOTES", "ci.visit_type = ? AND ci.status = 'Pending'", (note_type,)),
+        ("OVERDUE",       f"ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", overdue_types),
+        ("CURRENTLY DUE", f"ci.visit_type = ? AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", (tomorrow_type,)),
     ]:
         cur.execute(_queue_row_sql() + " WHERE " + sql_where + " ORDER BY ci.priority DESC, ci.created_at DESC", params)
         rows = cur.fetchall()
@@ -16434,7 +16434,7 @@ def queue_email_agent_queue():
     conn.close()
 
     if not all_items:
-        return jsonify({"ok": False, "error": f"No queue items found for {agent['full_name']}."})
+        return jsonify({"ok": False, "error": f"No overdue or currently due items to email for {agent['full_name']}."})
 
     mel_now = datetime.now(_melbourne)
     date_str = mel_now.strftime("%A %d %B %Y")
