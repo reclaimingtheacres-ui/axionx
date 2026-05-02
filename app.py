@@ -15644,6 +15644,45 @@ def _queue_row_sql():
     """
 
 
+# Shared filter constants — must match job_queue display exactly
+_QUEUE_ACTIVE_STATUSES = ('New', 'Active', 'Active - Phone work only')
+_QUEUE_ACTIVE_SQL      = f"AND j.status IN {_QUEUE_ACTIVE_STATUSES!r}"
+_QUEUE_NOTE_EXCL_SQL   = """AND ci.job_id NOT IN (
+        SELECT job_id FROM cue_items
+        WHERE visit_type = 'Agent Note Review' AND status = 'Pending'
+    )"""
+
+
+def _fetch_queue_email_items(cur, agent_id, filter_client=""):
+    """Fetch Overdue and Currently Due items for one agent using the
+    same filters as the visible queue display:
+      - Overdue       = Urgent: Schedule Overdue  (date < today)
+      - Currently Due = Schedule Due Today        (date == today)
+      - Excludes tomorrow's jobs, Pending-Review jobs, and any job
+        not in the active status whitelist.
+    """
+    all_items = []
+    for label, visit_type in [
+        ("OVERDUE",       "Urgent: Schedule Overdue"),
+        ("CURRENTLY DUE", "Schedule Due Today"),
+    ]:
+        cur.execute(
+            _queue_row_sql() + f"""
+            WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
+            {_QUEUE_ACTIVE_SQL} {_QUEUE_NOTE_EXCL_SQL}
+            ORDER BY ci.priority DESC, ci.created_at DESC
+            """,
+            (visit_type,),
+        )
+        for r in cur.fetchall():
+            if str(r["job_assigned_uid"] or "") != str(agent_id):
+                continue
+            if filter_client and str(r["client_name"] or "") != filter_client:
+                continue
+            all_items.append((label, r))
+    return all_items
+
+
 @app.get("/queue")
 @admin_required
 def job_queue():
@@ -15658,20 +15697,11 @@ def job_queue():
     except Exception:
         pass
 
-    overdue_type  = "Urgent: Schedule Overdue"
-    note_type     = "Agent Note Review"
-
+    note_type  = "Agent Note Review"
     _arch_excl = f"AND j.status NOT IN {ARCHIVED_STATUSES!r}"
 
-    _active_statuses = ('New', 'Active', 'Active - Phone work only')
-    _active_excl = f"AND j.status IN {_active_statuses!r}"
-
-    _note_excl = """AND ci.job_id NOT IN (
-        SELECT job_id FROM cue_items
-        WHERE visit_type = 'Agent Note Review' AND status = 'Pending'
-    )"""
-
     # Overdue: calendar date strictly before today (Urgent: Schedule Overdue only)
+    # Uses shared constants so filters are identical to email endpoints.
     _overdue_sql = _queue_row_sql().replace(
         "FROM cue_items ci",
         """,
@@ -15683,10 +15713,11 @@ def job_queue():
         FROM cue_items ci"""
     )
     cur.execute(_overdue_sql + f"""
-        WHERE ci.visit_type = ? AND ci.status IN ('Pending','In Progress')
-        {_active_excl} {_note_excl}
+        WHERE ci.visit_type = 'Urgent: Schedule Overdue'
+          AND ci.status IN ('Pending','In Progress')
+        {_QUEUE_ACTIVE_SQL} {_QUEUE_NOTE_EXCL_SQL}
         ORDER BY ci.priority DESC, ci.created_at DESC
-    """, (overdue_type,))
+    """)
     overdue = cur.fetchall()
 
     overdue_urgent_sent_ids = set()
@@ -15703,10 +15734,11 @@ def job_queue():
             pass
 
     # Currently Due: schedule date is today only (Schedule Due Today)
+    # Uses shared constants so filters are identical to email endpoints.
     cur.execute(_queue_row_sql() + f"""
         WHERE ci.visit_type = 'Schedule Due Today'
           AND ci.status IN ('Pending','In Progress')
-        {_active_excl} {_note_excl}
+        {_QUEUE_ACTIVE_SQL} {_QUEUE_NOTE_EXCL_SQL}
         ORDER BY ci.created_at DESC
     """)
     due_tomorrow = cur.fetchall()
@@ -16427,25 +16459,8 @@ def queue_email_agent_queue():
         return jsonify({"ok": False, "error": "Agent not found or has no email address."})
 
     cur = conn.cursor()
-    overdue_types = ("Urgent: Schedule Overdue", "Schedule Due Today")
-    tomorrow_type = "Schedule Due Tomorrow"
-    note_type = "Agent Note Review"
-
-    _active_statuses_sql = "('New', 'Active', 'Active - Phone work only')"
-    all_items = []
-    for label, sql_where, params in [
-        ("OVERDUE",       f"ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", overdue_types),
-        ("CURRENTLY DUE", f"ci.visit_type = ? AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", (tomorrow_type,)),
-    ]:
-        cur.execute(_queue_row_sql() + " WHERE " + sql_where + " ORDER BY ci.priority DESC, ci.created_at DESC", params)
-        rows = cur.fetchall()
-        for r in rows:
-            if str(r["job_assigned_uid"] or "") != str(agent_id):
-                continue
-            if filter_client and str(r["client_name"] or "") != filter_client:
-                continue
-            all_items.append((label, r))
-
+    # Uses shared helper — identical filters to the visible queue display.
+    all_items = _fetch_queue_email_items(cur, agent_id, filter_client)
     conn.close()
 
     if not all_items:
@@ -16521,7 +16536,8 @@ def queue_email_agent_queue():
 @app.post("/queue/email-agent-queue/preview")
 @admin_required
 def queue_email_agent_queue_preview():
-    """Return a preview of the queue email content without sending."""
+    """Return a preview of the queue email content without sending.
+    Uses the same shared helper as the send endpoint and the queue display."""
     agent_id = request.form.get("agent_id", "").strip()
     filter_client = request.form.get("filter_client", "").strip()
     if not agent_id:
@@ -16534,24 +16550,8 @@ def queue_email_agent_queue_preview():
         return jsonify({"ok": False, "error": "Agent not found or has no email address."})
 
     cur = conn.cursor()
-    overdue_types = ("Urgent: Schedule Overdue", "Schedule Due Today")
-    tomorrow_type = "Schedule Due Tomorrow"
-    _active_statuses_sql = "('New', 'Active', 'Active - Phone work only')"
-
-    all_items = []
-    for label, sql_where, params in [
-        ("OVERDUE",       f"ci.visit_type IN (?,?) AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", overdue_types),
-        ("CURRENTLY DUE", f"ci.visit_type = ? AND ci.status IN ('Pending','In Progress') AND j.status IN {_active_statuses_sql}", (tomorrow_type,)),
-    ]:
-        cur.execute(_queue_row_sql() + " WHERE " + sql_where + " ORDER BY ci.priority DESC, ci.created_at DESC", params)
-        rows = cur.fetchall()
-        for r in rows:
-            if str(r["job_assigned_uid"] or "") != str(agent_id):
-                continue
-            if filter_client and str(r["client_name"] or "") != filter_client:
-                continue
-            all_items.append((label, r))
-
+    # Uses shared helper — identical filters to the visible queue display.
+    all_items = _fetch_queue_email_items(cur, agent_id, filter_client)
     conn.close()
 
     if not all_items:
