@@ -782,7 +782,7 @@ function loadQueuePreview() {
         tbl += '<tr><td colspan="5" style="background:#f3f4f6;font-weight:700;font-size:.7rem;padding:4px 8px;border-top:2px solid #d1d5db;text-transform:uppercase;letter-spacing:.04em">' + lastSection + '</td></tr>';
       }
       tbl += '<tr>';
-      tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;font-weight:600">' + it.ref + '</td>';
+      tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb"><a href="' + it.job_url + '" target="_blank" style="color:#1e3a5f;font-weight:600;text-decoration:none">' + it.ref + '</a></td>';
       tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">' + it.client + '</td>';
       tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb">' + it.borrower + '</td>';
       tbl += '<td style="padding:4px 8px;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:.74rem">' + it.address + '</td>';
@@ -790,6 +790,8 @@ function loadQueuePreview() {
       tbl += '</tr>';
     }
     tbl += '</tbody></table>';
+    tbl += '<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0 0">';
+    tbl += '<p style="color:#d1d5db;font-size:11px;text-align:center;margin:8px 0 0;letter-spacing:.03em">AxionX Field Operations Management</p>';
     document.getElementById('eqm_prev_table').innerHTML = tbl;
     document.getElementById('eqm_step1').style.display = 'none';
     document.getElementById('eqm_footer_step1').style.display = 'none';

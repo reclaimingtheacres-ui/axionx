@@ -16470,20 +16470,23 @@ def queue_email_agent_queue():
     date_str = mel_now.strftime("%A %d %B %Y")
 
     from markupsafe import escape as _h
+    base_url = request.host_url.rstrip("/")
     rows_html = ""
     current_section = ""
     for section, item in all_items:
         if section != current_section:
             current_section = section
             rows_html += f'<tr><td colspan="6" style="background:#f3f4f6;font-weight:700;font-size:13px;padding:8px 10px;border-top:2px solid #d1d5db">{_h(section)}</td></tr>'
-        ref = _h(item["display_ref"] or item["internal_job_number"] or "")
-        client = _h(item["client_name"] or "—")
+        ref_text = _h(item["display_ref"] or item["internal_job_number"] or "")
+        job_url  = f"{base_url}/jobs/{item['job_id']}"
+        ref      = f'<a href="{job_url}" target="_blank" style="color:#1e3a5f;font-weight:600;text-decoration:none">{ref_text}</a>'
+        client   = _h(item["client_name"] or "—")
         borrower = _h(item["customer_label"] or item["customer_name"] or "—")
-        address = _h(item["resolved_address"] or item["job_address"] or "—")
-        status = _h(item["job_status"] or "—")
-        action = _h(item["instructions"] or item["visit_type"] or "—")
+        address  = _h(item["resolved_address"] or item["job_address"] or "—")
+        status   = _h(item["job_status"] or "—")
+        action   = _h(item["instructions"] or item["visit_type"] or "—")
         rows_html += f'''<tr>
-          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-weight:600">{ref}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">{ref}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">{client}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb">{borrower}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #e5e7eb;font-size:12px">{address}</td>
@@ -16506,8 +16509,8 @@ def queue_email_agent_queue():
 </tr></thead>
 <tbody>{rows_html}</tbody>
 </table>
-<hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0 10px">
-<p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0 0">
+<p style="color:#d1d5db;font-size:11px;text-align:center;margin:10px 0 0;letter-spacing:.03em">AxionX Field Operations Management</p>
 </div>"""
 
     body_txt = f"OVERDUE Updates — {date_str}\n\nHi {agent['full_name']}, here is your current queue ({len(all_items)} items):\nPlease review and provide updates (or ETA).\n\n"
@@ -16561,11 +16564,13 @@ def queue_email_agent_queue_preview():
     date_str = mel_now.strftime("%A %d %B %Y")
     subject = f"OVERDUE Updates — {date_str} ({len(all_items)} items)"
 
+    base_url = request.host_url.rstrip("/")
     items_json = []
     for section, item in all_items:
         items_json.append({
-            "section": section,
+            "section":  section,
             "ref":      item["display_ref"] or item["internal_job_number"] or "",
+            "job_url":  f"{base_url}/jobs/{item['job_id']}",
             "client":   item["client_name"] or "—",
             "borrower": item["customer_label"] or item["customer_name"] or "—",
             "address":  item["resolved_address"] or item["job_address"] or "—",
