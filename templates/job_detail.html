@@ -1298,7 +1298,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     {% if is_demo_client and _nrs == 'submitted_for_review' %}
                     <div class="small mb-1" style="color:var(--muted);font-style:italic">Update submitted to agency for review.</div>
                     {% else %}
-                    <div id="note-text-{{ entry.note.id }}" class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text | strip_ai_prefix }}</div>
+                    <div id="note-text-{{ entry.note.id }}" class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text | strip_ai_prefix | note_render }}</div>
                     <div id="note-edit-{{ entry.note.id }}" style="display:none;margin-bottom:6px">
                       <textarea id="note-edit-ta-{{ entry.note.id }}"
                                 rows="4"

@@ -2901,6 +2901,15 @@ app.jinja_env.globals.update(
 )
 
 
+@app.template_filter("note_render")
+def note_render_filter(s):
+    import re as _re_nr
+    from markupsafe import escape, Markup
+    escaped = str(escape(s or ""))
+    result = _re_nr.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped)
+    return Markup(result)
+
+
 @app.template_filter("strip_ai_prefix")
 def strip_ai_prefix(text):
     """Strip the [AI Update] marker from stored field notes before display.
@@ -9226,19 +9235,21 @@ def _repo_lock_note(d):
             time_part += f"–{d['end_time']}"
     lines.append(f"Date:       {_fmt_dmy(d.get('repo_date'))}{time_part}")
 
-    asset_parts = []
-    if d.get("description"):  asset_parts.append(d["description"])
-    if d.get("registration"): asset_parts.append(f"Reg: {d['registration']}")
-    if d.get("vin"):          asset_parts.append(f"VIN: {d['vin']}")
-    if d.get("engine_number"): asset_parts.append(f"Engine: {d['engine_number']}")
-    lines.append(f"Asset:      {' | '.join(asset_parts) or '—'}")
+    import re as _re_rl
+    desc_raw = (d.get("description") or "").strip()
+    desc_clean = _re_rl.sub(r'\s*\|?\s*(?:REG|Reg|VIN|Engine)\s*:\s*\S+', '', desc_raw).strip()
+    asset_parts = [desc_clean] if desc_clean else []
+    if d.get("registration"): asset_parts.append(f"**REG:** {d['registration']}")
+    if d.get("vin"):          asset_parts.append(f"**VIN:** {d['vin']}")
+    if d.get("engine_number"): asset_parts.append(f"**ENG:** {d['engine_number']}")
+    lines.append(f"Asset:      {' '.join(asset_parts) or '—'}")
 
     lines.append(f"Customer:   {_v('customer_name')}")
     if d.get("account_number"):
         lines[-1] += f"  (Acct: {d['account_number']})"
     if d.get("contact_number"):
         lines.append(f"Mobile:     {d['contact_number']}")
-    lines.append(f"Repo Addr:  {_v('repo_address')}")
+    lines.append(f"Customer Confirmed Address:  {_v('repo_address')}")
 
     lines.append("")
     lines.append("RECOVERY:")
@@ -9288,6 +9299,10 @@ def _repo_lock_note(d):
     if tow_cost:
         tow_line += f" | Cost: {tow_cost}"
     lines.append(tow_line)
+    if d.get("tow_operator"):
+        lines.append(f"  Tow Operator: {d['tow_operator']}")
+    if d.get("tow_contact_number"):
+        lines.append(f"  Tow Contact Number: {d['tow_contact_number']}")
     deliver_parts = []
     if d.get("deliver_to"):       deliver_parts.append(d["deliver_to"])
     if d.get("delivery_address"): deliver_parts.append(d["delivery_address"])
@@ -9326,7 +9341,7 @@ def repo_lock_get(job_id: int, item_id: int):
 
     client = conn.execute("SELECT * FROM clients WHERE id=?", (job["client_id"],)).fetchone() if job["client_id"] else None
     customer = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone() if job["customer_id"] else None
-    tow_ops = conn.execute("SELECT id, company_name, phone, mobile FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
+    tow_ops = conn.execute("SELECT id, company_name, phone, mobile, contact_name FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
     auction_yards = conn.execute("SELECT id, name, address FROM auction_yards WHERE active=1 ORDER BY name").fetchall()
     user = conn.execute("SELECT full_name FROM users WHERE id=?", (session.get("user_id"),)).fetchone()
 
@@ -9384,7 +9399,7 @@ def repo_lock_get(job_id: int, item_id: int):
 
     prefill = {
         "client_name":      (dict(client)["name"] if client else ""),
-        "client_reference": job.get("client_reference") or job.get("client_job_number") or "",
+        "client_reference": job.get("client_job_number") or job.get("client_reference") or "",
         "swpi_ref":         job.get("internal_job_number") or job.get("display_ref") or "",
         "finance_company":  job.get("lender_name") or item.get("lender_name") or "",
         "repo_date":        today,
@@ -9440,7 +9455,7 @@ def repo_lock_get(job_id: int, item_id: int):
         "queue_id":  queue_id,
         "prefill":   prefill,
         "existing":  existing,
-        "tow_ops":   [{"id": t["id"], "name": t["company_name"], "phone": t["phone"] or t["mobile"] or ""} for t in tow_ops],
+        "tow_ops":   [{"id": t["id"], "name": t["company_name"], "phone": t["phone"] or t["mobile"] or "", "contact_name": t["contact_name"] or "", "contact_mobile": t["mobile"] or t["phone"] or ""} for t in tow_ops],
         "auction_yards": [{"id": y["id"], "name": y["name"], "address": y["address"] or ""} for y in auction_yards],
         "item_label": (item["reg"] or item["description"] or f"Item #{item_id}"),
         "is_wise":   is_wise,
@@ -9470,14 +9485,16 @@ def repo_lock_save(job_id: int, item_id: int):
             "personal_effects_removed", "removed_by_who", "personal_effects_list",
             "tyres", "body", "duco", "interior", "engine_condition", "transmission",
             "fuel_level", "any_damage", "damage_list",
-            "tow_company_id", "tow_company_name", "tow_phone", "tow_costs",
+            "tow_company_id", "tow_company_name", "tow_phone", "tow_operator", "tow_contact_number", "tow_costs",
             "deliver_to", "delivery_address", "expected_delivery_date",
             "customers_intention", "other_info", "notice_delivery",
             "agent_name", "agent_user_id",
         ]
 
-        add_column_if_missing(conn, "repo_lock_records", "notice_delivery", "TEXT")
-        add_column_if_missing(conn, "repo_lock_records", "tow_phone", "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "notice_delivery",    "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_phone",          "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_operator",       "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_contact_number", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
         ts = now_ts()
         uid = session.get("user_id")
@@ -9527,7 +9544,7 @@ _RL_FIELDS = [
     "personal_effects_removed", "removed_by_who", "personal_effects_list",
     "tyres", "body", "duco", "interior", "engine_condition", "transmission",
     "fuel_level", "any_damage", "damage_list",
-    "tow_company_id", "tow_company_name", "tow_phone", "tow_costs",
+    "tow_company_id", "tow_company_name", "tow_phone", "tow_operator", "tow_contact_number", "tow_costs",
     "deliver_to", "delivery_address", "expected_delivery_date",
     "customers_intention", "other_info", "notice_delivery",
     "agent_name", "agent_user_id",
@@ -9545,8 +9562,10 @@ def repo_lock_submit(job_id: int, item_id: int):
             return jsonify({"ok": False, "error": "Item not found"}), 404
 
         f = request.form
-        add_column_if_missing(conn, "repo_lock_records", "notice_delivery", "TEXT")
-        add_column_if_missing(conn, "repo_lock_records", "tow_phone", "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "notice_delivery",    "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_phone",          "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_operator",       "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "tow_contact_number", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in _RL_FIELDS}
         ts  = now_ts()
         uid = session.get("user_id")
