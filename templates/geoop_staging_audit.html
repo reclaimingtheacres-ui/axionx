@@ -1,0 +1,381 @@
+{% extends "layout.html" %}
+{% block title %}GeoOp Staging Audit — AxionX{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width:1100px">
+
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h4 class="mb-1" style="font-weight:700">GeoOp Staging Audit</h4>
+      <p class="text-muted small mb-0">Read-only inspection of GeoOp staging tables — no records modified</p>
+    </div>
+    <a href="{{ url_for('admin_settings') }}#import-data" class="btn btn-outline-secondary btn-sm">← Back to Settings</a>
+  </div>
+
+  <!-- Warning banner -->
+  <div class="alert mb-4 d-flex align-items-start gap-2" style="background:#fff8e1;border:1px solid #f5c518;border-radius:10px;padding:14px 18px">
+    <span style="font-size:1.1rem">⚠️</span>
+    <div>
+      <strong>This audit is read-only.</strong> No staging records have been deleted or modified.
+      {% if run_at %}<span class="text-muted small ms-2">Last run: {{ run_at }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if err %}
+  <div class="ax-card mb-4">
+    <div class="ax-card-b">
+      <div class="alert alert-warning mb-0">
+        <strong>Staging tables not found:</strong> {{ err }}<br>
+        <span class="small text-muted">GeoOp staging tables are only present on the live AxionX database after a GeoOp import has been staged. They are not present in the dev environment.</span>
+      </div>
+      <div class="mt-3 p-3 rounded" style="background:#f8f9fa;border:1px solid #e5e7eb;font-size:.88rem;color:#374151">
+        <strong>What Grant must verify on the live database:</strong>
+        <ul class="mb-0 mt-2">
+          <li>Run this same audit page on the live AxionX instance (axionx.com.au/admin/geoop-staging-audit).</li>
+          <li>Review the unmatched and broken-reference counts before considering any cleanup.</li>
+          <li>Do not delete staging records until all counts have been reviewed and sign-off obtained.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  {% else %}
+
+  <!-- ── Summary stat cards ─────────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    {% if data.tables_exist.jobs %}
+    <div class="col-6 col-md-3">
+      <div class="ax-card h-100 text-center" style="padding:18px 10px">
+        <div style="font-size:2rem;font-weight:700;color:var(--accent)">{{ data.jobs_total }}</div>
+        <div class="small text-muted">Staging Jobs</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if data.tables_exist.notes %}
+    <div class="col-6 col-md-3">
+      <div class="ax-card h-100 text-center" style="padding:18px 10px">
+        <div style="font-size:2rem;font-weight:700;color:var(--accent)">{{ data.notes_total }}</div>
+        <div class="small text-muted">Staging Notes</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if data.tables_exist.files %}
+    <div class="col-6 col-md-3">
+      <div class="ax-card h-100 text-center" style="padding:18px 10px">
+        <div style="font-size:2rem;font-weight:700;color:var(--accent)">{{ data.files_total }}</div>
+        <div class="small text-muted">Staging Files</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if data.tables_exist.jobs %}
+    <div class="col-6 col-md-3">
+      <div class="ax-card h-100 text-center" style="padding:18px 10px">
+        <div style="font-size:2rem;font-weight:700;{% if data.jobs_broken > 0 %}color:#dc2626{% else %}color:#16a34a{% endif %}">
+          {{ data.get('jobs_broken', 0) + data.get('notes_broken_ref', 0) + data.get('files_broken_ref', 0) }}
+        </div>
+        <div class="small text-muted">Broken References</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Staging Jobs ─────────────────────────────────────────────── -->
+  {% if data.tables_exist.jobs %}
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">Staging Jobs</div>
+    <div class="ax-card-b">
+      <div class="row g-3 mb-3">
+        <div class="col-sm-4">
+          <div class="small text-muted mb-1">Date range</div>
+          <div class="small">
+            Oldest: <strong>{{ data.jobs_oldest or '—' }}</strong><br>
+            Newest: <strong>{{ data.jobs_newest or '—' }}</strong>
+          </div>
+        </div>
+        <div class="col-sm-8">
+          <div class="d-flex gap-3 flex-wrap">
+            <div class="text-center px-3 py-2 rounded" style="background:#f0fdf4;border:1px solid #bbf7d0">
+              <div style="font-weight:700;font-size:1.2rem;color:#16a34a">{{ data.jobs_imported }}</div>
+              <div class="small text-muted">Imported</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fefce8;border:1px solid #fde68a">
+              <div style="font-weight:700;font-size:1.2rem;color:#d97706">{{ data.jobs_pending }}</div>
+              <div class="small text-muted">Pending</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fef2f2;border:1px solid #fecaca">
+              <div style="font-weight:700;font-size:1.2rem;color:#dc2626">{{ data.jobs_error }}</div>
+              <div class="small text-muted">Error</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fef2f2;border:1px solid #fecaca">
+              <div style="font-weight:700;font-size:1.2rem;color:#dc2626">{{ data.jobs_broken }}</div>
+              <div class="small text-muted">Broken Ref</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Staging Notes ────────────────────────────────────────────── -->
+  {% if data.tables_exist.notes %}
+  <div class="ax-card mb-4">
+    <div class="ax-card-h d-flex justify-content-between align-items-center">
+      <span>Staging Notes</span>
+      <a href="/admin/geoop-staging-audit/csv/unmatched-notes" class="btn btn-outline-secondary btn-sm">Export Unmatched CSV</a>
+    </div>
+    <div class="ax-card-b">
+      <div class="row g-3 mb-3">
+        <div class="col-sm-4">
+          <div class="small text-muted mb-1">Date range</div>
+          <div class="small">
+            Oldest: <strong>{{ data.notes_oldest or '—' }}</strong><br>
+            Newest: <strong>{{ data.notes_newest or '—' }}</strong>
+          </div>
+        </div>
+        <div class="col-sm-8">
+          <div class="d-flex gap-3 flex-wrap">
+            <div class="text-center px-3 py-2 rounded" style="background:#f0fdf4;border:1px solid #bbf7d0">
+              <div style="font-weight:700;font-size:1.2rem;color:#16a34a">{{ data.notes_matched }}</div>
+              <div class="small text-muted">Converted / Linked</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fefce8;border:1px solid #fde68a">
+              <div style="font-weight:700;font-size:1.2rem;color:#d97706">{{ data.notes_unmatched }}</div>
+              <div class="small text-muted">Unmatched</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fef2f2;border:1px solid #fecaca">
+              <div style="font-weight:700;font-size:1.2rem;color:#dc2626">{{ data.notes_broken_ref }}</div>
+              <div class="small text-muted">Broken Ref</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#f8f9fa;border:1px solid #e5e7eb">
+              <div style="font-weight:700;font-size:1.2rem;color:#6b7280">{{ data.notes_missing_file }}</div>
+              <div class="small text-muted">Missing File</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fef2f2;border:1px solid #fecaca">
+              <div style="font-weight:700;font-size:1.2rem;color:#dc2626">{{ data.notes_deleted_job }}</div>
+              <div class="small text-muted">Deleted-Job Link</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sample: unmatched notes -->
+      {% if data.sample_unmatched_notes %}
+      <h6 class="mt-3 mb-2" style="font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">
+        Sample Unmatched Notes (up to 100)
+      </h6>
+      <div class="table-responsive" style="max-height:320px;overflow-y:auto">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>ID</th><th>GeoOp Job</th><th>GeoOp Note</th><th>Job Ref</th>
+              <th>File Name</th><th>Status</th><th>Error</th><th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in data.sample_unmatched_notes %}
+            <tr>
+              <td>{{ r.id }}</td>
+              <td><code>{{ r.geoop_job_id or '—' }}</code></td>
+              <td><code>{{ r.geoop_note_id or '—' }}</code></td>
+              <td>{{ r.job_reference or '—' }}</td>
+              <td>{{ r.file_name or '—' }}</td>
+              <td><span class="badge bg-warning text-dark">{{ r.import_status }}</span></td>
+              <td class="text-danger small">{{ r.error_message or '' }}</td>
+              <td class="text-muted">{{ r.created_at or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="small text-muted mb-0 mt-2">No unmatched notes found.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Staging Files ────────────────────────────────────────────── -->
+  {% if data.tables_exist.files %}
+  <div class="ax-card mb-4">
+    <div class="ax-card-h d-flex justify-content-between align-items-center">
+      <span>Staging Files</span>
+      <a href="/admin/geoop-staging-audit/csv/unmatched-files" class="btn btn-outline-secondary btn-sm">Export Unmatched CSV</a>
+    </div>
+    <div class="ax-card-b">
+      <div class="row g-3 mb-3">
+        <div class="col-sm-4">
+          <div class="small text-muted mb-1">Date range</div>
+          <div class="small">
+            Oldest: <strong>{{ data.files_oldest or '—' }}</strong><br>
+            Newest: <strong>{{ data.files_newest or '—' }}</strong>
+          </div>
+          <div class="small text-muted mt-2">
+            Found on disk: <strong>{{ data.files_found_disk }}</strong> &nbsp;|&nbsp;
+            Azure blobs: <strong>{{ data.files_azure }}</strong>
+          </div>
+        </div>
+        <div class="col-sm-8">
+          <div class="d-flex gap-3 flex-wrap">
+            <div class="text-center px-3 py-2 rounded" style="background:#f0fdf4;border:1px solid #bbf7d0">
+              <div style="font-weight:700;font-size:1.2rem;color:#16a34a">{{ data.files_matched }}</div>
+              <div class="small text-muted">Converted / Linked</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fefce8;border:1px solid #fde68a">
+              <div style="font-weight:700;font-size:1.2rem;color:#d97706">{{ data.files_unmatched }}</div>
+              <div class="small text-muted">Unmatched</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#fef2f2;border:1px solid #fecaca">
+              <div style="font-weight:700;font-size:1.2rem;color:#dc2626">{{ data.files_broken_ref }}</div>
+              <div class="small text-muted">Broken Ref</div>
+            </div>
+            <div class="text-center px-3 py-2 rounded" style="background:#f8f9fa;border:1px solid #e5e7eb">
+              <div style="font-weight:700;font-size:1.2rem;color:#6b7280">{{ data.files_missing_path }}</div>
+              <div class="small text-muted">Missing Path</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sample: unmatched files -->
+      {% if data.sample_unmatched_files %}
+      <h6 class="mt-3 mb-2" style="font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">
+        Sample Unmatched Files (up to 100)
+      </h6>
+      <div class="table-responsive" style="max-height:320px;overflow-y:auto">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th>ID</th><th>Type</th><th>GeoOp Job</th><th>GeoOp Note</th>
+              <th>File Name</th><th>Path</th><th>Status</th><th>Error</th><th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in data.sample_unmatched_files %}
+            <tr>
+              <td>{{ r.id }}</td>
+              <td><span class="badge bg-secondary">{{ r.source_type or '—' }}</span></td>
+              <td><code>{{ r.geoop_job_id or '—' }}</code></td>
+              <td><code>{{ r.geoop_note_id or '—' }}</code></td>
+              <td>{{ r.file_name or '—' }}</td>
+              <td class="text-muted small" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ r.files_location or '' }}">{{ r.files_location or '—' }}</td>
+              <td><span class="badge bg-warning text-dark">{{ r.import_status }}</span></td>
+              <td class="text-danger small">{{ r.error_message or '' }}</td>
+              <td class="text-muted">{{ r.created_at or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="small text-muted mb-0 mt-2">No unmatched files found.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Broken References ────────────────────────────────────────── -->
+  {% set broken_notes = data.get('sample_broken_notes', []) %}
+  {% set broken_files = data.get('sample_broken_files', []) %}
+  {% if broken_notes or broken_files %}
+  <div class="ax-card mb-4">
+    <div class="ax-card-h d-flex justify-content-between align-items-center">
+      <span>Broken References</span>
+      <a href="/admin/geoop-staging-audit/csv/broken-refs" class="btn btn-outline-danger btn-sm">Export Broken Refs CSV</a>
+    </div>
+    <div class="ax-card-b">
+      <p class="small text-muted mb-3">
+        Records that reference an AxionX job, note, or file that no longer exists, or records with missing file paths. These require manual review before any cleanup.
+      </p>
+
+      {% if broken_notes %}
+      <h6 class="mb-2" style="font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Broken Note References (up to 100)</h6>
+      <div class="table-responsive mb-3" style="max-height:280px;overflow-y:auto">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+          <thead class="table-light sticky-top">
+            <tr><th>ID</th><th>GeoOp Job</th><th>GeoOp Note</th><th>Axion Note ID</th><th>Axion Job ID</th><th>Status</th><th>Error</th><th>Created</th></tr>
+          </thead>
+          <tbody>
+            {% for r in broken_notes %}
+            <tr class="table-danger">
+              <td>{{ r.id }}</td>
+              <td><code>{{ r.geoop_job_id or '—' }}</code></td>
+              <td><code>{{ r.geoop_note_id or '—' }}</code></td>
+              <td>{{ r.axion_note_id or '—' }}</td>
+              <td>{{ r.axion_job_id or '—' }}</td>
+              <td><span class="badge bg-danger">{{ r.import_status }}</span></td>
+              <td class="small">{{ r.error_message or '' }}</td>
+              <td class="text-muted">{{ r.created_at or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if broken_files %}
+      <h6 class="mb-2" style="font-size:.82rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Broken File References (up to 100)</h6>
+      <div class="table-responsive" style="max-height:280px;overflow-y:auto">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+          <thead class="table-light sticky-top">
+            <tr><th>ID</th><th>Type</th><th>GeoOp Job</th><th>File Name</th><th>Axion Doc ID</th><th>Status</th><th>Error</th><th>Created</th></tr>
+          </thead>
+          <tbody>
+            {% for r in broken_files %}
+            <tr class="table-danger">
+              <td>{{ r.id }}</td>
+              <td><span class="badge bg-secondary">{{ r.source_type or '—' }}</span></td>
+              <td><code>{{ r.geoop_job_id or '—' }}</code></td>
+              <td>{{ r.file_name or '—' }}</td>
+              <td>{{ r.axion_doc_id or '—' }}</td>
+              <td><span class="badge bg-danger">{{ r.import_status }}</span></td>
+              <td class="small">{{ r.error_message or '' }}</td>
+              <td class="text-muted">{{ r.created_at or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="ax-card mb-4">
+    <div class="ax-card-h d-flex justify-content-between align-items-center">
+      <span>Broken References</span>
+      <a href="/admin/geoop-staging-audit/csv/broken-refs" class="btn btn-outline-secondary btn-sm">Export Broken Refs CSV</a>
+    </div>
+    <div class="ax-card-b">
+      <p class="small text-success mb-0">No broken references found.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Dev / Live note ─────────────────────────────────────────── -->
+  <div class="ax-card mb-4" style="border-left:4px solid #3b82f6">
+    <div class="ax-card-b">
+      <h6 class="mb-2" style="font-weight:700;color:#1e3a5f">What was verified in dev vs. what must be checked live</h6>
+      <div class="small" style="color:#374151;line-height:1.7">
+        <strong>Verified in dev (Replit):</strong>
+        <ul class="mb-2">
+          <li>Route <code>/admin/geoop-staging-audit</code> is admin-only, read-only, and returns correct counts.</li>
+          <li>Matching logic uses <code>import_status='imported'</code> and <code>axion_note_id / axion_doc_id</code> fields from the actual table schemas.</li>
+          <li>CSV exports for unmatched notes, unmatched files, and broken references work correctly.</li>
+          <li>Server logs are written on each audit run (user, timestamp, counts).</li>
+          <li>No delete, modify, archive, or migration functions exist on this page.</li>
+        </ul>
+        <strong>Must be checked live by Grant (axionx.com.au):</strong>
+        <ul class="mb-0">
+          <li>The actual counts — staging tables only exist on the production database.</li>
+          <li>Whether unmatched records are genuine gaps or expected pending items.</li>
+          <li>Whether broken references point to jobs that were deleted or never linked.</li>
+          <li>File paths / blob paths for unmatched files — whether they still exist in Azure or on disk.</li>
+          <li>Sign-off on any counts before any cleanup is considered (outside scope of this tool).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}{# end err/data block #}
+
+</div>
+{% endblock %}

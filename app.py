@@ -15053,6 +15053,216 @@ def admin_settings_popup_update():
     next_number = f"{prefix}{str(seq_int + 1).zfill(3)}"
     return jsonify({"ok": True, "next_number": next_number})
 
+# ── GeoOp Staging Audit ────────────────────────────────────────────────────
+
+def _geoop_staging_tables_exist(conn):
+    """Return dict of which staging tables are present in this database."""
+    names = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    return {
+        "notes":  "geoop_staging_notes"  in names,
+        "files":  "geoop_staging_files"  in names,
+        "jobs":   "geoop_staging_jobs"   in names,
+    }
+
+
+def _geoop_staging_audit_collect(conn):
+    """Run all read-only audit queries. Returns (data_dict, error_str)."""
+    ex = _geoop_staging_tables_exist(conn)
+    if not any(ex.values()):
+        return None, "No GeoOp staging tables found in this database."
+
+    cur = conn.cursor()
+    d = {"tables_exist": ex}
+
+    # ── staging_jobs ──────────────────────────────────────────────────────
+    if ex["jobs"]:
+        d["jobs_total"]    = cur.execute("SELECT COUNT(*) FROM geoop_staging_jobs").fetchone()[0]
+        d["jobs_imported"] = cur.execute("SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status='imported'").fetchone()[0]
+        d["jobs_pending"]  = cur.execute("SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status='pending'").fetchone()[0]
+        d["jobs_error"]    = cur.execute("SELECT COUNT(*) FROM geoop_staging_jobs WHERE import_status='error'").fetchone()[0]
+        d["jobs_oldest"]   = cur.execute("SELECT MIN(created_at) FROM geoop_staging_jobs").fetchone()[0]
+        d["jobs_newest"]   = cur.execute("SELECT MAX(created_at) FROM geoop_staging_jobs").fetchone()[0]
+        d["jobs_broken"]   = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_jobs sj
+            WHERE sj.axion_job_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.id = sj.axion_job_id)
+        """).fetchone()[0]
+
+    # ── staging_notes ──────────────────────────────────────────────────────
+    if ex["notes"]:
+        d["notes_total"]    = cur.execute("SELECT COUNT(*) FROM geoop_staging_notes").fetchone()[0]
+        d["notes_oldest"]   = cur.execute("SELECT MIN(created_at) FROM geoop_staging_notes").fetchone()[0]
+        d["notes_newest"]   = cur.execute("SELECT MAX(created_at) FROM geoop_staging_notes").fetchone()[0]
+        d["notes_matched"]  = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_notes
+            WHERE import_status='imported' OR axion_note_id IS NOT NULL
+        """).fetchone()[0]
+        d["notes_unmatched"] = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_notes
+            WHERE import_status != 'imported' AND (axion_note_id IS NULL)
+        """).fetchone()[0]
+        d["notes_broken_ref"] = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_notes gsn
+            WHERE (gsn.axion_note_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM job_field_notes jfn WHERE jfn.id = gsn.axion_note_id))
+               OR (gsn.axion_job_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.id = gsn.axion_job_id))
+        """).fetchone()[0]
+        d["notes_missing_file"] = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_notes
+            WHERE (file_name IS NULL OR file_name = '')
+              AND (files_location IS NULL OR files_location = '')
+        """).fetchone()[0]
+        d["notes_deleted_job"] = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_notes gsn
+            WHERE gsn.axion_job_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.id = gsn.axion_job_id)
+        """).fetchone()[0]
+        d["sample_unmatched_notes"] = [dict(r) for r in cur.execute("""
+            SELECT id, geoop_job_id, geoop_note_id, job_reference, file_name,
+                   import_status, error_message, created_at
+            FROM geoop_staging_notes
+            WHERE import_status != 'imported' AND axion_note_id IS NULL
+            ORDER BY id DESC LIMIT 100
+        """).fetchall()]
+        d["sample_broken_notes"] = [dict(r) for r in cur.execute("""
+            SELECT gsn.id, gsn.geoop_job_id, gsn.geoop_note_id,
+                   gsn.axion_note_id, gsn.axion_job_id,
+                   gsn.import_status, gsn.error_message, gsn.created_at
+            FROM geoop_staging_notes gsn
+            WHERE (gsn.axion_note_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM job_field_notes jfn WHERE jfn.id = gsn.axion_note_id))
+               OR (gsn.axion_job_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.id = gsn.axion_job_id))
+            LIMIT 100
+        """).fetchall()]
+
+    # ── staging_files ──────────────────────────────────────────────────────
+    if ex["files"]:
+        d["files_total"]     = cur.execute("SELECT COUNT(*) FROM geoop_staging_files").fetchone()[0]
+        d["files_oldest"]    = cur.execute("SELECT MIN(created_at) FROM geoop_staging_files").fetchone()[0]
+        d["files_newest"]    = cur.execute("SELECT MAX(created_at) FROM geoop_staging_files").fetchone()[0]
+        d["files_matched"]   = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_files
+            WHERE import_status='imported' OR axion_doc_id IS NOT NULL
+        """).fetchone()[0]
+        d["files_unmatched"] = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_files
+            WHERE import_status != 'imported' AND axion_doc_id IS NULL
+        """).fetchone()[0]
+        d["files_broken_ref"] = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_files gsf
+            WHERE gsf.axion_doc_id IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM job_note_files jnf WHERE jnf.id = gsf.axion_doc_id)
+        """).fetchone()[0]
+        d["files_missing_path"] = cur.execute("""
+            SELECT COUNT(*) FROM geoop_staging_files
+            WHERE (files_location IS NULL OR files_location = '')
+              AND (disk_path IS NULL OR disk_path = '')
+        """).fetchone()[0]
+        d["files_found_disk"]  = cur.execute("SELECT COUNT(*) FROM geoop_staging_files WHERE found_on_disk=1").fetchone()[0]
+        d["files_azure"]       = cur.execute("SELECT COUNT(*) FROM geoop_staging_files WHERE source_type='azure_blob'").fetchone()[0]
+        d["sample_unmatched_files"] = [dict(r) for r in cur.execute("""
+            SELECT id, source_type, geoop_job_id, geoop_note_id,
+                   file_name, files_location, import_status, error_message, created_at
+            FROM geoop_staging_files
+            WHERE import_status != 'imported' AND axion_doc_id IS NULL
+            ORDER BY id DESC LIMIT 100
+        """).fetchall()]
+        d["sample_broken_files"] = [dict(r) for r in cur.execute("""
+            SELECT gsf.id, gsf.source_type, gsf.geoop_job_id, gsf.file_name,
+                   gsf.axion_doc_id, gsf.import_status, gsf.error_message, gsf.created_at
+            FROM geoop_staging_files gsf
+            WHERE (gsf.axion_doc_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM job_note_files jnf WHERE jnf.id = gsf.axion_doc_id))
+               OR ((gsf.files_location IS NULL OR gsf.files_location = '')
+                   AND (gsf.disk_path IS NULL OR gsf.disk_path = ''))
+            LIMIT 100
+        """).fetchall()]
+
+    return d, None
+
+
+@app.get("/admin/geoop-staging-audit")
+@admin_required
+def geoop_staging_audit():
+    from datetime import datetime as _dt
+    conn = db()
+    data, err = _geoop_staging_audit_collect(conn)
+    conn.close()
+    mel_now = datetime.now(_melbourne).strftime("%Y-%m-%d %H:%M:%S %Z")
+    admin_name = session.get("user_name", "admin")
+    if data:
+        app.logger.info(
+            "GEOOP_STAGING_AUDIT run by %s at %s | notes=%s files=%s jobs=%s",
+            admin_name, mel_now,
+            data.get("notes_total", "n/a"),
+            data.get("files_total", "n/a"),
+            data.get("jobs_total",  "n/a"),
+        )
+    else:
+        app.logger.info("GEOOP_STAGING_AUDIT run by %s at %s | %s", admin_name, mel_now, err)
+    return render_template("geoop_staging_audit.html", data=data, err=err, run_at=mel_now)
+
+
+@app.get("/admin/geoop-staging-audit/csv/<export_type>")
+@admin_required
+def geoop_staging_audit_csv(export_type: str):
+    import csv, io
+    ALLOWED = {"unmatched-notes", "unmatched-files", "broken-refs"}
+    if export_type not in ALLOWED:
+        return "Invalid export type", 400
+    conn = db()
+    data, err = _geoop_staging_audit_collect(conn)
+    conn.close()
+    if err or not data:
+        return err or "No data", 404
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    if export_type == "unmatched-notes":
+        rows = data.get("sample_unmatched_notes", [])
+        if rows:
+            writer.writerow(rows[0].keys())
+            for r in rows:
+                writer.writerow(r.values())
+        fname = "geoop_unmatched_notes.csv"
+
+    elif export_type == "unmatched-files":
+        rows = data.get("sample_unmatched_files", [])
+        if rows:
+            writer.writerow(rows[0].keys())
+            for r in rows:
+                writer.writerow(r.values())
+        fname = "geoop_unmatched_files.csv"
+
+    else:  # broken-refs
+        all_broken = []
+        for r in data.get("sample_broken_notes", []):
+            all_broken.append({"source": "note", **r})
+        for r in data.get("sample_broken_files", []):
+            all_broken.append({"source": "file", **r})
+        if all_broken:
+            writer.writerow(all_broken[0].keys())
+            for r in all_broken:
+                writer.writerow(r.values())
+        fname = "geoop_broken_refs.csv"
+
+    admin_name = session.get("user_name", "admin")
+    mel_now = datetime.now(_melbourne).strftime("%Y-%m-%d %H:%M:%S %Z")
+    app.logger.info("GEOOP_STAGING_AUDIT CSV export '%s' by %s at %s", export_type, admin_name, mel_now)
+
+    from flask import Response
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"}
+    )
+
+
 @app.get("/admin/settings")
 @admin_required
 def admin_settings():

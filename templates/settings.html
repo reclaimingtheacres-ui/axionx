@@ -67,6 +67,11 @@
     <li class="nav-item">
       <a class="nav-link" href="/admin/settings?tab=ai-drafts" data-tab="ai-drafts">AI Draft Cleanup</a>
     </li>
+    {% if not DEMO_MODE %}
+    <li class="nav-item">
+      <a class="nav-link" href="/admin/geoop-staging-audit">GeoOp Staging Audit</a>
+    </li>
+    {% endif %}
   </ul>
 </div>
 
@@ -172,6 +177,16 @@
         Uses a 3-step pipeline: Stage → Review Diagnostics → Import.
       </p>
       <a href="/admin/geoop-import" class="btn btn-primary btn-sm">Open GeoOp Import</a>
+    </div>
+  </div>
+
+  <div class="ax-card mb-4">
+    <div class="ax-card-h">GeoOp Staging Audit</div>
+    <div class="ax-card-b">
+      <p class="small mb-2" style="color:var(--muted)">
+        Read-only audit of GeoOp staging records. Review matched, unmatched, and broken-reference counts before any cleanup is considered. No records are modified.
+      </p>
+      <a href="/admin/geoop-staging-audit" class="btn btn-outline-secondary btn-sm">Open Staging Audit</a>
     </div>
   </div>
   {% endif %}
