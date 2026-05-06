@@ -1723,6 +1723,8 @@ def _migrate_update_builder():
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_cur_job ON client_update_requests(job_id, sent_at)")
     add_column_if_missing(cur, "client_update_requests", "request_type", "TEXT NOT NULL DEFAULT 'update_request'")
+    add_column_if_missing(cur, "jobs", "last_client_response_at",   "TEXT")
+    add_column_if_missing(cur, "jobs", "suspended_followup_due_at", "TEXT")
 
     # Backfill status_changed_at for existing jobs that have no value yet.
     # Use the most recent lifecycle log entry where to_status = current status;
@@ -6980,6 +6982,7 @@ def job_assign_agent(job_id: int):
 _CUR_ELIGIBLE_STATUSES = ("Suspended", "Awaiting Advice From Client", "Awaiting Instructions")
 _CUR_STALE_DAYS        = 28   # job must be in eligible status at least this long
 _CUR_COOLDOWN_DAYS     = 7    # days between Stage 1 and Stage 2, and Stage 2 and Stage 3
+_SUSPENDED_RESPONSE_WINDOW_DAYS = 10  # grace window after a recorded client response
 
 
 def _client_update_request_eligibility(conn, job_id: int) -> dict:
@@ -7027,6 +7030,140 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
         days_in_status = (_date.today() - changed_date).days
     except Exception:
         days_in_status = 0
+
+    # ── Post-response track — bypasses the 28-day stale threshold ───────────
+    # When a client response has been recorded, skip the stale-days gate and
+    # use the 10-day response-window workflow instead.
+    _last_response = (job["last_client_response_at"] or "").strip()
+    _followup_due  = (job["suspended_followup_due_at"] or "").strip()
+
+    if _last_response:
+        _ref         = job["display_ref"] or ""
+        _cname       = (job["customer_name"] or "").strip()
+        _client_name = (job["client_name"] or "").strip()
+        _client_email = None
+        if job["client_id"]:
+            _ce = conn.execute("""
+                SELECT email FROM contact_emails
+                WHERE entity_type = 'client' AND entity_id = ?
+                ORDER BY id LIMIT 1
+            """, (job["client_id"],)).fetchone()
+            _client_email = _ce["email"] if _ce else None
+        if not _client_email:
+            _client_email = job["client_email"] or None
+        if not _client_email or "@" not in _client_email:
+            _client_email = ""
+
+        _mel_today = _dt.now(_MELBOURNE_TZ).date()
+        try:
+            _resp_date      = _dt.fromisoformat(_last_response[:19]).date()
+            days_since_resp = (_mel_today - _resp_date).days
+        except Exception:
+            days_since_resp = 0
+
+        pr_update_row = conn.execute("""
+            SELECT sent_at FROM client_update_requests
+            WHERE job_id = ? AND result_status = 'sent'
+              AND request_type = 'post_response_followup'
+            ORDER BY sent_at DESC LIMIT 1
+        """, (job_id,)).fetchone()
+
+        pr_escalated = conn.execute("""
+            SELECT id FROM cue_items
+            WHERE job_id = ? AND visit_type = 'Close and invoice file'
+              AND status IN ('Pending','In Progress')
+            LIMIT 1
+        """, (job_id,)).fetchone()
+
+        _base_pr = {
+            "eligible":                False,
+            "days_in_status":          days_since_resp,
+            "client_email":            _client_email,
+            "client_name":             _client_name,
+            "customer_name":           _cname,
+            "status":                  status,
+            "cooldown_remaining":      0,
+            "needs_escalation":        False,
+            "last_sent_at":            None,
+            "last_client_response_at": _last_response,
+            "phase":                   "post_response",
+        }
+
+        if pr_escalated:
+            return {**_base_pr, "stage": 3, "phase": "pending_closure",
+                    "reason": "File has been referred to admin queue for closure and invoicing.",
+                    "button_label": "Pending Closure Review"}
+
+        if pr_update_row:
+            pr_sent_at = pr_update_row["sent_at"]
+            try:
+                days_since_prf = (_mel_today - _dt.fromisoformat(pr_sent_at[:19]).date()).days
+            except Exception:
+                days_since_prf = 0
+
+            if days_since_prf >= _SUSPENDED_RESPONSE_WINDOW_DAYS:
+                return {**_base_pr, "stage": 3, "phase": "followup_sent",
+                        "needs_escalation": True,
+                        "reason": "Awaiting admin escalation for closure.",
+                        "button_label": "Pending Closure Review",
+                        "last_sent_at": pr_sent_at}
+
+            return {**_base_pr, "stage": 2, "phase": "followup_sent",
+                    "cooldown_remaining": _SUSPENDED_RESPONSE_WINDOW_DAYS - days_since_prf,
+                    "reason": (f"Follow-up sent {days_since_prf} day(s) ago — "
+                               f"awaiting client response."),
+                    "button_label": "Awaiting Client Response",
+                    "last_sent_at": pr_sent_at}
+
+        grace_remaining = 0
+        try:
+            _due_dt         = _dt.fromisoformat(_followup_due[:19])
+            grace_remaining = (_due_dt.date() - _mel_today).days
+        except Exception:
+            pass
+
+        if grace_remaining > 0:
+            return {**_base_pr, "stage": 0, "phase": "grace_period",
+                    "cooldown_remaining": grace_remaining,
+                    "reason": (f"Client responded {days_since_resp} day(s) ago — "
+                               f"follow-up due in {grace_remaining} day(s)."),
+                    "button_label": "Awaiting Client Instructions"}
+
+        _cjn_pr = (job["client_job_number"] or "").strip()
+        pr_subj = (f"Urgent Further Instructions Required ({_cjn_pr})"
+                   if _cjn_pr else "Urgent Further Instructions Required")
+        pr_body = (
+            f"Hi {_client_name},\n\n"
+            f"Further to our recent correspondence, we write to advise that the above "
+            f"matter remains suspended and no further instructions have been received.\n\n"
+            f"Could you please confirm how you wish to proceed, including whether further "
+            f"action is required, or whether the file is to remain on hold or be closed.\n\n"
+            f"Should no further action be required, please advise so we may update our "
+            f"records accordingly.\n\n"
+            f"We will continue to monitor pending your advice.\n\n"
+            f"Kind regards,\n"
+            f"{'AxionX' if DEMO_MODE else 'SWPI'}"
+        )
+        return {
+            "eligible":                True,
+            "stage":                   1,
+            "phase":                   "post_response",
+            "request_type":            "post_response_followup",
+            "button_label":            "Send Follow-up",
+            "reason":                  "",
+            "days_in_status":          days_since_resp,
+            "client_email":            _client_email,
+            "client_name":             _client_name,
+            "customer_name":           _cname,
+            "status":                  status,
+            "last_sent_at":            None,
+            "last_client_response_at": _last_response,
+            "cooldown_remaining":      0,
+            "needs_escalation":        False,
+            "subject":                 pr_subj,
+            "body":                    pr_body,
+            "ref":                     _ref,
+        }
 
     if days_in_status < _CUR_STALE_DAYS:
         return {
@@ -7352,6 +7489,13 @@ def client_update_request_send(job_id: int):
             f"Closure request sent to client via email, following no response to the previous "
             f"update request after {_CUR_COOLDOWN_DAYS} days."
         )
+    elif request_type == "post_response_followup":
+        note_heading = f"{client_name} \\ E"
+        note_body = (
+            f"{note_heading}\n"
+            f"Follow-up email sent to client requesting further instructions, following their "
+            f"previous response. File remains {status}. Awaiting response."
+        )
     else:
         note_heading = f"{client_name} \\ E"
         note_body = (
@@ -7392,6 +7536,54 @@ def client_update_request_send(job_id: int):
           f"Client {request_type.replace('_',' ')} email sent to {to_email}.",
           {"note_id": note_id, "days_in_status": days, "request_type": request_type})
     return jsonify({"ok": True, "note_id": note_id, "sent_to": to_email, "request_type": request_type})
+
+
+@app.post("/jobs/<int:job_id>/client-response")
+@login_required
+@admin_required
+def job_client_response(job_id: int):
+    """Admin records that a client has responded on a suspended/on-hold file.
+
+    Resets the stale follow-up timer: sets last_client_response_at = now and
+    suspended_followup_due_at = now + _SUSPENDED_RESPONSE_WINDOW_DAYS.
+    Logs the event in client_update_requests. No file note is created.
+    """
+    from datetime import timedelta as _td_cr
+    conn = db()
+    job = conn.execute(
+        "SELECT id, status, client_job_number, display_ref FROM jobs WHERE id = ?",
+        (job_id,)
+    ).fetchone()
+    if not job:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."})
+    if job["status"] not in _CUR_ELIGIBLE_STATUSES:
+        conn.close()
+        return jsonify({"ok": False,
+                        "error": f"Job is not in an eligible status ({job['status']})."})
+
+    ts     = now_ts()
+    due_ts = (datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+              + _td_cr(days=_SUSPENDED_RESPONSE_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE jobs
+        SET last_client_response_at = ?, suspended_followup_due_at = ?, updated_at = ?
+        WHERE id = ?
+    """, (ts, due_ts, ts, job_id))
+
+    cur.execute("""
+        INSERT INTO client_update_requests
+            (job_id, sent_by_user_id, sent_at, result_status, request_type)
+        VALUES (?, ?, ?, 'recorded', 'client_response_reset')
+    """, (job_id, session.get("user_id"), ts))
+
+    conn.commit()
+    conn.close()
+    audit("job", job_id, "client_response_recorded",
+          f"Client response recorded. Follow-up due {due_ts[:10]}.")
+    return jsonify({"ok": True, "followup_due": due_ts[:10]})
 
 
 @app.post("/jobs/<int:job_id>/archive")

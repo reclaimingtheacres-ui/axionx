@@ -171,6 +171,13 @@
       {% endif %}
     {% endif %}
 
+    {% if session.get('role') in ('admin','both') and client_update_info and not client_update_info.get('phase') and client_update_info.get('days_in_status', 0) >= 28 and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+    <button class="btn btn-outline-success btn-sm" type="button"
+            onclick="openClientResponseModal()">
+      Client Responded
+    </button>
+    {% endif %}
+
     <button class="btn btn-primary btn-sm" type="button"
             onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).show()">
       Add Bookings
@@ -2674,13 +2681,26 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
   {% if client_update_info and client_update_info.get('days_in_status') is not none and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
   <hr style="border-color:var(--line);margin:10px 0">
   <div>
-    <div class="fw-bold small mb-1" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">STATUS AGE</div>
+    {% set _phase = client_update_info.get('phase', '') %}
+    <div class="fw-bold small mb-1" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">{% if _phase in ('grace_period','followup_sent','pending_closure','post_response') %}CLIENT STATUS{% else %}STATUS AGE{% endif %}</div>
+    {% if _phase == 'grace_period' %}
+    <span style="font-size:.75rem;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:4px;padding:2px 7px;font-weight:600">Awaiting Client Instructions</span>
+    <div style="font-size:.7rem;color:var(--muted);margin-top:4px">{{ client_update_info.days_in_status }} day{{ 's' if client_update_info.days_in_status != 1 }} since client response &mdash; follow-up in {{ client_update_info.cooldown_remaining }} day{{ 's' if client_update_info.cooldown_remaining != 1 }}</div>
+    {% elif _phase == 'followup_sent' %}
+    <span style="font-size:.75rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:2px 7px;font-weight:600">Follow-up Sent &mdash; Awaiting Response</span>
+    {% if client_update_info.last_sent_at %}<div style="font-size:.7rem;color:var(--muted);margin-top:4px">Follow-up sent: {{ client_update_info.last_sent_at[:10] }}</div>{% endif %}
+    {% elif _phase == 'pending_closure' %}
+    <span style="font-size:.75rem;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 7px;font-weight:600">Pending Closure Review</span>
+    {% elif _phase == 'post_response' %}
+    <span style="font-size:.75rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:2px 7px;font-weight:600">Follow-up Due &mdash; {{ client_update_info.days_in_status }} day{{ 's' if client_update_info.days_in_status != 1 }} since response</span>
+    {% else %}
     {% set _cur_actioned = client_update_info.get('cooldown_remaining', 0) > 0 %}
     <span style="font-size:.75rem;background:{% if client_update_info.days_in_status >= 28 %}{% if _cur_actioned %}#f3f4f6;color:#9ca3af;border:1px solid #d1d5db{% else %}#fef3c7;color:#92400e;border:1px solid #fcd34d{% endif %}{% else %}#f1f5f9;color:#64748b;border:1px solid #e2e8f0{% endif %};border-radius:4px;padding:2px 7px;font-weight:600">
       {% if client_update_info.days_in_status >= 28 %}Overdue {% endif %}{{ client_update_info.days_in_status }} day{{ 's' if client_update_info.days_in_status != 1 }}
     </span>
     {% if client_update_info.last_sent_at %}
     <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Last update request: {{ client_update_info.last_sent_at[:10] }}</div>
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}
@@ -6839,6 +6859,72 @@ function submitClientUpdateRequest() {
     alert.textContent = 'Network error: ' + e;
     btn.disabled = false;
     btn.textContent = 'Send Request';
+  });
+}
+</script>
+{% endif %}
+
+{% if session.get('role') in ('admin','both') and client_update_info and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+<!-- ── Client Responded Modal ────────────────────────────────────────────── -->
+<div class="modal fade" id="clientResponseModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" style="color:var(--text)">Record Client Response</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:.88rem;color:var(--text)">
+        <p class="mb-2">Mark this file as having received a client response?</p>
+        <p class="mb-3" style="color:var(--muted);font-size:.83rem">This resets the stale follow-up timer and places the file in a <strong>10-day waiting period</strong> for further client instructions. The file will be removed from overdue queues until further instructions are due.</p>
+        <div id="crAlertBox" class="alert d-none" role="alert"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success btn-sm fw-semibold" id="crConfirmBtn"
+                onclick="submitClientResponse()">Confirm &mdash; Client Responded</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openClientResponseModal() {
+  var ab = document.getElementById('crAlertBox');
+  var btn = document.getElementById('crConfirmBtn');
+  if (ab)  { ab.className = 'alert d-none'; ab.textContent = ''; }
+  if (btn) { btn.disabled = false; btn.textContent = 'Confirm \u2014 Client Responded'; }
+  new bootstrap.Modal(document.getElementById('clientResponseModal')).show();
+}
+
+function submitClientResponse() {
+  var btn      = document.getElementById('crConfirmBtn');
+  var alertBox = document.getElementById('crAlertBox');
+  btn.disabled = true;
+  btn.textContent = 'Recording\u2026';
+  alertBox.className = 'alert d-none';
+  fetch('/jobs/{{ job.id }}/client-response', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      alertBox.className = 'alert alert-success';
+      alertBox.textContent = 'Client response recorded. Follow-up due in 10 days. Reloading\u2026';
+      setTimeout(function(){ window._axSaveReload = true; window.location.reload(); }, 1400);
+    } else {
+      alertBox.className = 'alert alert-danger';
+      alertBox.textContent = data.error || 'Failed to record response.';
+      btn.disabled = false;
+      btn.textContent = 'Confirm \u2014 Client Responded';
+    }
+  })
+  .catch(function(e) {
+    alertBox.className = 'alert alert-danger';
+    alertBox.textContent = 'Network error: ' + e;
+    btn.disabled = false;
+    btn.textContent = 'Confirm \u2014 Client Responded';
   });
 }
 </script>
