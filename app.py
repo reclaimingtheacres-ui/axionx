@@ -621,6 +621,9 @@ def _schema_is_current():
             cur_cols = [c[1] for c in conn.execute("PRAGMA table_info(client_update_requests)").fetchall()]
             if "request_type" not in cur_cols:
                 return False
+            jobs_cols = [r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+            if "last_client_response_at" not in jobs_cols:
+                return False
             return True
         except Exception:
             if attempt < 2:
