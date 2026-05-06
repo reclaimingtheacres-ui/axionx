@@ -25,6 +25,11 @@ try:
     _HEIF_AVAILABLE = True
 except ImportError:
     _HEIF_AVAILABLE = False
+try:
+    import pillow_avif  # noqa: F401 — registers AVIF opener with Pillow on import
+    _AVIF_AVAILABLE = True
+except ImportError:
+    _AVIF_AVAILABLE = False
 from datetime import date, datetime
 import pytz
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -39,7 +44,7 @@ INACTIVE_JOB_STATUSES = (
     "Archived - Invoiced", "Cold Stored",
 )
 
-_HEIC_EXTENSIONS = {"heic", "heif"}
+_HEIC_EXTENSIONS = {"heic", "heif", "avif"}
 _HEIC_QUALITY = 88
 
 def _convert_heic_to_jpeg(file_storage):
@@ -69,7 +74,7 @@ def _convert_heic_to_jpeg(file_storage):
     return buf.read(), f"{base}.jpg"
 
 def _maybe_convert_heic(file_storage):
-    """If the file is HEIC/HEIF, convert to JPEG and return (bytes, new_filename, converted=True).
+    """If the file is HEIC/HEIF/AVIF, convert to JPEG and return (bytes, new_filename, converted=True).
     Otherwise return (None, original_filename, converted=False).
     Raises ValueError with a user-facing message on any failure."""
     ext = ""
@@ -77,7 +82,9 @@ def _maybe_convert_heic(file_storage):
         ext = file_storage.filename.rsplit(".", 1)[1].lower()
     if ext not in _HEIC_EXTENSIONS:
         return None, file_storage.filename, False
-    if not _HEIF_AVAILABLE:
+    if ext == "avif" and not _AVIF_AVAILABLE:
+        raise ValueError("AVIF images are not supported on this server (missing pillow-avif-plugin).")
+    if ext in {"heic", "heif"} and not _HEIF_AVAILABLE:
         raise ValueError("HEIC/HEIF images are not supported on this server (missing pillow-heif).")
     jpeg_bytes, new_name = _convert_heic_to_jpeg(file_storage)
     return jpeg_bytes, new_name, True
@@ -170,7 +177,7 @@ def _demo_write_guard():
 
 _PERSISTENT_BASE = os.path.dirname(os.path.abspath(os.getenv("DB_PATH", "axion.db")))
 UPLOAD_FOLDER = os.path.join(_PERSISTENT_BASE, "uploads")
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv", "heic", "heif"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "pdf", "doc", "docx", "xls", "xlsx", "csv", "heic", "heif", "avif"}
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 _LEGACY_UPLOAD_FOLDER = os.path.abspath("uploads")
@@ -8136,7 +8143,7 @@ def interaction_add(job_id: int):
     photo = request.files.get("attendance_photo")
     if photo and photo.filename:
         ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else ""
-        if ext in {"png", "jpg", "jpeg", "webp", "heic", "heif"}:
+        if ext in {"png", "jpg", "jpeg", "webp", "heic", "heif", "avif"}:
             try:
                 heic_bytes, heic_name, was_heic = _maybe_convert_heic(photo)
             except ValueError as _hce:
@@ -13038,7 +13045,7 @@ def admin_discard_job_ai_drafts(job_id: int):
 _UPDATE_PHOTO_DIR = os.path.join(UPLOAD_FOLDER, "update_photos")
 os.makedirs(_UPDATE_PHOTO_DIR, exist_ok=True)
 
-_UPDATE_PHOTO_ALLOWED = {"png", "jpg", "jpeg", "webp", "heic", "heif"}
+_UPDATE_PHOTO_ALLOWED = {"png", "jpg", "jpeg", "webp", "heic", "heif", "avif"}
 _UPDATE_PHOTO_MAX_BYTES = 25 * 1024 * 1024
 
 

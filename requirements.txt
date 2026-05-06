@@ -7,6 +7,7 @@ olefile
 openai
 Pillow
 pillow-heif
+pillow-avif-plugin
 PyJWT
 pypdf
 pytesseract
@@ -14,3 +15,4 @@ python-docx
 pytz
 reportlab
 werkzeug
+pillow-avif-plugin

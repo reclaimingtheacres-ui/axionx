@@ -5,7 +5,7 @@ integrations = ["python_openai_ai_integrations:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["cargo", "freetype", "glibcLocales", "hdf5", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "rustc", "tcl", "tesseract", "tk", "zip", "zlib"]
+packages = ["cargo", "freetype", "glibcLocales", "hdf5", "lcms2", "libaom", "libde265", "libheif", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "nasm", "openjpeg", "openssl", "pkg-config", "rustc", "tcl", "tesseract", "tk", "x265", "zip", "zlib"]
 
 [workflows]
 runButton = "Project"
