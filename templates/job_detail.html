@@ -1270,8 +1270,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 <!-- Date/time col -->
                 <div id="note-date-{{ entry.note.id }}" style="color:var(--muted);font-size:.78rem;line-height:1.4">
-                  {{ entry.note.created_at[8:10] }}/{{ entry.note.created_at[5:7] }}/{{ entry.note.created_at[:4] }}<br>
-                  {{ entry.note.created_at[11:16] }}
+                  {{ entry.note.created_at | mel_dt }}
                 </div>
 
                 <!-- Content col -->
@@ -2486,8 +2485,8 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <div class="ax-card-b">
       <div class="d-flex justify-content-between align-items-start mb-2">
         <div class="small text-muted">
-          {{ n.created_at }} · {{ n.author_name or "Admin" }}
-          {% if n.updated_at %}<span class="ms-2" style="font-style:italic">· edited {{ n.updated_at }}</span>{% endif %}
+          {{ n.created_at | mel_dt }} · {{ n.author_name or "Admin" }}
+          {% if n.updated_at %}<span class="ms-2" style="font-style:italic">· edited {{ n.updated_at | mel_dt }}</span>{% endif %}
         </div>
         <div class="d-flex gap-2 flex-shrink-0">
           <button class="btn btn-sm btn-outline-secondary" style="font-size:.75rem;padding:2px 8px" onclick="offNoteEdit({{ n.id }})">Edit</button>

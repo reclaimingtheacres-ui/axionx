@@ -32,9 +32,11 @@ except ImportError:
     _AVIF_AVAILABLE = False
 from datetime import date, datetime
 import pytz
+from zoneinfo import ZoneInfo as _ZoneInfo
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 _melbourne = pytz.timezone("Australia/Melbourne")
+_MELBOURNE_TZ = _ZoneInfo("Australia/Melbourne")
 
 ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
 
@@ -2802,7 +2804,7 @@ def parse_interaction_datetime(date_str: str, time_str: str) -> str:
     date_str = (date_str or "").strip()
     time_str = (time_str or "").strip()
     if not date_str:
-        return datetime.now().isoformat(timespec="seconds")
+        return now_ts()
     if time_str:
         combined = f"{date_str} {time_str}"
         for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%Y %I:%M %p", "%d/%m/%Y %I:%M%p"):
@@ -2813,7 +2815,7 @@ def parse_interaction_datetime(date_str: str, time_str: str) -> str:
     try:
         return datetime.strptime(date_str, "%d/%m/%Y").isoformat(timespec="seconds")
     except Exception:
-        return datetime.now().isoformat(timespec="seconds")
+        return now_ts()
 
 
 _AUTO_ADVANCE_TYPES = {
@@ -2832,16 +2834,42 @@ def maybe_auto_advance_status(cur, job_id: int, current_status: str,
     return True
 
 
+def to_melbourne_time(value):
+    """Parse a stored timestamp string and return a Melbourne-aware datetime.
+
+    Naive strings produced by now_ts() are already Australia/Melbourne local
+    time (pytz stores them that way), so we attach the Melbourne zone rather
+    than converting.  UTC-aware datetime objects are converted normally.
+    Returns None on parse failure.
+    """
+    if not value:
+        return None
+    _mel = _MELBOURNE_TZ
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=_mel)
+        return value.astimezone(_mel)
+    if isinstance(value, str):
+        s = value.strip()
+        for fmt, length in [
+            ("%Y-%m-%dT%H:%M:%S", 19),
+            ("%Y-%m-%dT%H:%M",    16),
+            ("%Y-%m-%d %H:%M:%S", 19),
+            ("%Y-%m-%d %H:%M",    16),
+        ]:
+            try:
+                dt = datetime.strptime(s[:length], fmt)
+                return dt.replace(tzinfo=_mel)
+            except Exception:
+                continue
+    return None
+
+
 def format_interaction_dt(s: str) -> str:
-    if not s:
-        return ""
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            dt = datetime.strptime(s[:19], fmt)
-            return dt.strftime("%-d/%-m/%Y %-I:%M %p").lower()
-        except Exception:
-            continue
-    return s
+    dt = to_melbourne_time(s)
+    if not dt:
+        return s or ""
+    return dt.strftime("%-d/%-m/%Y %-I:%M %p").lower()
 
 
 def calc_total_due_now(arrears, costs, mmp, due_date, costs2=0):
@@ -2928,16 +2956,29 @@ def strip_ai_prefix(text):
     return text
 
 
+@app.template_filter("mel_dt")
+def mel_dt_filter(ts_str):
+    """Format a stored timestamp as Australia/Melbourne local time.
+
+    Output format: '06/05/26 at 1:42pm'  (leading-zero date, no leading zero
+    on hour, lowercase am/pm).  Handles daylight saving automatically because
+    the underlying TZ is Australia/Melbourne via zoneinfo.
+    """
+    dt = to_melbourne_time(ts_str)
+    if not dt:
+        return ts_str or "—"
+    hour = int(dt.strftime("%I"))          # strip leading zero
+    ampm = dt.strftime("%p").lower()       # 'am' / 'pm'
+    return dt.strftime("%d/%m/%y at ") + f"{hour}:{dt.strftime('%M')}{ampm}"
+
+
 @app.template_filter("fmt_queue_dt")
 def fmt_queue_dt(ts_str):
-    """Format a cue_items created_at string as '05Mar26 09:07'."""
-    if not ts_str:
-        return "—"
-    try:
-        dt = datetime.strptime(ts_str[:19], "%Y-%m-%dT%H:%M:%S")
-        return dt.strftime("%d%b%y %H:%M")
-    except Exception:
-        return ts_str[:16]
+    """Format a cue_items created_at string as '05Mar26 09:07' (Melbourne time)."""
+    dt = to_melbourne_time(ts_str)
+    if not dt:
+        return ts_str[:16] if ts_str else "—"
+    return dt.strftime("%d%b%y %H:%M")
 
 
 def users_count():
@@ -4843,7 +4884,7 @@ def _job_create_inner():
     if client_job_number:
         display_ref = f"{internal_job_number} ({client_job_number})"
 
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_ts()
 
     conn = db()
     cur = conn.cursor()
@@ -5809,7 +5850,7 @@ def job_clone(job_id: int):
                 "lender_name":   src.get("lender_name", ""),
                 "job_address":   src.get("job_address", ""),
                 "asset_details": "; ".join(asset_parts),
-                "generated_date": _dt.now().strftime("%d/%m/%Y %H:%M"),
+                "generated_date": _dt.now(_melbourne).strftime("%d/%m/%Y %H:%M"),
             }
 
             import pdf_gen as _pg
@@ -6808,7 +6849,7 @@ def job_status_update(job_id: int):
     if status not in allowed:
         flash("Invalid status.", "danger")
         return redirect(url_for("jobs_list"))
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_ts()
     conn = db()
     cur = conn.cursor()
     cur.execute("UPDATE jobs SET status = ?, updated_at = ?, status_changed_at = ? WHERE id = ?",
@@ -6913,7 +6954,7 @@ def job_assign_agent(job_id: int):
     if not agent:
         conn.close()
         return jsonify({"ok": False, "error": "Agent not found or inactive."}), 404
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_ts()
     prev = cur.execute("SELECT assigned_user_id, display_ref, job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
     old_agent = prev["assigned_user_id"] if prev else None
     if old_agent and old_agent != agent_id:
@@ -7714,7 +7755,7 @@ def job_update(job_id: int):
     status = request.form.get("status", "").strip()
     visit_type = request.form.get("visit_type", "").strip()
     assigned_user_id = request.form.get("assigned_user_id") or None
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_ts()
 
     conn = db()
     cur = conn.cursor()
@@ -7813,7 +7854,7 @@ def job_edit(job_id: int):
         _suspend_old_agent_bookings(cur, job_id, old_agent_edit,
                                     changed_by_user_id=session.get("user_id"))
         _aname = cur.execute("SELECT full_name FROM users WHERE id = ?", (new_agent_edit,)).fetchone()
-        _now_ts = datetime.now().isoformat(timespec="seconds")
+        _now_ts = now_ts()
         cur.execute(
             "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
             (job_id, session.get("user_id"), f"Reallocated to {_aname['full_name'] if _aname else 'Unknown'}", _now_ts)
@@ -8158,7 +8199,7 @@ def interaction_add(job_id: int):
                     upload_to_blob(photo, blob_name)
                 photo_path = blob_name
 
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_ts()
 
     conn = db()
     cur = conn.cursor()
@@ -8171,7 +8212,6 @@ def interaction_add(job_id: int):
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at, photo_path)
         VALUES (?, ?, ?, ?, ?, ?)
     """, (job_id, event_type, narrative, occurred_at, now, photo_path))
-
     advanced = maybe_auto_advance_status(
         cur, job_id, current_status, event_type, session.get("role", "")
     )
