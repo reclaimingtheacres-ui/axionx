@@ -75,7 +75,7 @@
           <th style="padding:10px 8px;text-align:center;width:36px;">
             <input type="checkbox" id="selectAll" onchange="toggleAll(this)" style="cursor:pointer;">
           </th>
-          <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Client Reference</th>
+          <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Client Job Number</th>
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Customer</th>
           <th style="padding:10px 12px;text-align:left;font-weight:600;font-size:.78rem;">Status</th>
           <th style="padding:10px 12px;text-align:center;font-weight:600;font-size:.78rem;">Days</th>
@@ -87,7 +87,7 @@
         {% for r in rows %}
         <tr id="row-{{ r.id }}" data-href="/jobs/{{ r.id }}" class="aged-row"
             data-client-email="{{ r.client_email }}"
-            data-client-ref="{{ r.client_reference }}"
+            data-client-ref="{{ r.client_job_number }}"
             data-customer="{{ r.customer_name }}"
             data-status="{{ r.status }}"
             data-last-action="{{ r.last_activity }}"
@@ -95,7 +95,7 @@
           <td style="padding:8px;text-align:center;" onclick="event.stopPropagation()">
             <input type="checkbox" class="row-cb" value="{{ r.id }}" onchange="updateBulkBtn()" style="cursor:pointer;">
           </td>
-          <td style="padding:8px 12px;">{{ r.client_reference or '—' }}</td>
+          <td style="padding:8px 12px;">{{ r.client_job_number or '—' }}</td>
           <td style="padding:8px 12px;">{{ r.customer_name or '—' }}</td>
           <td style="padding:8px 12px;">
             {% if r.status == 'Suspended' %}
@@ -241,7 +241,7 @@ function buildMailto(jobId){
   var subject=subjParts.join(' \u2013 ');
   var refDisplay=ref||'File #'+jobId;
   var body='This file has been in "'+status+'" for some time and is now pending closure.\n\n'
-    +'Client Reference: '+refDisplay+'\n'
+    +'Client Job Number: '+refDisplay+'\n'
     +'Customer: '+customer+'\n'
     +'Last Action: '+lastAction+'\n\n'
     +'Please provide further instructions for any further actioning required. '

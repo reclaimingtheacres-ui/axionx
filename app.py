@@ -16915,7 +16915,7 @@ def _aged_report_query(conn, min_days=7, client_id=None):
 
     sql = f"""
         SELECT j.id,
-               COALESCE(j.client_reference, j.client_job_number, '') AS client_reference,
+               COALESCE(j.client_job_number, j.client_reference, '') AS client_job_number,
                COALESCE(cu.first_name || ' ' || cu.last_name, '') AS customer_name,
                j.status,
                cl.name AS client_name,
@@ -16963,7 +16963,7 @@ def _aged_report_query(conn, min_days=7, client_id=None):
 
         results.append({
             'id': r['id'],
-            'client_reference': r['client_reference'] or '',
+            'client_job_number': r['client_job_number'] or '',
             'customer_name': (r['customer_name'] or '').strip(),
             'status': r['status'],
             'client_name': r['client_name'] or '',
@@ -17018,9 +17018,9 @@ def report_aged_suspended_csv():
 
     buf = io.StringIO()
     w = _csv.writer(buf)
-    w.writerow(['Client Reference', 'Customer', 'Status', 'Days', 'Last Action'])
+    w.writerow(['Client Job Number', 'Customer', 'Status', 'Days', 'Last Action'])
     for r in rows:
-        w.writerow([r['client_reference'], r['customer_name'], r['status'],
+        w.writerow([r['client_job_number'], r['customer_name'], r['status'],
                      r['days'], r['last_activity']])
     buf.seek(0)
 
@@ -17086,7 +17086,7 @@ def report_aged_suspended_pdf():
     elements.append(Paragraph(' | '.join(sub_parts), sub_style))
     elements.append(Spacer(1, 4*mm))
 
-    data = [[Paragraph('Client Reference', header_style),
+    data = [[Paragraph('Client Job Number', header_style),
              Paragraph('Customer', header_style),
              Paragraph('Status', header_style),
              Paragraph('Days', header_style),
@@ -17094,7 +17094,7 @@ def report_aged_suspended_pdf():
 
     for r in rows:
         data.append([
-            Paragraph(r['client_reference'], cell_style),
+            Paragraph(r['client_job_number'], cell_style),
             Paragraph(r['customer_name'], cell_style),
             Paragraph(r['status'], cell_style),
             Paragraph(str(r['days']), cell_style),
@@ -17160,7 +17160,7 @@ def report_aged_suspended_email():
     ph = ','.join('?' for _ in job_ids)
     job_rows = cur.execute(f"""
         SELECT j.id, j.status, j.client_id,
-               COALESCE(j.client_reference, j.client_job_number, '') AS client_reference,
+               COALESCE(j.client_job_number, j.client_reference, '') AS client_job_number,
                COALESCE(cu.first_name || ' ' || cu.last_name, '') AS customer_name,
                cl.email AS client_email,
                cl.name AS client_name,
@@ -17191,7 +17191,7 @@ def report_aged_suspended_email():
             results.append({'job_id': jid, 'ok': False, 'error': 'No valid client email found.'})
             continue
 
-        client_ref = r['client_reference'] or ''
+        client_ref = r['client_job_number'] or ''
         customer_name = (r['customer_name'] or '').strip()
         status = r['status']
 
@@ -17214,7 +17214,7 @@ def report_aged_suspended_email():
 
         body_txt = (
             f'This file has been in "{status}" for some time and is now pending closure.\n\n'
-            f'Client Reference: {ref_display}\n'
+            f'Client Job Number: {ref_display}\n'
             f'Customer: {customer_name}\n'
             f'Last Action: {la_display}\n\n'
             f'Please provide further instructions for any further actioning required. '
@@ -17263,7 +17263,7 @@ def report_aged_suspended_email():
 
             note_text = (
                 f'email to client This file has been in "{status}" for some time and is now pending closure.\n\n'
-                f'Client Reference: {ref_display}\n'
+                f'Client Job Number: {ref_display}\n'
                 f'Customer: {customer_name}\n'
                 f'Last Action: {la_display}\n\n'
                 f'Please provide further instructions for any further actioning required. '
