@@ -30,6 +30,16 @@ echo "[startup] DB_PATH=$DB_PATH"
 # Ensure the data directory exists (first deploy).
 mkdir -p "$(dirname "$DB_PATH")"
 
+# Oryx sometimes generates oryx-manifest.toml with CompressDestinationDir="true",
+# which causes a startup failure when the runtime looks for output.tar.gz but
+# finds output.tar.zst (or vice-versa). Patch it to false unconditionally —
+# the app is always deployed as an uncompressed directory, not a tarball.
+ORYX_MANIFEST="$APP_ROOT/oryx-manifest.toml"
+if [ -f "$ORYX_MANIFEST" ]; then
+    sed -i 's/CompressDestinationDir="true"/CompressDestinationDir="false"/g' "$ORYX_MANIFEST"
+    echo "[startup] oryx-manifest.toml patched: CompressDestinationDir=false"
+fi
+
 exec gunicorn \
     --chdir "$APP_ROOT" \
     --bind "0.0.0.0:${PORT:-8000}" \
