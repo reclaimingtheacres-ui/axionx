@@ -7547,9 +7547,9 @@ def client_update_request_send(job_id: int):
 def job_client_response(job_id: int):
     """Admin records that a client has responded on a suspended/on-hold file.
 
-    Resets the stale follow-up timer by setting last_client_response_at = now
-    and suspended_followup_due_at = now + _SUSPENDED_RESPONSE_WINDOW_DAYS.
-    Creates a published file note and logs the event in client_update_requests.
+    Resets the stale follow-up timer: sets last_client_response_at = now and
+    suspended_followup_due_at = now + _SUSPENDED_RESPONSE_WINDOW_DAYS.
+    Logs the event in client_update_requests. No file note is created.
     """
     from datetime import timedelta as _td_cr
     conn = db()
@@ -7565,9 +7565,9 @@ def job_client_response(job_id: int):
         return jsonify({"ok": False,
                         "error": f"Job is not in an eligible status ({job['status']})."})
 
-    ts       = now_ts()
-    due_ts   = (datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
-                + _td_cr(days=_SUSPENDED_RESPONSE_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
+    ts     = now_ts()
+    due_ts = (datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+              + _td_cr(days=_SUSPENDED_RESPONSE_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
 
     cur = conn.cursor()
     cur.execute("""
@@ -7575,17 +7575,6 @@ def job_client_response(job_id: int):
         SET last_client_response_at = ?, suspended_followup_due_at = ?, updated_at = ?
         WHERE id = ?
     """, (ts, due_ts, ts, job_id))
-
-    note_text = (
-        f"Client response recorded — file moved to Waiting Further Client Instructions.\n"
-        f"Follow-up due in {_SUSPENDED_RESPONSE_WINDOW_DAYS} days if no further instruction received."
-    )
-    cur.execute("""
-        INSERT INTO job_field_notes
-            (job_id, created_by_user_id, note_text, created_at,
-             note_category, review_status, published_at)
-        VALUES (?, ?, ?, ?, 'file_note', 'published', ?)
-    """, (job_id, session.get("user_id"), note_text, ts, ts))
 
     cur.execute("""
         INSERT INTO client_update_requests

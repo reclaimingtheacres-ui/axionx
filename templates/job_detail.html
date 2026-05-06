@@ -171,7 +171,7 @@
       {% endif %}
     {% endif %}
 
-    {% if session.get('role') in ('admin','both') and client_update_info and client_update_info.get('phase') != 'pending_closure' and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+    {% if session.get('role') in ('admin','both') and client_update_info and not client_update_info.get('phase') and client_update_info.get('days_in_status', 0) >= 28 and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
     <button class="btn btn-outline-success btn-sm" type="button"
             onclick="openClientResponseModal()">
       Client Responded
@@ -6875,7 +6875,7 @@ function submitClientUpdateRequest() {
       </div>
       <div class="modal-body" style="font-size:.88rem;color:var(--text)">
         <p class="mb-2">Mark this file as having received a client response?</p>
-        <p class="mb-3" style="color:var(--muted);font-size:.83rem">This resets the stale follow-up timer and places the file in a <strong>{{ (client_update_info or {}).get('last_client_response_at') and '10-day waiting period (re-reset)' or '10-day waiting period' }}</strong> for further client instructions. A published file note will be created automatically.</p>
+        <p class="mb-3" style="color:var(--muted);font-size:.83rem">This resets the stale follow-up timer and places the file in a <strong>10-day waiting period</strong> for further client instructions. The file will be removed from overdue queues until further instructions are due.</p>
         <div id="crAlertBox" class="alert d-none" role="alert"></div>
       </div>
       <div class="modal-footer" style="border-top:1px solid var(--line)">
@@ -6911,7 +6911,7 @@ function submitClientResponse() {
   .then(function(data) {
     if (data.ok) {
       alertBox.className = 'alert alert-success';
-      alertBox.textContent = 'Client response recorded. File note created. Reloading\u2026';
+      alertBox.textContent = 'Client response recorded. Follow-up due in 10 days. Reloading\u2026';
       setTimeout(function(){ window._axSaveReload = true; window.location.reload(); }, 1400);
     } else {
       alertBox.className = 'alert alert-danger';
