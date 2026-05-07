@@ -655,12 +655,14 @@ def _lazy_init():
         try:
             _ensure_wal_once()
             if _schema_is_current():
+                _startup_migrate()  # belt-and-suspenders: ensure newest columns even if sentinel passed
                 _db_initialized = True
                 import logging as _log
                 _log.info("[DB-INIT] Schema already current — skipped DDL. DB_PATH=%s", DB_PATH)
                 return
             init_db()
             _migrate_update_builder()
+            _startup_migrate()  # belt-and-suspenders: ensure newest columns after full DDL run
             _db_initialized = True
             import logging as _log
             _log.info("[DB-INIT] Database initialized (full DDL). DB_PATH=%s", DB_PATH)
@@ -688,6 +690,32 @@ def add_column_if_missing(cur_or_conn, table, col, coltype):
     cols = [r["name"] for r in cur.fetchall()]
     if col not in cols:
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+
+
+def _startup_migrate():
+    """Unconditional idempotent migration — runs on every gunicorn worker start.
+
+    Guarantees that the newest columns exist in the production DB regardless of
+    whether _schema_is_current() / init_db() ran or was skipped.  Safe to call
+    multiple times; add_column_if_missing is a no-op when the column already exists.
+    """
+    try:
+        import sqlite3 as _sq3
+        _conn = _sq3.connect(DB_PATH, timeout=30)
+        _conn.row_factory = _sq3.Row
+        _cur = _conn.cursor()
+        add_column_if_missing(_cur, "jobs", "last_client_response_at",   "TEXT")
+        add_column_if_missing(_cur, "jobs", "suspended_followup_due_at", "TEXT")
+        _conn.commit()
+        _conn.close()
+        import logging as _log
+        _log.info("[STARTUP-MIGRATE] Column check complete. DB_PATH=%s", DB_PATH)
+    except Exception as _sm_exc:
+        import logging as _log
+        _log.error("[STARTUP-MIGRATE] Failed: %s  DB_PATH=%s", _sm_exc, DB_PATH)
+
+
+_startup_migrate()
 
 
 def init_db():
