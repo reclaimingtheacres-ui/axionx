@@ -7037,8 +7037,14 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
     # ── Post-response track — bypasses the 28-day stale threshold ───────────
     # When a client response has been recorded, skip the stale-days gate and
     # use the 10-day response-window workflow instead.
-    _last_response = (job["last_client_response_at"] or "").strip()
-    _followup_due  = (job["suspended_followup_due_at"] or "").strip()
+    # Defensive access: columns may be absent on a DB that hasn't yet migrated
+    # (belt-and-suspenders — sentinel fix in _schema_is_current should
+    # ensure init_db() runs, but we guard here too).
+    _job_keys = job.keys() if hasattr(job, "keys") else []
+    _last_response = (job["last_client_response_at"] if "last_client_response_at" in _job_keys else None) or ""
+    _last_response = _last_response.strip()
+    _followup_due  = (job["suspended_followup_due_at"] if "suspended_followup_due_at" in _job_keys else None) or ""
+    _followup_due  = _followup_due.strip()
 
     if _last_response:
         _ref         = job["display_ref"] or ""
