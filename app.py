@@ -3311,7 +3311,7 @@ def send_reset_email(to_addr, reset_link):
      padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Reset Password</a></p>
   <p style="color:#6b7280;font-size:13px">If you did not request this, you can safely ignore this email.</p>
   <hr style="border:none;border-top:1px solid #e5e7eb">
-  <p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+  {_email_footer_html()}
 </div>"""
     msg.attach(_MIMEText(txt, "plain"))
     msg.attach(_MIMEText(htm, "html"))
@@ -3368,6 +3368,26 @@ def _demo_save_outbox(msg_type: str, recipient: str, subject: str, body: str):
             _g._demo_intercepted_flash_shown = True
     except Exception:
         pass
+
+
+def _email_footer_html():
+    """Branded footer block for all outbound emails.
+    Returns an <img> of the SWPI logo sized to ~180 px wide, centred below the divider.
+    Falls back to the production base URL when called outside a request context.
+    """
+    try:
+        from flask import request as _freq
+        _base = _freq.host_url.rstrip("/")
+    except RuntimeError:
+        _base = "https://axionx.com.au"
+    _logo_src = f"{_base}/static/images/swpi_logo_full.png"
+    return (
+        '<div style="text-align:center;padding-top:14px;padding-bottom:6px">'
+        f'<img src="{_logo_src}" alt="SWPI Recoveries"'
+        ' style="width:180px;max-width:180px;height:auto;display:block;margin:0 auto"'
+        ' width="180">'
+        "</div>"
+    )
 
 
 def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachments=None, reply_to=None):
@@ -7495,7 +7515,7 @@ def client_update_request_send(job_id: int):
         body_html = f"""<div style="font-family:sans-serif;max-width:640px">
 <p>{full_body.replace(chr(10),'<br>')}</p>
 <hr style="border:none;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+{_email_footer_html()}
 </div>"""
         send_email([to_email], subject, full_body, body_html=body_html, reply_to=reply_to)
     except Exception as exc:
@@ -16894,7 +16914,7 @@ def queue_send_email():
 <p><strong>Job:</strong> {job['display_ref']}</p>
 <p>{full_body_txt.replace(chr(10), '<br>')}</p>
 <hr style="border:none;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:12px">Axion Field Operations Management</p>
+{_email_footer_html()}
 </div>"""
 
     file_attachments = []
