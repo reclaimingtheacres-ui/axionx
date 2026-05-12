@@ -1594,8 +1594,8 @@ function showTab(name) {
   };
   window.rlmTowChanged = function(sel) {
     if (sel.value) {
-      _gid("rlm_tow_company_name").value = "";
       var match = _rlmTowOps.find(function(t){ return String(t.id) === String(sel.value); });
+      _gid("rlm_tow_company_name").value = (match && match.name) ? match.name : "";
       var wrap  = _gid("rlm_tow_phone_wrap");
       var disp  = _gid("rlm_tow_phone_display");
       if (match && match.phone) {
