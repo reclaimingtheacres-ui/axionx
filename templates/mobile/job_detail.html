@@ -1278,6 +1278,7 @@ function showTab(name) {
 <script>
 (function(){
   var _rlmTowOps       = [];
+  var _rlmIsWise       = false;
   var _rlmAuctionYards = [];
   var _rlmJobId  = 0;
   var _rlmItemId = 0;
@@ -1334,9 +1335,22 @@ function showTab(name) {
     if (_rlmRecId) {
       sec.style.display = "";
       var base = "/jobs/" + _rlmJobId + "/repo-lock/" + _rlmRecId;
-      _gid("rlmGenVirBtn").href   = base + "/vir";
-      _gid("rlmGenF13Btn").href   = base + "/form-13";
-      _gid("rlmGenTransBtn").href = base + "/transport-instructions";
+      if (_rlmIsWise) {
+        _gid("rlmGenVirBtn").href          = base + "/wise-vir";
+        _gid("rlmGenVirBtn").querySelector("span + *") && (_gid("rlmGenVirBtn").lastChild.textContent = " Generate Wise VIR");
+        _gid("rlmGenVirBtn").innerHTML     = '\u{1F4CB} Generate Wise VIR';
+        _gid("rlmGenF13Btn").href          = base + "/wise-auction";
+        _gid("rlmGenF13Btn").innerHTML     = '\u{1F4C4} Generate Wise Auction Letter';
+        _gid("rlmGenTransBtn").href        = base + "/wise-tow";
+        _gid("rlmGenTransBtn").innerHTML   = '\u{1F69A} Generate Wise Tow Letter';
+      } else {
+        _gid("rlmGenVirBtn").href          = base + "/vir";
+        _gid("rlmGenVirBtn").innerHTML     = '\u{1F4CB} Generate VIR';
+        _gid("rlmGenF13Btn").href          = base + "/form-13";
+        _gid("rlmGenF13Btn").innerHTML     = '\u{1F4C4} Generate Form 13';
+        _gid("rlmGenTransBtn").href        = base + "/transport-instructions";
+        _gid("rlmGenTransBtn").innerHTML   = '\u{1F69A} Generate Transport Instructions';
+      }
     } else {
       sec.style.display = "none";
     }
@@ -1407,6 +1421,8 @@ function showTab(name) {
 
         var src = (data.has_rec && data.existing && Object.keys(data.existing).length)
                     ? data.existing : data.prefill;
+
+        _rlmIsWise = !!data.is_wise;
 
         if (data.has_rec && data.existing && data.existing.id) {
           _rlmRecId = data.existing.id;
@@ -1563,9 +1579,22 @@ function showTab(name) {
 
       if (res.id) { _rlmRecId = res.id; _rlmUpdateForm13Btn(); _rlmUpdateGenBtns(); }
 
-      _gid("rlmVirLink").href       = "/jobs/" + jobId + "/repo-lock/" + res.id + "/vir";
-      _gid("rlmForm13Link").href    = "/jobs/" + jobId + "/repo-lock/" + res.id + "/form-13";
-      _gid("rlmTransportLink").href = "/jobs/" + jobId + "/repo-lock/" + res.id + "/transport-instructions";
+      var _rlBase = "/jobs/" + jobId + "/repo-lock/" + res.id;
+      if (_rlmIsWise) {
+        _gid("rlmVirLink").href       = _rlBase + "/wise-vir";
+        _gid("rlmVirLink").innerHTML  = '\u{1F4CB} Wise VIR (Vehicle Inspection Report)';
+        _gid("rlmForm13Link").href    = _rlBase + "/wise-auction";
+        _gid("rlmForm13Link").innerHTML = '\u{1F4C4} Wise Auction Letter';
+        _gid("rlmTransportLink").href = _rlBase + "/wise-tow";
+        _gid("rlmTransportLink").innerHTML = '\u{1F69A} Wise Tow Letter';
+      } else {
+        _gid("rlmVirLink").href       = _rlBase + "/vir";
+        _gid("rlmVirLink").innerHTML  = '\u{1F4CB} Vehicle Inspection Report (VIR)';
+        _gid("rlmForm13Link").href    = _rlBase + "/form-13";
+        _gid("rlmForm13Link").innerHTML = '\u{1F4C4} Form 13 \u2014 Notice to Occupier';
+        _gid("rlmTransportLink").href = _rlBase + "/transport-instructions";
+        _gid("rlmTransportLink").innerHTML = '\u{1F69A} Transport Instructions';
+      }
 
       _gid("rlmFormWrap").style.display     = "none";
       _gid("rlmSuccessPanel").style.display = "";

@@ -7603,14 +7603,16 @@ def job_client_response(job_id: int):
 
     Resets the stale follow-up timer: sets last_client_response_at = now and
     suspended_followup_due_at = now + _SUSPENDED_RESPONSE_WINDOW_DAYS.
-    Logs the event in client_update_requests. No file note is created.
+    Logs the event in client_update_requests and creates a published file note.
     """
     from datetime import timedelta as _td_cr
     conn = db()
-    job = conn.execute(
-        "SELECT id, status, client_job_number, display_ref FROM jobs WHERE id = ?",
-        (job_id,)
-    ).fetchone()
+    job = conn.execute("""
+        SELECT j.id, j.status, j.client_job_number, j.display_ref, c.name AS client_name
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        WHERE j.id = ?
+    """, (job_id,)).fetchone()
     if not job:
         conn.close()
         return jsonify({"ok": False, "error": "Job not found."})
@@ -7622,6 +7624,7 @@ def job_client_response(job_id: int):
     ts     = now_ts()
     due_ts = (datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
               + _td_cr(days=_SUSPENDED_RESPONSE_WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
+    uid    = session.get("user_id")
 
     cur = conn.cursor()
     cur.execute("""
@@ -7634,7 +7637,20 @@ def job_client_response(job_id: int):
         INSERT INTO client_update_requests
             (job_id, sent_by_user_id, sent_at, result_status, request_type)
         VALUES (?, ?, ?, 'recorded', 'client_response_reset')
-    """, (job_id, session.get("user_id"), ts))
+    """, (job_id, uid, ts))
+
+    client_name = (job["client_name"] or "").strip() or "Client"
+    note_text = (
+        f"{client_name} \\ E\n"
+        f"Client response recorded by admin. File placed in a {_SUSPENDED_RESPONSE_WINDOW_DAYS}-day "
+        f"waiting period for further client instructions (follow-up due {due_ts[:10]}). "
+        f"Stale timer reset."
+    )
+    cur.execute("""
+        INSERT INTO job_field_notes
+            (job_id, created_by_user_id, note_text, created_at, note_category, review_status, published_at)
+        VALUES (?, ?, ?, ?, 'file_note', 'published', ?)
+    """, (job_id, uid, note_text, ts, ts))
 
     conn.commit()
     conn.close()
