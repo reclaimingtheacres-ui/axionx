@@ -1209,7 +1209,7 @@ function showTab(name) {
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Operator (Contact Name)</label><input type="text" name="tow_operator" id="rlm_tow_operator" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Contact Number</label><input type="tel" name="tow_contact_number" id="rlm_tow_contact_number" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Costs</label><input type="text" name="tow_costs" id="rlm_tow_costs" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
-          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard</label><select id="rlm_auction_yard_id" onchange="rlmAuctionYardChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Auction Yard —</option></select></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard</label><select id="rlm_auction_yard_id" onchange="rlmAuctionYardChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Auction Yard —</option></select><div id="rlm_yard_addr_wrap" style="display:none;margin-top:6px;"><select id="rlm_yard_addr_picker" onchange="rlmYardAddrPickerChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Delivery Address —</option></select></div></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard Name (manual)</label><input type="text" id="rlm_auction_yard_manual" placeholder="If not in list" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Deliver To</label><input type="text" name="deliver_to" id="rlm_deliver_to" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Delivery Address</label><input type="text" name="delivery_address" id="rlm_delivery_address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
@@ -1413,9 +1413,10 @@ function showTab(name) {
         _rlmAuctionYards.forEach(function(y) {
           var o = document.createElement("option");
           o.value = y.id;
-          o.textContent = y.name + (y.address ? " — " + y.address : "");
-          o.dataset.address = y.address || "";
-          o.dataset.name    = y.name || "";
+          var _addrs = (y.address || "").split("\n").map(function(a){ return a.trim(); }).filter(Boolean);
+          o.textContent = (_addrs.length === 1) ? y.name + " \u2014 " + _addrs[0] : y.name;
+          o.dataset.addresses = JSON.stringify(_addrs);
+          o.dataset.name      = y.name || "";
           yardSel.appendChild(o);
         });
 
@@ -1650,11 +1651,37 @@ function showTab(name) {
     });
   })();
   window.rlmAuctionYardChanged = function(sel) {
-    var opt = sel.options[sel.selectedIndex];
+    var opt        = sel.options[sel.selectedIndex];
+    var pickerWrap = _gid("rlm_yard_addr_wrap");
+    var picker     = _gid("rlm_yard_addr_picker");
     if (sel.value && opt) {
-      _gid("rlm_deliver_to").value      = opt.dataset.name    || "";
-      _gid("rlm_delivery_address").value = opt.dataset.address || "";
+      var addrs = [];
+      try { addrs = JSON.parse(opt.dataset.addresses || "[]"); } catch(e) {}
+      _gid("rlm_deliver_to").value          = opt.dataset.name || "";
       _gid("rlm_auction_yard_manual").value = "";
+      if (addrs.length <= 1) {
+        _gid("rlm_delivery_address").value = addrs[0] || "";
+        if (pickerWrap) pickerWrap.style.display = "none";
+        if (picker) picker.innerHTML = '<option value="">\u2014 Select Delivery Address \u2014</option>';
+      } else {
+        _gid("rlm_delivery_address").value = "";
+        if (picker) {
+          picker.innerHTML = '<option value="">\u2014 Select Delivery Address \u2014</option>';
+          addrs.forEach(function(a) {
+            var ao = document.createElement("option");
+            ao.value = a; ao.textContent = a;
+            picker.appendChild(ao);
+          });
+        }
+        if (pickerWrap) pickerWrap.style.display = "";
+      }
+    } else {
+      if (pickerWrap) pickerWrap.style.display = "none";
+    }
+  };
+  window.rlmYardAddrPickerChanged = function(sel) {
+    if (sel.value) {
+      _gid("rlm_delivery_address").value = sel.value;
     }
   };
   (function() {

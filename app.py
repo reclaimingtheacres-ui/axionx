@@ -9638,6 +9638,28 @@ def _repo_lock_note(d):
     return "\n".join(lines)
 
 
+def _group_auction_yards(rows) -> list:
+    """Group auction yard rows by name, combining addresses with \\n.
+
+    Returns a list of dicts {id, name, address} where `address` is a
+    newline-joined string of all active addresses for that yard name.
+    Both desktop (repo_lock_form.html) and mobile (job_detail.html) split
+    this by \\n — desktop already has the picker; mobile now does too.
+    """
+    seen = {}
+    order = []
+    for y in rows:
+        n = y["name"]
+        addr = (y["address"] or "").strip()
+        if n not in seen:
+            seen[n] = {"id": y["id"], "name": n, "addrs": []}
+            order.append(n)
+        if addr:
+            seen[n]["addrs"].append(addr)
+    return [{"id": seen[n]["id"], "name": n, "address": "\n".join(seen[n]["addrs"])}
+            for n in order]
+
+
 @app.get("/jobs/<int:job_id>/repo-lock/<int:item_id>")
 @login_required
 def repo_lock_get(job_id: int, item_id: int):
@@ -9773,7 +9795,7 @@ def repo_lock_get(job_id: int, item_id: int):
         "prefill":   prefill,
         "existing":  existing,
         "tow_ops":   [{"id": t["id"], "name": t["company_name"], "phone": t["phone"] or t["mobile"] or "", "contact_name": t["contact_name"] or "", "contact_mobile": t["mobile"] or t["phone"] or ""} for t in tow_ops],
-        "auction_yards": [{"id": y["id"], "name": y["name"], "address": y["address"] or ""} for y in auction_yards],
+        "auction_yards": _group_auction_yards(auction_yards),
         "item_label": (item["reg"] or item["description"] or f"Item #{item_id}"),
         "is_wise":   is_wise,
     })
