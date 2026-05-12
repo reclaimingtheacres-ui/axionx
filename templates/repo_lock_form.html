@@ -386,7 +386,7 @@
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label">Auction Yard</label>
-                      <select class="form-select form-select-sm" id="rl_auction_yard_id" onchange="rlAuctionYardChanged(this)">
+                      <select class="form-select form-select-sm" name="auction_yard_id" id="rl_auction_yard_id" onchange="rlAuctionYardChanged(this)">
                         <option value="">— Select Auction Yard —</option>
                       </select>
                       <div id="rl_yard_addr_wrap" style="display:none;margin-top:6px;">
@@ -508,7 +508,7 @@
     "station_officer","personal_effects_removed","removed_by_who",
     "personal_effects_list","tyres","body","duco","interior","engine_condition",
     "transmission","fuel_level","any_damage","damage_list","tow_company_id",
-    "tow_company_name","tow_costs","deliver_to","delivery_address",
+    "tow_company_name","tow_costs","auction_yard_id","deliver_to","delivery_address",
     "expected_delivery_date","customers_intention","other_info","notice_delivery",
     "agent_name","agent_user_id"
   ];
@@ -620,6 +620,28 @@
         } else {
           towPhoneWrap.style.display = "none";
         }
+
+        (function() {
+          var yardSel = _gid("rl_auction_yard_id");
+          if (yardSel && yardSel.value) {
+            var selOpt = yardSel.options[yardSel.selectedIndex];
+            var addrs = [];
+            try { addrs = JSON.parse(selOpt.dataset.addresses || "[]"); } catch(e) {}
+            var savedAddr = (_gid("rl_delivery_address").value || "").trim();
+            var pickerWrap = _gid("rl_yard_addr_wrap");
+            var picker     = _gid("rl_yard_addr_picker");
+            if (addrs.length > 1 && picker && pickerWrap) {
+              picker.innerHTML = '<option value="">— Select Delivery Address —</option>';
+              addrs.forEach(function(a) {
+                var ao = document.createElement("option");
+                ao.value = a; ao.textContent = a;
+                if (a === savedAddr) ao.selected = true;
+                picker.appendChild(ao);
+              });
+              pickerWrap.style.display = "";
+            }
+          }
+        })();
 
         _rlUpdateButtonState(data.status);
 

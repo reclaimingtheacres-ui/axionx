@@ -9825,6 +9825,7 @@ def repo_lock_save(job_id: int, item_id: int):
             "tyres", "body", "duco", "interior", "engine_condition", "transmission",
             "fuel_level", "any_damage", "damage_list",
             "tow_company_id", "tow_company_name", "tow_phone", "tow_operator", "tow_contact_number", "tow_costs",
+            "auction_yard_id",
             "deliver_to", "delivery_address", "expected_delivery_date",
             "customers_intention", "other_info", "notice_delivery",
             "agent_name", "agent_user_id",
@@ -9834,6 +9835,7 @@ def repo_lock_save(job_id: int, item_id: int):
         add_column_if_missing(conn, "repo_lock_records", "tow_phone",          "TEXT")
         add_column_if_missing(conn, "repo_lock_records", "tow_operator",       "TEXT")
         add_column_if_missing(conn, "repo_lock_records", "tow_contact_number", "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "auction_yard_id",    "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
         ts = now_ts()
         uid = session.get("user_id")
@@ -9884,6 +9886,7 @@ _RL_FIELDS = [
     "tyres", "body", "duco", "interior", "engine_condition", "transmission",
     "fuel_level", "any_damage", "damage_list",
     "tow_company_id", "tow_company_name", "tow_phone", "tow_operator", "tow_contact_number", "tow_costs",
+    "auction_yard_id",
     "deliver_to", "delivery_address", "expected_delivery_date",
     "customers_intention", "other_info", "notice_delivery",
     "agent_name", "agent_user_id",
