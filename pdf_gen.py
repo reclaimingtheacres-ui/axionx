@@ -854,7 +854,7 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
         for i, ln in enumerate(simpleSplit(accessories[:200], F, 8, CW - 20)[:2]):
             c.drawString(57, 302 - i * 12, ln)
 
-    dmg_val = _v(data, 'damage_list') if _v(data, 'any_damage').upper() == 'YES' else ''
+    dmg_val = _v(data, 'damage_list')
     if dmg_val:
         c.setFont(F, 8)
         for i, ln in enumerate(simpleSplit(dmg_val[:300], F, 8, CW - 20)[:3]):
@@ -870,22 +870,26 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
         cost_str = '$' + tow_cost if not tow_cost.startswith('$') else tow_cost
         c.drawString(426, 184, cost_str)
 
+    # DELIVERED TO: keep name and address on separate lines, each constrained
+    # to max 255pts so they cannot overflow into the HELD AT TOWING YARD column
+    # (which starts at x=426 with its template label beginning around x=310).
+    _DELIV_MAX_W = 255
     deliver_to = _v(data, 'deliver_to')
     delivery_addr = _v(data, 'delivery_address')
-    deliver_text = deliver_to
+    c.setFont(F, 8)
+    _deliv_y = 170
+    if deliver_to:
+        ln = simpleSplit(deliver_to[:100], F, 8, _DELIV_MAX_W)
+        c.drawString(162, _deliv_y, ln[0] if ln else deliver_to[:40])
+        _deliv_y -= 11
     if delivery_addr and delivery_addr != deliver_to:
-        deliver_text = (deliver_text + ', ' + delivery_addr) if deliver_text else delivery_addr
-    if deliver_text:
-        c.setFont(F, 8)
-        for i, ln in enumerate(simpleSplit(deliver_text[:200], F, 8, CW - 20)[:2]):
-            c.drawString(162, 170 - i * 11, ln)
-        c.setFont(F, SZ)
+        ln = simpleSplit(delivery_addr[:100], F, 8, _DELIV_MAX_W)
+        c.drawString(162, _deliv_y, ln[0] if ln else delivery_addr[:40])
 
     held_at = _v(data, 'tow_company_name')
     if held_at:
-        c.setFont(F, 8)
-        c.drawString(426, 170, held_at)
-        c.setFont(F, SZ)
+        c.drawString(426, 170, held_at[:30])
+    c.setFont(F, SZ)
 
     redeem = _v(data, 'vol_surrender')
     if redeem:

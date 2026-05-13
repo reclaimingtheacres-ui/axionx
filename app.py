@@ -10185,10 +10185,15 @@ def _rl_pdf_context(conn, rec, job_id):
     d = {}
     d.update({k: (v if v else "") for k, v in rec.items()})
     d.update({
-        "year":                 item.get("year") or "",
-        "make":                 item.get("make") or "",
-        "model":                item.get("model") or "",
-        "colour":               item.get("colour") or rec.get("colour") or "",
+        # Prefer saved VIR values (rec) over autofill item values so that
+        # corrections made on the form are not overwritten on every reload.
+        # Fall back to item data when the VIR hasn't been saved yet.
+        "year":                 rec.get("year")         or item.get("year")   or "",
+        "make":                 rec.get("make")         or item.get("make")   or "",
+        "model":                rec.get("model")        or item.get("model")  or "",
+        "colour":               rec.get("colour")       or item.get("colour") or "",
+        "registration":         rec.get("registration") or item.get("reg")    or "",
+        "vin":                  rec.get("vin")          or item.get("vin")    or "",
         "client_name":          rec.get("client_name") or client.get("name") or "",
         "client_reference":     rec.get("client_reference") or job.get("client_reference") or job.get("client_job_number") or "",
         "wise_case_number":     rec.get("wise_case_number") or rec.get("client_reference") or job.get("client_reference") or job.get("client_job_number") or "",
