@@ -313,6 +313,11 @@
               {{ j.assigned_agent_name }}
               {% if j.pending_review_count %}<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#d97706;color:#fff;font-size:.5rem;font-weight:700;flex-shrink:0;letter-spacing:.02em;line-height:1">PR</span>{% endif %}
             </div>
+            {% elif not is_admin and j.pending_review_count %}
+            <div style="font-size:.72rem;color:#d97706;margin-top:3px;display:flex;align-items:center;gap:4px;">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#d97706;color:#fff;font-size:.5rem;font-weight:700;flex-shrink:0;letter-spacing:.02em;line-height:1">PR</span>
+              Note pending review
+            </div>
             {% endif %}
             {% if j.next_booking_type or j.next_scheduled %}
             <div style="font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
