@@ -394,6 +394,24 @@
                           <option value="">— Select Delivery Address —</option>
                         </select>
                       </div>
+                      <div style="margin-top:5px;">
+                        <a href="#" class="text-primary" style="font-size:.78rem;" onclick="rlToggleAddYard(event)">+ Add new yard</a>
+                      </div>
+                      <div id="rl_add_yard_form" style="display:none;margin-top:8px;padding:10px 12px;background:#f8fafc;border:1px solid #d1d5db;border-radius:6px;">
+                        <div class="mb-2">
+                          <label class="form-label mb-1" style="font-size:.78rem;">Yard Name <span class="text-danger">*</span></label>
+                          <input class="form-control form-control-sm" id="rl_new_yard_name" placeholder="e.g. City Auctions">
+                        </div>
+                        <div class="mb-2">
+                          <label class="form-label mb-1" style="font-size:.78rem;">Address</label>
+                          <input class="form-control form-control-sm" id="rl_new_yard_address" placeholder="Street address">
+                        </div>
+                        <div id="rl_new_yard_err" class="text-danger mb-2" style="font-size:.78rem;display:none;"></div>
+                        <div class="d-flex gap-2">
+                          <button type="button" class="btn btn-primary btn-sm" onclick="rlSaveNewYard()">Save &amp; Select</button>
+                          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rlToggleAddYard(null, true)">Cancel</button>
+                        </div>
+                      </div>
                     </div>
                     <div class="col-12 col-md-6">
                       <label class="form-label">Auction Yard Name (manual)</label>
@@ -935,6 +953,58 @@
       }
     });
   }
+  window.rlToggleAddYard = function(e, forceClose) {
+    if (e) e.preventDefault();
+    var panel = _gid("rl_add_yard_form");
+    if (forceClose || panel.style.display !== "none") {
+      panel.style.display = "none";
+      _gid("rl_new_yard_name").value = "";
+      _gid("rl_new_yard_address").value = "";
+      _gid("rl_new_yard_err").style.display = "none";
+    } else {
+      panel.style.display = "";
+      _gid("rl_new_yard_name").focus();
+    }
+  };
+  window.rlSaveNewYard = function() {
+    var name = (_gid("rl_new_yard_name").value || "").trim();
+    var addr = (_gid("rl_new_yard_address").value || "").trim();
+    var errEl = _gid("rl_new_yard_err");
+    if (!name) {
+      errEl.textContent = "Yard name is required.";
+      errEl.style.display = "";
+      return;
+    }
+    errEl.style.display = "none";
+    var fd = new FormData();
+    fd.append("name", name);
+    fd.append("address", addr);
+    fetch("/resources/auction-yards/add", { method: "POST", body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok) {
+          errEl.textContent = data.error || "Could not save yard.";
+          errEl.style.display = "";
+          return;
+        }
+        var yardSel = _gid("rl_auction_yard_id");
+        var o = document.createElement("option");
+        o.value = data.id;
+        var _addrs = (data.address || "").split("\n").map(function(a){ return a.trim(); }).filter(Boolean);
+        o.textContent = (_addrs.length === 1) ? data.name + " \u2014 " + _addrs[0] : data.name;
+        o.dataset.addresses = JSON.stringify(_addrs);
+        o.dataset.name      = data.name || "";
+        yardSel.appendChild(o);
+        yardSel.value = String(data.id);
+        rlAuctionYardChanged(yardSel);
+        _rlAuctionYards.push({ id: data.id, name: data.name, address: data.address || "" });
+        rlToggleAddYard(null, true);
+      })
+      .catch(function() {
+        errEl.textContent = "Network error — please try again.";
+        errEl.style.display = "";
+      });
+  };
   window.rlRegoExpiryChanged = function(input) {
     var val = input.value;
     if (!val) return;

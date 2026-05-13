@@ -1209,7 +1209,7 @@ function showTab(name) {
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Operator (Contact Name)</label><input type="text" name="tow_operator" id="rlm_tow_operator" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Contact Number</label><input type="tel" name="tow_contact_number" id="rlm_tow_contact_number" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Tow Costs</label><input type="text" name="tow_costs" id="rlm_tow_costs" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
-          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard</label><select id="rlm_auction_yard_id" onchange="rlmAuctionYardChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Auction Yard —</option></select><div id="rlm_yard_addr_wrap" style="display:none;margin-top:6px;"><select id="rlm_yard_addr_picker" onchange="rlmYardAddrPickerChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Delivery Address —</option></select></div></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard</label><select id="rlm_auction_yard_id" onchange="rlmAuctionYardChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Auction Yard —</option></select><div id="rlm_yard_addr_wrap" style="display:none;margin-top:6px;"><select id="rlm_yard_addr_picker" onchange="rlmYardAddrPickerChanged(this)" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;background:#fff;"><option value="">— Select Delivery Address —</option></select></div><div style="margin-top:6px;"><a href="#" onclick="rlmToggleAddYard(event)" style="font-size:.78rem;color:#2563eb;text-decoration:none;font-weight:600;">+ Add new yard</a></div><div id="rlm_add_yard_form" style="display:none;margin-top:8px;padding:12px;background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;"><div style="margin-bottom:8px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Yard Name <span style="color:#dc2626;">*</span></label><input id="rlm_new_yard_name" placeholder="e.g. City Auctions" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div><div style="margin-bottom:8px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;margin-bottom:4px;">Address</label><input id="rlm_new_yard_address" placeholder="Street address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div><div id="rlm_new_yard_err" style="display:none;font-size:.78rem;color:#dc2626;margin-bottom:8px;"></div><div style="display:flex;gap:8px;"><button type="button" onclick="rlmSaveNewYard()" style="flex:1;padding:10px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;">Save &amp; Select</button><button type="button" onclick="rlmToggleAddYard(null, true)" style="flex:0 0 auto;padding:10px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:.82rem;font-weight:600;cursor:pointer;">Cancel</button></div></div></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Auction Yard Name (manual)</label><input type="text" id="rlm_auction_yard_manual" placeholder="If not in list" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Deliver To</label><input type="text" name="deliver_to" id="rlm_deliver_to" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Delivery Address</label><input type="text" name="delivery_address" id="rlm_delivery_address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
@@ -1716,6 +1716,58 @@ function showTab(name) {
       }
     });
   })();
+  window.rlmToggleAddYard = function(e, forceClose) {
+    if (e) e.preventDefault();
+    var panel = _gid("rlm_add_yard_form");
+    if (forceClose || panel.style.display !== "none") {
+      panel.style.display = "none";
+      _gid("rlm_new_yard_name").value = "";
+      _gid("rlm_new_yard_address").value = "";
+      _gid("rlm_new_yard_err").style.display = "none";
+    } else {
+      panel.style.display = "";
+      _gid("rlm_new_yard_name").focus();
+    }
+  };
+  window.rlmSaveNewYard = function() {
+    var name  = (_gid("rlm_new_yard_name").value || "").trim();
+    var addr  = (_gid("rlm_new_yard_address").value || "").trim();
+    var errEl = _gid("rlm_new_yard_err");
+    if (!name) {
+      errEl.textContent = "Yard name is required.";
+      errEl.style.display = "";
+      return;
+    }
+    errEl.style.display = "none";
+    var fd = new FormData();
+    fd.append("name", name);
+    fd.append("address", addr);
+    fetch("/resources/auction-yards/add", { method: "POST", body: fd })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok) {
+          errEl.textContent = data.error || "Could not save yard.";
+          errEl.style.display = "";
+          return;
+        }
+        var yardSel = _gid("rlm_auction_yard_id");
+        var o = document.createElement("option");
+        o.value = data.id;
+        var _addrs = (data.address || "").split("\n").map(function(a){ return a.trim(); }).filter(Boolean);
+        o.textContent = (_addrs.length === 1) ? data.name + " \u2014 " + _addrs[0] : data.name;
+        o.dataset.addresses = JSON.stringify(_addrs);
+        o.dataset.name      = data.name || "";
+        yardSel.appendChild(o);
+        yardSel.value = String(data.id);
+        rlmAuctionYardChanged(yardSel);
+        _rlmAuctionYards.push({ id: data.id, name: data.name, address: data.address || "" });
+        rlmToggleAddYard(null, true);
+      })
+      .catch(function() {
+        errEl.textContent = "Network error — please try again.";
+        errEl.style.display = "";
+      });
+  };
   window.rlmRegoExpiryChanged = function(input) {
     var val = input.value;
     if (!val) return;
