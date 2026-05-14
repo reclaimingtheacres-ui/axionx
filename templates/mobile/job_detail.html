@@ -980,16 +980,6 @@ function showTab(name) {
     return 'detail';
   }
 
-  function _axPushDocSentinel() {
-    // Push a sentinel history entry so that when the iOS native document
-    // viewer (Quick Look) calls history.back() on dismiss, the WKWebView
-    // lands back on THIS page rather than jumping past it to the schedule.
-    try {
-      sessionStorage.setItem('_axDocReturnTab', _axGetActiveTab());
-      history.pushState({_axDocPreview: true}, '', window.location.href);
-    } catch(e) {}
-  }
-
   function _fallback(url, filename, icon, label) {
     return '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;">' +
       '<div style="text-align:center;padding:24px 16px;">' +
@@ -1019,11 +1009,9 @@ function showTab(name) {
 
     if (ext === 'pdf') {
       if (hasNative) {
-        _axPushDocSentinel();
         try {
-          window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
+          window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href.split('#')[0] + '#' + _axGetActiveTab()});
         } catch(e) {
-          history.back(); // undo sentinel if native call failed
           window.open(url, '_blank');
         }
         return;
@@ -1064,12 +1052,10 @@ function showTab(name) {
 
     if (hasNative) {
       console.log('[DOC-PREVIEW] native handoff: ' + url);
-      _axPushDocSentinel();
       try {
-        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href.split('#')[0] + '#' + _axGetActiveTab()});
       } catch(e) {
         console.log('[DOC-PREVIEW] native postMessage error: ' + e.message);
-        history.back(); // undo sentinel if native call failed
         body.innerHTML = _fallback(url, filename, '&#128196;', 'Open Document');
         document.getElementById('mFilePreviewOverlay').style.display = 'flex';
       }
@@ -1090,11 +1076,9 @@ function showTab(name) {
     console.log('[DOC-PREVIEW] axNativeDocOpen: ' + url);
     var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
     if (hasNative) {
-      _axPushDocSentinel();
       try {
-        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href.split('#')[0] + '#' + _axGetActiveTab()});
       } catch(e) {
-        history.back(); // undo sentinel if native call failed
         window.open(url, '_blank');
       }
     } else {
@@ -1125,16 +1109,6 @@ function showTab(name) {
   };
 })();
 
-/* ── Doc-preview history sentinel: restore tab on return from native viewer ── */
-window.addEventListener('popstate', function() {
-  try {
-    var tab = sessionStorage.getItem('_axDocReturnTab');
-    if (tab) {
-      sessionStorage.removeItem('_axDocReturnTab');
-      if (typeof showTab === 'function') showTab(tab);
-    }
-  } catch(e) {}
-});
 </script>
 
 <div id="rlOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9000;background:#f9fafb;overflow:hidden;flex-direction:column;">
@@ -2328,6 +2302,20 @@ document.addEventListener('DOMContentLoaded', function() {
     if (u) {
       var btn = document.getElementById('m-back-btn');
       if (btn) btn.href = u;
+    }
+  } catch(e) {}
+})();
+</script>
+<script>
+/* ── Restore tab from URL hash after native document viewer return ──
+   When iOS closes the Quick Look viewer it calls webView.load(returnURL).
+   The returnURL now includes the active tab as a fragment, e.g. #notes.
+   This IIFE fires after the page is rendered and activates the correct tab. */
+(function() {
+  try {
+    var hash = window.location.hash.replace(/^#/, '').trim();
+    if (hash && ['notes', 'forms', 'detail'].indexOf(hash) >= 0) {
+      if (typeof showTab === 'function') showTab(hash);
     }
   } catch(e) {}
 })();
