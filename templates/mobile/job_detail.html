@@ -971,6 +971,25 @@ function showTab(name) {
   var AUDIO_EXT = ['m4a','wav','mp3','ogg','aac','wma'];
   var _curUrl = '', _curFilename = '';
 
+  function _axGetActiveTab() {
+    var tabs = ['notes','forms','detail'];
+    for (var i = 0; i < tabs.length; i++) {
+      var p = document.getElementById('tabpanel-' + tabs[i]);
+      if (p && p.style.display !== 'none') return tabs[i];
+    }
+    return 'detail';
+  }
+
+  function _axPushDocSentinel() {
+    // Push a sentinel history entry so that when the iOS native document
+    // viewer (Quick Look) calls history.back() on dismiss, the WKWebView
+    // lands back on THIS page rather than jumping past it to the schedule.
+    try {
+      sessionStorage.setItem('_axDocReturnTab', _axGetActiveTab());
+      history.pushState({_axDocPreview: true}, '', window.location.href);
+    } catch(e) {}
+  }
+
   function _fallback(url, filename, icon, label) {
     return '<div style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;">' +
       '<div style="text-align:center;padding:24px 16px;">' +
@@ -1000,9 +1019,11 @@ function showTab(name) {
 
     if (ext === 'pdf') {
       if (hasNative) {
+        _axPushDocSentinel();
         try {
           window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
         } catch(e) {
+          history.back(); // undo sentinel if native call failed
           window.open(url, '_blank');
         }
         return;
@@ -1043,10 +1064,12 @@ function showTab(name) {
 
     if (hasNative) {
       console.log('[DOC-PREVIEW] native handoff: ' + url);
+      _axPushDocSentinel();
       try {
         window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
       } catch(e) {
         console.log('[DOC-PREVIEW] native postMessage error: ' + e.message);
+        history.back(); // undo sentinel if native call failed
         body.innerHTML = _fallback(url, filename, '&#128196;', 'Open Document');
         document.getElementById('mFilePreviewOverlay').style.display = 'flex';
       }
@@ -1067,7 +1090,13 @@ function showTab(name) {
     console.log('[DOC-PREVIEW] axNativeDocOpen: ' + url);
     var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
     if (hasNative) {
-      try { window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href}); } catch(e) { window.open(url, '_blank'); }
+      _axPushDocSentinel();
+      try {
+        window.webkit.messageHandlers.documentPreview.postMessage({url: url, filename: filename, returnTo: window.location.href});
+      } catch(e) {
+        history.back(); // undo sentinel if native call failed
+        window.open(url, '_blank');
+      }
     } else {
       window.open(url, '_blank');
     }
@@ -1095,6 +1124,17 @@ function showTab(name) {
     try { await navigator.share({title:_curFilename, url:fileUrl}); } catch(e) {}
   };
 })();
+
+/* ── Doc-preview history sentinel: restore tab on return from native viewer ── */
+window.addEventListener('popstate', function() {
+  try {
+    var tab = sessionStorage.getItem('_axDocReturnTab');
+    if (tab) {
+      sessionStorage.removeItem('_axDocReturnTab');
+      if (typeof showTab === 'function') showTab(tab);
+    }
+  } catch(e) {}
+});
 </script>
 
 <div id="rlOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9000;background:#f9fafb;overflow:hidden;flex-direction:column;">
