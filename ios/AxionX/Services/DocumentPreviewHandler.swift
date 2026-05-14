@@ -44,7 +44,20 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         !isReturnNavigationProtected
     }
 
+    /// Legacy name — kept for call sites that already use it.
     var isPreviewRestoreProtected: Bool {
+        isReturnNavigationProtected
+    }
+
+    /// True from the moment a preview is initiated until 8 seconds after
+    /// the QLPreviewController fully dismisses and the restore URL has loaded.
+    ///
+    /// Used to suppress:
+    ///   - ContentView.resolveAuthState() re-fires caused by UIHostingController
+    ///     viewDidAppear (SwiftUI .task re-trigger on QL dismiss)
+    ///   - axionSessionExpired transitions that arrive during the restore window
+    ///   - applicationDidBecomeActive foreground refresh during preview
+    var isSuppressingAuthChallenges: Bool {
         isReturnNavigationProtected
     }
 
@@ -231,9 +244,15 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
         isPreviewInFlight = true
         returnURLFrozen = true
-        print("[DocPreview] preview lifecycle started source=\(source)")
-        print("[DocPreview] preview URL opened: \(remoteURL.absoluteString)")
-        print("[DocPreview] frozen return target: \(returnURL?.absoluteString ?? "nil")")
+        // Log the current webView URL so we can verify it matches the eventual
+        // returnURL and that the Notes tab context will be correctly preserved.
+        let urlBeforePreview = webView?.url?.absoluteString ?? "nil"
+        print("[DocPreview] ── preview presented ─────────────────────────────────────")
+        print("[DocPreview] source=\(source) file=\(filename)")
+        print("[DocPreview] document URL: \(remoteURL.absoluteString)")
+        print("[DocPreview][Auth] isSuppressingAuthChallenges=true — auth challenges suppressed from this point")
+        print("[DocPreview][Restore] webView URL before preview: \(urlBeforePreview)")
+        print("[DocPreview][Restore] returnURL (frozen): \(returnURL?.absoluteString ?? "nil (not yet captured)")")
         fetchCookiesAndDownload(remoteURL: remoteURL, filename: filename)
     }
 
@@ -533,37 +552,58 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         // The default .pageSheet presentation shows the job screen behind the viewer.
         ql.modalPresentationStyle = .fullScreen
         coord.onDismiss = { [weak self] in
+            // ── Belt-and-suspenders ordering ─────────────────────────────────────
+            // Set restoreProtectionUntil BEFORE clearing isPresentingDocument /
+            // isPreviewInFlight.  returnURLFrozen stays true throughout (it is only
+            // cleared in noteNavigationFinished or the 8.5 s timeout), so
+            // isSuppressingAuthChallenges already returns true at this moment.
+            // Moving the timestamp assignment here eliminates any theoretical
+            // window between the two flag clears and the timestamp write.
+            // ─────────────────────────────────────────────────────────────────────
+            self?.restoreProtectionUntil = Date().addingTimeInterval(8)
+
+            let urlBefore = self?.webView?.url?.absoluteString ?? "nil"
             print("[DocPreview] QLPreviewController dismissed")
+            print("[DocPreview][Restore] webView URL at dismiss: \(urlBefore)")
+            print("[DocPreview][Auth] isSuppressingAuthChallenges=\(self?.isSuppressingAuthChallenges ?? false) — auth challenges are blocked during restore")
+
             self?.isPresentingDocument = false
             self?.isPreviewInFlight = false
             self?.previewCoordinator = nil
             self?.logCookiesAfterPreview()
+
             if let url = self?.returnURL {
-                self?.restoreProtectionUntil = Date().addingTimeInterval(8)
-                print("[DocPreview] actual URL restored after Quick Look closes: \(url.absoluteString)")
+                print("[DocPreview][Restore] restoring webView to returnURL: \(url.absoluteString)")
                 DispatchQueue.main.async {
+                    print("[DocPreview][Restore] calling webView.load(\(url.absoluteString))")
                     self?.webView?.load(URLRequest(url: url))
+                    print("[DocPreview][Restore] webView.load called — no Schedule redirect should occur")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        print("[DocPreview] final webView URL after restore: \(self?.webView?.url?.absoluteString ?? "nil")")
+                        let urlAfter = self?.webView?.url?.absoluteString ?? "nil"
+                        print("[DocPreview][Restore] webView URL 2 s after restore: \(urlAfter)")
                         if let current = self?.webView?.url, Self.urlsEquivalent(current, url) {
+                            print("[DocPreview][Restore] restore confirmed — clearing return protection")
                             self?.returnURLFrozen = false
                             self?.restoreProtectionUntil = nil
                             self?.returnURL = nil
+                            print("[DocPreview][Auth] isSuppressingAuthChallenges now \(self?.isSuppressingAuthChallenges ?? false)")
                         } else {
-                            print("[DocPreview] restore target not confirmed yet; keeping return protection active")
+                            print("[DocPreview][Restore] restore target not yet confirmed (got \(urlAfter)); keeping protection active")
                         }
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 8.5) {
                         if self?.returnURLFrozen == true {
-                            print("[DocPreview] restore protection timeout; clearing frozen return target")
+                            print("[DocPreview][Restore] restore protection 8.5 s timeout — force-clearing")
                             self?.returnURLFrozen = false
                             self?.restoreProtectionUntil = nil
                             self?.returnURL = nil
+                            print("[DocPreview][Auth] isSuppressingAuthChallenges now \(self?.isSuppressingAuthChallenges ?? false)")
                         }
                     }
                 }
             } else {
-                print("[DocPreview] No returnURL stored — webView stays at current page")
+                print("[DocPreview][Restore] no returnURL captured — webView stays at current page (no reload)")
+                print("[DocPreview][Auth] WARNING: no returnURL means Notes tab context may not be preserved")
                 self?.returnURLFrozen = false
             }
         }

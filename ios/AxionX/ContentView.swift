@@ -44,7 +44,17 @@ struct ContentView: View {
         .onReceive(
             NotificationCenter.default.publisher(for: .axionSessionExpired)
         ) { _ in
-            print("[Startup] Session expired notification received")
+            // Suppress session-expired transitions while a document preview is active
+            // or the 8-second post-dismiss restore window is running.
+            // The webView.load(returnURL) after QL dismissal can hit a server-side
+            // redirect to /login if the Flask session expired; without this guard
+            // the auth state would flip to .unauthenticated, destroying WebViewContainer
+            // and its WKWebView, causing loadInitial() to reload /m/schedule/today.
+            if DocumentPreviewHandler.shared.isSuppressingAuthChallenges {
+                print("[ContentView] axionSessionExpired suppressed — document preview active or restoring")
+                return
+            }
+            print("[ContentView] Session expired notification received")
             LoginService.markSessionInactive()
             BiometricAuthService.clearSession()
             withAnimation(.easeInOut(duration: 0.35)) {
@@ -55,6 +65,29 @@ struct ContentView: View {
 
     @MainActor
     private func resolveAuthState() {
+        // DOCUMENT PREVIEW GUARD — critical fix.
+        //
+        // QLPreviewController is presented .fullScreen from topViewController(),
+        // which resolves to the UIHostingController that hosts this ContentView.
+        // UIKit calls viewWillDisappear/viewDidDisappear on the hosting controller
+        // while QL is visible, then viewWillAppear/viewDidAppear when QL dismisses.
+        // SwiftUI's .task modifier respects UIKit's viewDidAppear/viewDidDisappear,
+        // so it CANCELS the running task when QL opens and RE-FIRES resolveAuthState()
+        // when QL closes — before previewControllerDidDismiss has had a chance to fire.
+        //
+        // Without this guard: resolveAuthState() sees a saved biometric token and calls
+        // doBiometricAuth(), presenting a Face ID challenge. On success, authState cycles
+        // to .authenticated, WebViewContainer is recreated with a fresh WKWebView (nil
+        // URL), loadInitial() runs, and the user lands on /m/schedule/today.
+        //
+        // With the guard: isPresentingDocument is still true at the moment .task re-fires
+        // (UIHostingController viewDidAppear precedes previewControllerDidDismiss), so
+        // isSuppressingAuthChallenges returns true and we bail out immediately.
+        if DocumentPreviewHandler.shared.isSuppressingAuthChallenges {
+            print("[ContentView] resolveAuthState suppressed — document preview active or restoring")
+            return
+        }
+
         print("[Startup] resolveAuthState: begin")
 
         if BiometricAuthService.hasSavedToken && BiometricAuthService.isOptedIn {
