@@ -80,7 +80,7 @@
 <div style="background:{{ _jt_bg }};border:1.5px solid {{ _jt_border }};border-radius:12px;
             padding:13px 16px;margin-bottom:10px;text-align:center;">
   <div style="font-size:.68rem;font-weight:700;color:{{ _jt_color }};letter-spacing:.08em;
-              text-transform:uppercase;margin-bottom:2px;">Job Type</div>
+              text-transform:uppercase;margin-bottom:2px;">{{ (job.regulation_type | upper) if job.regulation_type else 'CONTRACT' }}</div>
   <div style="font-size:1.15rem;font-weight:800;color:{{ _jt_color }};letter-spacing:.01em;
               line-height:1.2;">{{ job.job_type }}</div>
 </div>
