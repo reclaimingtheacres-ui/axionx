@@ -61,6 +61,31 @@
 {% set _display_addr = (job.job_address if job.job_address else _cust_addr) or '' %}
 {% set _has_addr = _display_addr %}
 
+{# ── Job type banner ── #}
+{% if job.job_type %}
+{% set _jt = job.job_type | lower %}
+{% if 'repo' in _jt and 'collect' in _jt %}
+  {% set _jt_bg = '#fff7ed' %}{% set _jt_border = '#fb923c' %}{% set _jt_color = '#9a3412' %}
+{% elif 'repo' in _jt %}
+  {% set _jt_bg = '#fef2f2' %}{% set _jt_border = '#f87171' %}{% set _jt_color = '#991b1b' %}
+{% elif 'field call' in _jt %}
+  {% set _jt_bg = '#eff6ff' %}{% set _jt_border = '#60a5fa' %}{% set _jt_color = '#1d4ed8' %}
+{% elif 'collect' in _jt %}
+  {% set _jt_bg = '#f0fdf4' %}{% set _jt_border = '#4ade80' %}{% set _jt_color = '#166534' %}
+{% elif 'process serve' in _jt %}
+  {% set _jt_bg = '#faf5ff' %}{% set _jt_border = '#c084fc' %}{% set _jt_color = '#6b21a8' %}
+{% else %}
+  {% set _jt_bg = '#f8fafc' %}{% set _jt_border = '#94a3b8' %}{% set _jt_color = '#334155' %}
+{% endif %}
+<div style="background:{{ _jt_bg }};border:1.5px solid {{ _jt_border }};border-radius:12px;
+            padding:13px 16px;margin-bottom:10px;text-align:center;">
+  <div style="font-size:.68rem;font-weight:700;color:{{ _jt_color }};letter-spacing:.08em;
+              text-transform:uppercase;margin-bottom:2px;">Job Type</div>
+  <div style="font-size:1.15rem;font-weight:800;color:{{ _jt_color }};letter-spacing:.01em;
+              line-height:1.2;">{{ job.job_type }}</div>
+</div>
+{% endif %}
+
 {# ── 1. Customer card: name · address · phone · email · account ── #}
 <div class="m-card" style="margin-bottom:10px;">
   <div class="m-card-body">
