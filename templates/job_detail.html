@@ -171,7 +171,7 @@
       {% endif %}
     {% endif %}
 
-    {% if session.get('role') in ('admin','both') and client_update_info and not client_update_info.get('phase') and client_update_info.get('days_in_status', 0) >= 28 and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+    {% if session.get('role') in ('admin','both') and client_update_info and client_update_info.get('phase') != 'pending_closure' and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
     <button class="btn btn-outline-success btn-sm" type="button"
             onclick="openClientResponseModal()">
       Client Responded

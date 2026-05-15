@@ -591,6 +591,7 @@ searchBox.addEventListener('input', function(){
   removeServerResults();
   applySortAndFilter();
   clearTimeout(_searchTimer);
+  try { sessionStorage.setItem('ax.jobsSearchQ', this.value); } catch(e) {}
   if(searchQ.length >= 2){
     _searchTimer = setTimeout(()=>{ serverSearch(searchQ); }, 350);
   }
@@ -605,6 +606,7 @@ searchClearBtn.addEventListener('click', function(e){
   applySortAndFilter();
   clearTimeout(_searchTimer);
   if(_searchAbort){ _searchAbort.abort(); _searchAbort = null; }
+  try { sessionStorage.removeItem('ax.jobsSearchQ'); } catch(e) {}
   searchBox.focus();
 });
 
@@ -933,6 +935,7 @@ document.getElementById('reset-btn').addEventListener('click',()=>{
   });
   document.querySelectorAll('.qs-chip').forEach(c=>c.classList.remove('sel'));
   searchBox.value=''; searchQ='';
+  try { sessionStorage.removeItem('ax.jobsSearchQ'); } catch(e) {}
   const needsReload = (currentScope !== _initScope ||
                        currentAssignment !== _initAssignment ||
                        currentCompleted !== _initCompleted);
@@ -954,6 +957,24 @@ document.getElementById('reset-btn').addEventListener('click',()=>{
 });
 
 applySortAndFilter();
+
+// ── Restore search query from sessionStorage (back-nav from job detail) ──
+(function(){
+  try {
+    var saved = sessionStorage.getItem('ax.jobsSearchQ') || '';
+    if(saved && !searchBox.value){
+      searchBox.value = saved;
+      searchQ = saved.toLowerCase().trim();
+      _toggleSearchClear();
+      removeServerResults();
+      applySortAndFilter();
+      if(searchQ.length >= 2){
+        clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(function(){ serverSearch(searchQ); }, 350);
+      }
+    }
+  } catch(e) {}
+})();
 
 // ═══════════════════════════════════════════════════════
 // SWIPE ACTIONS
