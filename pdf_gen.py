@@ -781,57 +781,47 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.drawString(376, 651, _v(data, 'registration'))
     c.drawString(167, 638, _v(data, 'vin'))
 
-    def _check_condition(val, option):
-        if not val:
-            return False
-        return val.strip().upper() == option.upper()
-
-    body_val = _v(data, 'body')
-    paint_val = _v(data, 'duco')
+    body_val   = _v(data, 'body')
+    paint_val  = _v(data, 'duco')
     bumper_val = _v(data, 'bumpers') or body_val
-    glass_val = _v(data, 'glass')
-    tyres_val = _v(data, 'tyres')
+    glass_val  = _v(data, 'glass')
+    tyres_val  = _v(data, 'tyres')
 
-    ext4_xs = [255, 339, 425, 517]
-    cond_rows = [
-        (567, body_val,   ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
-        (552, paint_val,  ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
-        (536, bumper_val, ['POOR', 'GOOD', 'EXCELLENT', 'DAMAGED'], ext4_xs),
-        (521, glass_val,  ['BROKEN', 'CRACKED', 'GOOD', None],      [255, 339, 425]),
-        (506, tyres_val,  ['BALD', 'FAIR', 'GOOD', 'EXCELLENT'],    [255, 339, 425, 517]),
-    ]
+    # ── EXTERIOR: white-out checkbox columns, print selected value as text ────
+    c.setFillColor(HexColor('#FFFFFF'))
+    c.rect(215, 497, 325, 82, stroke=0, fill=1)
+    c.setFillColor(DARK)
+    c.setFont(F, SZ)
+    for _ey, _val in [(567, body_val), (552, paint_val), (536, bumper_val),
+                      (521, glass_val), (506, tyres_val)]:
+        if _val:
+            c.drawString(255, _ey, _val.strip().title())
 
-    for row_y, val, opts, xs in cond_rows:
-        for j, opt in enumerate(opts):
-            if opt and _check_condition(val, opt):
-                _wise_tick(c, xs[j], row_y)
-
+    # ── MECHANICAL: white-out YES/NO boxes, print selected value as text ──────
     drive_val = _v(data, 'security_drivable')
+    c.setFillColor(HexColor('#FFFFFF'))
+    c.rect(248, 455, 112, 16, stroke=0, fill=1)
+    c.rect(498, 455, 72,  16, stroke=0, fill=1)
+    c.setFillColor(DARK)
+    c.setFont(F, SZ)
     if drive_val:
-        if drive_val.strip().upper() in ('YES', 'Y', 'TRUE'):
-            _wise_tick(c, 277, 463)
-        else:
-            _wise_tick(c, 341, 463)
+        c.drawString(277, 463,
+                     'Yes' if drive_val.strip().upper() in ('YES', 'Y', 'TRUE') else 'No')
 
     eng = _v(data, 'engine_condition').lower()
     if eng:
-        eng_ok = eng not in ('damaged', 'poor', 'missing', 'no', 'n/a')
-        if eng_ok:
-            _wise_tick(c, 511, 463)
-        else:
-            _wise_tick(c, 555, 463)
+        eng_intact = eng not in ('damaged', 'poor', 'missing', 'no', 'n/a')
+        c.drawString(511, 463, 'Yes' if eng_intact else 'No')
 
+    # ── INTERIOR: white-out checkbox columns, print selected value as text ────
     interior_val = _v(data, 'interior')
-    int_xs = [243, 315, 425]
-    int_rows = [
-        (419, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-        (404, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-        (388, interior_val, ['POOR', 'GOOD', 'EXCELLENT']),
-    ]
-    for row_y, val, opts in int_rows:
-        for j, opt in enumerate(opts):
-            if _check_condition(val, opt):
-                _wise_tick(c, int_xs[j], row_y)
+    c.setFillColor(HexColor('#FFFFFF'))
+    c.rect(215, 381, 245, 47, stroke=0, fill=1)
+    c.setFillColor(DARK)
+    c.setFont(F, SZ)
+    for _iy, _val in [(419, interior_val), (404, interior_val), (388, interior_val)]:
+        if _val:
+            c.drawString(243, _iy, _val.strip().title())
 
     c.setFont(F, SZ)
     km = _v(data, 'speedometer')
@@ -891,12 +881,15 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
         c.drawString(426, 170, held_at[:30])
     c.setFont(F, SZ)
 
+    # ── REDEEM: white-out YES/NO boxes, print selected value as text ─────────
     redeem = _v(data, 'vol_surrender')
+    c.setFillColor(HexColor('#FFFFFF'))
+    c.rect(403, 116, 145, 16, stroke=0, fill=1)
+    c.setFillColor(DARK)
+    c.setFont(F, SZ)
     if redeem:
-        if redeem.strip().upper() in ('YES', 'Y', 'TRUE'):
-            _wise_tick(c, 423, 124)
-        else:
-            _wise_tick(c, 526, 124)
+        c.drawString(423, 124,
+                     'Yes' if redeem.strip().upper() in ('YES', 'Y', 'TRUE') else 'No')
 
     if agent_sig:
         try:
