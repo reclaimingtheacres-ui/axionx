@@ -202,9 +202,9 @@
         <li><button type="button" class="dropdown-item" onclick="openSendMsg('both')">Send Both</button></li>
         <li><hr class="dropdown-divider"></li>
         {% endif %}
-        <li><button type="button" class="dropdown-item" onclick="openEmailCustomer()">Email Customer</button></li>
+        <li><button type="button" class="dropdown-item" data-msg-action="email-customer">Email Customer</button></li>
         <li><hr class="dropdown-divider"></li>
-        <li><button type="button" class="dropdown-item" onclick="openInternalMsg()">Internal Message</button></li>
+        <li><button type="button" class="dropdown-item" data-msg-action="internal">Internal Message</button></li>
       </ul>
     </div>
     <noscript>
@@ -5494,8 +5494,26 @@ function doSendMsg() {
   .catch(function(err) { btn.disabled = false; _msgShowError('Network error \u2014 ' + err.message + '. Please try again.'); });
 }
 
+window.openEmailCustomer = openEmailCustomer;
+window.openInternalMsg   = openInternalMsg;
+window.openSendMsg       = openSendMsg;
+window.doSendMsg         = doSendMsg;
+
 document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('msg_send_btn').addEventListener('click', doSendMsg);
+  var sendBtn = document.getElementById('msg_send_btn');
+  if (sendBtn) { sendBtn.addEventListener('click', doSendMsg); }
+
+  document.querySelectorAll('[data-msg-action]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var modal = document.getElementById('sendMsgModal');
+      if (!modal) { alert('Message window failed to load. Please contact admin.'); return; }
+      var action = this.dataset.msgAction;
+      if (action === 'email-customer') { openEmailCustomer(); }
+      else if (action === 'internal')  { openInternalMsg(); }
+    });
+  });
 });
 
 /* ── Office Only Notes ────────────────────────────────────────────────── */
