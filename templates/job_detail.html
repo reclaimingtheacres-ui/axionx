@@ -143,19 +143,6 @@
       </ul>
     </div>
 
-    <div class="dropdown">
-      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-        Send Message
-      </button>
-      <ul class="dropdown-menu">
-        <li><button type="button" class="dropdown-item" onclick="openSendMsg('email')">Send Email</button></li>
-        <li><button type="button" class="dropdown-item" onclick="openSendMsg('sms')">Send SMS</button></li>
-        <li><button type="button" class="dropdown-item" onclick="openSendMsg('both')">Send Both</button></li>
-        <li><hr class="dropdown-divider"></li>
-        <li><button type="button" class="dropdown-item" onclick="openInternalMsg()">Internal Message</button></li>
-      </ul>
-    </div>
-
     {% if session.get('role') in ('admin','both','agent') and client_update_info %}
       {% set _cur_label = client_update_info.get('button_label', 'Request Client Update') %}
       {% if client_update_info.eligible %}
@@ -193,18 +180,32 @@
 
     {% else %}
     <a href="/jobs/{{ job.id }}/update-builder" class="btn btn-primary btn-sm">&#x2728; Create Update (AI Assist)</a>
+    {% endif %}
 
+    <!-- ── Unified Send Message dropdown — admin and agent ── -->
     <div class="dropdown">
       <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
         Send Message
       </button>
       <ul class="dropdown-menu">
+        {% if session.get('role') in ('admin', 'both') %}
+        <li><button type="button" class="dropdown-item" onclick="openSendMsg('email')">Send Email</button></li>
+        <li><button type="button" class="dropdown-item" onclick="openSendMsg('sms')">Send SMS</button></li>
+        <li><button type="button" class="dropdown-item" onclick="openSendMsg('both')">Send Both</button></li>
+        <li><hr class="dropdown-divider"></li>
+        {% endif %}
         <li><button type="button" class="dropdown-item" onclick="openEmailCustomer()">Email Customer</button></li>
         <li><hr class="dropdown-divider"></li>
         <li><button type="button" class="dropdown-item" onclick="openInternalMsg()">Internal Message</button></li>
       </ul>
     </div>
-    {% endif %}
+    <noscript>
+      <form method="post" action="/jobs/{{ job.id }}/notes/new" style="display:inline">
+        <input type="hidden" name="note_category" value="file_note">
+        <input type="hidden" name="note_text" value="[EMAIL CUSTOMER — no-JS fallback]">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">Email Customer (no-JS)</button>
+      </form>
+    </noscript>
   </div>
 
   <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
@@ -5389,16 +5390,17 @@ function openInternalMsg() {
 }
 
 function openEmailCustomer() {
-  _msgType = 'email_customer';
+  _msgType = 'email';
   document.getElementById('sendMsgTitle').textContent          = 'Email Customer';
-  document.getElementById('msg_type_badge').style.display      = 'none';
+  document.getElementById('msg_type_badge').textContent        = 'Email Customer';
+  document.getElementById('msg_type_badge').style.display      = '';
   _msgResetModal();
   document.getElementById('msg_prompt_row').style.display      = 'none';
   document.getElementById('msg_to_text_row').style.display     = '';
   document.getElementById('msg_to_internal_row').style.display = 'none';
-  {% set _cust_display = ((job.customer_company or '') + ' — ' + (job.customer_name or '')) if job.customer_company else (job.customer_name or 'Customer') %}
-  {% set _cust_to = _cust_display + (' <' + job.customer_email + '>' if job.customer_email else '') %}
-  document.getElementById('msg_to').value    = '{{ _cust_to | e }}';
+  {% set _cust_base = ((job.customer_company or '') + ' — ' + (job.customer_name or '')) if job.customer_company else (job.customer_name or '') %}
+  {% set _cust_to   = (_cust_base + ' <' + job.customer_email + '>') if job.customer_email else _cust_base %}
+  document.getElementById('msg_to').value    = {{ (_cust_to or 'No customer email recorded.') | tojson }};
   document.getElementById('msg_to').readOnly = true;
   document.getElementById('msg_subject').value = '{{ job.display_ref | e }}';
   document.getElementById('msg_body').value    = '';
@@ -5454,58 +5456,34 @@ function doSendMsg() {
     return;
   }
 
-  if (_msgType === 'email_customer') {
-    var btn = document.getElementById('msg_send_btn');
-    btn.disabled = true;
-    fetch('/jobs/{{ job.id }}/email-customer', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ to: to, subject: subject, body: body })
-    })
-    .then(function(r) {
-      if (!r.ok && r.status !== 400 && r.status !== 403) { throw new Error('HTTP ' + r.status); }
-      return r.json();
-    })
-    .then(function(data) {
-      btn.disabled = false;
-      if (data.ok) {
-        document.getElementById('msg-sent-alert').textContent   = 'Email logged as file note successfully.';
-        document.getElementById('msg-sent-alert').style.display = '';
-        document.getElementById('msg-form-body').style.display  = 'none';
-        document.getElementById('msg_send_btn').style.display   = 'none';
-        setTimeout(function(){
-          bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
-          window._axSaveReload = true;
-          window.location.reload();
-        }, 1800);
-      } else {
-        _msgShowError(data.error || 'Failed to log email.');
-      }
-    })
-    .catch(function(err) { btn.disabled = false; _msgShowError('Network error — ' + err.message + '. Please try again.'); });
-    return;
-  }
-
   var btn = document.getElementById('msg_send_btn');
   btn.disabled = true;
+  var fd = new FormData();
+  var noteLabel = (_msgType === 'email') ? 'EMAIL TO' : _msgType.toUpperCase() + ' TO';
+  var noteText  = '[' + noteLabel + ': ' + to + ']';
+  if (subject) { noteText += ' \u2014 ' + subject; }
+  noteText += '\n' + body;
+  fd.append('note_text', noteText);
+  if (_msgType === 'email') { fd.append('note_category', 'file_note'); }
   fetch('/jobs/{{ job.id }}/notes/new', {
     method: 'POST',
     credentials: 'same-origin',
-    body: (function(){ var f = new FormData(); f.append('note_text', '[' + _msgType.toUpperCase() + ' TO: ' + to + ']\n' + body); return f; })()
+    body: fd
   })
   .then(function(r) {
     if (!r.ok) { throw new Error('HTTP ' + r.status); }
     btn.disabled = false;
-    document.getElementById('msg-sent-alert').textContent   = 'Message logged successfully.';
+    var sentMsg = (_msgType === 'email') ? 'Email logged as file note successfully.' : 'Message logged successfully.';
+    document.getElementById('msg-sent-alert').textContent   = sentMsg;
     document.getElementById('msg-sent-alert').style.display = '';
     document.getElementById('msg-form-body').style.display  = 'none';
     document.getElementById('msg_send_btn').style.display   = 'none';
     setTimeout(function(){
       bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
+      if (_msgType === 'email') { window._axSaveReload = true; window.location.reload(); }
     }, 1800);
   })
-  .catch(function(err) { btn.disabled = false; _msgShowError('Network error — ' + err.message + '. Please try again.'); });
+  .catch(function(err) { btn.disabled = false; _msgShowError('Network error \u2014 ' + err.message + '. Please try again.'); });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
