@@ -1691,6 +1691,17 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
         <div class="form-card-title">Repossession Lock</div>
         <div class="form-card-sub">Lock &amp; secure details</div>
         {% if job_items %}
+          {% for item in job_items %}
+            {% set _rl_tow = repo_lock_tow_map.get(item.id) if repo_lock_tow_map else none %}
+            {% if _rl_tow and _rl_tow.get('tow_phone') %}
+            <div style="font-size:.78rem;color:#374151;margin-top:6px;line-height:1.4">
+              {% if _rl_tow.get('tow_company_name') %}
+              <span style="font-weight:600">{{ _rl_tow.tow_company_name }}</span><br>
+              {% endif %}
+              <a href="tel:{{ _rl_tow.tow_phone }}" style="color:#2563eb;text-decoration:none">&#128222; {{ _rl_tow.tow_phone }}</a>
+            </div>
+            {% endif %}
+          {% endfor %}
         <a class="btn btn-primary btn-sm mt-1" href="/jobs/{{ job.id }}?open_repo_lock={{ job_items[0].id }}#securities">Open</a>
         {% else %}
         <button class="btn btn-secondary btn-sm mt-1" disabled>No Assets</button>

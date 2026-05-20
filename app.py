@@ -5419,6 +5419,9 @@ def job_detail(job_id: int):
     repo_lock_map = {r["item_id"]: (r["status"] or "Draft") for r in conn.execute(
         "SELECT item_id, status FROM repo_lock_records WHERE job_id=?", (job_id,)
     ).fetchall()}
+    repo_lock_tow_map = {r["item_id"]: dict(r) for r in conn.execute(
+        "SELECT item_id, tow_phone, tow_company_name FROM repo_lock_records WHERE job_id=?", (job_id,)
+    ).fetchall()}
 
     from_cue = request.args.get("from_cue", "")
 
@@ -5456,6 +5459,7 @@ def job_detail(job_id: int):
                            job_lpr_sightings=job_lpr_sightings,
                            job_patrol_intel=job_patrol_intel,
                            repo_lock_map=repo_lock_map,
+                           repo_lock_tow_map=repo_lock_tow_map,
                            job_payments=job_payments,
                            payments_total_cents=payments_total_cents,
                            known_referrals=known_referrals,
@@ -19955,9 +19959,10 @@ def m_job_detail(job_id):
         (job_id, uid)
     ).fetchone())
     _rl_rows = conn.execute(
-        "SELECT item_id, status FROM repo_lock_records WHERE job_id=?", (job_id,)
+        "SELECT item_id, status, tow_phone, tow_company_name FROM repo_lock_records WHERE job_id=?", (job_id,)
     ).fetchall()
     repo_lock_map = {r["item_id"]: (r["status"] or "Draft") for r in _rl_rows}
+    repo_lock_tow_map = {r["item_id"]: dict(r) for r in _rl_rows}
     assigned_agent_name = None
     if job["assigned_user_id"]:
         _ag = conn.execute("SELECT full_name FROM users WHERE id=?", (job["assigned_user_id"],)).fetchone()
