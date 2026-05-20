@@ -4111,7 +4111,7 @@ def jobs_list():
         import logging as _log, traceback as _tb
         _log.error("jobs_list failed: %s\n%s", exc, _tb.format_exc())
         flash(f"Error loading jobs: {exc}", "danger")
-        return redirect(url_for("home"))
+        return redirect(url_for("jobs_list"))
 
 
 def _jobs_list_inner():
@@ -6795,7 +6795,7 @@ def job_internal_message(job_id: int):
 
         caller_id = session["user_id"]
         ts        = now_ts()
-        conv_subject = subject or PROMPTS[prompt]["subject"]
+        conv_subject = subject or (PROMPTS[prompt]["subject"] if prompt else "Internal Message")
 
         # Fetch display names for file note
         recipient_rows = cur.execute(
@@ -11391,7 +11391,12 @@ def job_email_customer(job_id: int):
     try:
         # Access check: admin always OK; agent must be assigned/scheduled
         job = cur.execute(
-            "SELECT id, display_ref, customer_name, customer_email FROM jobs WHERE id = ?",
+            """SELECT j.id, j.display_ref,
+                      (cu.first_name || ' ' || cu.last_name) AS customer_name,
+                      cu.email AS customer_email
+               FROM jobs j
+               LEFT JOIN customers cu ON cu.id = j.customer_id
+               WHERE j.id = ?""",
             (job_id,)
         ).fetchone()
         if not job:
