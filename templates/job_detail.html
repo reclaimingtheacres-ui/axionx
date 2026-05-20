@@ -179,7 +179,15 @@
     {% endif %}
 
     {% else %}
-    <a href="/jobs/{{ job.id }}/update-builder" class="btn btn-primary btn-sm">&#x2728; Create Update (AI Assist)</a>
+    <div class="dropdown">
+      <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        Add Note
+      </button>
+      <ul class="dropdown-menu">
+        <li><button type="button" class="dropdown-item" onclick="axOpenAddNote()">Manual Note</button></li>
+        <li><a class="dropdown-item" href="/jobs/{{ job.id }}/update-builder">&#x2728; AI Assisted Note</a></li>
+      </ul>
+    </div>
     {% endif %}
 
     <!-- ── Unified Send Message dropdown — admin and agent ── -->
