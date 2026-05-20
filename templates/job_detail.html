@@ -148,11 +148,11 @@
         Send Message
       </button>
       <ul class="dropdown-menu">
-        <li><a class="dropdown-item" href="#" onclick="openSendMsg('email');return false">Send Email</a></li>
-        <li><a class="dropdown-item" href="#" onclick="openSendMsg('sms');return false">Send SMS</a></li>
-        <li><a class="dropdown-item" href="#" onclick="openSendMsg('both');return false">Send Both</a></li>
+        <li><button type="button" class="dropdown-item" onclick="openSendMsg('email')">Send Email</button></li>
+        <li><button type="button" class="dropdown-item" onclick="openSendMsg('sms')">Send SMS</button></li>
+        <li><button type="button" class="dropdown-item" onclick="openSendMsg('both')">Send Both</button></li>
         <li><hr class="dropdown-divider"></li>
-        <li><a class="dropdown-item" href="#" onclick="openInternalMsg();return false">Internal Message</a></li>
+        <li><button type="button" class="dropdown-item" onclick="openInternalMsg()">Internal Message</button></li>
       </ul>
     </div>
 
@@ -199,9 +199,9 @@
         Send Message
       </button>
       <ul class="dropdown-menu">
-        <li><a class="dropdown-item" href="#" onclick="openEmailCustomer();return false">Email Customer</a></li>
+        <li><button type="button" class="dropdown-item" onclick="openEmailCustomer()">Email Customer</button></li>
         <li><hr class="dropdown-divider"></li>
-        <li><a class="dropdown-item" href="#" onclick="openInternalMsg();return false">Internal Message</a></li>
+        <li><button type="button" class="dropdown-item" onclick="openInternalMsg()">Internal Message</button></li>
       </ul>
     </div>
     {% endif %}
@@ -5212,6 +5212,7 @@ function adocOpenEditJob() {
       </div>
       <div class="modal-body">
         <div id="msg-sent-alert" class="alert alert-success mb-3" style="display:none">Message logged successfully.</div>
+        <div id="msg-error-alert" class="alert alert-danger mb-3" style="display:none"></div>
         <div id="msg-form-body">
           <div class="mb-3">
             <label class="form-label small fw-semibold">Type</label>
@@ -5271,7 +5272,7 @@ function adocOpenEditJob() {
       </div>
       <div class="modal-footer" style="border-top:1px solid var(--line)">
         <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm" id="msg_send_btn" onclick="doSendMsg()">Send</button>
+        <button type="button" class="btn btn-primary btn-sm" id="msg_send_btn">Send</button>
       </div>
     </div>
   </div>
@@ -5300,6 +5301,8 @@ var _internalPrompts = {
 
 function _msgResetModal() {
   document.getElementById('msg-sent-alert').style.display      = 'none';
+  document.getElementById('msg-error-alert').style.display     = 'none';
+  document.getElementById('msg-error-alert').textContent       = '';
   document.getElementById('msg-form-body').style.display       = '';
   document.getElementById('msg_send_btn').style.display        = '';
   document.getElementById('msg_prompt_row').style.display      = 'none';
@@ -5338,7 +5341,6 @@ function openDemoClientMsg() {
 }
 
 function openInternalMsg() {
-  console.log('[DIAG] openInternalMsg() called');
   _msgType = 'internal';
   document.getElementById('sendMsgTitle').textContent          = 'Internal Message';
   document.getElementById('msg_type_badge').style.display      = 'none';
@@ -5387,7 +5389,6 @@ function openInternalMsg() {
 }
 
 function openEmailCustomer() {
-  console.log('[DIAG] openEmailCustomer() called');
   _msgType = 'email_customer';
   document.getElementById('sendMsgTitle').textContent          = 'Email Customer';
   document.getElementById('msg_type_badge').style.display      = 'none';
@@ -5406,72 +5407,83 @@ function openEmailCustomer() {
   bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).show();
 }
 
+function _msgShowError(msg) {
+  var el = document.getElementById('msg-error-alert');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
 function doSendMsg() {
-  console.log('[DIAG] doSendMsg() called  _msgType=' + _msgType);
   var to      = document.getElementById('msg_to').value.trim();
   var subject = document.getElementById('msg_subject').value.trim();
   var body    = document.getElementById('msg_body').value.trim();
-  if (!body) { alert('Please enter a message.'); return; }
+  document.getElementById('msg-error-alert').style.display = 'none';
+  if (!body) { _msgShowError('Please enter a message.'); return; }
 
   if (_msgType === 'internal') {
     var prompt = document.getElementById('msg_prompt').value;
     var recipientIds = Array.from(document.querySelectorAll('.msg-recipient-cb:checked')).map(function(cb){ return parseInt(cb.value, 10); });
-    console.log('[DIAG] internal-message  recipientIds=' + JSON.stringify(recipientIds) + '  subject=' + subject);
-    if (!recipientIds.length) { alert('Please select at least one recipient.'); return; }
+    if (!recipientIds.length) { _msgShowError('Please select at least one recipient.'); return; }
     var btn = document.getElementById('msg_send_btn');
     btn.disabled = true;
-    console.log('[DIAG] fetching /jobs/{{ job.id }}/internal-message');
     fetch('/jobs/{{ job.id }}/internal-message', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ prompt: prompt, subject: subject, body: body, recipient_user_ids: recipientIds })
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok && r.status !== 400) { throw new Error('HTTP ' + r.status); }
+      return r.json();
+    })
     .then(function(data) {
       btn.disabled = false;
       if (data.ok) {
-        document.getElementById('msg-sent-alert').textContent    = 'Internal message sent successfully.';
-        document.getElementById('msg-sent-alert').style.display  = '';
-        document.getElementById('msg-form-body').style.display   = 'none';
-        document.getElementById('msg_send_btn').style.display    = 'none';
+        document.getElementById('msg-sent-alert').textContent   = 'Internal message sent successfully.';
+        document.getElementById('msg-sent-alert').style.display = '';
+        document.getElementById('msg-form-body').style.display  = 'none';
+        document.getElementById('msg_send_btn').style.display   = 'none';
         setTimeout(function(){
           bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
         }, 1800);
       } else {
-        alert(data.error || 'Failed to send internal message.');
+        _msgShowError(data.error || 'Failed to send internal message.');
       }
     })
-    .catch(function() { btn.disabled = false; alert('Network error. Please try again.'); });
+    .catch(function(err) { btn.disabled = false; _msgShowError('Network error — ' + err.message + '. Please try again.'); });
     return;
   }
 
   if (_msgType === 'email_customer') {
     var btn = document.getElementById('msg_send_btn');
     btn.disabled = true;
-    console.log('[DIAG] fetching /jobs/{{ job.id }}/email-customer  to=' + to + '  subject=' + subject);
     fetch('/jobs/{{ job.id }}/email-customer', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ to: to, subject: subject, body: body })
     })
-    .then(function(r) { return r.json(); })
+    .then(function(r) {
+      if (!r.ok && r.status !== 400 && r.status !== 403) { throw new Error('HTTP ' + r.status); }
+      return r.json();
+    })
     .then(function(data) {
       btn.disabled = false;
       if (data.ok) {
-        document.getElementById('msg-sent-alert').textContent    = 'Email logged as file note successfully.';
-        document.getElementById('msg-sent-alert').style.display  = '';
-        document.getElementById('msg-form-body').style.display   = 'none';
-        document.getElementById('msg_send_btn').style.display    = 'none';
+        document.getElementById('msg-sent-alert').textContent   = 'Email logged as file note successfully.';
+        document.getElementById('msg-sent-alert').style.display = '';
+        document.getElementById('msg-form-body').style.display  = 'none';
+        document.getElementById('msg_send_btn').style.display   = 'none';
         setTimeout(function(){
           bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
           window._axSaveReload = true;
           window.location.reload();
         }, 1800);
       } else {
-        alert(data.error || 'Failed to log email.');
+        _msgShowError(data.error || 'Failed to log email.');
       }
     })
-    .catch(function() { btn.disabled = false; alert('Network error. Please try again.'); });
+    .catch(function(err) { btn.disabled = false; _msgShowError('Network error — ' + err.message + '. Please try again.'); });
     return;
   }
 
@@ -5479,9 +5491,11 @@ function doSendMsg() {
   btn.disabled = true;
   fetch('/jobs/{{ job.id }}/notes/new', {
     method: 'POST',
-    body: (function(){ var f = new FormData(); f.append('note_text', '[' + _msgType.toUpperCase() + ' TO: ' + to + ']\n' + body); return f; })(),
-    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-  }).then(function() {
+    credentials: 'same-origin',
+    body: (function(){ var f = new FormData(); f.append('note_text', '[' + _msgType.toUpperCase() + ' TO: ' + to + ']\n' + body); return f; })()
+  })
+  .then(function(r) {
+    if (!r.ok) { throw new Error('HTTP ' + r.status); }
     btn.disabled = false;
     document.getElementById('msg-sent-alert').textContent   = 'Message logged successfully.';
     document.getElementById('msg-sent-alert').style.display = '';
@@ -5490,8 +5504,13 @@ function doSendMsg() {
     setTimeout(function(){
       bootstrap.Modal.getOrCreateInstance(document.getElementById('sendMsgModal')).hide();
     }, 1800);
-  }).catch(function() { btn.disabled = false; });
+  })
+  .catch(function(err) { btn.disabled = false; _msgShowError('Network error — ' + err.message + '. Please try again.'); });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('msg_send_btn').addEventListener('click', doSendMsg);
+});
 
 /* ── Office Only Notes ────────────────────────────────────────────────── */
 function offNoteEdit(id) {
