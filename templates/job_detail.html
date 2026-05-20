@@ -5348,10 +5348,16 @@ function openInternalMsg() {
   document.getElementById('msg_subject').value = '';
   document.getElementById('msg_body').value    = '';
 
-  // Reset checkboxes: only pre-check assigned agent, uncheck all admins
+  // Reset checkboxes: pre-check assigned agent; if current user IS the assigned agent
+  // that checkbox is hidden, so fall back to pre-checking the first available admin.
   document.querySelectorAll('.msg-recipient-cb').forEach(function(cb) {
     cb.checked = (cb.id === 'msg_recip_agent');
   });
+  var anyChecked = Array.from(document.querySelectorAll('.msg-recipient-cb')).some(function(cb){ return cb.checked; });
+  if (!anyChecked) {
+    var firstCb = document.querySelector('.msg-recipient-cb');
+    if (firstCb) firstCb.checked = true;
+  }
 
   document.getElementById('msg_prompt').onchange = function() {
     var p = this.value;
@@ -5388,7 +5394,8 @@ function openEmailCustomer() {
   document.getElementById('msg_to_text_row').style.display     = '';
   document.getElementById('msg_to_internal_row').style.display = 'none';
   {% set _cust_display = ((job.customer_company or '') + ' — ' + (job.customer_name or '')) if job.customer_company else (job.customer_name or 'Customer') %}
-  document.getElementById('msg_to').value    = '{{ _cust_display | e }}';
+  {% set _cust_to = _cust_display + (' <' + job.customer_email + '>' if job.customer_email else '') %}
+  document.getElementById('msg_to').value    = '{{ _cust_to | e }}';
   document.getElementById('msg_to').readOnly = true;
   document.getElementById('msg_subject').value = '{{ job.display_ref | e }}';
   document.getElementById('msg_body').value    = '';
