@@ -690,11 +690,13 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'SEND YOUR INVOICE DIRECT TO:')
     y -= 14
-    client_name  = _v(data, 'client_name')
-    client_email = _v(data, 'client_email')
+    ti_invoice_to = _v(data, 'ti_invoice_to')
+    client_name   = _v(data, 'client_name')
+    client_email  = _v(data, 'client_email')
+    invoice_line  = ti_invoice_to or client_name
     c.setFont('Helvetica', 8.5)
-    c.drawString(ML, y, _trunc(client_name, 50))
-    if client_email:
+    c.drawString(ML, y, _trunc(invoice_line, 50))
+    if client_email and not ti_invoice_to:
         y -= 14
         c.setFont('Helvetica-Bold', 8)
         c.drawString(ML, y, 'EMAIL:')
@@ -707,8 +709,9 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     c.setFont('Helvetica-Bold', 8)
     c.drawString(ML, y, 'REFERENCE / JOB NUMBER:')
     y -= 14
-    ref = ' / '.join(filter(None, [_v(data, 'client_reference'),
-                                   _v(data, 'registration')])) or _v(data, 'swpi_ref')
+    ti_reference = _v(data, 'ti_reference')
+    ref = ti_reference or (' / '.join(filter(None, [_v(data, 'client_reference'),
+                                                    _v(data, 'registration')])) or _v(data, 'swpi_ref'))
     c.setFont('Helvetica', 9)
     c.drawString(ML, y, ref)
     y -= 22

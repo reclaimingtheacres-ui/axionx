@@ -75,13 +75,9 @@
       {{ fi('deliver_to',       'Deliver To (Auction Facility)',  rec.deliver_to) }}
       {{ fi('delivery_address', 'Delivery Address',               rec.delivery_address) }}
     </div>
-    <div style="margin-top:12px;font-size:.82rem;color:#374151;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px;">
-      <span style="font-weight:700;">Invoice To:</span>
-      {{ client_name }}{% if client_email %} &mdash; {{ client_email }}{% endif %}
-    </div>
-    <div style="margin-top:10px;font-size:.82rem;color:#374151;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px;">
-      <span style="font-weight:700;">Reference / Job Number:</span>
-      {{ (rec.client_reference ~ ' / ' ~ rec.registration) if rec.client_reference and rec.registration else (rec.client_reference or rec.registration or rec.swpi_ref) }}
+    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      {{ fi('ti_invoice_to', 'Invoice To', ti_invoice_to) }}
+      {{ fi('ti_reference',  'Reference / Job Number', ti_reference) }}
     </div>
     </div>
 

@@ -10215,6 +10215,8 @@ def _rl_pdf_context(conn, rec, job_id):
         "item_make":            item.get("make") or "",
         "item_model":           item.get("model") or "",
         "item_year":            item.get("year") or "",
+        "ti_invoice_to":        rec.get("ti_invoice_to") or "",
+        "ti_reference":         rec.get("ti_reference") or "",
     })
     return d, agent_name, client, tow_op
 
@@ -10345,6 +10347,7 @@ def repo_lock_transport(job_id: int, rec_id: int):
     rec = dict(rec_row)
     d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
     conn.close()
+    _ti_ref_default = " / ".join(filter(None, [d.get("client_reference"), d.get("registration")])) or d.get("swpi_ref") or ""
     return render_template("repo_lock_transport.html",
                            rec=rec, job_id=job_id,
                            agent_name=agent_name,
@@ -10353,6 +10356,8 @@ def repo_lock_transport(job_id: int, rec_id: int):
                            tow_phone=d.get("tow_phone",""),
                            client_name=d.get("client_name",""),
                            client_email=d.get("client_email",""),
+                           ti_invoice_to=rec.get("ti_invoice_to") or d.get("client_name") or "",
+                           ti_reference=rec.get("ti_reference") or _ti_ref_default,
                            saved_agent_sig=rec.get("agent_signature") or "")
 
 
@@ -10380,7 +10385,7 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
             return jsonify({"ok": False, "error": "validation_error", "message": "Agent signature is required."}), 400
         return redirect(url_for("repo_lock_transport", job_id=job_id, rec_id=rec_id))
 
-    for col in ("make", "model", "tow_phone"):
+    for col in ("make", "model", "tow_phone", "ti_invoice_to", "ti_reference"):
         add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
 
     def _f(name):
@@ -10393,13 +10398,17 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
                         customer_name=?, repo_address=?,
                         make=?, model=?, registration=?, vin=?,
                         tow_company_name=?, tow_phone=?, tow_costs=?,
-                        deliver_to=?, delivery_address=?, updated_at=?
+                        deliver_to=?, delivery_address=?,
+                        ti_invoice_to=?, ti_reference=?,
+                        updated_at=?
                     WHERE id=?""",
                  (_f("swpi_ref"), _f("finance_company"), _f("repo_date"),
                   _f("customer_name"), _f("repo_address"),
                   _f("make"), _f("model"), _f("registration"), _f("vin"),
                   _f("tow_company_name"), _f("tow_phone"), _f("tow_costs"),
-                  _f("deliver_to"), _f("delivery_address"), ts, rec_id))
+                  _f("deliver_to"), _f("delivery_address"),
+                  _f("ti_invoice_to"), _f("ti_reference"),
+                  ts, rec_id))
     conn.commit()
 
     rec_row = conn.execute("SELECT * FROM repo_lock_records WHERE id=?", (rec_id,)).fetchone()
