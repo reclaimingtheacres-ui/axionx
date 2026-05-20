@@ -6740,6 +6740,13 @@ def job_urgent_update(job_id: int, sched_id: int):
 @app.post("/jobs/<int:job_id>/internal-message")
 @login_required
 def job_internal_message(job_id: int):
+    app.logger.warning(
+        "[DIAG] job_internal_message ENTERED  job_id=%s  uid=%s  role=%s  json_keys=%s",
+        job_id,
+        session.get("user_id"),
+        session.get("role"),
+        list((request.get_json(silent=True) or {}).keys()),
+    )
     PROMPTS = {
         "Update Required": {
             "subject": "Update required",
@@ -11384,6 +11391,13 @@ def m_forms():
 @login_required
 def job_email_customer(job_id: int):
     """Agent (or admin) logs an email to the customer as a published file note visible to all."""
+    app.logger.warning(
+        "[DIAG] job_email_customer ENTERED  job_id=%s  uid=%s  role=%s  json_keys=%s",
+        job_id,
+        session.get("user_id"),
+        session.get("role"),
+        list((request.get_json(silent=True) or {}).keys()),
+    )
     uid  = session.get("user_id")
     role = session.get("role", "")
     conn = db()

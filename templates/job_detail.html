@@ -5338,6 +5338,7 @@ function openDemoClientMsg() {
 }
 
 function openInternalMsg() {
+  console.log('[DIAG] openInternalMsg() called');
   _msgType = 'internal';
   document.getElementById('sendMsgTitle').textContent          = 'Internal Message';
   document.getElementById('msg_type_badge').style.display      = 'none';
@@ -5386,6 +5387,7 @@ function openInternalMsg() {
 }
 
 function openEmailCustomer() {
+  console.log('[DIAG] openEmailCustomer() called');
   _msgType = 'email_customer';
   document.getElementById('sendMsgTitle').textContent          = 'Email Customer';
   document.getElementById('msg_type_badge').style.display      = 'none';
@@ -5405,6 +5407,7 @@ function openEmailCustomer() {
 }
 
 function doSendMsg() {
+  console.log('[DIAG] doSendMsg() called  _msgType=' + _msgType);
   var to      = document.getElementById('msg_to').value.trim();
   var subject = document.getElementById('msg_subject').value.trim();
   var body    = document.getElementById('msg_body').value.trim();
@@ -5413,9 +5416,11 @@ function doSendMsg() {
   if (_msgType === 'internal') {
     var prompt = document.getElementById('msg_prompt').value;
     var recipientIds = Array.from(document.querySelectorAll('.msg-recipient-cb:checked')).map(function(cb){ return parseInt(cb.value, 10); });
+    console.log('[DIAG] internal-message  recipientIds=' + JSON.stringify(recipientIds) + '  subject=' + subject);
     if (!recipientIds.length) { alert('Please select at least one recipient.'); return; }
     var btn = document.getElementById('msg_send_btn');
     btn.disabled = true;
+    console.log('[DIAG] fetching /jobs/{{ job.id }}/internal-message');
     fetch('/jobs/{{ job.id }}/internal-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -5443,6 +5448,7 @@ function doSendMsg() {
   if (_msgType === 'email_customer') {
     var btn = document.getElementById('msg_send_btn');
     btn.disabled = true;
+    console.log('[DIAG] fetching /jobs/{{ job.id }}/email-customer  to=' + to + '  subject=' + subject);
     fetch('/jobs/{{ job.id }}/email-customer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
