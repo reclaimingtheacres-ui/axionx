@@ -8427,6 +8427,25 @@ def job_payment_add(job_id: int):
         "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
         (job_id, uid, note_body, ts)
     )
+    note_id = cur.lastrowid
+
+    attachment = request.files.get("payment_attachment")
+    if attachment and attachment.filename and allowed_file(attachment.filename):
+        import time as _pmt_time
+        try:
+            heic_bytes, heic_name, was_heic = _maybe_convert_heic(attachment)
+            fname       = secure_filename(heic_name or attachment.filename)
+            unique_name = f"{job_id}_{note_id}_{int(_pmt_time.time())}_{fname}"
+            if was_heic and heic_bytes:
+                _save_bytes_to_storage(heic_bytes, unique_name, "image/jpeg")
+            else:
+                upload_to_blob(attachment, unique_name)
+            cur.execute(
+                "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
+                (note_id, unique_name, unique_name, ts)
+            )
+        except Exception:
+            pass
 
     conn.commit()
     conn.close()
