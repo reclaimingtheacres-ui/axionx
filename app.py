@@ -4111,7 +4111,7 @@ def jobs_list():
         import logging as _log, traceback as _tb
         _log.error("jobs_list failed: %s\n%s", exc, _tb.format_exc())
         flash(f"Error loading jobs: {exc}", "danger")
-        return redirect(url_for("jobs_list"))
+        return redirect(url_for("index"))
 
 
 def _jobs_list_inner():
