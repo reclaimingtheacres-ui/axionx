@@ -833,12 +833,23 @@ window.lprContactOffice = function() {
 </style>
 <script>
 (function(){
+  if (window.__axUnreadPollingStopped) { return; }
   var _mlast = -1;
   var _toastTimer = null;
+  var _pollInterval = null;
   function pollMobileMsgs(){
+    if (window.__axUnreadPollingStopped) { return; }
     fetch('/api/messages/unread-count', {credentials:'same-origin'})
-      .then(function(r){ return r.json(); })
+      .then(function(r){
+        if (r.status === 401 || r.status === 403) {
+          window.__axUnreadPollingStopped = true;
+          if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+          return null;
+        }
+        return r.json();
+      })
       .then(function(d){
+        if (!d) { return; }
         var count = d.count || 0;
         var dot = document.getElementById('mMsgDot');
         if(dot) dot.style.display = count > 0 ? 'block' : 'none';
@@ -858,7 +869,7 @@ window.lprContactOffice = function() {
     _toastTimer = setTimeout(function(){ toast.style.display = 'none'; }, 6000);
   }
   setTimeout(pollMobileMsgs, 2000);
-  setInterval(pollMobileMsgs, 15000);
+  _pollInterval = setInterval(pollMobileMsgs, 15000);
 })();
 </script>
 {% endif %}

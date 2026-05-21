@@ -27451,9 +27451,10 @@ def _post_message(conn, conv_id, sender_id, body):
 # ── Unread count API (shared desktop + mobile) ────────────────────────────────
 
 @app.get("/api/messages/unread-count")
-@login_required
 def api_messages_unread_count():
     uid = session.get("user_id")
+    if not uid:
+        return jsonify({"ok": False, "error": "unauthenticated"}), 401
     try:
         conn = db()
         _ensure_msg_tables(conn)
@@ -27465,9 +27466,10 @@ def api_messages_unread_count():
 
 
 @app.get("/api/messages/unread-summary")
-@login_required
 def api_messages_unread_summary():
     uid = session.get("user_id")
+    if not uid:
+        return jsonify({"ok": False, "error": "unauthenticated"}), 401
     try:
         conn = db()
         _ensure_msg_tables(conn)
