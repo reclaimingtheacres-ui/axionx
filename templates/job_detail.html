@@ -5100,6 +5100,21 @@ function adocOpenEditJob() {
 </script>
 
 <!-- ── Add Booking Modal ──────────────────────────────────────────────── -->
+<style>
+  /* layout.html forces overflow:visible!important on all modals (for map dropdowns).
+     Re-apply correct scroll behaviour for this modal only — no Google Maps inside it. */
+  #addBookingModal .modal-content {
+    overflow: hidden !important;
+    max-height: 90vh;
+  }
+  #addBookingModal .modal-body {
+    overflow-y: auto !important;
+  }
+  #addBookingModal .modal-header,
+  #addBookingModal .modal-footer {
+    flex-shrink: 0;
+  }
+</style>
 <div class="modal fade" id="addBookingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
