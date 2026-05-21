@@ -302,6 +302,15 @@ struct WebViewContainer: View {
                 showSyncStatus = false
             }
         }
+        // Keep FieldStatusView hidden across all LPR routes and the native scanner.
+        // FieldStatusView observes isLPRContextActive and returns EmptyView() when set,
+        // so this suppresses it regardless of which view in the hierarchy renders it.
+        .onChange(of: currentURL) { _ in
+            fieldStatusManager.isLPRContextActive = isOnLPRPage || showLPRScanner
+        }
+        .onChange(of: showLPRScanner) { scanning in
+            fieldStatusManager.isLPRContextActive = scanning || isOnLPRPage
+        }
         .onReceive(
             NotificationCenter.default.publisher(for: .axionOpenNotifications)
         ) { notif in

@@ -11,25 +11,34 @@ struct FieldStatusView: View {
     @ObservedObject private var manager = FieldStatusManager.shared
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(FieldStatus.allCases.enumerated()), id: \.element.rawValue) { idx, status in
-                statusButton(status)
-                if idx < FieldStatus.allCases.count - 1 {
-                    Rectangle()
-                        .fill(Color(white: 0.82))
-                        .frame(width: 0.5)
-                        .padding(.vertical, 6)
+        // Self-suppress on all LPR routes and native scanner screens.
+        // isLPRContextActive is set by WebViewContainer via FieldStatusManager.shared
+        // whenever the current URL begins with /m/lpr or the native scanner is open.
+        // This guard works even when FieldStatusView is instantiated from a stale
+        // compiled binary that predates the removal from WebViewContainer.
+        if manager.isLPRContextActive {
+            EmptyView()
+        } else {
+            HStack(spacing: 0) {
+                ForEach(Array(FieldStatus.allCases.enumerated()), id: \.element.rawValue) { idx, status in
+                    statusButton(status)
+                    if idx < FieldStatus.allCases.count - 1 {
+                        Rectangle()
+                            .fill(Color(white: 0.82))
+                            .frame(width: 0.5)
+                            .padding(.vertical, 6)
+                    }
                 }
             }
+            .background {
+                Capsule()
+                    .fill(.regularMaterial)
+            }
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color(white: 0.85), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 5, x: 0, y: 2)
+            .fixedSize()
         }
-        .background {
-            Capsule()
-                .fill(.regularMaterial)
-        }
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color(white: 0.85), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.12), radius: 5, x: 0, y: 2)
-        .fixedSize()
     }
 
     @ViewBuilder

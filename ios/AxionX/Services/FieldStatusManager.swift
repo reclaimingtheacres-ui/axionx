@@ -48,6 +48,12 @@ final class FieldStatusManager: ObservableObject {
     /// Non-nil while Active Job is running; shows time remaining
     @Published private(set) var activeJobExpiresAt: Date? = nil
 
+    /// True whenever the user is on any /m/lpr* route or the native LPR scanner is open.
+    /// FieldStatusView observes this and returns EmptyView() while it is true,
+    /// ensuring the status pill never appears over any LPR screen regardless of
+    /// which view in the hierarchy instantiates it.
+    @Published var isLPRContextActive: Bool = false
+
     private let udKey = "com.axionx.field_status_v2"
 
     private init() {
