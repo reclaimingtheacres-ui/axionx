@@ -31,9 +31,16 @@ struct WebViewContainer: View {
     }
 
     private var isActiveLPRCameraView: Bool {
+        // Native camera scanner (fullScreenCover) — covers the whole screen, but
+        // we also zero out shouldShowLPROverlays so there is no flicker on dismiss.
         if showLPRScanner { return true }
         guard let path = currentURL?.path else { return false }
-        return path == "/m/lpr/capture" || path.hasPrefix("/m/lpr/patrol-mode")
+        // /m/lpr/capture  — photo-capture web route (web camera active in WKWebView)
+        // /m/lpr/patrol   — patrol mode; PatrolCameraService runs AVCaptureSession
+        //                   in the background while the web page renders its camera UI.
+        //                   NOTE: was incorrectly "/m/lpr/patrol-mode" — fixed to match
+        //                   the actual route produced by navigateToPatrol().
+        return path == "/m/lpr/capture" || path.hasPrefix("/m/lpr/patrol")
     }
 
     private var shouldShowLPROverlays: Bool {
