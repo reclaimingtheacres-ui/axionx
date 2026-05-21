@@ -11397,13 +11397,90 @@ def m_forms():
         conn = db()
         job = _forms_job_context(conn, job_id)
         conn.close()
-    # Reuse same catalogue; mobile template handles display
+    # Reuse same catalogue; route mobile users through /m/forms/generate
     forms_mobile = [
-        {**f, "generate_url": f["generate_url"].replace("/forms/generate", "/forms/generate")}
+        {**f, "generate_url": f["generate_url"].replace("/forms/generate", "/m/forms/generate")}
         for f in _FORMS_CATALOGUE
     ]
     return render_template("mobile/forms.html",
                            forms=forms_mobile, job=job, job_id=job_id)
+
+
+@app.get("/m/forms/generate")
+@login_required
+def m_forms_generate():
+    """Mobile-safe forms generate router.
+    Resolves job/item/repo-lock context and redirects to the appropriate
+    mobile route, keeping the URL in /m/ space throughout.
+    Falls back to the desktop /forms/generate for unsupported types."""
+    form_type = request.args.get("type", "").lower().strip()
+    job_id    = request.args.get("job_id",  type=int)
+    item_id   = request.args.get("item_id", type=int)
+
+    if form_type in ("wise_vir", "vir") and job_id:
+        conn = db()
+        if not item_id:
+            rows = conn.execute(
+                "SELECT id FROM job_items WHERE job_id=? ORDER BY id", (job_id,)
+            ).fetchall()
+            if len(rows) == 1:
+                item_id = rows[0]["id"]
+        if item_id:
+            rl = conn.execute(
+                """SELECT id FROM repo_lock_records
+                   WHERE job_id=? AND item_id=?
+                   ORDER BY CASE status
+                     WHEN 'Submitted' THEN 0 WHEN 'Reviewed' THEN 0
+                     WHEN 'Processed' THEN 0 ELSE 1 END, id DESC LIMIT 1""",
+                (job_id, item_id)
+            ).fetchone()
+            conn.close()
+            if rl:
+                target = "m_repo_lock_wise_vir" if form_type == "wise_vir" else "m_repo_lock_vir"
+                return redirect(url_for(target, job_id=job_id, rec_id=rl["id"]))
+        else:
+            conn.close()
+
+    params = {"type": form_type}
+    if job_id:  params["job_id"]  = job_id
+    if item_id: params["item_id"] = item_id
+    return redirect(url_for("forms_generate", **params))
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-vir")
+@login_required
+def m_repo_lock_wise_vir(job_id: int, rec_id: int):
+    """Mobile entry point for the Wise VIR form.
+    Renders the same wise_vir.html; the fetch-based PDF generation POSTs
+    to the absolute /jobs/…/wise-vir route so generation is unaffected."""
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
+        (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "wise_vir.html",
+        rec=rec, d=d, job_id=job_id,
+        agent_name=agent_name,
+        item_year=d.get("year", ""),
+        item_make=d.get("make", ""),
+        item_model=d.get("model", ""),
+        tow_company_name_db=d.get("tow_company_name_db", ""),
+        saved_agent_sig=rec.get("agent_signature") or "",
+    )
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/vir")
+@login_required
+def m_repo_lock_vir(job_id: int, rec_id: int):
+    """Mobile entry point for the standard VIR form (fallback from m_forms_generate)."""
+    return redirect(url_for("repo_lock_vir", job_id=job_id, rec_id=rec_id))
 
 
 @app.post("/jobs/<int:job_id>/email-customer")
