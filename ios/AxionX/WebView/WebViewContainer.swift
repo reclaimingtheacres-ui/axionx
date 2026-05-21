@@ -125,19 +125,11 @@ struct WebViewContainer: View {
                 .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
             }
 
-            // Field Status Control — bottom centre, shown on LPR pages
-            if shouldShowLPROverlays {
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    FieldStatusView()
-                }
-                .padding(.bottom, syncManager.pendingCount + syncManager.failedCount > 0 ? 56 : 24)
-                .frame(maxWidth: .infinity)
-                .ignoresSafeArea(edges: .bottom)
-                .allowsHitTesting(true)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
-            }
+            // Field Status Control (FieldStatusView) is suppressed across all /m/lpr*
+            // routes — live scan, patrol, patrol intel, and every other LPR screen.
+            // It was previously gated by shouldShowLPROverlays (isOnLPRPage && !camera),
+            // meaning it only ever rendered on LPR pages. Requirement updated: no field
+            // status pill above any LPR screen. Outside LPR it continues as-is (not shown).
 
             // Dispatch banner — shown on LPR pages when a follow-up is assigned and not yet accepted
             if shouldShowLPROverlays && dispatchManager.activeDispatch == nil
