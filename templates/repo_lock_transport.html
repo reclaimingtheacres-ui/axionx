@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+{% extends "mobile/base.html" if mobile_mode else "layout.html" %}
 {% block title %}Transport Instructions — {{ rec.registration or rec.description or ('Repo Lock #' ~ rec.id) }}{% endblock %}
 
 {% block content %}

@@ -813,6 +813,7 @@ window.lprContactOffice = function() {
 </script>
 {% endblock %}
 
+{% block scripts %}{% endblock %}
 {% block extra_scripts %}{% endblock %}
 {% if session.get('user_id') %}
 <div id="mMsgToast" onclick="window.location.href='{{ url_for('m_messages_list') }}'" style="

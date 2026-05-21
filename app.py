@@ -11417,7 +11417,20 @@ def m_forms_generate():
     job_id    = request.args.get("job_id",  type=int)
     item_id   = request.args.get("item_id", type=int)
 
-    if form_type in ("wise_vir", "vir") and job_id:
+    _MOBILE_FORM_MAP = {
+        "vir":                 "m_repo_lock_vir",
+        "transport":           "m_repo_lock_transport",
+        "form_13":             "m_repo_lock_form_13",
+        "voluntary_surrender": "m_repo_lock_voluntary_surrender",
+        "wise_vir":            "m_repo_lock_wise_vir",
+        "wise_auction":        "m_repo_lock_wise_auction",
+        "wise_tow":            "m_repo_lock_wise_tow",
+        "auction_letter":      "m_repo_lock_auction_letter",
+        "tow_letter":          "m_repo_lock_tow_letter",
+    }
+
+    target_fn = _MOBILE_FORM_MAP.get(form_type)
+    if target_fn and job_id:
         conn = db()
         if not item_id:
             rows = conn.execute(
@@ -11436,8 +11449,7 @@ def m_forms_generate():
             ).fetchone()
             conn.close()
             if rl:
-                target = "m_repo_lock_wise_vir" if form_type == "wise_vir" else "m_repo_lock_vir"
-                return redirect(url_for(target, job_id=job_id, rec_id=rl["id"]))
+                return redirect(url_for(target_fn, job_id=job_id, rec_id=rl["id"]))
         else:
             conn.close()
 
@@ -11447,16 +11459,77 @@ def m_forms_generate():
     return redirect(url_for("forms_generate", **params))
 
 
+def _m_form_back(job_id: int) -> dict:
+    """Common kwargs for mobile form renders: back navigation + mobile_mode flag."""
+    return {
+        "back_url":    url_for("m_forms", job_id=job_id),
+        "back_label":  "Back to Forms",
+        "mobile_mode": True,
+    }
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/vir")
+@login_required
+def m_repo_lock_vir(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "repo_lock_vir.html",
+        rec=rec, job_id=job_id,
+        agent_name=agent_name,
+        item_year=d.get("year", ""), item_make=d.get("make", ""),
+        item_model=d.get("model", ""),
+        saved_agent_sig=rec.get("agent_signature") or "",
+        transport_url=url_for("m_repo_lock_transport", job_id=job_id, rec_id=rec_id),
+        **_m_form_back(job_id),
+    )
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/transport-instructions")
+@login_required
+def m_repo_lock_transport(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    _ti_ref_default = " / ".join(filter(None, [d.get("client_reference"), d.get("registration")])) or d.get("swpi_ref") or ""
+    return render_template(
+        "repo_lock_transport.html",
+        rec=rec, job_id=job_id,
+        agent_name=agent_name,
+        item_make=d.get("make", ""), item_model=d.get("model", ""),
+        tow_company_name_db=d.get("tow_company_name_db", ""),
+        tow_phone=d.get("tow_phone", ""),
+        client_name=d.get("client_name", ""),
+        client_email=d.get("client_email", ""),
+        ti_invoice_to=rec.get("ti_invoice_to") or d.get("client_name") or "",
+        ti_reference=rec.get("ti_reference") or _ti_ref_default,
+        saved_agent_sig=rec.get("agent_signature") or "",
+        vir_url=url_for("m_repo_lock_vir", job_id=job_id, rec_id=rec_id),
+        **_m_form_back(job_id),
+    )
+
+
 @app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-vir")
 @login_required
 def m_repo_lock_wise_vir(job_id: int, rec_id: int):
-    """Mobile entry point for the Wise VIR form.
-    Renders the same wise_vir.html; the fetch-based PDF generation POSTs
-    to the absolute /jobs/…/wise-vir route so generation is unaffected."""
     conn = db()
     rec_row = conn.execute(
-        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?",
-        (rec_id, job_id)
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
     ).fetchone()
     if not rec_row:
         conn.close()
@@ -11468,19 +11541,163 @@ def m_repo_lock_wise_vir(job_id: int, rec_id: int):
         "wise_vir.html",
         rec=rec, d=d, job_id=job_id,
         agent_name=agent_name,
-        item_year=d.get("year", ""),
-        item_make=d.get("make", ""),
+        item_year=d.get("year", ""), item_make=d.get("make", ""),
         item_model=d.get("model", ""),
         tow_company_name_db=d.get("tow_company_name_db", ""),
         saved_agent_sig=rec.get("agent_signature") or "",
+        wise_auction_url=url_for("m_repo_lock_wise_auction", job_id=job_id, rec_id=rec_id),
+        wise_tow_url=url_for("m_repo_lock_wise_tow", job_id=job_id, rec_id=rec_id),
+        **_m_form_back(job_id),
     )
 
 
-@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/vir")
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-auction")
 @login_required
-def m_repo_lock_vir(job_id: int, rec_id: int):
-    """Mobile entry point for the standard VIR form (fallback from m_forms_generate)."""
-    return redirect(url_for("repo_lock_vir", job_id=job_id, rec_id=rec_id))
+def m_repo_lock_wise_auction(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "wise_auction.html",
+        rec=rec, d=d, job_id=job_id,
+        wise_vir_url=url_for("m_repo_lock_wise_vir", job_id=job_id, rec_id=rec_id),
+        wise_tow_url=url_for("m_repo_lock_wise_tow", job_id=job_id, rec_id=rec_id),
+        **_m_form_back(job_id),
+    )
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/wise-tow")
+@login_required
+def m_repo_lock_wise_tow(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "wise_tow.html",
+        rec=rec, d=d, job_id=job_id,
+        wise_vir_url=url_for("m_repo_lock_wise_vir", job_id=job_id, rec_id=rec_id),
+        wise_auction_url=url_for("m_repo_lock_wise_auction", job_id=job_id, rec_id=rec_id),
+        **_m_form_back(job_id),
+    )
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/form-13")
+@login_required
+def m_repo_lock_form_13(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "form_13.html",
+        rec=rec, job_id=job_id,
+        agent_name=agent_name,
+        item_year=d.get("year", ""), item_make=d.get("make", ""),
+        item_model=d.get("model", ""),
+        saved_agent_sig=rec.get("agent_signature") or "",
+        **_m_form_back(job_id),
+    )
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/voluntary-surrender")
+@login_required
+def m_repo_lock_voluntary_surrender(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "voluntary_surrender.html",
+        rec=rec, job_id=job_id,
+        agent_name=agent_name,
+        item_year=d.get("year", ""), item_make=d.get("make", ""),
+        item_model=d.get("model", ""),
+        **_m_form_back(job_id),
+    )
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/auction-letter")
+@login_required
+def m_repo_lock_auction_letter(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "letter_preview.html",
+        rec=rec, job_id=job_id,
+        agent_name=agent_name,
+        letter_title="Auction Manager Letter",
+        letter_type="auction",
+        addressee_label="Auction House",
+        addressee=rec.get("deliver_to") or d.get("delivery_address") or "Auction House",
+        deliver_to_fallback=d.get("delivery_address", ""),
+        download_url=url_for("repo_lock_auction_letter_pdf", job_id=job_id, rec_id=rec_id),
+        item_year=d.get("year", ""), item_make=d.get("make", ""),
+        item_model=d.get("model", ""),
+        **_m_form_back(job_id),
+    )
+
+
+@app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/tow-letter")
+@login_required
+def m_repo_lock_tow_letter(job_id: int, rec_id: int):
+    conn = db()
+    rec_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE id=? AND job_id=?", (rec_id, job_id)
+    ).fetchone()
+    if not rec_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    rec = dict(rec_row)
+    d, agent_name, client, tow_op = _rl_pdf_context(conn, rec, job_id)
+    conn.close()
+    return render_template(
+        "letter_preview.html",
+        rec=rec, job_id=job_id,
+        agent_name=agent_name,
+        letter_title="Towing Contractor Letter",
+        letter_type="tow",
+        addressee_label="Tow Contractor",
+        addressee=rec.get("tow_company_name") or d.get("tow_company_name_db") or "Towing Contractor",
+        deliver_to_fallback=rec.get("deliver_to") or "",
+        download_url=url_for("repo_lock_tow_letter_pdf", job_id=job_id, rec_id=rec_id),
+        item_year=d.get("year", ""), item_make=d.get("make", ""),
+        item_model=d.get("model", ""),
+        **_m_form_back(job_id),
+    )
 
 
 @app.post("/jobs/<int:job_id>/email-customer")

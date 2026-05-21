@@ -1,4 +1,4 @@
-{% extends "layout.html" %}
+{% extends "mobile/base.html" if mobile_mode else "layout.html" %}
 {% block title %}Wise VIR — {{ rec.registration or rec.description or ('Case ' ~ (rec.wise_case_number or rec.id)) }}{% endblock %}
 
 {% block content %}
@@ -6,7 +6,7 @@
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
     <div>
-      <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
+      <a href="{{ back_url or '/jobs/' ~ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; {{ back_label or 'Back to Job' }}</a>
       <h2 style="margin:4px 0 0;font-size:1.1rem;font-weight:700;color:#111;">Wise Vehicle Inspection Report</h2>
       <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">Edit fields below, sign, then generate PDF</div>
     </div>
@@ -15,9 +15,9 @@
 
   <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
     <span style="flex:1;text-align:center;padding:8px 10px;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:8px;font-size:.78rem;font-weight:700;color:#92400e;">VIR</span>
-    <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-auction"
+    <a href="{{ wise_auction_url or '/jobs/' ~ job_id ~ '/repo-lock/' ~ rec.id ~ '/wise-auction' }}"
        style="flex:1;text-align:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:.78rem;font-weight:600;color:#6b7280;text-decoration:none;">Auction</a>
-    <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-tow"
+    <a href="{{ wise_tow_url or '/jobs/' ~ job_id ~ '/repo-lock/' ~ rec.id ~ '/wise-tow' }}"
        style="flex:1;text-align:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:.78rem;font-weight:600;color:#6b7280;text-decoration:none;">Tow</a>
   </div>
 
@@ -161,7 +161,7 @@
     </div>
 
     <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px;">
-      <a href="/jobs/{{ job_id }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
+      <a href="{{ back_url or '/jobs/' ~ job_id }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
       <button type="submit" id="genBtn"
               style="padding:11px 26px;background:#f59e0b;color:#1e293b;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;">
         <span id="genBtnTxt">Save &amp; Generate PDF</span>
@@ -178,13 +178,13 @@
     </div>
     <div style="font-weight:700;font-size:.88rem;color:#111;margin-bottom:10px;">Continue with Wise Document Pack</div>
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-auction"
+      <a href="{{ wise_auction_url or '/jobs/' ~ job_id ~ '/repo-lock/' ~ rec.id ~ '/wise-auction' }}"
          style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1.5px solid #f59e0b;border-radius:10px;text-decoration:none;color:#92400e;font-weight:600;font-size:.88rem;">
         <span style="font-size:1.2rem;">&#x1F4E8;</span>
         <span>Auction Instructions</span>
         <span style="margin-left:auto;color:#9ca3af;font-size:1rem;">&#x203A;</span>
       </a>
-      <a href="/jobs/{{ job_id }}/repo-lock/{{ rec.id }}/wise-tow"
+      <a href="{{ wise_tow_url or '/jobs/' ~ job_id ~ '/repo-lock/' ~ rec.id ~ '/wise-tow' }}"
          style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border:1.5px solid #f59e0b;border-radius:10px;text-decoration:none;color:#92400e;font-weight:600;font-size:.88rem;">
         <span style="font-size:1.2rem;">&#x1F69A;</span>
         <span>Tow Instructions</span>
@@ -192,7 +192,7 @@
       </a>
     </div>
     <div style="text-align:center;margin-top:16px;">
-      <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.84rem;text-decoration:none;">&#x2190; Back to Job</a>
+      <a href="{{ back_url or '/jobs/' ~ job_id }}" style="color:#6b7280;font-size:.84rem;text-decoration:none;">&#x2190; {{ back_label or 'Back to Job' }}</a>
     </div>
   </div>
 </div>
