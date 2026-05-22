@@ -16774,10 +16774,11 @@ def cue_complete(cue_id: int):
 @login_required
 def my_schedule_attended(sched_id: int):
     conn = db()
-    sched = conn.execute("SELECT * FROM schedules WHERE id=?", (sched_id,)).fetchone()
-    if not sched:
+    sched_row = conn.execute("SELECT * FROM schedules WHERE id=?", (sched_id,)).fetchone()
+    if not sched_row:
         conn.close()
         abort(404)
+    sched = dict(sched_row)
     uid  = session.get("user_id")
     role = session.get("role", "")
     if role not in ("admin", "both") and (sched["assigned_to_user_id"] != uid or sched.get("hidden", 0)):
