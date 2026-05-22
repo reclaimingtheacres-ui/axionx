@@ -302,7 +302,10 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
 
     notice_del = _v(data, 'notice_delivery', default='')
     if notice_del:
-        _put(32, 173, notice_del, fs=8, max_ch=80)
+        # Sits in the blank line between "furnished to the above named by;" (y≈195)
+        # and "I ACKNOWLEDGE RECEIPT..." (y≈169) — raised from y=173 to avoid overlap.
+        # Font matches the surrounding certification paragraph (Helvetica 7.5pt).
+        _put(40, 183, notice_del, font='Helvetica', fs=7.5, max_ch=95)
 
     date_str = _fmtdate(_v(data, 'repo_date'))
     _put(67, 81, date_str, max_ch=12)
