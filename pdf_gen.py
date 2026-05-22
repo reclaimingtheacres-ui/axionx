@@ -916,15 +916,17 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
         c.drawString(426, 170, held_at[:30])
     c.setFont(F, SZ)
 
-    # ── REDEEM: white-out YES/NO boxes, print selected value as text ─────────
+    # ── REDEEM: white-out both YES/No options, print only the selected one ──
+    # Template positions (300dpi measurement): YES starts x≈362, No starts x≈468
+    # Old rect started at x=383 — missed the YES glyph entirely.
     redeem = _v(data, 'vol_surrender')
     c.setFillColor(HexColor('#FFFFFF'))
-    c.rect(383, 116, 165, 16, stroke=0, fill=1)
+    c.rect(354, 114, 140, 18, stroke=0, fill=1)   # covers x354-494, erases YES and No
     c.setFillColor(DARK)
     c.setFont(F, SZ)
     if redeem:
-        c.drawString(423, 124,
-                     'Yes' if redeem.strip().upper() in ('YES', 'Y', 'TRUE') else 'No')
+        is_yes = redeem.strip().upper() in ('YES', 'Y', 'TRUE')
+        c.drawString(365 if is_yes else 468, 124, 'YES' if is_yes else 'No')
 
     if agent_sig:
         try:
