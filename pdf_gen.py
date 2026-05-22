@@ -779,18 +779,28 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.drawString(371, 664, _model_str)
     c.setFont(F, SZ)
 
-    # Clamp body_type and colour to prevent overflow into adjacent template labels.
-    # Use stringWidth so the value never runs into the pre-printed COLOUR:/REGO: label.
+    # BODY TYPE / COLOUR value cells are very tight (confirmed by 300dpi template analysis):
+    #   "COLOUR:" label starts at x=180.5pt  →  body_type value area = x152–175 (23pt)
+    #   "REGO:"   label starts at x=296.1pt  →  colour  value area = x270–291 (21pt)
+    # Drop to 7pt font so common values (Sedan, White, etc.) fit without truncation,
+    # then white-out the cell areas so no template remnants bleed through.
+    _SZ2 = 7
     body_type_str = _v(data, 'body_type')
-    _bt_max = 38.0   # tight cap so body_type never crowds the COLOUR: label
-    while body_type_str and _sw(body_type_str, F, SZ) > _bt_max:
+    _bt_max = 23.0   # x=152 + 23 = 175  →  5pt gap before COLOUR: at 180.5
+    while body_type_str and _sw(body_type_str, F, _SZ2) > _bt_max:
         body_type_str = body_type_str[:-1]
     colour_str = _v(data, 'colour')
-    _col_max = 38.0   # tight cap so colour value never crowds the REGO: label
-    while colour_str and _sw(colour_str, F, SZ) > _col_max:
+    _col_max = 23.0   # x=270 + 23 = 293  →  3pt gap before REGO: at 296.1  ('WHITE'=22.55pt fits)
+    while colour_str and _sw(colour_str, F, _SZ2) > _col_max:
         colour_str = colour_str[:-1]
+    c.setFillColor(HexColor('#FFFFFF'))
+    c.rect(150, 647, 30, 12, stroke=0, fill=1)   # body_type cell (x150–180)
+    c.rect(268, 647, 28, 12, stroke=0, fill=1)   # colour cell    (x268–296)
+    c.setFillColor(DARK)
+    c.setFont(F, _SZ2)
     c.drawString(152, 651, body_type_str)
     c.drawString(270, 651, colour_str)
+    c.setFont(F, SZ)
     c.drawString(376, 651, _v(data, 'registration'))
     c.drawString(167, 638, _v(data, 'vin'))
 
