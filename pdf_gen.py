@@ -779,8 +779,18 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.drawString(371, 664, _model_str)
     c.setFont(F, SZ)
 
-    c.drawString(152, 651, _v(data, 'body_type'))
-    c.drawString(270, 651, _v(data, 'colour'))
+    # Clamp body_type and colour to prevent overflow into adjacent template labels.
+    # Use stringWidth so the value never runs into the pre-printed COLOUR:/REGO: label.
+    body_type_str = _v(data, 'body_type')
+    _bt_max = 38.0   # tight cap so body_type never crowds the COLOUR: label
+    while body_type_str and _sw(body_type_str, F, SZ) > _bt_max:
+        body_type_str = body_type_str[:-1]
+    colour_str = _v(data, 'colour')
+    _col_max = 38.0   # tight cap so colour value never crowds the REGO: label
+    while colour_str and _sw(colour_str, F, SZ) > _col_max:
+        colour_str = colour_str[:-1]
+    c.drawString(152, 651, body_type_str)
+    c.drawString(270, 651, colour_str)
     c.drawString(376, 651, _v(data, 'registration'))
     c.drawString(167, 638, _v(data, 'vin'))
 
@@ -790,52 +800,64 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     glass_val  = _v(data, 'glass')
     tyres_val  = _v(data, 'tyres')
 
-    # ── EXTERIOR: white-out checkbox columns, print selected value as text ────
+    # ── EXTERIOR: white-out from just after labels through condition columns ──
+    # The template pre-prints POOR/BROKEN/BALD option columns starting around
+    # x=115. The previous rect started at x=215 which left those columns
+    # uncovered. Extend the rect left to x=110 to erase the full condition area.
     c.setFillColor(HexColor('#FFFFFF'))
-    c.rect(215, 497, 325, 82, stroke=0, fill=1)
+    c.rect(110, 497, 430, 82, stroke=0, fill=1)
     c.setFillColor(DARK)
     c.setFont(F, SZ)
     for _ey, _val in [(567, body_val), (552, paint_val), (536, bumper_val),
                       (521, glass_val), (506, tyres_val)]:
         if _val:
-            c.drawString(255, _ey, _val.strip().title())
+            c.drawString(195, _ey, _val.strip().title())
 
     # ── MECHANICAL: white-out YES/NO boxes, print selected value as text ──────
+    # Rects extended leftward so the pre-printed YES/NO options are fully erased
+    # before the agent-selected value is drawn.
     drive_val = _v(data, 'security_drivable')
     c.setFillColor(HexColor('#FFFFFF'))
-    c.rect(248, 455, 112, 16, stroke=0, fill=1)
-    c.rect(498, 455, 72,  16, stroke=0, fill=1)
+    c.rect(183, 452, 178, 19, stroke=0, fill=1)   # DOES VEHICLE DRIVE: YES/NO (ends ~x=361, before ENGINE label)
+    c.rect(442, 452, 149, 19, stroke=0, fill=1)   # ENGINE INTACT: YES/NO (template YES starts ~x=449)
     c.setFillColor(DARK)
     c.setFont(F, SZ)
     if drive_val:
-        c.drawString(277, 463,
+        c.drawString(277, 462,
                      'Yes' if drive_val.strip().upper() in ('YES', 'Y', 'TRUE') else 'No')
 
     eng = _v(data, 'engine_condition').lower()
     if eng:
         eng_intact = eng not in ('damaged', 'poor', 'missing', 'no', 'n/a')
-        c.drawString(511, 463, 'Yes' if eng_intact else 'No')
+        c.drawString(511, 462, 'Yes' if eng_intact else 'No')
 
-    # ── INTERIOR: white-out checkbox columns, print selected value as text ────
+    # ── INTERIOR: white-out from just after labels through condition columns ──
+    # Same fix as EXTERIOR — extend rect left to x=110 to erase the pre-printed
+    # POOR/GOOD checkbox columns before drawing the agent-selected value.
     interior_val = _v(data, 'interior')
     c.setFillColor(HexColor('#FFFFFF'))
-    c.rect(215, 381, 245, 47, stroke=0, fill=1)
+    c.rect(110, 381, 350, 47, stroke=0, fill=1)
     c.setFillColor(DARK)
     c.setFont(F, SZ)
     for _iy, _val in [(419, interior_val), (404, interior_val), (388, interior_val)]:
         if _val:
-            c.drawString(243, _iy, _val.strip().title())
+            c.drawString(195, _iy, _val.strip().title())
 
     c.setFont(F, SZ)
     km = _v(data, 'speedometer')
     if km:
         c.drawString(181, 346, km)
 
+    # ── KEYS SECURED: white-out pre-printed YES/NO checkboxes, draw selection ──
     keys_val = _v(data, 'keys_obtained')
+    c.setFillColor(HexColor('#FFFFFF'))
+    c.rect(425, 340, 75, 13, stroke=0, fill=1)
+    c.setFillColor(DARK)
+    c.setFont(F, SZ)
     if keys_val and keys_val.strip().upper() in ('YES', 'Y', 'TRUE'):
-        c.drawString(440, 346, 'YES')
+        c.drawString(452, 346, 'Yes')
     elif keys_val:
-        c.drawString(440, 346, 'NO')
+        c.drawString(440, 346, 'No')
 
     keys_qty = _v(data, 'how_many_keys')
     if keys_qty:
@@ -887,7 +909,7 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
     # ── REDEEM: white-out YES/NO boxes, print selected value as text ─────────
     redeem = _v(data, 'vol_surrender')
     c.setFillColor(HexColor('#FFFFFF'))
-    c.rect(403, 116, 145, 16, stroke=0, fill=1)
+    c.rect(383, 116, 165, 16, stroke=0, fill=1)
     c.setFillColor(DARK)
     c.setFont(F, SZ)
     if redeem:
