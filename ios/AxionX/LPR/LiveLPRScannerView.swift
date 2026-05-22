@@ -168,23 +168,6 @@ struct LiveLPRScannerView: View {
 
     private var scanningOverlay: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                Text("Align registration plate in frame")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .background(Color.black.opacity(0.55))
-                    .cornerRadius(10)
-                Spacer()
-            }
-            .padding(.top, 56)
-
-            Spacer()
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.75), lineWidth: 2)
-                .frame(width: 280, height: 90)
             Spacer()
 
             HStack(spacing: 0) {
