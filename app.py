@@ -624,6 +624,9 @@ def _schema_is_current():
             jobs_cols = [r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
             if "last_client_response_at" not in jobs_cols:
                 return False
+            rl_cols = [r[1] for r in conn.execute("PRAGMA table_info(repo_lock_records)").fetchall()]
+            if "auction_yard_id" not in rl_cols:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -706,6 +709,11 @@ def _startup_migrate():
         _cur = _conn.cursor()
         add_column_if_missing(_cur, "jobs", "last_client_response_at",   "TEXT")
         add_column_if_missing(_cur, "jobs", "suspended_followup_due_at", "TEXT")
+        add_column_if_missing(_cur, "repo_lock_records", "auction_yard_id",    "TEXT")
+        add_column_if_missing(_cur, "repo_lock_records", "notice_delivery",    "TEXT")
+        add_column_if_missing(_cur, "repo_lock_records", "tow_phone",          "TEXT")
+        add_column_if_missing(_cur, "repo_lock_records", "tow_operator",       "TEXT")
+        add_column_if_missing(_cur, "repo_lock_records", "tow_contact_number", "TEXT")
         _conn.commit()
         _conn.close()
         import logging as _log
