@@ -81,28 +81,6 @@
   .pm-feed-item.restricted { border-color: #f59e0b; color: #fde68a; background: rgba(0,0,0,.7); }
   @keyframes pmFeedIn { from {opacity:0;transform:translateX(-8px)} to {opacity:1;transform:none} }
 
-  /* Scan line animation on video */
-  #pmScanLine {
-    top: 0; left: 0; right: 0; height: 3px;
-    background: linear-gradient(90deg, transparent 0%, #3b82f6 50%, transparent 100%);
-    animation: pmScan 2s linear infinite; pointer-events: none;
-  }
-  @keyframes pmScan { 0%{top:5%} 50%{top:90%} 100%{top:5%} }
-
-  /* Viewfinder corners */
-  #pmViewfinder {
-    top: 50%; left: 50%; transform: translate(-50%,-60%);
-    width: min(280px, 80vw); height: min(120px, 30vw);
-    pointer-events: none;
-  }
-  .pm-vf-corner {
-    position: absolute; width: 22px; height: 22px;
-    border-color: rgba(255,255,255,.7); border-style: solid;
-  }
-  .pm-vf-tl { top:0;left:0; border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
-  .pm-vf-tr { top:0;right:0; border-width:3px 3px 0 0; border-radius:0 4px 0 0; }
-  .pm-vf-bl { bottom:0;left:0; border-width:0 0 3px 3px; border-radius:0 0 0 4px; }
-  .pm-vf-br { bottom:0;right:0; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
 
   /* Match alert overlay */
   #pmAlert {
@@ -164,17 +142,6 @@
 {% block content %}
 {# Video layer #}
 <video id="patrolVideo" autoplay playsinline muted></video>
-
-{# Scan line #}
-<div class="pm-layer" id="pmScanLine"></div>
-
-{# Viewfinder corners #}
-<div class="pm-layer" id="pmViewfinder">
-  <div class="pm-vf-corner pm-vf-tl"></div>
-  <div class="pm-vf-corner pm-vf-tr"></div>
-  <div class="pm-vf-corner pm-vf-bl"></div>
-  <div class="pm-vf-corner pm-vf-br"></div>
-</div>
 
 {# Top status bar #}
 <div class="pm-layer" id="pmStatusBar">
@@ -1130,7 +1097,6 @@ window.axionPatrolStopped = function() {
 /* ── Kickoff ─────────────────────────────────────────────── */
 function _kickoffNative() {
   document.getElementById('patrolVideo').style.display = 'none';
-  document.getElementById('pmScanLine').style.display  = 'none';
   _startNativePatrol();
 }
 function _waitForBridgeThenStart(attempt) {
