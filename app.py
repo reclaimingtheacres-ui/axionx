@@ -8270,6 +8270,86 @@ def api_job_upgrade_type(job_id: int):
     return jsonify({"ok": True, "job_type": new_type})
 
 
+@app.post("/api/jobs/<int:job_id>/upgrade-to-repo")
+@login_required
+@admin_required
+def api_upgrade_to_repo(job_id: int):
+    data         = request.get_json(silent=True) or {}
+    arrears      = (data.get("arrears")           or "").strip()
+    new_costs    = (data.get("new_costs")         or "").strip()
+    delivery_loc = (data.get("delivery_location") or "").strip()
+    now  = now_ts()
+    conn = db()
+    cur  = conn.cursor()
+    try:
+        row = cur.execute(
+            """SELECT j.job_type, j.assigned_user_id, j.display_ref, j.client_job_number,
+                      NULLIF(TRIM(COALESCE(cu.first_name,'') || ' ' || COALESCE(cu.last_name,'')), '') AS customer_name,
+                      cu.company AS customer_company
+               FROM jobs j
+               LEFT JOIN customers cu ON cu.id = j.customer_id
+               WHERE j.id = ?""",
+            (job_id,)
+        ).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Job not found."}), 404
+        if (row["job_type"] or "") != "Field Call":
+            return jsonify({"ok": False, "error": "This upgrade is only available for Field Call jobs."}), 400
+
+        cur.execute("UPDATE jobs SET job_type=?, updated_at=? WHERE id=?",
+                    ("Upgrade to Repo/Collect", now, job_id))
+        cur.execute(
+            "INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at) VALUES (?,?,?,?,?)",
+            (job_id, "System", "Job type upgraded from 'Field Call' to 'Upgrade to Repo/Collect'.", now, now)
+        )
+
+        note_lines = ["File upgraded from Field Call to Repo/Collect."]
+        if arrears:
+            note_lines.append(f"Current Arrears: {arrears}")
+        if new_costs:
+            note_lines.append(f"New Costs: {new_costs}")
+        if delivery_loc:
+            note_lines.append(f"Asset Delivery Location: {delivery_loc}")
+        note_text = "\n".join(note_lines)
+        admin_uid = session["user_id"]
+        cur.execute(
+            "INSERT INTO job_field_notes "
+            "(job_id, created_by_user_id, note_text, created_at, note_category, review_status, published_at) "
+            "VALUES (?,?,?,?,'file_note','published',?)",
+            (job_id, admin_uid, note_text, now, now)
+        )
+
+        assigned_uid = row["assigned_user_id"]
+        if assigned_uid and assigned_uid != admin_uid:
+            cust_name = row["customer_name"] or row["customer_company"] or "Unknown"
+            ref       = row["client_job_number"] or row["display_ref"] or f"#{job_id}"
+            msg_lines = [
+                "This file has been upgraded from Field Call to Repo/Collect.",
+                f"Job Reference: {ref}",
+                f"Customer: {cust_name}",
+            ]
+            if arrears:
+                msg_lines.append(f"Current Arrears: {arrears}")
+            if new_costs:
+                msg_lines.append(f"New Costs: {new_costs}")
+            if delivery_loc:
+                msg_lines.append(f"Asset Delivery Location: {delivery_loc}")
+            msg_body = "\n".join(msg_lines)
+            conv_id, _ = _get_or_create_direct_conv(conn, admin_uid, assigned_uid, job_id=job_id)
+            conn.execute("UPDATE conversations SET subject=? WHERE id=?",
+                         ("File Upgraded to Repo/Collect", conv_id))
+            _post_message(conn, conv_id, admin_uid, msg_body)
+
+        conn.commit()
+        return jsonify({"ok": True, "job_type": "Upgrade to Repo/Collect"})
+    except Exception:
+        import logging as _log
+        _log.exception("[upgrade_to_repo] job_id=%s", job_id)
+        return jsonify({"ok": False, "error": "An unexpected error occurred."}), 500
+    finally:
+        conn.close()
+
+
 @app.post("/api/jobs/<int:job_id>/client-reference")
 @login_required
 @admin_required
