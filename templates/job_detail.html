@@ -652,11 +652,36 @@
       <div class="ax-card-h">Security/s</div>
       <div class="ax-card-b">
 
-        {% if job.deliver_to or job.delivery_address %}
+        {% if job.deliver_to or job.delivery_address or session.get('role') in ('admin','both') %}
         <div style="margin-bottom:14px;padding:10px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;">
           <div style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;margin-bottom:4px;">DELIVER TO</div>
+          {% if session.get('role') in ('admin','both') and not is_demo_client %}
+          <div id="job-deliver-to-display" style="display:flex;align-items:center;gap:6px;cursor:pointer"
+               onclick="document.getElementById('job-deliver-to-edit').style.display='flex';this.style.display='none';">
+            <span style="font-size:.88rem;font-weight:600;color:var(--text);" id="job-deliver-to-text">{{ job.deliver_to or '—' }}</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </div>
+          <div id="job-deliver-to-edit" style="display:none;flex-direction:column;gap:6px;margin-top:2px;">
+            <select id="job-deliver-to-select" class="form-select form-select-sm" style="font-size:.82rem;">
+              <option value="">— Not specified —</option>
+              {% set _dt_seen = namespace(names=[]) %}
+              {% for yard in auction_yards %}
+                {% if yard.name not in _dt_seen.names %}
+                  <option value="{{ yard.name }}" {% if job.deliver_to == yard.name %}selected{% endif %}>{{ yard.name }}</option>
+                  {% set _dt_seen.names = _dt_seen.names + [yard.name] %}
+                {% endif %}
+              {% endfor %}
+            </select>
+            <div style="display:flex;gap:6px;">
+              <button type="button" class="btn btn-primary btn-sm" style="font-size:.73rem;padding:2px 10px;" onclick="saveDeliverTo()">Save</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.73rem;padding:2px 8px;"
+                      onclick="document.getElementById('job-deliver-to-edit').style.display='none';document.getElementById('job-deliver-to-display').style.display='flex';">Cancel</button>
+            </div>
+          </div>
+          {% else %}
           {% if job.deliver_to %}
-            <div style="font-size:.88rem;font-weight:600;color:var(--text);">{{ job.deliver_to }}</div>
+          <div style="font-size:.88rem;font-weight:600;color:var(--text);">{{ job.deliver_to }}</div>
+          {% endif %}
           {% endif %}
           {% if job.delivery_address %}
             <div style="font-size:.82rem;color:var(--muted);margin-top:2px;">{{ job.delivery_address }}</div>
@@ -2554,7 +2579,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span style="color:var(--muted)">Type</span>
       {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-jtype-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
-            onclick="window._axOrigJobType='{{ job.job_type }}';document.getElementById('sidebar-jtype-edit').style.display='flex';this.style.display='none';">
+            onclick="document.getElementById('sidebar-jtype-edit').style.display='flex';this.style.display='none';">
         {{ job.job_type }}
         <svg viewBox="0 0 24 24" width="12" height="12" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
       </span>
@@ -2807,11 +2832,6 @@ function saveSidebarJobType(){
   var sel = document.getElementById('sidebar-jtype-select');
   var newType = sel ? sel.value : '';
   if(!newType) return;
-  var oldType = window._axOrigJobType || '';
-  if(oldType === 'Field Call' && newType === 'Upgrade to Repo/Collect'){
-    openUpgradeToRepoModal('sidebar');
-    return;
-  }
   fetch('/api/jobs/{{ job.id }}/upgrade-job-type', {
     method:'POST',
     headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
@@ -7087,136 +7107,34 @@ function submitClientResponse() {
 {% endif %}
 
 {% if session.get('role') in ('admin','both') and not is_demo_client %}
-<!-- ── Upgrade to Repo/Collect Modal ─────────────────────────────────────── -->
-<div class="modal fade" id="upgradeToRepoModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-  <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
-    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
-      <div class="modal-header" style="border-bottom:1px solid var(--line)">
-        <h5 class="modal-title" style="color:var(--text)">Upgrade to Repo/Collect</h5>
-        <button type="button" class="btn-close" id="upgradeToRepoCloseBtn"></button>
-      </div>
-      <div class="modal-body" style="font-size:.88rem;color:var(--text)">
-        <p class="mb-3" style="color:var(--muted);font-size:.83rem">All fields are optional. The upgrade will be saved even if left blank.</p>
-        <div class="mb-3">
-          <label class="form-label fw-semibold" style="font-size:.83rem">Current Arrears</label>
-          <input type="text" id="upgradeArrears" class="form-control form-control-sm" placeholder="e.g. $4,250.00">
-        </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold" style="font-size:.83rem">New Costs</label>
-          <input type="text" id="upgradeNewCosts" class="form-control form-control-sm" placeholder="e.g. $850.00">
-        </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold" style="font-size:.83rem">Auction/Delivery Location</label>
-          <select id="upgradeDeliveryLoc" class="form-select form-select-sm">
-            <option value="">— Not specified —</option>
-            {% set _uy_seen = namespace(names=[]) %}
-            {% for yard in auction_yards %}
-              {% if yard.name not in _uy_seen.names %}
-                <option value="{{ yard.name }}">{{ yard.name }}</option>
-                {% set _uy_seen.names = _uy_seen.names + [yard.name] %}
-              {% endif %}
-            {% endfor %}
-          </select>
-        </div>
-        <div id="upgradeToRepoAlert" class="alert alert-danger d-none" role="alert" style="font-size:.82rem"></div>
-      </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line)">
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="upgradeToRepoCancelBtn">Cancel</button>
-        <button type="button" class="btn btn-primary btn-sm fw-semibold" id="upgradeToRepoSaveBtn"
-                onclick="submitUpgradeToRepo()">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
-(function(){
-  var _upgradeSource = 'sidebar';
-
-  document.getElementById('upgradeToRepoCloseBtn').addEventListener('click', _cancelUpgrade);
-  document.getElementById('upgradeToRepoCancelBtn').addEventListener('click', _cancelUpgrade);
-
-  function _cancelUpgrade(){
-    bootstrap.Modal.getInstance(document.getElementById('upgradeToRepoModal')).hide();
-    if(_upgradeSource === 'sidebar'){
-      document.getElementById('sidebar-jtype-edit').style.display = 'none';
-      document.getElementById('sidebar-jtype-display').style.display = 'flex';
-      var sel = document.getElementById('sidebar-jtype-select');
-      if(sel) sel.value = window._axOrigJobType || sel.value;
+function saveDeliverTo(){
+  var sel = document.getElementById('job-deliver-to-select');
+  var val = sel ? sel.value : '';
+  var btn = document.querySelector('#job-deliver-to-edit .btn-primary');
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving\u2026'; }
+  fetch('/api/jobs/{{ job.id }}/deliver-to', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body: JSON.stringify({deliver_to: val})
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if(btn){ btn.disabled = false; btn.textContent = 'Save'; }
+    if(data.ok){
+      var txt = document.getElementById('job-deliver-to-text');
+      if(txt) txt.textContent = data.deliver_to || '\u2014';
+      document.getElementById('job-deliver-to-edit').style.display = 'none';
+      document.getElementById('job-deliver-to-display').style.display = 'flex';
+    } else {
+      alert(data.error || 'Error saving delivery location.');
     }
-    _clearUpgradeForm();
-  }
-
-  function _clearUpgradeForm(){
-    document.getElementById('upgradeArrears').value = '';
-    document.getElementById('upgradeNewCosts').value = '';
-    document.getElementById('upgradeDeliveryLoc').value = '';
-    document.getElementById('upgradeToRepoAlert').classList.add('d-none');
-    document.getElementById('upgradeToRepoAlert').textContent = '';
-  }
-
-  window.openUpgradeToRepoModal = function(source){
-    _upgradeSource = source || 'sidebar';
-    _clearUpgradeForm();
-    new bootstrap.Modal(document.getElementById('upgradeToRepoModal')).show();
-  };
-
-  window.submitUpgradeToRepo = function(){
-    var btn = document.getElementById('upgradeToRepoSaveBtn');
-    var alertBox = document.getElementById('upgradeToRepoAlert');
-    alertBox.classList.add('d-none');
-    btn.disabled = true;
-    btn.textContent = 'Saving\u2026';
-    fetch('/api/jobs/{{ job.id }}/upgrade-to-repo', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
-      body: JSON.stringify({
-        arrears:           document.getElementById('upgradeArrears').value.trim(),
-        new_costs:         document.getElementById('upgradeNewCosts').value.trim(),
-        delivery_location: document.getElementById('upgradeDeliveryLoc').value.trim()
-      })
-    })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      btn.disabled = false;
-      btn.textContent = 'Save';
-      if(!data.ok){
-        alertBox.textContent = data.error || 'An error occurred.';
-        alertBox.classList.remove('d-none');
-        return;
-      }
-      bootstrap.Modal.getInstance(document.getElementById('upgradeToRepoModal')).hide();
-      _clearUpgradeForm();
-      if(_upgradeSource === 'editform'){
-        var form = document.getElementById('editJobForm');
-        if(form) form.submit();
-      } else {
-        location.reload();
-      }
-    })
-    .catch(function(){
-      btn.disabled = false;
-      btn.textContent = 'Save';
-      alertBox.textContent = 'Network error. Please try again.';
-      alertBox.classList.remove('d-none');
-    });
-  };
-
-  {% if job.job_type == 'Field Call' %}
-  var _editForm = document.getElementById('editJobForm');
-  if(_editForm){
-    _editForm.addEventListener('submit', function(e){
-      var sel = _editForm.querySelector('select[name="job_type"]');
-      if(sel && sel.value === 'Upgrade to Repo/Collect'){
-        e.preventDefault();
-        var editModal = bootstrap.Modal.getInstance(document.getElementById('editJobModal'));
-        if(editModal) editModal.hide();
-        openUpgradeToRepoModal('editform');
-      }
-    });
-  }
-  {% endif %}
-})();
+  })
+  .catch(function(e){
+    if(btn){ btn.disabled = false; btn.textContent = 'Save'; }
+    alert('Network error. Please try again.');
+  });
+}
 </script>
 {% endif %}
 

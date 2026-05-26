@@ -8350,6 +8350,23 @@ def api_upgrade_to_repo(job_id: int):
         conn.close()
 
 
+@app.post("/api/jobs/<int:job_id>/deliver-to")
+@login_required
+@admin_required
+def api_job_deliver_to(job_id: int):
+    data = request.get_json(silent=True) or {}
+    val  = (data.get("deliver_to") or "").strip() or None
+    now  = now_ts()
+    conn = db()
+    if not conn.execute("SELECT id FROM jobs WHERE id=?", (job_id,)).fetchone():
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+    conn.execute("UPDATE jobs SET deliver_to=?, updated_at=? WHERE id=?", (val, now, job_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "deliver_to": val or ""})
+
+
 @app.post("/api/jobs/<int:job_id>/client-reference")
 @login_required
 @admin_required
