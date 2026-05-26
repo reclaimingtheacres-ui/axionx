@@ -559,6 +559,13 @@ def _raw_db():
     for attempt in range(5):
         try:
             conn = sqlite3.connect(DB_PATH, timeout=30)
+            # Force the file to actually open now, while we are still inside
+            # the retry loop.  On Azure App Service the DB lives on a networked
+            # Azure Files share; connect() can succeed (directory exists) but
+            # the first SQL op can raise "unable to open database file" if the
+            # mount has a transient hiccup.  Probing here lets the retry loop
+            # catch that error instead of letting it propagate to the caller.
+            conn.execute("PRAGMA schema_version")
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA busy_timeout=60000")
             if DEMO_MODE:
