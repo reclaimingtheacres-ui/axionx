@@ -721,6 +721,12 @@ def _startup_migrate():
         add_column_if_missing(_cur, "repo_lock_records", "tow_phone",          "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_operator",       "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_contact_number", "TEXT")
+        _conn.execute(
+            "UPDATE jobs SET regulation_type='Regulated' WHERE regulation_type='REGULATED'"
+        )
+        _conn.execute(
+            "UPDATE jobs SET regulation_type='Unregulated' WHERE regulation_type='UNREGULATED'"
+        )
         _conn.commit()
         _conn.close()
         import logging as _log
@@ -2306,9 +2312,9 @@ def _parse_instruction_text(text):
         if acs_con_type:
             ct = acs_con_type.lower().strip()
             if any(k in ct for k in _UNREGULATED_TYPES) or "unregulated" in ct:
-                acs_reg_type = "UNREGULATED"
+                acs_reg_type = "Unregulated"
             elif any(k in ct for k in _REGULATED_TYPES) or "regulated" in ct:
-                acs_reg_type = "REGULATED"
+                acs_reg_type = "Regulated"
 
         acs_instructions_parts = []
         if acs_job_type:
@@ -2455,9 +2461,9 @@ def _parse_instruction_text(text):
         if wise_loan_type:
             lt = wise_loan_type.lower().strip()
             if any(k in lt for k in _UNREGULATED_TYPES):
-                wise_reg_type = "UNREGULATED"
+                wise_reg_type = "Unregulated"
             elif any(k in lt for k in _REGULATED_TYPES):
-                wise_reg_type = "REGULATED"
+                wise_reg_type = "Regulated"
 
         return {
             "wise_case_number":  wise_case,

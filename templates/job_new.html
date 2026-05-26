@@ -396,11 +396,12 @@
         <div class="nj-row">
           <div style="flex:1;">
             <label class="nj-lbl">Regulation {{ conf_badge('regulated_type') }}</label>
-            {% set _rt = autofill.regulated_type if autofill else '' %}
+            {% set _rt = ((autofill.regulated_type if autofill else '') or '') | upper %}
             <select class="form-select form-select-sm" name="regulation_type">
               <option value="">Select…</option>
-              <option {% if _rt == 'REGULATED' %}selected{% endif %}>REGULATED</option>
-              <option {% if _rt == 'UNREGULATED' %}selected{% endif %}>UNREGULATED</option>
+              <option value="Regulated" {% if _rt == 'REGULATED' %}selected{% endif %}>Regulated</option>
+              <option value="Unregulated" {% if _rt == 'UNREGULATED' %}selected{% endif %}>Unregulated</option>
+              <option value="N/A" {% if _rt == 'N/A' %}selected{% endif %}>N/A</option>
             </select>
           </div>
         </div>

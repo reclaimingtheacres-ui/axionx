@@ -2124,7 +2124,7 @@ def import_staged_jobs(mode="insert_only", conn=None):
         job_type = _determine_job_type(sj["job_title"])
 
         _nmpd_date = sj["parsed_nmpd_date"] or ""
-        _pmt_freq = "Monthly" if _nmpd_date else ""
+        _pmt_freq = "Monthly" if _nmpd_date else None
 
         if existing_id and mode == "update":
             conn.execute("""
@@ -2398,7 +2398,7 @@ def import_staged_jobs_range(ref_start, ref_end, conn=None):
         status = STATUS_MAP.get(sj["status_label"], "New")
         job_type = _determine_job_type(sj["job_title"])
         _nmpd_date = sj["parsed_nmpd_date"] or ""
-        _pmt_freq = "Monthly" if _nmpd_date else ""
+        _pmt_freq = "Monthly" if _nmpd_date else None
 
         try:
             insert_ref = ref_no or str(geoop_id)
@@ -2643,7 +2643,7 @@ def _backfill_one_job(conn, row, ts):
         result["fields_parsed"] = 1
 
     _bf_nmpd_date = parsed.get("parsed_nmpd_date", "") or ""
-    _bf_pmt_freq = "Monthly" if _bf_nmpd_date else ""
+    _bf_pmt_freq = "Monthly" if _bf_nmpd_date else None
 
     conn.execute("""
         UPDATE jobs SET
@@ -5248,7 +5248,7 @@ def repair_due_dates():
                     if new_date == old_normalised:
                         continue
 
-                    _rep_freq = "Monthly" if new_date else ""
+                    _rep_freq = "Monthly" if new_date else None
                     cur = conn.execute("""
                         UPDATE jobs SET job_due_date = ?, mmp_cents = ?,
                             payment_frequency = COALESCE(NULLIF(payment_frequency, ''), ?)
