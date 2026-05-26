@@ -7106,8 +7106,17 @@ function submitClientResponse() {
           <input type="text" id="upgradeNewCosts" class="form-control form-control-sm" placeholder="e.g. $850.00">
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold" style="font-size:.83rem">Asset Delivery Location</label>
-          <input type="text" id="upgradeDeliveryLoc" class="form-control form-control-sm" placeholder="e.g. 123 Main St, Sydney NSW 2000">
+          <label class="form-label fw-semibold" style="font-size:.83rem">Auction/Delivery Location</label>
+          <select id="upgradeDeliveryLoc" class="form-select form-select-sm">
+            <option value="">— Not specified —</option>
+            {% set _uy_seen = namespace(names=[]) %}
+            {% for yard in auction_yards %}
+              {% if yard.name not in _uy_seen.names %}
+                <option value="{{ yard.name }}">{{ yard.name }}</option>
+                {% set _uy_seen.names = _uy_seen.names + [yard.name] %}
+              {% endif %}
+            {% endfor %}
+          </select>
         </div>
         <div id="upgradeToRepoAlert" class="alert alert-danger d-none" role="alert" style="font-size:.82rem"></div>
       </div>

@@ -8309,7 +8309,7 @@ def api_upgrade_to_repo(job_id: int):
         if new_costs:
             note_lines.append(f"New Costs: {new_costs}")
         if delivery_loc:
-            note_lines.append(f"Asset Delivery Location: {delivery_loc}")
+            note_lines.append(f"Auction/Delivery Location: {delivery_loc}")
         note_text = "\n".join(note_lines)
         admin_uid = session["user_id"]
         cur.execute(
@@ -8333,7 +8333,7 @@ def api_upgrade_to_repo(job_id: int):
             if new_costs:
                 msg_lines.append(f"New Costs: {new_costs}")
             if delivery_loc:
-                msg_lines.append(f"Asset Delivery Location: {delivery_loc}")
+                msg_lines.append(f"Auction/Delivery Location: {delivery_loc}")
             msg_body = "\n".join(msg_lines)
             conv_id, _ = _get_or_create_direct_conv(conn, admin_uid, assigned_uid, job_id=job_id)
             conn.execute("UPDATE conversations SET subject=? WHERE id=?",
