@@ -10119,6 +10119,16 @@ def repo_lock_submit(job_id: int, item_id: int):
         return jsonify({"ok": False, "errors": [f"Submission failed: {_e}"]}), 500
 
 
+def _gen_pdf_filename(client_job: str, reg: str, suffix: str) -> str:
+    """Build a deduplicated PDF filename: ClientJobNumber-REG-Suffix.pdf
+    client_job: invalid filename chars removed, spaces preserved
+    reg:        spaces AND invalid filename chars removed
+    """
+    cj  = re.sub(r'[/\\:*?"<>|]', '', str(client_job or "")).strip() or "REF"
+    reg = re.sub(r'[/\\:*?"<>|\s]', '', str(reg or "")).upper() or "NOREG"
+    return f"{cj}-{reg}-{suffix}.pdf"
+
+
 def _attach_pdf_to_job(conn, job_id: int, user_id, pdf_bytes: bytes,
                         original_filename: str, form_label: str, ts: str = None):
     """
@@ -10350,11 +10360,12 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
 
     pdf_bytes = _pg.generate_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig)
 
-    job_num   = (d.get("client_reference") or d.get("swpi_ref") or str(job_id)).replace("/", "-")
-    from datetime import datetime as _dt
-    date_str  = _dt.now().strftime("%d-%m-%y")
     form_label = "AxionX VIR" if DEMO_MODE else "SWPI VIR"
-    orig_filename = f"{job_num} VIR {date_str}.pdf"
+    orig_filename = _gen_pdf_filename(
+        d.get("client_reference") or str(job_id),
+        d.get("registration"),
+        "VIR"
+    )
     attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                                 orig_filename, form_label, ts)
     conn.commit()
@@ -10452,11 +10463,12 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
     # Signatures are session-only — use directly from form, do not persist
     pdf_bytes = _pg.generate_transport_pdf(d, agent_sig=agent_sig, tow_sig=tow_sig)
 
-    job_num    = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
-    from datetime import datetime as _dt
-    date_str   = _dt.now().strftime("%d-%m-%Y")
     form_label = "Transport Instructions"
-    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+    orig_filename = _gen_pdf_filename(
+        d.get("client_reference") or str(job_id),
+        d.get("registration"),
+        "TowInst"
+    )
     attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                                 orig_filename, form_label, ts)
     conn.commit()
@@ -10560,11 +10572,12 @@ def repo_lock_wise_vir_pdf(job_id: int, rec_id: int):
 
     pdf_bytes = _pg.generate_wise_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig)
 
-    job_num    = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
-    from datetime import datetime as _dt
-    date_str   = _dt.now().strftime("%d-%m-%Y")
     form_label = "Wise VIR"
-    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+    orig_filename = _gen_pdf_filename(
+        d.get("wise_case_number") or d.get("client_reference") or str(job_id),
+        d.get("registration"),
+        "VIR"
+    )
     _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                        orig_filename, form_label, ts)
     conn.commit()
@@ -10622,11 +10635,12 @@ def repo_lock_wise_auction_pdf(job_id: int, rec_id: int):
             d["model"] = parts[2]
 
     pdf_bytes = _pg.generate_wise_auction_pdf(d)
-    job_num = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
-    from datetime import datetime as _dt
-    date_str = _dt.now().strftime("%d-%m-%Y")
     form_label = "Wise Auction Instructions"
-    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+    orig_filename = _gen_pdf_filename(
+        d.get("wise_case_number") or d.get("client_reference") or str(job_id),
+        d.get("registration"),
+        "AuctionManager"
+    )
     ts = now_ts()
     _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                        orig_filename, form_label, ts)
@@ -10684,11 +10698,12 @@ def repo_lock_wise_tow_pdf(job_id: int, rec_id: int):
             d["model"] = parts[2]
 
     pdf_bytes = _pg.generate_wise_tow_pdf(d)
-    job_num = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
-    from datetime import datetime as _dt
-    date_str = _dt.now().strftime("%d-%m-%Y")
     form_label = "Wise Tow Instructions"
-    orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+    orig_filename = _gen_pdf_filename(
+        d.get("wise_case_number") or d.get("client_reference") or str(job_id),
+        d.get("registration"),
+        "Tow"
+    )
     ts = now_ts()
     _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                        orig_filename, form_label, ts)
@@ -10778,11 +10793,12 @@ def repo_lock_form_13_pdf(job_id: int, rec_id: int):
             raise RuntimeError("PDF generation returned empty bytes")
         _log.info("[FORM13] PDF generation succeeded user_id=%s job_id=%s rec_id=%s bytes=%s", session.get("user_id"), job_id, rec_id, len(pdf_bytes))
 
-        job_num    = (d.get("swpi_ref") or str(job_id)).replace("/", "-")
-        from datetime import datetime as _dt
-        date_str   = _dt.now().strftime("%d-%m-%Y")
         form_label = "Form 13"
-        orig_filename = f"{job_num} - {form_label} - {date_str}.pdf"
+        orig_filename = _gen_pdf_filename(
+            d.get("client_reference") or str(job_id),
+            d.get("registration"),
+            "Form13"
+        )
         attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                            orig_filename, form_label, ts)
         conn.commit()
