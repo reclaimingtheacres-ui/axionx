@@ -6937,13 +6937,15 @@ def job_status_update(job_id: int):
     now = now_ts()
     conn = db()
     cur = conn.cursor()
+    _old_job = cur.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    old_status = _old_job["status"] if _old_job else ""
     cur.execute("UPDATE jobs SET status = ?, updated_at = ?, status_changed_at = ? WHERE id = ?",
                 (status, now, now, job_id))
     cur.execute("""
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status Update", f"Status changed to '{status}'.", now, now))
-    if status in ("Completed", "Invoiced", "Cancelled"):
+    if status in ("Completed", "Cancelled") or (status == "Invoiced" and old_status == "Completed"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
         pending_scheds = cur.execute(
@@ -8061,7 +8063,8 @@ def job_update(job_id: int):
 
     conn = db()
     cur = conn.cursor()
-    _prev_job = cur.execute("SELECT assigned_user_id, display_ref, job_address FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    _prev_job = cur.execute("SELECT assigned_user_id, display_ref, job_address, status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    old_status = _prev_job["status"] if _prev_job else ""
 
     old_agent = _prev_job["assigned_user_id"] if _prev_job else None
     new_agent = int(assigned_user_id) if assigned_user_id else None
@@ -8082,7 +8085,7 @@ def job_update(job_id: int):
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status/Visit Update", f"Status set to '{status}'. Visit type set to '{visit_type}'.", now, now))
 
-    if status in ("Completed", "Invoiced", "Cancelled"):
+    if status in ("Completed", "Cancelled") or (status == "Invoiced" and old_status == "Completed"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
         pending_scheds = cur.execute(
