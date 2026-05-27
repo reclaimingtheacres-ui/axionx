@@ -20728,6 +20728,51 @@ def m_quick_note_save(job_id):
         except Exception:
             pass
 
+        # Auto-complete any today/overdue schedule assigned to this agent for this job.
+        # Mirrors the My Today "Attended" mechanism exactly (status→Completed, history, visit_type).
+        # Uses a separate try/except so a failure here never rolls back the note submission.
+        try:
+            _today_date = datetime.now(_melbourne).date().isoformat()
+            _sched_row  = conn.execute("""
+                SELECT id, scheduled_for, status FROM schedules
+                WHERE job_id = ? AND assigned_to_user_id = ?
+                  AND date(scheduled_for, 'localtime') <= ?
+                  AND status NOT IN ('Completed', 'Cancelled')
+                  AND hidden = 0
+                ORDER BY scheduled_for ASC
+                LIMIT 1
+            """, (job_id, uid, _today_date)).fetchone()
+            if _sched_row:
+                _sid        = _sched_row["id"]
+                _old_sched  = _sched_row["scheduled_for"]
+                _old_status = _sched_row["status"]
+                _ts3        = now_ts()
+                _cur3       = conn.cursor()
+                _cur3.execute("UPDATE schedules SET status='Completed' WHERE id=?", (_sid,))
+                _write_schedule_history(
+                    _cur3, _sid, job_id, "completed",
+                    _old_sched, _old_sched,
+                    _old_status, "Completed",
+                    uid, "Auto-completed: agent submitted note for review"
+                )
+                _nxt = conn.execute("""
+                    SELECT bt.name AS bt_name FROM schedules s
+                    JOIN booking_types bt ON bt.id = s.booking_type_id
+                    WHERE s.job_id = ? AND s.id != ? AND s.hidden = 0
+                      AND s.status NOT IN ('Completed', 'Cancelled')
+                    ORDER BY s.scheduled_for ASC LIMIT 1
+                """, (job_id, _sid)).fetchone()
+                if _nxt:
+                    _sync_visit_type_from_booking(_cur3, job_id, _nxt["bt_name"], _ts3)
+                else:
+                    _cur3.execute("""
+                        UPDATE jobs SET visit_type = 'Re-attend', updated_at = ?
+                        WHERE id = ? AND visit_type = 'New Visit'
+                    """, (_ts3, job_id))
+                conn.commit()
+        except Exception:
+            pass
+
     conn.close()
 
     return jsonify({
