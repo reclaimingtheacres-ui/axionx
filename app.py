@@ -4191,8 +4191,33 @@ def _jobs_list_inner():
         params.extend(statuses_selected)
 
     if q:
-        like = f"%{q}%"
-        _search_ids_sql = """
+        import re as _re
+        _q_wc    = q.endswith('*') and len(q) > 1
+        _q_core  = q[:-1] if _q_wc else q
+        like     = (_q_core + '%') if _q_wc else f'%{_q_core}%'
+        _ph_digs = _re.sub(r'\D', '', _q_core)
+        _phone_params    = []
+        _phone_sql_extra = ""
+        if len(_ph_digs) >= 4:
+            _pl = (_ph_digs + '%') if _q_wc else f'%{_ph_digs}%'
+            _phone_params.append(_pl)
+            if _ph_digs.startswith('0') and len(_ph_digs) >= 5:
+                _alt = '61' + _ph_digs[1:]
+                _phone_params.append((_alt + '%') if _q_wc else f'%{_alt}%')
+            elif _ph_digs.startswith('61') and len(_ph_digs) >= 6:
+                _alt = '0' + _ph_digs[2:]
+                _phone_params.append((_alt + '%') if _q_wc else f'%{_alt}%')
+            _phu = (
+                "\n UNION\n"
+                " SELECT jph.id FROM jobs jph"
+                " JOIN customers cuph ON cuph.id = jph.customer_id"
+                " JOIN contact_phone_numbers cpn"
+                " ON cpn.entity_type='customer' AND cpn.entity_id=cuph.id"
+                " WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+                "cpn.phone_number,' ',''),'-',''),'(',''),')',''),'+','') LIKE ?"
+            )
+            _phone_sql_extra = "".join(_phu for _ in _phone_params)
+        _search_ids_sql = f"""
          SELECT id FROM jobs WHERE internal_job_number LIKE ? OR client_reference LIKE ?
            OR client_job_number LIKE ? OR display_ref LIKE ?
            OR description LIKE ? OR job_address LIKE ?
@@ -4206,9 +4231,11 @@ def _jobs_list_inner():
          UNION
          SELECT ji2.job_id FROM job_items ji2
            WHERE ji2.reg LIKE ? OR ji2.vin LIKE ? OR ji2.description LIKE ?
+        {_phone_sql_extra}
         """
         where_clause += f" AND j.id IN ({_search_ids_sql})"
         params.extend([like] * 15)
+        params.extend(_phone_params)
 
     if filter_client:
         where_clause += " AND j.client_id = ?"
@@ -20255,7 +20282,32 @@ def m_api_jobs_search():
         return jsonify({"jobs": []})
     is_admin = role in ("admin", "both")
     conn = db()
-    like = f"%{q}%"
+    import re as _re
+    _q_wc    = q.endswith('*') and len(q) > 1
+    _q_core  = q[:-1] if _q_wc else q
+    like     = (_q_core + '%') if _q_wc else f'%{_q_core}%'
+    _ph_digs = _re.sub(r'\D', '', _q_core)
+    _phone_m_params = []
+    _phone_unions   = ""
+    if len(_ph_digs) >= 4:
+        _plm = (_ph_digs + '%') if _q_wc else f'%{_ph_digs}%'
+        _phone_m_params.append(_plm)
+        if _ph_digs.startswith('0') and len(_ph_digs) >= 5:
+            _alt = '61' + _ph_digs[1:]
+            _phone_m_params.append((_alt + '%') if _q_wc else f'%{_alt}%')
+        elif _ph_digs.startswith('61') and len(_ph_digs) >= 6:
+            _alt = '0' + _ph_digs[2:]
+            _phone_m_params.append((_alt + '%') if _q_wc else f'%{_alt}%')
+        _phu_m = (
+            "\n            UNION\n"
+            "            SELECT jph.id FROM jobs jph\n"
+            "            JOIN customers cuph ON cuph.id = jph.customer_id\n"
+            "            JOIN contact_phone_numbers cpn\n"
+            "              ON cpn.entity_type='customer' AND cpn.entity_id=cuph.id\n"
+            "            WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\n"
+            "              cpn.phone_number,' ',''),'-',''),'(',''),')',''),'+','') LIKE ?"
+        )
+        _phone_unions = "".join(_phu_m for _ in _phone_m_params)
     scope_sql = "1=1" if is_admin else (
         "(j.assigned_user_id = ? OR EXISTS ("
         "  SELECT 1 FROM schedules s"
@@ -20263,7 +20315,7 @@ def m_api_jobs_search():
         "  AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0"
         "))")
     params = [] if is_admin else [uid, uid]
-    params += [like] * 15
+    params += [like] * 15 + _phone_m_params
     rows = conn.execute(f"""
         SELECT j.id, j.display_ref, j.internal_job_number, j.client_reference,
                j.account_number, j.status, j.job_address, j.lat, j.lng,
@@ -20300,6 +20352,7 @@ def m_api_jobs_search():
               OR (cu5.first_name || ' ' || cu5.last_name) LIKE ?
             UNION
             SELECT ji3.job_id FROM job_items ji3 WHERE ji3.reg LIKE ? OR ji3.vin LIKE ?
+            {_phone_unions}
           )
         ORDER BY j.created_at DESC
         LIMIT 50
