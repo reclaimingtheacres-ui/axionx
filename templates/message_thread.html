@@ -117,6 +117,10 @@
   .msg-bubble.self { background:var(--accent);color:#fff;border-bottom-right-radius:4px; }
   .msg-bubble.system-msg { background:#e0f2fe;border:1px solid #bae6fd;border-bottom-left-radius:4px;color:#0c4a6e; }
   .msg-bubble-recip { font-size:.68rem;color:#0369a1;font-style:italic;padding-left:2px; }
+  .msg-read-receipt { font-size:.65rem;color:var(--muted);padding-left:2px;margin-top:1px; }
+  .msg-bubble-row.self .msg-read-receipt { text-align:right;padding-left:0;padding-right:2px; }
+  .msg-read-receipt .rr-read { color:#16a34a; }
+  .msg-read-receipt .rr-unread { color:var(--muted); }
 
   .msg-reply-bar {
     background:#fff;border-top:1px solid var(--line);padding:12px 20px;
@@ -266,6 +270,18 @@
               <div class="msg-bubble-recip">Sent to: {{ msg_recipients[m.id] }}</div>
               {% endif %}
               <div class="msg-bubble {% if is_self %}self{% elif is_sys_msg %}system-msg{% else %}other{% endif %}">{{ m.body }}</div>
+              {% if is_self and msg_read_receipts is defined and m.id in msg_read_receipts %}
+              {% set receipt = msg_read_receipts[m.id] %}
+              <div class="msg-read-receipt">
+                {% if receipt.read_names and receipt.unread_names %}
+                  <span class="rr-read">✓ {{ receipt.read_names | join(', ') }}</span> · <span class="rr-unread">Unread: {{ receipt.unread_names | join(', ') }}</span>
+                {% elif receipt.read_names %}
+                  <span class="rr-read">✓ {{ 'Read' if receipt.read_names | length == 1 and participants | length == 2 else receipt.read_names | join(', ') }}</span>
+                {% else %}
+                  <span class="rr-unread">· Unread</span>
+                {% endif %}
+              </div>
+              {% endif %}
             </div>
           </div>
         {% endfor %}

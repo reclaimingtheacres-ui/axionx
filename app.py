@@ -27663,6 +27663,54 @@ def _build_msg_recipients(conn, msgs, system_uid):
     return result
 
 
+def _get_msg_read_receipts(conn, msgs, viewer_uid, viewer_role, participants):
+    """Return per-message read receipt data for admin/management/both viewers.
+
+    Only computes receipts for messages sent by the viewer.
+    Returns {msg_id: {"read_names": [...], "unread_names": [...]}}
+
+    Absence of a message_reads row means the recipient never opened that
+    message — defaults to 'unread', which is the safe/conservative choice.
+    """
+    if viewer_role not in ('admin', 'both', 'management'):
+        return {}
+    my_msgs = [m for m in msgs if m["sender_id"] == viewer_uid]
+    if not my_msgs:
+        return {}
+    others = [p for p in participants if p["id"] != viewer_uid]
+    if not others:
+        return {}
+    other_ids = {p["id"] for p in others}
+    other_names = {p["id"]: p["full_name"] for p in others}
+    my_msg_ids = [m["id"] for m in my_msgs]
+    ph = ",".join("?" * len(my_msg_ids))
+    read_rows = conn.execute(
+        f"SELECT message_id, user_id FROM message_reads "
+        f"WHERE message_id IN ({ph}) AND user_id != ?",
+        my_msg_ids + [viewer_uid]
+    ).fetchall()
+    read_map = {}
+    for row in read_rows:
+        mid = row["message_id"]
+        uid = row["user_id"]
+        if uid in other_ids:
+            read_map.setdefault(mid, set()).add(uid)
+
+    def _first(n):
+        return n.split()[0] if n and " " in n else (n or "")
+
+    result = {}
+    for m in my_msgs:
+        mid = m["id"]
+        read_uids = read_map.get(mid, set())
+        unread_uids = other_ids - read_uids
+        result[mid] = {
+            "read_names": sorted([_first(other_names[u]) for u in read_uids]),
+            "unread_names": sorted([_first(other_names[u]) for u in unread_uids]),
+        }
+    return result
+
+
 def _get_or_create_direct_conv(conn, uid_a, uid_b, job_id=None):
     """Return (conv_id, created) for a direct conversation between two users.
     If job_id is provided, look for a job-linked conversation involving both."""
@@ -27989,6 +28037,8 @@ def message_thread(conv_id):
     system_uid = _get_system_user_id(conn)
     is_system_conv = any(p["id"] == system_uid for p in participants)
     msg_recipients = _build_msg_recipients(conn, msgs, system_uid)
+    viewer_role = session.get("role", "")
+    msg_read_receipts = _get_msg_read_receipts(conn, msgs, uid, viewer_role, participants)
     # Full conv list for sidebar
     convs = _get_conv_list(conn, uid)
     users = conn.execute(
@@ -28000,7 +28050,8 @@ def message_thread(conv_id):
                            conv=conv, msgs=msgs, participants=participants,
                            convs=convs, users=users, conv_id=conv_id,
                            is_system_conv=is_system_conv, system_uid=system_uid,
-                           msg_recipients=msg_recipients)
+                           msg_recipients=msg_recipients,
+                           msg_read_receipts=msg_read_receipts)
 
 
 @app.post("/messages/new")
