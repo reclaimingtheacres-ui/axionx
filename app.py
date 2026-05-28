@@ -6100,7 +6100,7 @@ def schedule_index():
     conn = db()
     cur = conn.cursor()
     if is_admin:
-        cur.execute("SELECT id, full_name FROM users WHERE active = 1 AND role IN ('agent','both','admin') ORDER BY full_name")
+        cur.execute("SELECT id, full_name FROM users WHERE active = 1 AND role IN ('agent','both','admin','management') ORDER BY full_name")
         agents = [{"id": a["id"], "name": a["full_name"]} for a in cur.fetchall()]
     cur.execute("SELECT id, name FROM booking_types WHERE active = 1 ORDER BY name")
     booking_types = [{"id": bt["id"], "name": bt["name"]} for bt in cur.fetchall()]

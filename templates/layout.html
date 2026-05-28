@@ -385,6 +385,8 @@
         {% if session.get('role') == 'management' and not is_demo_client %}
           <div class="hint">Management</div>
           <a href="/management/agent-performance" class="{% if request.path.startswith('/management/') %}active{% endif %}">Agent Performance</a>
+          <a href="/my/today" class="{% if request.path.startswith('/my/today') %}active{% endif %}">My Today</a>
+          <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
         {% endif %}
 
         {% if session.get('role') in ('agent', 'both') %}
