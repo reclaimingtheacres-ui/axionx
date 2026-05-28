@@ -17863,7 +17863,7 @@ def mgmt_agent_performance():
     inactive_ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
 
     all_agents_list = conn.execute(
-        "SELECT id, full_name FROM users WHERE role IN ('agent','both') AND active=1 ORDER BY full_name"
+        "SELECT id, full_name FROM users WHERE role IN ('agent','both','management') AND active=1 ORDER BY full_name"
     ).fetchall()
 
     if agent_filter:
