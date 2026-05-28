@@ -2878,7 +2878,7 @@ _AUTO_ADVANCE_TYPES = {
 
 def maybe_auto_advance_status(cur, job_id: int, current_status: str,
                                event_type: str, role: str) -> bool:
-    if role not in ("admin", "both"):
+    if role not in ("admin", "both", "management"):
         return False
     if event_type.lower() not in _AUTO_ADVANCE_TYPES:
         return False
@@ -3169,7 +3169,7 @@ def admin_required(f):
     def wrapper(*args, **kwargs):
         if not session.get("user_id"):
             return _login_redirect()
-        if session.get("role") not in ("admin", "both"):
+        if session.get("role") not in ("admin", "both", "management"):
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
         return f(*args, **kwargs)
@@ -3225,7 +3225,7 @@ def geoop_required(f):
             return redirect(url_for("index"))
         if not session.get("user_id"):
             return _login_redirect()
-        if session.get("role") not in ("admin", "both"):
+        if session.get("role") not in ("admin", "both", "management"):
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
         if not _geoop_is_unlocked():
@@ -3945,7 +3945,7 @@ def dashboard():
         jobs_archived  = jcount("status = 'Archived - Invoiced'")
 
     jobs_unassigned = 0
-    if role in ("admin", "both"):
+    if role in ("admin", "both", "management"):
         jobs_unassigned = jcount("assigned_user_id IS NULL AND status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')")
 
     agent_subq = """
@@ -4031,7 +4031,7 @@ def dashboard():
     completed_today = cur.fetchone()["c"]
 
     # Auto-flag overdue / today / tomorrow schedules into the job queue
-    _admin_id = user_id if role in ("admin", "both") else None
+    _admin_id = user_id if role in ("admin", "both", "management") else None
     if _admin_id:
         auto_queue_schedule_alerts(cur, _admin_id)
         conn.commit()
@@ -4245,7 +4245,7 @@ def _jobs_list_inner():
     if filter_unassigned == "1":
         where_clause += " AND j.assigned_user_id IS NULL AND j.status NOT IN ('Completed','Invoiced','Cancelled','Archived - Invoiced','Cold Stored')"
 
-    if filter_agent and role in ("admin", "both"):
+    if filter_agent and role in ("admin", "both", "management"):
         where_clause += " AND (j.assigned_user_id = ? OR EXISTS (SELECT 1 FROM schedules sa WHERE sa.job_id = j.id AND sa.assigned_to_user_id = ? AND sa.status NOT IN ('Cancelled') AND sa.hidden = 0))"
         params.extend([filter_agent, filter_agent])
 
@@ -4359,7 +4359,7 @@ def _jobs_list_inner():
     ).fetchall()
 
     agent_counts = {}
-    if role in ("admin", "both"):
+    if role in ("admin", "both", "management"):
         _active_statuses = "('New','Active','Active - Phone work only','Suspended','Awaiting Advice From Client','Awaiting Instructions')"
         for ac_row in cur.execute(f"""
             SELECT j.assigned_user_id AS aid, COUNT(*) AS cnt
@@ -4380,7 +4380,7 @@ def _jobs_list_inner():
     rt_hits = _search_recovery_targets(conn, q) if q else []
 
     urgent_sent_sched_ids: set = set()
-    if role in ("admin", "both"):
+    if role in ("admin", "both", "management"):
         page_sched_ids = [r["next_sched_id"] for r in rows if r["next_sched_id"]]
         if page_sched_ids:
             try:
@@ -5332,7 +5332,7 @@ def job_detail(job_id: int):
 
     # Office-only notes — admin/both users ONLY; never exposed to agents or field views
     office_notes = []
-    if role in ("admin", "both"):
+    if role in ("admin", "both", "management"):
         cur.execute("""
             CREATE TABLE IF NOT EXISTS job_office_notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5661,7 +5661,7 @@ def add_schedule(job_id: int):
     caller_role = session.get("role", "")
     is_ajax     = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-    if caller_role in ("admin", "both"):
+    if caller_role in ("admin", "both", "management"):
         assigned_to = request.form.get("assigned_to_user_id", "").strip() or None
         if assigned_to:
             assigned_to = int(assigned_to)
@@ -6081,7 +6081,7 @@ def job_activate(job_id):
 @login_required
 def schedule_index():
     caller_role = session.get("role", "")
-    is_admin = caller_role in ("admin", "both")
+    is_admin = caller_role in ("admin", "both", "management")
     agents = []
     conn = db()
     cur = conn.cursor()
@@ -6112,7 +6112,7 @@ _BOOKING_TYPE_COLORS = {
 def schedule_api_events():
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
-    is_admin    = caller_role in ("admin", "both")
+    is_admin    = caller_role in ("admin", "both", "management")
 
     start_str     = request.args.get("start", "")
     end_str       = request.args.get("end", "")
@@ -6229,7 +6229,7 @@ def schedule_api_reschedule(sched_id):
         return jsonify({"ok": False, "error": "Booking not found."}), 404
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
-    is_admin = caller_role in ("admin", "both")
+    is_admin = caller_role in ("admin", "both", "management")
     if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
@@ -6256,7 +6256,7 @@ def schedule_api_complete(sched_id):
         return jsonify({"ok": False, "error": "Booking not found."}), 404
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
-    is_admin = caller_role in ("admin", "both")
+    is_admin = caller_role in ("admin", "both", "management")
     if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
@@ -6296,7 +6296,7 @@ def schedule_api_cancel(sched_id):
         return jsonify({"ok": False, "error": "Booking not found."}), 404
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
-    is_admin = caller_role in ("admin", "both")
+    is_admin = caller_role in ("admin", "both", "management")
     if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
@@ -6322,7 +6322,7 @@ def schedule_api_history(sched_id):
         return jsonify({"ok": False, "error": "Booking not found."}), 404
     caller_id = session.get("user_id")
     caller_role = session.get("role", "")
-    is_admin = caller_role in ("admin", "both")
+    is_admin = caller_role in ("admin", "both", "management")
     if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised."}), 403
@@ -6363,7 +6363,7 @@ def schedule_api_update(sched_id):
             return jsonify({"ok": False, "error": "Booking not found."}), 404
         caller_id = session.get("user_id")
         caller_role = session.get("role", "")
-        is_admin = caller_role in ("admin", "both")
+        is_admin = caller_role in ("admin", "both", "management")
         if not is_admin and (sched["assigned_to_user_id"] != caller_id or sched.get("hidden", 0)):
             conn.close()
             return jsonify({"ok": False, "error": "Not authorised."}), 403
@@ -7531,7 +7531,7 @@ def _create_client_update_escalation(conn, job_id: int, user_id: int) -> bool:
 def _build_client_update_info(conn, job_id: int, role: str) -> dict:
     """Call eligibility and, for admin/both users, auto-trigger Stage 3 escalation if due."""
     info = _client_update_request_eligibility(conn, job_id)
-    if info.get("needs_escalation") and role in ("admin", "both"):
+    if info.get("needs_escalation") and role in ("admin", "both", "management"):
         created = _create_client_update_escalation(conn, job_id, _get_system_user_id(conn))
         if created:
             conn.commit()
@@ -11972,7 +11972,7 @@ def add_job_note(job_id: int):
         return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
 
     # Admin can override staff and timestamp
-    if session.get("role") in ("admin", "both"):
+    if session.get("role") in ("admin", "both", "management"):
         staff_uid_raw = request.form.get("staff_user_id", "").strip()
         author_id = int(staff_uid_raw) if staff_uid_raw and staff_uid_raw.isdigit() else session.get("user_id")
         note_date  = request.form.get("note_date", "").strip()
@@ -11995,7 +11995,7 @@ def add_job_note(job_id: int):
     _form_cat = request.form.get("note_category", "").strip()
     _action   = request.form.get("_action", "").strip()
     _submit_for_review = _action == "submit_review"
-    _is_admin = session.get("role") in ("admin", "both")
+    _is_admin = session.get("role") in ("admin", "both", "management")
     if _form_cat in ("field_note", "file_note"):
         _note_cat = _form_cat
     else:
@@ -12071,7 +12071,7 @@ def add_job_note(job_id: int):
         flash("Note saved but queue item could not be created. Please notify an admin.", "warning")
     else:
         flash("Note saved.", "success")
-    if session.get("role") in ("admin", "both"):
+    if session.get("role") in ("admin", "both", "management"):
         _sconn = db()
         has_active_schedule = _sconn.execute(
             "SELECT 1 FROM schedules WHERE job_id = ? AND status NOT IN ('Cancelled', 'Completed') LIMIT 1",
@@ -12098,7 +12098,7 @@ def delete_job_note(job_id: int, note_id: int):
 
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
-    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
+    if caller_role not in ("admin", "both", "management") and note["created_by_user_id"] != caller_id:
         conn.close()
         flash("You can only delete your own notes.", "danger")
         return redirect(url_for("job_detail", job_id=job_id, _anchor="tab-notes"))
@@ -12123,7 +12123,7 @@ def delete_job_note(job_id: int, note_id: int):
 @app.post("/jobs/<int:job_id>/office-notes")
 @login_required
 def job_office_note_create(job_id: int):
-    if session.get("role") not in ("admin", "both"):
+    if session.get("role") not in ("admin", "both", "management"):
         return ("Forbidden", 403)
     note_body = (request.form.get("note_body") or "").strip()
     if not note_body:
@@ -12154,7 +12154,7 @@ def job_office_note_create(job_id: int):
 @app.post("/jobs/<int:job_id>/office-notes/<int:note_id>/edit")
 @login_required
 def job_office_note_edit(job_id: int, note_id: int):
-    if session.get("role") not in ("admin", "both"):
+    if session.get("role") not in ("admin", "both", "management"):
         return ("Forbidden", 403)
     note_body = (request.form.get("note_body") or "").strip()
     if not note_body:
@@ -12174,7 +12174,7 @@ def job_office_note_edit(job_id: int, note_id: int):
 @app.post("/jobs/<int:job_id>/office-notes/<int:note_id>/delete")
 @login_required
 def job_office_note_delete(job_id: int, note_id: int):
-    if session.get("role") not in ("admin", "both"):
+    if session.get("role") not in ("admin", "both", "management"):
         return ("Forbidden", 403)
     conn = db()
     conn.execute("""
@@ -12200,7 +12200,7 @@ def edit_job_note(job_id: int, note_id: int):
 
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
-    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
+    if caller_role not in ("admin", "both", "management") and note["created_by_user_id"] != caller_id:
         conn.close()
         return jsonify({"ok": False, "error": "Permission denied"}), 403
 
@@ -12212,7 +12212,7 @@ def edit_job_note(job_id: int, note_id: int):
     ts = now_ts()
     fields: dict = {"note_text": new_text, "updated_at": ts, "updated_by_user_id": caller_id}
 
-    if caller_role in ("admin", "both"):
+    if caller_role in ("admin", "both", "management"):
         note_date = request.form.get("note_date", "").strip()
         note_hour = request.form.get("note_hour", "").strip()
         note_min  = request.form.get("note_minute", "").strip()
@@ -12333,7 +12333,7 @@ def add_note_attachments(job_id: int, note_id: int):
 
     caller_id   = session.get("user_id")
     caller_role = session.get("role", "")
-    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
+    if caller_role not in ("admin", "both", "management") and note["created_by_user_id"] != caller_id:
         conn.close()
         return jsonify({"ok": False, "error": "Permission denied"}), 403
 
@@ -12396,7 +12396,7 @@ def delete_note_attachment(job_id: int, note_id: int, file_id: int):
 
     caller_role = session.get("role", "")
     caller_id = session.get("user_id")
-    if caller_role not in ("admin", "both") and note["created_by_user_id"] != caller_id:
+    if caller_role not in ("admin", "both", "management") and note["created_by_user_id"] != caller_id:
         conn.close()
         return jsonify({"ok": False, "error": "Permission denied"}), 403
 
@@ -13462,7 +13462,7 @@ def update_builder(job_id: int):
         abort(404)
     role = session.get("role", "")
     uid  = session.get("user_id")
-    if role not in ("admin", "both"):
+    if role not in ("admin", "both", "management"):
         if job["assigned_user_id"] != uid:
             conn.close()
             flash("Access denied.", "danger")
@@ -13526,7 +13526,7 @@ def update_builder_generate(job_id: int):
 
     uid  = session.get("user_id")
     role = session.get("role", "")
-    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+    if role not in ("admin", "both", "management") and job["assigned_user_id"] != uid:
         conn.close()
         return jsonify({"error": "Access denied"}), 403
 
@@ -13680,7 +13680,7 @@ def update_builder_save(job_id: int):
 
     uid  = session.get("user_id")
     role = session.get("role", "")
-    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+    if role not in ("admin", "both", "management") and job["assigned_user_id"] != uid:
         conn.close()
         return jsonify({"error": "Access denied"}), 403
 
@@ -13797,7 +13797,7 @@ def update_builder_autosave(job_id: int):
 
     uid  = session.get("user_id")
     role = session.get("role", "")
-    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+    if role not in ("admin", "both", "management") and job["assigned_user_id"] != uid:
         conn.close()
         return jsonify({"ok": False}), 403
 
@@ -13853,7 +13853,7 @@ def update_builder_discard(job_id: int):
     if not job:
         conn.close()
         return jsonify({"ok": False, "error": "Job not found"}), 404
-    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+    if role not in ("admin", "both", "management") and job["assigned_user_id"] != uid:
         conn.close()
         return jsonify({"ok": False, "error": "Access denied"}), 403
     data     = request.get_json(force=True) or {}
@@ -13908,7 +13908,7 @@ def update_builder_upload_photo(job_id):
         return jsonify({"ok": False, "error": "Job not found"}), 404
     uid = session.get("user_id")
     role = session.get("role", "")
-    if role not in ("admin", "both") and job["assigned_user_id"] != uid:
+    if role not in ("admin", "both", "management") and job["assigned_user_id"] != uid:
         conn.close()
         return jsonify({"ok": False, "error": "Access denied"}), 403
 
@@ -14034,7 +14034,7 @@ def update_builder_serve_photo(job_id, photo_id):
     if not row:
         conn.close()
         abort(404)
-    if role not in ("admin", "both"):
+    if role not in ("admin", "both", "management"):
         job = conn.execute("SELECT assigned_user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
         has_schedule = conn.execute(
             "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed') AND hidden = 0",
@@ -16520,7 +16520,7 @@ def admin_settings_archive():
 @app.get("/admin/settings/kill-scratch")
 @admin_required
 def kill_scratch_page():
-    if session.get("role") != "admin":
+    if session.get("role") not in ("admin", "management"):
         flash("Master admin access required.", "danger")
         return redirect(url_for("admin_settings"))
     conn = db()
@@ -16542,7 +16542,7 @@ def kill_scratch_page():
 @app.post("/admin/settings/kill-scratch")
 @admin_required
 def kill_scratch_execute():
-    if session.get("role") != "admin":
+    if session.get("role") not in ("admin", "management"):
         return jsonify({"ok": False, "error": "Master admin access required"}), 403
     data = request.get_json(silent=True) or {}
     confirm_text = (data.get("confirm_text") or "").strip()
@@ -16582,7 +16582,7 @@ def kill_scratch_execute():
 @app.post("/admin/settings/purge-archived-scratch")
 @admin_required
 def purge_archived_scratch():
-    if session.get("role") != "admin":
+    if session.get("role") not in ("admin", "management"):
         return jsonify({"ok": False, "error": "Master admin access required"}), 403
     data = request.get_json(silent=True) or {}
     confirm_text = (data.get("confirm_text") or "").strip()
@@ -16937,7 +16937,7 @@ def my_schedule_attended(sched_id: int):
     sched = dict(sched_row)
     uid  = session.get("user_id")
     role = session.get("role", "")
-    if role not in ("admin", "both") and (sched["assigned_to_user_id"] != uid or sched.get("hidden", 0)):
+    if role not in ("admin", "both", "management") and (sched["assigned_to_user_id"] != uid or sched.get("hidden", 0)):
         conn.close()
         flash("Access denied.", "danger")
         return redirect(url_for("my_today"))
@@ -17096,7 +17096,7 @@ def note_submit_for_review(job_id: int, note_id: int):
         conn.close()
         return jsonify({"ok": False, "error": "Only field notes can be submitted for review"}), 400
     uid = session.get("user_id")
-    if note["created_by_user_id"] != uid and session.get("role") not in ("admin", "both"):
+    if note["created_by_user_id"] != uid and session.get("role") not in ("admin", "both", "management"):
         conn.close()
         return jsonify({"ok": False, "error": "Not authorised"}), 403
     if note["review_status"] == "submitted_for_review":
@@ -18699,7 +18699,7 @@ def route_planner_page():
     conn = db()
     cur = conn.cursor()
     role = session.get("role")
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     agents = []
     if is_admin:
         agents = cur.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
@@ -18766,7 +18766,7 @@ def route_planner_save_address():
         return jsonify(error="Address is required"), 400
     if addr_type == "office":
         role = session.get("role")
-        if role not in ("admin", "both"):
+        if role not in ("admin", "both", "management"):
             return jsonify(error="Only admins can set the office address"), 403
     result = _geocode_address(address)
     if not result:
@@ -19150,7 +19150,7 @@ def route_planner_save():
         except (ValueError, TypeError):
             assigned_agent_id = None
     role = session.get("role", "agent")
-    if assigned_agent_id and role not in ("admin", "both"):
+    if assigned_agent_id and role not in ("admin", "both", "management"):
         assigned_agent_id = None
     if assigned_agent_id:
         conn2 = db()
@@ -19207,7 +19207,7 @@ def route_planner_load(route_id):
     cur = conn.cursor()
     uid = session["user_id"]
     role = session.get("role")
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     plan = cur.execute("SELECT * FROM route_plans WHERE id = ?", (route_id,)).fetchone()
     if not plan:
         conn.close()
@@ -19257,7 +19257,7 @@ def route_planner_delete(route_id):
 @app.get("/map")
 @login_required
 def geomap_page():
-    is_admin = session.get("role") in ("admin", "both")
+    is_admin = session.get("role") in ("admin", "both", "management")
     agents = []
     if is_admin:
         conn = db()
@@ -19272,7 +19272,7 @@ def geomap_page():
 @login_required
 def api_map_data():
     import logging as _log
-    is_admin = session.get("role") in ("admin", "both")
+    is_admin = session.get("role") in ("admin", "both", "management")
     uid = session.get("user_id")
     _log.info("api_map_data: request from user %s (admin=%s)", uid, is_admin)
     try:
@@ -19805,7 +19805,7 @@ def agent_mobile_guard(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         role = session.get("role", "")
-        if role not in ("admin", "both"):
+        if role not in ("admin", "both", "management"):
             flash("Access restricted to administrators.", "warning")
             return redirect(url_for("m_today"))
         return f(*args, **kwargs)
@@ -20072,7 +20072,7 @@ def _mobile_jobs_query(uid, role, params_in):
     params_in: dict with optional keys sort, dir, scope, status_filter, show_completed, q
     This function is intentionally decoupled so it can be reused by future desktop dispatcher views.
     """
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     conn = db()
 
     # Load saved prefs as baseline
@@ -20266,7 +20266,7 @@ def m_jobs():
         {"id": j["id"], "lat": j["lat"], "lng": j["lng"]}
         for j in jobs if j["lat"] and j["lng"]
     ])
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     return render_template("mobile/jobs.html",
                            jobs=jobs, draft_job_ids=draft_job_ids, prefs=prefs,
                            jobs_geo=jobs_geo, is_admin=is_admin)
@@ -20280,7 +20280,7 @@ def m_api_jobs_search():
     q    = request.args.get("q", "").strip()
     if not q or len(q) < 2:
         return jsonify({"jobs": []})
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     conn = db()
     import re as _re
     _q_wc    = q.endswith('*') and len(q) > 1
@@ -20437,7 +20437,7 @@ def m_job_detail(job_id):
         conn.close()
         abort(404)
 
-    if role not in ("admin", "both"):
+    if role not in ("admin", "both", "management"):
         has_access = job["assigned_user_id"] == uid or conn.execute(
             "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed') AND hidden = 0",
             (job_id, uid)
@@ -20516,7 +20516,7 @@ def m_job_detail(job_id):
 
     conn.close()
 
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     mob_uid = session.get("user_id") or 0
     mob_view_tok = _make_mobile_view_token(mob_uid) if mob_uid else ""
 
@@ -20540,7 +20540,7 @@ def m_update_builder(job_id):
         conn.close()
         abort(404)
 
-    if role not in ("admin", "both"):
+    if role not in ("admin", "both", "management"):
         has_access = job["assigned_user_id"] == uid or conn.execute(
             "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=? AND status NOT IN ('Cancelled','Completed') AND hidden = 0",
             (job_id, uid)
@@ -20649,7 +20649,7 @@ def m_quick_note_save(job_id):
         return jsonify({"ok": False, "error": "Nothing to save"}), 400
 
     ts  = now_ts()
-    _is_admin = session.get("role") in ("admin", "both")
+    _is_admin = session.get("role") in ("admin", "both", "management")
     submit_for_review = request.form.get("submit_for_review") == "1"
     if submit_for_review:
         _note_cat = "field_note"
@@ -20975,7 +20975,7 @@ def _log_audit(user_id, action, record_type, record_id):
 
 # ── LPR helpers ───────────────────────────────────────────────────────────────
 
-_LPR_PRIVILEGED = {"admin", "both"}
+_LPR_PRIVILEGED = {"admin", "both", "management"}
 
 def _lpr_ensure_table(conn):
     conn.execute("""
@@ -21294,7 +21294,7 @@ def _recovery_targets_ensure(conn):
 
 
 def _recovery_can_manage():
-    return session.get("role") in ("admin", "both")
+    return session.get("role") in ("admin", "both", "management")
 
 
 def _table_columns(conn, table: str) -> set:
@@ -21791,7 +21791,7 @@ def m_api_map_jobs():
     """
     uid         = session.get("user_id")
     role        = session.get("role", "")
-    is_admin    = role in ("admin", "both")
+    is_admin    = role in ("admin", "both", "management")
     date_filter = request.args.get("date_filter", "today" if not is_admin else "all")
 
     date_clauses = {
@@ -21882,7 +21882,7 @@ def m_route_planner():
     conn = db()
     cur = conn.cursor()
     role = session.get("role")
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     suburbs_raw = cur.execute("""
         SELECT DISTINCT TRIM(
             CASE
@@ -21937,7 +21937,7 @@ def m_map():
     gps_foreground  = prefs["gps_foreground"]   if prefs else 1
     gps_interval    = prefs["gps_interval_mins"] if prefs and prefs["gps_interval_mins"] else 5
     role = session.get("role", "")
-    is_admin = role in ("admin", "both")
+    is_admin = role in ("admin", "both", "management")
     return render_template("mobile/map.html",
                            distance_unit=distance_unit,
                            gps_foreground=gps_foreground,
