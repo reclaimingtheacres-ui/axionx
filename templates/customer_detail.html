@@ -15,7 +15,7 @@
       {% if customer.role %}<span class="badge ms-1" style="background:rgba(37,99,235,.12);color:var(--accent);border:1px solid rgba(37,99,235,.25);font-size:.72rem">{{ customer.role }}</span>{% endif %}
     </div>
     <div class="d-flex gap-2">
-      {% if session.get('role') in ('admin', 'both') %}<a class="btn btn-primary btn-sm" href="/customers/{{ customer.id }}/edit">Edit</a>{% endif %}
+      {% if session.get('role') in ('admin', 'both', 'management') %}<a class="btn btn-primary btn-sm" href="/customers/{{ customer.id }}/edit">Edit</a>{% endif %}
       {% if customer.id_image_path %}
         <a class="btn btn-outline-secondary btn-sm" target="_blank" href="/uploads/{{ customer.id_image_path }}">View ID</a>
       {% endif %}
@@ -116,7 +116,7 @@
 <div class="ax-card">
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>Jobs</div>
-    {% if session.get('role') == 'admin' %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
+    {% if session.get('role') in ('admin', 'management') %}<a class="btn btn-primary btn-sm" href="/jobs/new">New Job</a>{% endif %}
   </div>
   <div class="ax-card-b">
     {% for j in jobs %}

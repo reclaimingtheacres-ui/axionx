@@ -89,7 +89,7 @@
 </style>
 
 {% set is_demo_client = DEMO_MODE and session.get('demo_role') == 'client' %}
-{% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+{% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
 <style>
   .ax-agent-tabs{display:flex;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:2px solid var(--line);margin-bottom:0;padding:0 4px}
   .ax-agent-tabs::-webkit-scrollbar{display:none}
@@ -132,14 +132,14 @@
   <div class="jobs-sticky-header">
     <div style="padding:12px 16px 0;display:flex;justify-content:space-between;align-items:center">
       <span style="font-weight:650;font-size:.95rem">
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both', 'management') %}
           {% if filter_agent %}
             {% for a in agents_list %}{% if a.id|string == filter_agent %}{{ a.full_name }}{% endif %}{% endfor %}
           {% elif filter_unassigned == '1' %}Unassigned{% else %}All Agents{% endif %}
           — {% if statuses_selected %}{{ statuses_selected | join(' + ') }}{% else %}All Statuses{% endif %}
         {% else %}Jobs{% endif %}
       </span>
-      {% if session.get('role') not in ('admin', 'both') %}
+      {% if session.get('role') not in ('admin', 'both', 'management') %}
       <div style="display:flex;gap:6px;align-items:center">
         <a class="btn btn-outline-primary btn-sm" href="/route-planner">Route Planner</a>
       </div>
@@ -233,7 +233,7 @@
             {% endfor %}
           </select>
         </div>
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both', 'management') %}
         <div style="flex:1;min-width:130px">
           <label style="font-size:.7rem;color:var(--muted);display:block;margin-bottom:2px;font-weight:500">Agent</label>
           <select class="form-select form-select-sm" name="agent_id">
@@ -420,7 +420,7 @@
             {% set is_overdue = j.next_scheduled < now_iso %}
             <div class="ax-sched-tag" style="color:{% if is_overdue %}#ef4444{% else %}var(--muted){% endif %};font-weight:{% if is_overdue %}600{% else %}400{% endif %};justify-content:flex-end">
               {% if is_overdue %}
-                {% if session.get('role') in ('admin','both') and j.next_sched_id %}
+                {% if session.get('role') in ('admin','both','management') and j.next_sched_id %}
                   {% set already_sent = j.next_sched_id in urgent_sent_sched_ids %}
                   {% set has_pr = j.pending_review_count %}
                   {% set active_status = j.status in ('New', 'Active', 'Active - Phone work only') %}
@@ -455,7 +455,7 @@
         </div>
 
         <div style="width:150px;flex-shrink:0;text-align:center">
-          {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+          {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
             <form method="post" action="/jobs/{{ j.id }}/status" style="margin:0">
               <select name="status" onchange="this.form.submit()"
                       class="ax-status-pill"

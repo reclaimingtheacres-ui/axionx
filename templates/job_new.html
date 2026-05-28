@@ -215,7 +215,7 @@
             <select class="form-select form-select-sm" name="job_type" id="jobTypeSelect">
               {% for jt in job_types %}<option value="{{ jt.name }}" {% if jt.name == 'Repo/Collect' %}selected{% endif %}>{{ jt.name }}</option>{% endfor %}
             </select>
-            {% if session.get('role') == 'admin' %}
+            {% if session.get('role') in ('admin', 'management') %}
             <button class="btn btn-outline-secondary btn-sm mt-1 py-0 px-2" type="button" style="font-size:.68rem;"
                     data-bs-toggle="collapse" data-bs-target="#addJobType">+ Add</button>
             <div class="collapse mt-1" id="addJobType">

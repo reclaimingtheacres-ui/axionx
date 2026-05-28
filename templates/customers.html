@@ -7,7 +7,7 @@
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>Customers</div>
     <div class="d-flex gap-2 align-items-center">
-      {% if session.get('role') == 'admin' %}
+      {% if session.get('role') in ('admin', 'management') %}
         <button type="button" id="custDeleteBtn" class="btn btn-danger btn-sm" style="display:none"
                 onclick="submitCustomerDelete()">Delete Selected</button>
         <a class="btn btn-primary btn-sm" href="/customers/new">New Customer</a>
@@ -27,14 +27,14 @@
     <div id="custSearchStatus" class="small mt-1" style="color:var(--muted);display:none"></div>
   </div>
 
-  {% if session.get('role') == 'admin' and customers %}
+  {% if session.get('role') in ('admin', 'management') and customers %}
   <div id="custWarning" style="display:none; background:rgba(220,38,38,.08); border-bottom:1px solid rgba(220,38,38,.20); padding:10px 20px;">
     <span style="color:#dc2626; font-size:.875rem;">&#9888; Warning: deleting a customer is permanent and cannot be undone. Customers with linked jobs will be skipped.</span>
   </div>
   {% endif %}
 
   <div class="ax-card-b">
-    {% if session.get('role') == 'admin' and customers %}
+    {% if session.get('role') in ('admin', 'management') and customers %}
     <div id="custSelectRow" class="px-3 py-2 border-bottom d-flex align-items-center gap-2" style="border-color:var(--line)!important">
       <input type="checkbox" id="custSelectAll" class="form-check-input mt-0"
              onchange="custToggleAll(this)" title="Select all">
@@ -46,7 +46,7 @@
       <div id="custListContainer" class="list-group list-group-flush">
         {% for c in customers %}
           <div class="list-group-item d-flex align-items-center gap-3 px-3" style="background:transparent;border-color:var(--line)">
-            {% if session.get('role') == 'admin' %}
+            {% if session.get('role') in ('admin', 'management') %}
             <input type="checkbox" name="customer_ids" value="{{ c.id }}"
                    class="form-check-input mt-0 cust-cb"
                    onchange="custUpdateDeleteBtn()">
@@ -68,7 +68,7 @@
 
 <script>
 (function(){
-  var isAdmin = {{ 'true' if session.get('role') == 'admin' else 'false' }};
+  var isAdmin = {{ 'true' if session.get('role') in ('admin', 'management') else 'false' }};
   var searchInput = document.getElementById('custSearch');
   var clearBtn = document.getElementById('custSearchClear');
   var statusEl = document.getElementById('custSearchStatus');

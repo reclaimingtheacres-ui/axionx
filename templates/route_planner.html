@@ -128,7 +128,7 @@
               {% if user_home.get('home_address') %}<span style="color:#16a34a">{{ user_home.home_address }}</span>{% else %}<span style="color:var(--muted)">Not set</span>{% endif %}
             </div>
           </div>
-          {% if session.get('role') in ('admin', 'both') %}
+          {% if session.get('role') in ('admin', 'both', 'management') %}
           <div style="flex:1">
             <div class="rp-lbl">Office Address <span style="font-weight:400;text-transform:none">(shared)</span></div>
             <div style="display:flex;gap:4px">

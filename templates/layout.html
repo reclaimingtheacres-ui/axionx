@@ -355,7 +355,7 @@
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">Home</a>
         {% endif %}
         <a href="/jobs" id="ax-nav-jobs" class="{% if request.path.startswith('/jobs') %}active{% endif %}">Jobs</a>
-        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+        {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
         <a href="/queue" class="{% if request.path.startswith('/queue') %}active{% endif %}" style="position:relative">
           Queue
           <span id="ax-queue-badge" style="display:none;background:#dc2626;color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
@@ -367,14 +367,14 @@
           <span id="ax-msg-badge" style="display:none;background:var(--accent);color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
         </a>
         {% endif %}
-        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+        {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
         <button type="button" class="ax-menu-btn{% if request.path.startswith('/schedule') or request.path.startswith('/map') or request.path.startswith('/route-planner') %} active{% endif %}" data-popup="ax-planning-popup">
           Planning
           <svg class="ax-menu-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         {% endif %}
 
-        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+        {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
           <div class="hint">Admin</div>
           <button type="button" class="ax-menu-btn{% if request.path == '/admin' or request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/reports') or request.path.startswith('/forms') or request.path.startswith('/recovery-targets') or request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} active{% endif %}" data-popup="ax-admin-popup">
             Admin
@@ -394,7 +394,7 @@
         {% if session.get('user_id') %}
           <div class="ax-user-chip mb-2">
             {{ session.get('user_name') }}
-            <span class="badge {% if session.get('role') in ('admin', 'both') %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ 'admin + agent' if session.get('role') == 'both' else session.get('role') }}</span>
+            <span class="badge {% if session.get('role') in ('admin', 'both', 'management') %}bg-danger{% else %}bg-secondary{% endif %} ms-1">{{ 'admin + agent' if session.get('role') == 'both' else session.get('role') }}</span>
           </div>
           <a href="/logout">Logout</a>
         {% else %}
@@ -563,7 +563,7 @@
   });
   ariaObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["aria-hidden"] });
   </script>
-  {% if session.get('role') in ('admin', 'both') %}
+  {% if session.get('role') in ('admin', 'both', 'management') %}
   <div id="ax-planning-popup" class="ax-popup-menu" role="menu">
     <a href="/schedule"{% if request.path.startswith('/schedule') %} class="active"{% endif %}>Schedule</a>
     <a href="/map"{% if request.path.startswith('/map') %} class="active"{% endif %}>Map</a>
@@ -903,7 +903,7 @@
 })();
 </script>
 {% endif %}
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <script>
 (function(){
   function pollQueueBadge(){

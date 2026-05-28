@@ -7,7 +7,7 @@
   <div class="ax-card-h d-flex justify-content-between align-items-center">
     <div>Clients</div>
     <div class="d-flex gap-2 align-items-center">
-      {% if session.get('role') in ('admin', 'both') %}
+      {% if session.get('role') in ('admin', 'both', 'management') %}
         <a class="btn btn-primary btn-sm" href="/clients/new">+ Add Client</a>
       {% endif %}
     </div>

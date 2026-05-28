@@ -39,7 +39,7 @@
       <div style="font-size:.8rem;color:#92400e">Archived {{ job.archived_at[:10] if job.archived_at else '' }} — This file has been removed from active operations.</div>
     </div>
   </div>
-  {% if session.get('role') in ('admin', 'both') %}
+  {% if session.get('role') in ('admin', 'both', 'management') %}
   <form method="post" action="/jobs/{{ job.id }}/restore" style="display:inline">
     <select name="restore_to" class="form-select form-select-sm d-inline-block" style="width:auto;font-size:.8rem;margin-right:4px">
       <option value="Invoiced">Restore to Invoiced</option>
@@ -59,7 +59,7 @@
       <div style="font-size:.8rem;color:#3730a3">This file is in cold storage. Attachments may need retrieval.</div>
     </div>
   </div>
-  {% if session.get('role') in ('admin', 'both') %}
+  {% if session.get('role') in ('admin', 'both', 'management') %}
   <form method="post" action="/jobs/{{ job.id }}/restore" style="display:inline">
     <input type="hidden" name="restore_to" value="Invoiced">
     <button type="submit" class="btn btn-sm btn-outline-primary">Request Retrieval</button>
@@ -91,7 +91,7 @@
 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
   <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
 
-    {% if session.get('role') in ('admin', 'both') %}
+    {% if session.get('role') in ('admin', 'both', 'management') %}
 
     <div class="dropdown">
       <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -158,7 +158,7 @@
       {% endif %}
     {% endif %}
 
-    {% if session.get('role') in ('admin','both') and client_update_info and client_update_info.get('phase') != 'pending_closure' and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+    {% if session.get('role') in ('admin','both','management') and client_update_info and client_update_info.get('phase') != 'pending_closure' and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
     <button class="btn btn-outline-success btn-sm" type="button"
             onclick="openClientResponseModal()">
       Client Responded
@@ -196,7 +196,7 @@
         Send Message
       </button>
       <ul class="dropdown-menu">
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both', 'management') %}
         <li><button type="button" class="dropdown-item" onclick="openSendMsg('email')">Send Email</button></li>
         <li><button type="button" class="dropdown-item" onclick="openSendMsg('sms')">Send SMS</button></li>
         <li><button type="button" class="dropdown-item" onclick="openSendMsg('both')">Send Both</button></li>
@@ -217,7 +217,7 @@
   </div>
 
   <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-    {% if session.get('role') in ('admin', 'both') %}
+    {% if session.get('role') in ('admin', 'both', 'management') %}
     <form method="post" action="/jobs/{{ job.id }}/status" class="d-inline" style="margin:0">
       {% if s not in ('Archived - Invoiced', 'Cold Stored') %}
       <select name="status" data-current-status="{{ job.status }}" onchange="handleStatusChange(this)"
@@ -282,7 +282,7 @@
     <button class="ax-tab" id="tab-forms-btn" data-bs-toggle="tab"
             data-bs-target="#tab-forms" type="button" role="tab">Forms</button>
   </li>
-  {% if session.get('role') in ('admin', 'both') %}
+  {% if session.get('role') in ('admin', 'both', 'management') %}
   <li class="nav-item" role="presentation">
     <button class="ax-tab" id="tab-settings-btn" data-bs-toggle="tab"
             data-bs-target="#tab-settings" type="button" role="tab">Settings</button>
@@ -346,7 +346,7 @@
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">CUSTOMER(S)</div>
             <div class="d-flex gap-2 align-items-center">
-              {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+              {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
                 <button type="button" class="btn btn-primary btn-sm" style="font-size:.68rem;padding:2px 8px"
                         onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addCustomerToJobModal')).show()">
                   Add Customer
@@ -381,11 +381,11 @@
                     {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
                   </div>
                   <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
-                    {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+                    {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
                       <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.68rem;padding:2px 7px" onclick="axOpenEditCustomer({{ lc.customer_id }})">Update Customer Details</button>
 
                     {% endif %}
-                    {% if session.get('role') in ('admin', 'both') and not is_demo_client and job_linked_customers|length > 1 %}
+                    {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client and job_linked_customers|length > 1 %}
                       <form method="post" action="/jobs/{{ job.id }}/customers/{{ lc.jc_id }}/remove">
                         <button type="submit" class="btn btn-outline-danger btn-sm" style="font-size:.68rem;padding:2px 7px">Remove</button>
                       </form>
@@ -405,7 +405,7 @@
         <div style="padding:.75rem .9rem;border-radius:10px;background:rgba(37,99,235,.06);">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fw-bold small" style="color:#2563eb;letter-spacing:.04em">CLIENT</div>
-            {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+            {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
               {% if job.client_id %}
                 <div class="d-flex gap-1">
                   <a href="/clients/{{ job.client_id }}/edit" class="btn btn-outline-primary btn-sm" style="font-size:.68rem;padding:2px 7px" target="_blank">Edit</a>
@@ -512,7 +512,7 @@
             </div>
             {% endif %}
           </div>
-          {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+          {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
           <details id="lender-details" class="mt-2">
             <summary class="btn btn-outline-secondary btn-sm" style="cursor:pointer;list-style:none">Edit Lender Details</summary>
             <form method="post" action="/jobs/{{ job.id }}/lender" class="mt-3">
@@ -604,7 +604,7 @@
                     <th style="font-weight:600;font-size:.65rem;border-bottom:1px solid var(--line)">DATE</th>
                     <th style="font-weight:600;font-size:.65rem;border-bottom:1px solid var(--line)">AMOUNT</th>
                     <th style="font-weight:600;font-size:.65rem;border-bottom:1px solid var(--line)">NOTE</th>
-                    {% if session.get('role') in ('admin', 'both') %}<th style="border-bottom:1px solid var(--line)"></th>{% endif %}
+                    {% if session.get('role') in ('admin', 'both', 'management') %}<th style="border-bottom:1px solid var(--line)"></th>{% endif %}
                   </tr>
                 </thead>
                 <tbody>
@@ -615,7 +615,7 @@
                     </td>
                     <td style="color:#16a34a;font-weight:600;white-space:nowrap">{{ cents_to_money(pmt.amount_cents) }}</td>
                     <td style="color:var(--muted);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ pmt.note or '' }}">{{ pmt.note or '—' }}</td>
-                    {% if session.get('role') in ('admin', 'both') %}
+                    {% if session.get('role') in ('admin', 'both', 'management') %}
                     <td>
                       <form method="post" action="/jobs/{{ job.id }}/payments/{{ pmt.id }}/delete"
                             onsubmit="return confirm('Remove this payment?')">
@@ -630,7 +630,7 @@
                   <tr style="border-top:2px solid var(--line)">
                     <td style="font-weight:700;font-size:.78rem;color:var(--text)">Total</td>
                     <td style="font-weight:700;color:#16a34a;font-size:.85rem">{{ cents_to_money(payments_total_cents) }}</td>
-                    <td colspan="{% if session.get('role') in ('admin', 'both') %}2{% else %}1{% endif %}"></td>
+                    <td colspan="{% if session.get('role') in ('admin', 'both', 'management') %}2{% else %}1{% endif %}"></td>
                   </tr>
                 </tfoot>
               </table>
@@ -652,10 +652,10 @@
       <div class="ax-card-h">Security/s</div>
       <div class="ax-card-b">
 
-        {% if job.deliver_to or job.delivery_address or session.get('role') in ('admin','both') %}
+        {% if job.deliver_to or job.delivery_address or session.get('role') in ('admin','both','management') %}
         <div style="margin-bottom:14px;padding:10px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;">
           <div style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;margin-bottom:4px;">DELIVER TO</div>
-          {% if session.get('role') in ('admin','both') and not is_demo_client %}
+          {% if session.get('role') in ('admin','both','management') and not is_demo_client %}
           <div id="job-deliver-to-display" style="display:flex;align-items:center;gap:6px;cursor:pointer"
                onclick="document.getElementById('job-deliver-to-edit').style.display='flex';this.style.display='none';">
             <span style="font-size:.88rem;font-weight:600;color:var(--text);" id="job-deliver-to-text">{{ job.deliver_to or '—' }}</span>
@@ -758,7 +758,7 @@
                       {% elif _rls == 'Draft' %}Draft Saved
                       {% else %}Repo Lock{% endif %}
                     </button>
-                    {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+                    {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
                     <button type="button" class="btn btn-outline-secondary btn-sm"
                             onclick="axItemEditToggle({{ item.id }})">Edit</button>
                     <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
@@ -769,7 +769,7 @@
                 </div>
 
                 {# ── Inline edit form (admin, hidden by default) ── #}
-                {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+                {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
                 <div id="item-edit-{{ item.id }}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
                   <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/edit">
                     <div class="row g-2 mb-2">
@@ -877,7 +877,7 @@
           <p class="small mb-3" style="color:var(--muted)">No items added yet.</p>
         {% endif %}
 
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both', 'management') %}
         <details>
           <summary class="btn btn-outline-secondary btn-sm mb-3" style="cursor:pointer; list-style:none">+ Add Security</summary>
           <form method="post" action="/jobs/{{ job.id }}/items/new" class="mt-2">
@@ -978,14 +978,14 @@
     <div style="padding:.75rem .9rem;border-radius:10px;background:var(--card);">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">DESCRIPTION &amp; INSTRUCTIONS</div>
-        {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+        {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
         <button type="button" class="btn btn-outline-secondary btn-sm" onclick="document.getElementById('desc-edit-block').style.display=document.getElementById('desc-edit-block').style.display==='none'?'block':'none';document.getElementById('desc-view-block').style.display=document.getElementById('desc-view-block').style.display==='none'?'block':'none';">Edit</button>
         {% endif %}
       </div>
       <div id="desc-view-block">
         <pre style="white-space:pre-wrap;word-break:break-word;font-size:.82rem;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.6rem .8rem;margin:0;max-height:300px;overflow-y:auto">{{ job.description }}</pre>
       </div>
-      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+      {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
       <div id="desc-edit-block" style="display:none">
         <form method="post" action="/jobs/{{ job.id }}/description">
           <textarea class="form-control mb-2" name="description" rows="5" style="resize:vertical;font-size:.85rem">{{ job.description or '' }}</textarea>
@@ -1170,7 +1170,7 @@
       </svg>
       Full Attendance Update
     </a>
-    {% if session.get('role') in ('admin','both') and ai_draft_count > 0 %}
+    {% if session.get('role') in ('admin','both','management') and ai_draft_count > 0 %}
     <form method="POST" action="/jobs/{{ job.id }}/admin/discard-ai-drafts" style="display:inline"
           onsubmit="return confirm('Discard {{ ai_draft_count }} open AI draft session(s) on this job? This cannot be undone.')">
       <button type="submit" class="btn btn-outline-danger btn-sm d-inline-flex align-items-center gap-1" title="Discard open AI draft sessions on this job">
@@ -1232,7 +1232,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 <!-- Checkbox col -->
                 <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:2px">
-                  {% if not is_demo_client and (session.get('role') in ('admin', 'both') or session.get('user_id') == entry.note.created_by_user_id) %}
+                  {% if not is_demo_client and (session.get('role') in ('admin', 'both', 'management') or session.get('user_id') == entry.note.created_by_user_id) %}
                   <input type="checkbox"
                          id="note-chk-{{ entry.note.id }}"
                          onchange="axNoteCheck({{ entry.note.id }}, this.checked)"
@@ -1250,7 +1250,7 @@ document.addEventListener('DOMContentLoaded', function() {
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
                         ✏ Edit
                       </button>
-                      {% if session.get('role') in ('admin', 'both') and _ncat == 'field_note' and _nrs not in ('published',) %}
+                      {% if session.get('role') in ('admin', 'both', 'management') and _ncat == 'field_note' and _nrs not in ('published',) %}
                       <button type="button"
                               onclick='axPublishFieldNote({{ job.id }}, {{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson | e }})'
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:#16a34a;cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
@@ -1472,7 +1472,7 @@ document.addEventListener('DOMContentLoaded', function() {
   <div class="ax-card-h">Schedule</div>
   <div class="ax-card-b">
 
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both', 'management') %}
         <div id="inlineBookingSuccess" class="alert alert-success mb-3" style="display:none"></div>
         <div class="row g-2 mb-3" id="inlineBookingForm">
           <div class="col-md-2">
@@ -1521,7 +1521,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <thead>
               <tr>
                 <th>Date</th><th>Time</th><th>Type</th><th>Assigned</th><th>Notes</th><th>Status</th>
-                {% if session.get('role') in ('admin', 'both') %}<th style="width:1%"></th>{% endif %}
+                {% if session.get('role') in ('admin', 'both', 'management') %}<th style="width:1%"></th>{% endif %}
               </tr>
             </thead>
             <tbody>
@@ -1543,7 +1543,7 @@ document.addEventListener('DOMContentLoaded', function() {
                           style="background:rgba(96,165,250,.18);color:var(--accent);border:1px solid rgba(96,165,250,.3);font-size:.75rem;">
                       {{ s.status }}
                     </span>
-                    {% if session.get('role') in ('admin', 'both') %}
+                    {% if session.get('role') in ('admin', 'both', 'management') %}
                       <select class="form-select form-select-sm d-inline-block"
                               style="width:auto;font-size:.75rem;padding:1px 6px;"
                               onchange="markSchedStatus(this, {{ s.id }})">
@@ -1554,7 +1554,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     {% endif %}
                   {% endif %}
                 </td>
-                {% if session.get('role') in ('admin', 'both') %}
+                {% if session.get('role') in ('admin', 'both', 'management') %}
                 <td>
                   {% if not is_terminal %}
                   <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-3"
@@ -1768,7 +1768,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
         <div class="form-card-sub">Custom form</div>
         <div class="d-flex gap-2 mt-1">
           <button class="btn btn-primary btn-sm flex-fill" onclick="openCustomForm({{ tmpl.id }}, {{ tmpl.field_list|tojson }}, '{{ tmpl.name|e }}')">Open</button>
-          {% if session.get('role') in ('admin', 'both') %}
+          {% if session.get('role') in ('admin', 'both', 'management') %}
           <button class="btn btn-outline-danger btn-sm" onclick="deleteFormTemplate({{ tmpl.id }})">&#10005;</button>
           {% endif %}
         </div>
@@ -1777,7 +1777,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     {% endfor %}
 
     <!-- CREATE FORM (admin only) -->
-    {% if session.get('role') in ('admin', 'both') %}
+    {% if session.get('role') in ('admin', 'both', 'management') %}
     <div class="col-6 col-md-4 col-lg-3">
       <div class="form-card" style="border-style:dashed;border-color:var(--accent);background:transparent">
         <div class="form-card-title" style="color:var(--accent)">+ Create Form</div>
@@ -2410,7 +2410,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 
 
 <!-- FORM BUILDER MODAL (admin only) -->
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="formBuilder" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="border-radius:16px">
@@ -2490,7 +2490,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 
 </div><!-- /tab-forms pane -->
 
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="tab-pane fade" id="tab-settings" role="tabpanel">
 <div class="ax-card mb-3" style="border-color:rgba(239,68,68,.35)">
   <div class="ax-card-h" style="color:#ef4444">Danger Zone</div>
@@ -2509,7 +2509,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
 </div><!-- /tab-settings pane -->
 {% endif %}
 
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="tab-pane fade" id="tab-office" role="tabpanel">
   <div class="d-flex align-items-center gap-2 mb-3">
     <span class="badge" style="background:#dc2626;font-size:.75rem;padding:4px 10px;border-radius:6px">OFFICE ONLY</span>
@@ -2576,7 +2576,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">JOB INFO</div>
     <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
       <span style="color:var(--muted)">Type</span>
-      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+      {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-jtype-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-jtype-edit').style.display='flex';this.style.display='none';">
         {{ job.job_type }}
@@ -2602,7 +2602,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span style="color:var(--muted)">Priority</span>
       <span class="fw-semibold">{{ job.priority }}</span>
       <span style="color:var(--muted)">AxionX #</span>
-      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+      {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-ijn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-ijn-edit').style.display='flex';this.style.display='none';">
         {{ job.internal_job_number }}
@@ -2621,7 +2621,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span class="fw-semibold">{{ job.internal_job_number }}</span>
       {% endif %}
       <span style="color:var(--muted)">Client Ref</span>
-      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+      {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-cref-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-cref-edit').style.display='flex';this.style.display='none';">
         {{ job.client_reference or '—' }}
@@ -2640,7 +2640,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span class="fw-semibold">{{ job.client_reference or '—' }}</span>
       {% endif %}
       <span style="color:var(--muted)">Client Job #</span>
-      {% if session.get('role') in ('admin', 'both') and not is_demo_client %}
+      {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
       <span class="fw-semibold" id="sidebar-cjn-display" style="cursor:pointer;display:flex;align-items:center;gap:4px"
             onclick="document.getElementById('sidebar-cjn-edit').style.display='flex';this.style.display='none';">
         {{ job.client_job_number or '—' }}
@@ -3325,7 +3325,7 @@ document.addEventListener('click', function(e) {
 {% include 'repo_lock_form.html' %}
 
 <!-- ── Add Customer to Job Modal ──────────────────────────────────────── -->
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="addCustomerToJobModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:14px">
@@ -3437,7 +3437,7 @@ document.addEventListener('click', function(e) {
 {% endif %}
 
 <!-- ── Edit Job Modal ──────────────────────────────────────────────────── -->
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="editJobModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
     <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
@@ -3876,7 +3876,7 @@ document.addEventListener('click', function(e) {
     <div class="modal-content" id="addNoteContent" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;resize:both;overflow:auto;min-width:340px;min-height:320px;max-width:95vw;max-height:90vh">
       <div class="modal-header" style="border-bottom:1px solid var(--line);gap:.5rem;cursor:default;user-select:none">
         <span id="addNoteModalDot" style="width:22px;height:22px;border-radius:50%;background:#22c55e;display:inline-block;flex-shrink:0"></span>
-        <h6 class="modal-title mb-0" id="addNoteModalTitle" data-default-title="{{ 'Add Note/File' if session.get('role') in ('admin', 'both') else 'Add Field Note' }}" style="color:var(--text);flex:1">{{ 'Add Note/File' if session.get('role') in ('admin', 'both') else 'Add Field Note' }}</h6>
+        <h6 class="modal-title mb-0" id="addNoteModalTitle" data-default-title="{{ 'Add Note/File' if session.get('role') in ('admin', 'both', 'management') else 'Add Field Note' }}" style="color:var(--text);flex:1">{{ 'Add Note/File' if session.get('role') in ('admin', 'both', 'management') else 'Add Field Note' }}</h6>
         <button type="button" class="btn btn-sm px-1 py-0" id="anMaxBtn" onclick="anToggleMax()" title="Maximise / Restore" style="border:0;background:none;font-size:1.1rem;line-height:1;color:var(--muted)">&#x26F6;</button>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
@@ -3903,7 +3903,7 @@ document.addEventListener('click', function(e) {
           </style>
 
           <!-- Staff -->
-          {% if session.get('role') in ('admin', 'both') %}
+          {% if session.get('role') in ('admin', 'both', 'management') %}
           <div class="an-row">
             <div class="an-label">Staff: <span class="info-dot" title="Who is this note attributed to?">i</span></div>
             <select class="form-select form-select-sm" name="staff_user_id" id="an_staff">
@@ -3960,7 +3960,7 @@ document.addEventListener('click', function(e) {
           <div class="an-row">
             <div class="an-label">Note Type:</div>
             <div class="d-flex gap-2 align-items-center">
-              {% if session.get('role') in ('admin', 'both') %}
+              {% if session.get('role') in ('admin', 'both', 'management') %}
               <div class="btn-group btn-group-sm" role="group" id="an_cat_group">
                 <input type="radio" class="btn-check" name="note_category" id="an_cat_file" value="file_note" autocomplete="off" checked>
                 <label class="btn btn-outline-success" for="an_cat_file" style="font-size:.78rem;padding:3px 12px">File Note</label>
@@ -3977,7 +3977,7 @@ document.addEventListener('click', function(e) {
 
         </div>
         <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem;flex-wrap:wrap">
-          {% if session.get('role') in ('admin', 'both') %}
+          {% if session.get('role') in ('admin', 'both', 'management') %}
           <button type="submit" class="btn btn-primary btn-sm" name="_action" value="save">Save</button>
           <span id="an_save_add_wrap"><button type="submit" class="btn btn-primary btn-sm" name="_action" value="save_add" id="an_save_add">Save and Add</button></span>
           <button type="submit" class="btn btn-warning btn-sm" name="_action" value="submit_review" id="an_submit_review"
@@ -4162,7 +4162,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
           <span id="en_updated_wrap" style="display:none">Updated: <strong id="en_updated" style="color:var(--text)"></strong> by <strong id="en_updated_by" style="color:var(--text)"></strong></span>
         </div>
 
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both', 'management') %}
         <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
           <div>
             <label class="form-label mb-0" style="font-size:.78rem;color:var(--muted)">Staff</label>
@@ -4191,7 +4191,7 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
         </div>
         {% endif %}
 
-        {% if session.get('role') in ('admin', 'both') %}
+        {% if session.get('role') in ('admin', 'both', 'management') %}
         <div style="display:flex;gap:12px;margin-bottom:12px;align-items:center">
           <label class="form-label mb-0" style="font-size:.78rem;color:var(--muted)">Note Type:</label>
           <div class="btn-group btn-group-sm" role="group">
@@ -4689,7 +4689,7 @@ function axCopyVin(btn) {
 })();
 </script>
 
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="postNoteSchedModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:16px">
@@ -4911,7 +4911,7 @@ function axCopyVin(btn) {
     f('tr-dest-address', opt.dataset.address || '');
   };
 
-  {% if session.get('role') in ('admin', 'both') %}
+  {% if session.get('role') in ('admin', 'both', 'management') %}
   function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   var _FIELD_LABELS = {
@@ -5009,7 +5009,7 @@ function axCopyVin(btn) {
 </script>
 
 <!-- ── Add Document Modal ─────────────────────────────────────────────── -->
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="addDocModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
@@ -5394,7 +5394,7 @@ function openInternalMsg() {
   document.getElementById('sendMsgTitle').textContent          = 'Internal Message';
   document.getElementById('msg_type_badge').style.display      = 'none';
   _msgResetModal();
-  document.getElementById('msg_prompt_row').style.display      = {% if session.get('role') in ('admin','both') %}'';{% else %}'none';{% endif %}
+  document.getElementById('msg_prompt_row').style.display      = {% if session.get('role') in ('admin','both','management') %}'';{% else %}'none';{% endif %}
   document.getElementById('msg_to_text_row').style.display     = 'none';
   document.getElementById('msg_to_internal_row').style.display = '';
   document.getElementById('msg_subject').value = '';
@@ -5745,7 +5745,7 @@ function offNoteCancel(id) {
 </script>
 
 <!-- ===== ADD / CHANGE CLIENT MODAL ===== -->
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="addClientModal" tabindex="-1" data-bs-backdrop="static" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
     <div class="modal-content" style="background:var(--card);border:1px solid var(--line);border-radius:14px;">
@@ -6289,7 +6289,7 @@ function offNoteCancel(id) {
 })();
 </script>
 
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="agentSuggestModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content" style="border-radius:14px;overflow:hidden">
@@ -6502,7 +6502,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 {% endif %}
 
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <style>
 .ax-modal-compact{max-width:720px;width:90%}
 @media(min-width:1200px){.ax-modal-compact{max-width:800px}}
@@ -6956,7 +6956,7 @@ function submitClientUpdateRequest() {
 </script>
 {% endif %}
 
-{% if session.get('role') in ('admin','both') and client_update_info and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+{% if session.get('role') in ('admin','both','management') and client_update_info and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
 <!-- ── Client Responded Modal ────────────────────────────────────────────── -->
 <div class="modal fade" id="clientResponseModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
@@ -7037,7 +7037,7 @@ function submitClientResponse() {
 })();
 </script>
 
-{% if session.get('role') in ('admin', 'both') %}
+{% if session.get('role') in ('admin', 'both', 'management') %}
 <div class="modal fade" id="axRescheduleModal" tabindex="-1" data-bs-backdrop="static" aria-labelledby="axRescheduleModalLabel" aria-hidden="true" data-job-status="{{ job.status }}">
   <div class="modal-dialog modal-lg modal-dialog-scrollable" style="max-width:640px">
     <div class="modal-content">
@@ -7105,7 +7105,7 @@ function submitClientResponse() {
 </div>
 {% endif %}
 
-{% if session.get('role') in ('admin','both') and not is_demo_client %}
+{% if session.get('role') in ('admin','both','management') and not is_demo_client %}
 <script>
 function saveDeliverTo(){
   var sel = document.getElementById('job-deliver-to-select');
