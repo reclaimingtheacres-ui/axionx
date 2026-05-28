@@ -1,0 +1,200 @@
+{% extends "layout.html" %}
+{% block page_title %}Agent Performance Overview{% endblock %}
+
+{% block content %}
+<style>
+  .mgmt-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 20px;flex:1;min-width:160px}
+  .mgmt-card .label{font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+  .mgmt-card .value{font-size:1.75rem;font-weight:700;color:var(--text);line-height:1.1}
+  .mgmt-card .sub{font-size:.75rem;color:var(--muted);margin-top:2px}
+  .mgmt-card.warn .value{color:#dc2626}
+  .mgmt-card.amber .value{color:#d97706}
+  .mgmt-section{font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+  .mgmt-table th{font-size:.72rem;font-weight:700;color:var(--muted);white-space:nowrap;border-bottom:2px solid var(--line);padding:8px 10px;background:#f8fafc}
+  .mgmt-table td{font-size:.82rem;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .mgmt-table tr:last-child td{border-bottom:none}
+  .mgmt-table tr.totals-row td{font-weight:700;background:#f8fafc;border-top:2px solid var(--line);border-bottom:none}
+  .mgmt-table td.warn{color:#dc2626;font-weight:600}
+  .mgmt-table td.amber{color:#d97706;font-weight:600}
+  .mgmt-filter-bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px}
+  .mgmt-filter-bar label{font-size:.72rem;font-weight:600;color:var(--muted);display:block;margin-bottom:3px}
+  .mgmt-filter-bar .fg{display:flex;flex-direction:column}
+  .agent-name-cell{font-weight:600;color:var(--text)}
+  a.mgmt-link{color:var(--accent);text-decoration:none}
+  a.mgmt-link:hover{text-decoration:underline}
+</style>
+
+<div style="max-width:1400px">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:1.15rem;font-weight:700;color:var(--text)">Agent Performance Overview</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:2px">Operational visibility — Stage 1. Data reflects current database state.</div>
+    </div>
+  </div>
+
+  <div class="ax-card" style="padding:16px 20px;margin-bottom:18px">
+    <form method="get" action="/management/agent-performance">
+      <div class="mgmt-filter-bar">
+        <div class="fg">
+          <label>From</label>
+          <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:150px">
+        </div>
+        <div class="fg">
+          <label>To</label>
+          <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width:150px">
+        </div>
+        <div class="fg">
+          <label>Agent</label>
+          <select name="agent_id" class="form-select form-select-sm" style="width:180px">
+            <option value="">All Agents</option>
+            {% for a in agents_list %}
+            <option value="{{ a.id }}" {% if agent_filter == a.id|string %}selected{% endif %}>{{ a.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fg" style="justify-content:flex-end">
+          <label>&nbsp;</label>
+          <div style="display:flex;gap:6px">
+            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+            <a href="/management/agent-performance" class="btn btn-outline-secondary btn-sm">Reset</a>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  {% if agent_data %}
+
+  <div class="mgmt-section">Overall Totals — {{ date_from }} to {{ date_to }}</div>
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px">
+    <div class="mgmt-card">
+      <div class="label">Active Files</div>
+      <div class="value">{{ totals.active_files }}</div>
+      <div class="sub">Currently allocated</div>
+    </div>
+    <div class="mgmt-card">
+      <div class="label">Avg Active File Age</div>
+      <div class="value">{{ totals.avg_age if totals.avg_age is not none else '—' }}</div>
+      <div class="sub">Days (weighted avg)</div>
+    </div>
+    <div class="mgmt-card">
+      <div class="label">Completed Files</div>
+      <div class="value">{{ totals.completed_files }}</div>
+      <div class="sub">Within date range</div>
+    </div>
+    <div class="mgmt-card">
+      <div class="label">Repossessions</div>
+      <div class="value">{{ totals.repossessions }}</div>
+      <div class="sub">Within date range</div>
+    </div>
+    <div class="mgmt-card">
+      <div class="label">Attendances</div>
+      <div class="value">{{ totals.attendances }}</div>
+      <div class="sub">New visits completed</div>
+    </div>
+    <div class="mgmt-card">
+      <div class="label">Re-attendances</div>
+      <div class="value">{{ totals.reattendances }}</div>
+      <div class="sub">Within date range</div>
+    </div>
+    <div class="mgmt-card">
+      <div class="label">Pending Reviews</div>
+      <div class="value">{{ totals.pending_reviews }}</div>
+      <div class="sub">Notes submitted for review</div>
+    </div>
+    <div class="mgmt-card warn">
+      <div class="label">Overdue Files</div>
+      <div class="value">{{ totals.overdue_files }}</div>
+      <div class="sub">Past schedule not actioned</div>
+    </div>
+    <div class="mgmt-card amber">
+      <div class="label">No Update &gt; 7 Days</div>
+      <div class="value">{{ totals.no_update_7d }}</div>
+      <div class="sub">Active, no recent note</div>
+    </div>
+    <div class="mgmt-card amber">
+      <div class="label">No Future Booking</div>
+      <div class="value">{{ totals.no_future_booking }}</div>
+      <div class="sub">Active, nothing scheduled</div>
+    </div>
+  </div>
+
+  <div class="mgmt-section">By Agent</div>
+
+  <div class="ax-card" style="overflow-x:auto;padding:0">
+    <table class="mgmt-table" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left;min-width:140px">Agent</th>
+          <th style="text-align:center">Active Files</th>
+          <th style="text-align:center">Avg Age (days)</th>
+          <th style="text-align:center">Completed</th>
+          <th style="text-align:center">Repos</th>
+          <th style="text-align:center">Attendances</th>
+          <th style="text-align:center">Re-attends</th>
+          <th style="text-align:center">Pending Reviews</th>
+          <th style="text-align:center">Overdue</th>
+          <th style="text-align:center">No Update &gt;7d</th>
+          <th style="text-align:center">No Future Booking</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in agent_data %}
+        <tr>
+          <td class="agent-name-cell">
+            <a class="mgmt-link" href="/jobs?agent_id={{ a.id }}&sort=scheduled&per_page=25">{{ a.name }}</a>
+          </td>
+          <td style="text-align:center">
+            <a class="mgmt-link" href="/jobs?agent_id={{ a.id }}&sort=scheduled&per_page=25">{{ a.active_files }}</a>
+          </td>
+          <td style="text-align:center;color:var(--muted)">{{ a.avg_age if a.avg_age is not none else '—' }}</td>
+          <td style="text-align:center">{{ a.completed_files }}</td>
+          <td style="text-align:center">{{ a.repossessions }}</td>
+          <td style="text-align:center">{{ a.attendances }}</td>
+          <td style="text-align:center">{{ a.reattendances }}</td>
+          <td style="text-align:center">{{ a.pending_reviews }}</td>
+          <td style="text-align:center" class="{% if a.overdue_files > 0 %}warn{% endif %}">{{ a.overdue_files }}</td>
+          <td style="text-align:center" class="{% if a.no_update_7d > 0 %}amber{% endif %}">{{ a.no_update_7d }}</td>
+          <td style="text-align:center" class="{% if a.no_future_booking > 0 %}amber{% endif %}">{{ a.no_future_booking }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="totals-row">
+          <td>Total</td>
+          <td style="text-align:center">{{ totals.active_files }}</td>
+          <td style="text-align:center;color:var(--muted)">{{ totals.avg_age if totals.avg_age is not none else '—' }}</td>
+          <td style="text-align:center">{{ totals.completed_files }}</td>
+          <td style="text-align:center">{{ totals.repossessions }}</td>
+          <td style="text-align:center">{{ totals.attendances }}</td>
+          <td style="text-align:center">{{ totals.reattendances }}</td>
+          <td style="text-align:center">{{ totals.pending_reviews }}</td>
+          <td style="text-align:center" class="{% if totals.overdue_files > 0 %}warn{% endif %}">{{ totals.overdue_files }}</td>
+          <td style="text-align:center" class="{% if totals.no_update_7d > 0 %}amber{% endif %}">{{ totals.no_update_7d }}</td>
+          <td style="text-align:center" class="{% if totals.no_future_booking > 0 %}amber{% endif %}">{{ totals.no_future_booking }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div style="margin-top:10px;font-size:.72rem;color:var(--muted);line-height:1.6">
+    <strong>Notes:</strong>
+    Attendances = New Visit &amp; Urgent New Visit completions within date range (by scheduled date).
+    Re-attendances = Re-attend completions within date range.
+    Repossessions = Repo/Collect job types reaching a terminal status within date range.
+    Overdue = Active files with a past schedule not yet completed or cancelled.
+    No Update &gt;7 Days = Active files where no note has been recorded in the past 7 days.
+    No Future Booking = Active files with no upcoming scheduled visit.
+    Completed files count uses status change date where available, otherwise last updated date.
+  </div>
+
+  {% else %}
+  <div class="ax-card" style="padding:40px;text-align:center;color:var(--muted)">
+    No active agents found, or no data for the selected filters.
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

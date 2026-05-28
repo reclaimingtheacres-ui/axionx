@@ -3234,6 +3234,20 @@ def geoop_required(f):
     return wrapper
 
 
+def management_required(f):
+    """Restricts access to users with role == 'management' only.
+    Admin and agent users are explicitly excluded."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            return _login_redirect()
+        if session.get("role") != "management":
+            flash("Management access required.", "danger")
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
 @app.post("/admin/geoop-unlock")
 @admin_required
 def geoop_unlock_post():
@@ -17824,6 +17838,202 @@ def _aged_report_query(conn, min_days=7, client_id=None):
         })
 
     return results
+
+
+@app.get("/management/agent-performance")
+@management_required
+def mgmt_agent_performance():
+    """Management-only Agent Performance Overview dashboard."""
+    from datetime import datetime as _dt, timedelta as _td
+
+    today = _dt.utcnow().date()
+
+    date_to_str   = request.args.get("date_to",   today.isoformat())
+    date_from_str = request.args.get("date_from", (today - _td(days=30)).isoformat())
+    agent_filter  = request.args.get("agent_id",  "").strip()
+
+    try:
+        _dt.fromisoformat(date_from_str)
+        _dt.fromisoformat(date_to_str)
+    except Exception:
+        date_from_str = (today - _td(days=30)).isoformat()
+        date_to_str   = today.isoformat()
+
+    conn = db()
+    inactive_ph = ",".join("?" * len(INACTIVE_JOB_STATUSES))
+
+    all_agents_list = conn.execute(
+        "SELECT id, full_name FROM users WHERE role IN ('agent','both') AND active=1 ORDER BY full_name"
+    ).fetchall()
+
+    if agent_filter:
+        agents = [a for a in all_agents_list if str(a["id"]) == agent_filter]
+    else:
+        agents = list(all_agents_list)
+
+    # ── Metric queries (batch, not per-agent) ─────────────────────────────
+
+    # 1. Active files per agent
+    rows = conn.execute(
+        f"SELECT assigned_user_id, COUNT(*) c FROM jobs "
+        f"WHERE status NOT IN ({inactive_ph}) AND assigned_user_id IS NOT NULL "
+        f"GROUP BY assigned_user_id",
+        INACTIVE_JOB_STATUSES,
+    ).fetchall()
+    active_files = {r["assigned_user_id"]: r["c"] for r in rows}
+
+    # 4. Average active file age (days since created_at)
+    rows = conn.execute(
+        f"SELECT assigned_user_id, "
+        f"ROUND(AVG(julianday('now') - julianday(created_at)), 1) AS avg_age "
+        f"FROM jobs WHERE status NOT IN ({inactive_ph}) AND assigned_user_id IS NOT NULL "
+        f"GROUP BY assigned_user_id",
+        INACTIVE_JOB_STATUSES,
+    ).fetchall()
+    avg_age = {r["assigned_user_id"]: r["avg_age"] for r in rows}
+
+    # 2. Completed files in date range
+    rows = conn.execute(
+        "SELECT assigned_user_id, COUNT(*) c FROM jobs "
+        "WHERE status IN ('Completed','Invoiced','Repossessed','Surrendered','Closed','Closed Field Call') "
+        "AND date(COALESCE(status_changed_at, updated_at)) BETWEEN ? AND ? "
+        "AND assigned_user_id IS NOT NULL GROUP BY assigned_user_id",
+        (date_from_str, date_to_str),
+    ).fetchall()
+    completed_files = {r["assigned_user_id"]: r["c"] for r in rows}
+
+    # 3. Repossessions in date range
+    rows = conn.execute(
+        "SELECT assigned_user_id, COUNT(*) c FROM jobs "
+        "WHERE status IN ('Repossessed','Completed','Invoiced') "
+        "AND (job_type IN ('Upgrade to Repo/Collect','Collect Only') "
+        "  OR job_type LIKE '%Repo%' OR job_type LIKE '%Repossess%') "
+        "AND date(COALESCE(status_changed_at, updated_at)) BETWEEN ? AND ? "
+        "AND assigned_user_id IS NOT NULL GROUP BY assigned_user_id",
+        (date_from_str, date_to_str),
+    ).fetchall()
+    repossessions = {r["assigned_user_id"]: r["c"] for r in rows}
+
+    # 5+6. Attendances and Re-attendances (schedule completions, booking_types 1/2/3)
+    rows = conn.execute(
+        "SELECT s.assigned_to_user_id, s.booking_type_id, COUNT(*) c FROM schedules s "
+        "WHERE s.status='Completed' AND s.booking_type_id IN (1,2,3) "
+        "AND date(s.scheduled_for) BETWEEN ? AND ? "
+        "AND s.hidden=0 AND s.assigned_to_user_id IS NOT NULL "
+        "GROUP BY s.assigned_to_user_id, s.booking_type_id",
+        (date_from_str, date_to_str),
+    ).fetchall()
+    attendances   = {}
+    reattendances = {}
+    for r in rows:
+        uid = r["assigned_to_user_id"]
+        if r["booking_type_id"] == 2:
+            reattendances[uid] = reattendances.get(uid, 0) + r["c"]
+        else:
+            attendances[uid] = attendances.get(uid, 0) + r["c"]
+
+    # 7. Pending Review notes submitted in date range
+    rows = conn.execute(
+        "SELECT created_by_user_id, COUNT(*) c FROM job_field_notes "
+        "WHERE review_status='submitted_for_review' "
+        "AND date(created_at) BETWEEN ? AND ? "
+        "AND created_by_user_id IS NOT NULL GROUP BY created_by_user_id",
+        (date_from_str, date_to_str),
+    ).fetchall()
+    pending_reviews = {r["created_by_user_id"]: r["c"] for r in rows}
+
+    # 8. Overdue files — active file with a non-completed/non-cancelled past schedule
+    rows = conn.execute(
+        f"SELECT j.assigned_user_id, COUNT(DISTINCT j.id) c FROM jobs j "
+        f"WHERE j.status NOT IN ({inactive_ph}) AND j.assigned_user_id IS NOT NULL "
+        f"AND EXISTS ("
+        f"  SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.hidden=0 "
+        f"  AND s.status NOT IN ('Completed','Cancelled') "
+        f"  AND date(s.scheduled_for) < date('now')) "
+        f"GROUP BY j.assigned_user_id",
+        INACTIVE_JOB_STATUSES,
+    ).fetchall()
+    overdue_files = {r["assigned_user_id"]: r["c"] for r in rows}
+
+    # 9. No note update in past 7 days (active files)
+    rows = conn.execute(
+        f"SELECT j.assigned_user_id, COUNT(DISTINCT j.id) c FROM jobs j "
+        f"WHERE j.status NOT IN ({inactive_ph}) AND j.assigned_user_id IS NOT NULL "
+        f"AND NOT EXISTS ("
+        f"  SELECT 1 FROM job_field_notes n WHERE n.job_id=j.id "
+        f"  AND date(n.created_at) >= date('now','-7 days')) "
+        f"GROUP BY j.assigned_user_id",
+        INACTIVE_JOB_STATUSES,
+    ).fetchall()
+    no_update_7d = {r["assigned_user_id"]: r["c"] for r in rows}
+
+    # 10. No future booking (active files)
+    rows = conn.execute(
+        f"SELECT j.assigned_user_id, COUNT(DISTINCT j.id) c FROM jobs j "
+        f"WHERE j.status NOT IN ({inactive_ph}) AND j.assigned_user_id IS NOT NULL "
+        f"AND NOT EXISTS ("
+        f"  SELECT 1 FROM schedules s WHERE s.job_id=j.id AND s.hidden=0 "
+        f"  AND s.status NOT IN ('Completed','Cancelled') "
+        f"  AND date(s.scheduled_for) >= date('now')) "
+        f"GROUP BY j.assigned_user_id",
+        INACTIVE_JOB_STATUSES,
+    ).fetchall()
+    no_future_booking = {r["assigned_user_id"]: r["c"] for r in rows}
+
+    conn.close()
+
+    # Assemble per-agent rows + totals
+    agent_data = []
+    tot = {k: 0 for k in [
+        "active_files","completed_files","repossessions","attendances",
+        "reattendances","pending_reviews","overdue_files","no_update_7d","no_future_booking",
+    ]}
+    _age_sum = _age_count = 0
+
+    for agent in agents:
+        uid = agent["id"]
+        af  = active_files.get(uid, 0)
+        aa  = avg_age.get(uid)
+        cf  = completed_files.get(uid, 0)
+        rp  = repossessions.get(uid, 0)
+        at_ = attendances.get(uid, 0)
+        ra  = reattendances.get(uid, 0)
+        pr  = pending_reviews.get(uid, 0)
+        of  = overdue_files.get(uid, 0)
+        nu  = no_update_7d.get(uid, 0)
+        nb  = no_future_booking.get(uid, 0)
+        agent_data.append({
+            "id": uid, "name": agent["full_name"],
+            "active_files": af, "avg_age": aa,
+            "completed_files": cf, "repossessions": rp,
+            "attendances": at_, "reattendances": ra,
+            "pending_reviews": pr, "overdue_files": of,
+            "no_update_7d": nu, "no_future_booking": nb,
+        })
+        tot["active_files"]     += af
+        tot["completed_files"]  += cf
+        tot["repossessions"]    += rp
+        tot["attendances"]      += at_
+        tot["reattendances"]    += ra
+        tot["pending_reviews"]  += pr
+        tot["overdue_files"]    += of
+        tot["no_update_7d"]     += nu
+        tot["no_future_booking"] += nb
+        if aa is not None and af:
+            _age_sum   += aa * af
+            _age_count += af
+
+    tot["avg_age"] = round(_age_sum / _age_count, 1) if _age_count else None
+
+    return render_template(
+        "management_agent_performance.html",
+        agent_data=agent_data,
+        totals=tot,
+        agents_list=all_agents_list,
+        agent_filter=agent_filter,
+        date_from=date_from_str,
+        date_to=date_to_str,
+    )
 
 
 @app.get("/reports/aged-suspended")

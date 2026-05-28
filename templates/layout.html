@@ -382,6 +382,11 @@
           </button>
         {% endif %}
 
+        {% if session.get('role') == 'management' and not is_demo_client %}
+          <div class="hint">Management</div>
+          <a href="/management/agent-performance" class="{% if request.path.startswith('/management/') %}active{% endif %}">Agent Performance</a>
+        {% endif %}
+
         {% if session.get('role') in ('agent', 'both') %}
           <div class="hint">Field</div>
           <a href="/my/today" class="{% if request.path.startswith('/my') %}active{% endif %}">My Today</a>
