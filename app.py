@@ -28812,6 +28812,70 @@ def _demo_required(f):
 # GROUP CALENDAR
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _gc_notify_leave_submitted(conn, submitter_id, submitter_name,
+                                entry_id, start_date, end_date, notes):
+    """Send an internal message to every active admin/management user when a
+    Proposed Leave entry is created.  Uses the AxionX Admin system user as the
+    sender so the submitter's inbox is not polluted with self-conversations.
+    Wrapped in try/except so a messaging failure can never abort the create."""
+    try:
+        _ensure_msg_tables(conn)
+        system_uid = _get_system_user_id(conn)
+
+        recipients = conn.execute(
+            """SELECT id FROM users
+               WHERE active = 1
+                 AND role IN ('admin', 'both', 'management')
+                 AND id != ?
+               ORDER BY full_name""",
+            (submitter_id,)
+        ).fetchall()
+
+        if not recipients:
+            app.logger.info("[gc_leave_notify] no eligible recipients, skipping entry=%s", entry_id)
+            return
+
+        def _fmt(iso):
+            if iso and len(iso) == 10:
+                p = iso.split('-')
+                return f"{p[2]}/{p[1]}/{p[0]}"
+            return iso or ""
+
+        notes_text = notes if notes else "No notes provided."
+        subject    = f"Leave approval required — {submitter_name}"
+        body       = (
+            f"{submitter_name} has submitted a leave request requiring approval.\n\n"
+            f"Dates: {_fmt(start_date)} to {_fmt(end_date)}\n"
+            f"Type: Proposed Leave\n"
+            f"Notes: {notes_text}\n\n"
+            f"Please review this request in the Group Calendar: /group-calendar"
+        )
+
+        ts = now_ts()
+        for r in recipients:
+            cur2 = conn.execute(
+                "INSERT INTO conversations (type, subject, created_at, updated_at) VALUES (?,?,?,?)",
+                ("direct", subject, ts, ts)
+            )
+            conv_id = cur2.lastrowid
+            conn.execute(
+                "INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)",
+                (conv_id, system_uid, ts)
+            )
+            conn.execute(
+                "INSERT INTO conversation_participants (conversation_id, user_id, joined_at) VALUES (?,?,?)",
+                (conv_id, r["id"], ts)
+            )
+            conn.commit()
+            _post_message(conn, conv_id, system_uid, body)
+
+        app.logger.info(
+            "[gc_leave_notify] sent entry=%s submitter=%s recipients=%s",
+            entry_id, submitter_id, [r["id"] for r in recipients]
+        )
+    except Exception as exc:
+        app.logger.warning("[gc_leave_notify] failed entry=%s error=%s", entry_id, exc)
+
 @app.get("/group-calendar")
 @login_required
 def group_calendar():
@@ -28960,6 +29024,13 @@ def group_calendar_create():
           ts, ts, approved_by, approved_at))
     new_id = cur.lastrowid
     conn.commit()
+
+    if entry_type == "Proposed Leave" and status == "proposed":
+        submitter_row  = conn.execute("SELECT full_name FROM users WHERE id=?", (uid,)).fetchone()
+        submitter_name = submitter_row["full_name"] if submitter_row else "A staff member"
+        _gc_notify_leave_submitted(conn, uid, submitter_name, new_id,
+                                   start_date, end_date, notes)
+
     conn.close()
     audit("group_calendar", new_id, "created",
           f"{entry_type}: {title} ({start_date}–{end_date})")
