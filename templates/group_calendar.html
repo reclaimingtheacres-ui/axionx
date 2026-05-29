@@ -371,7 +371,8 @@
       var iso    = isoDate(cur);
       var inMon  = cur.getMonth() === m && cur.getFullYear() === y;
       var isToday = iso === TODAY;
-      html += '<div class="gc-month-cell' + (inMon ? '' : ' other-month') + (isToday ? ' is-today' : '') + '">';
+      html += '<div class="gc-month-cell' + (inMon ? '' : ' other-month') + (isToday ? ' is-today' : '') + '" '
+            + 'onclick="gcOpenCreateForDate(\'' + iso + '\')" style="cursor:pointer">';
       html += '<span class="gc-month-day-num' + (isToday ? ' today-num' : '') + '">' + cur.getDate() + '</span>';
       var dayEnts = byDate[iso] || [];
       var shown = 0;
@@ -380,11 +381,11 @@
         shown++;
         var col = GC_COLORS[e.entry_type] || '#64748b';
         html += '<span class="gc-chip status-' + e.status + '" style="background:' + col + '" '
-              + 'onclick="gcShowEntry(' + e.id + ')" title="' + escH(e.title) + '">'
+              + 'onclick="event.stopPropagation();gcShowEntry(' + e.id + ')" title="' + escH(e.title) + '">'
               + escH(e.title) + (e.user_name ? ' — ' + escH(e.user_name) : '') + '</span>';
       });
       if (dayEnts.length > 3) {
-        html += '<span class="gc-month-more" onclick="gcShowDayList(\'' + iso + '\')">'
+        html += '<span class="gc-month-more" onclick="event.stopPropagation();gcShowDayList(\'' + iso + '\')">'
               + '+ ' + (dayEnts.length - 3) + ' more</span>';
       }
       html += '</div>';
@@ -426,11 +427,11 @@
     days.forEach(function(d) {
       var iso  = isoDate(d);
       var ents = byDate[iso] || [];
-      html += '<div class="gc-week-cell">';
+      html += '<div class="gc-week-cell" onclick="gcOpenCreateForDate(\'' + iso + '\')" style="cursor:pointer">';
       ents.forEach(function(e) {
         var col = GC_COLORS[e.entry_type] || '#64748b';
         html += '<span class="gc-chip status-' + e.status + '" style="background:' + col + ';white-space:normal;overflow:visible" '
-              + 'onclick="gcShowEntry(' + e.id + ')" title="' + escH(e.title) + '">'
+              + 'onclick="event.stopPropagation();gcShowEntry(' + e.id + ')" title="' + escH(e.title) + '">'
               + escH(e.entry_type) + '<br><span style="opacity:.85">' + escH(e.title) + '</span></span>';
       });
       if (!ents.length) html += '<span style="font-size:.7rem;color:var(--muted)">&nbsp;</span>';
@@ -574,6 +575,13 @@
     document.getElementById('gcSaveBtn').disabled = false;
     document.getElementById('gcSaveBtn').textContent = 'Save Entry';
     bootstrap.Modal.getOrCreateInstance(document.getElementById('gcCreateModal')).show();
+  };
+
+  /* ── Open create modal pre-filled with a specific date ── */
+  window.gcOpenCreateForDate = function(iso) {
+    gcOpenCreate();
+    document.getElementById('gcStartDate').value = iso;
+    document.getElementById('gcEndDate').value   = iso;
   };
 
   /* ── Open edit modal ── */

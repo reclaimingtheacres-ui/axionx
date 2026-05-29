@@ -176,11 +176,12 @@ function closeDetail() {
   document.getElementById('detailSheet').style.display   = 'none';
 }
 
-function openCreateSheet() {
+function openCreateSheet(iso) {
+  var date = iso || M_TODAY;
   document.getElementById('mGcTitle').value = '';
   document.getElementById('mGcType').value  = M_IS_ADMIN ? '' : 'Proposed Leave';
-  document.getElementById('mGcStart').value = M_TODAY;
-  document.getElementById('mGcEnd').value   = M_TODAY;
+  document.getElementById('mGcStart').value = date;
+  document.getElementById('mGcEnd').value   = date;
   document.getElementById('mGcNotes').value = '';
   document.getElementById('createError').style.display = 'none';
   document.getElementById('mGcSaveBtn').disabled = false;
