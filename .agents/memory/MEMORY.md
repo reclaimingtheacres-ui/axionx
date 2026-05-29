@@ -1,1 +1,2 @@
 - [regulation_type case mismatch](regulation-type-case-mismatch.md) — canonical values are title case (Regulated/Unregulated/N/A); uppercase storage caused lender form to blank the value on every save.
+- [Bootstrap Modal Stacking Context Trap](bootstrap-modal-stacking-context.md) — modals inside .ax-shell are non-interactive; fix is appending them to document.body via JS after page load.

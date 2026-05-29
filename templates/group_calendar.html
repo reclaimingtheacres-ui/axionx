@@ -42,16 +42,9 @@
   .gc-status-cancelled{background:#9ca3af;color:#111}
 
   /* ── Popup ── */
-  .gc-popup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:9998;display:none}
-  .gc-popup{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);width:420px;max-width:92vw;max-height:90vh;overflow-y:auto;display:none}
-  .gc-popup-hdr{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
-  .gc-popup-hdr .title{font-weight:650;font-size:.95rem}
-  .gc-popup-body{padding:14px 16px}
-  .gc-popup-row{display:flex;gap:8px;margin-bottom:8px;font-size:.85rem}
-  .gc-popup-lbl{color:var(--muted);min-width:90px;font-weight:500;flex-shrink:0}
-  .gc-popup-val{color:var(--text);flex:1}
-  .gc-popup-actions{padding:10px 16px 14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
-  .gc-popup-actions .btn{font-size:.78rem;padding:4px 12px}
+  .gc-detail-row{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:.87rem}
+  .gc-detail-lbl{color:var(--muted);min-width:100px;font-weight:500;flex-shrink:0}
+  .gc-detail-val{color:var(--text);flex:1}
 
   /* ── Colour dot in list ── */
   .gc-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;flex-shrink:0}
@@ -120,18 +113,21 @@
 <div id="gcWeekView" style="display:none"></div>
 <div id="gcListView" style="display:none"></div>
 
-{# ── Entry popup ── #}
-<div class="gc-popup-overlay" id="gcOverlay" onclick="gcClosePopup()"></div>
-<div class="gc-popup" id="gcPopup">
-  <div class="gc-popup-hdr">
-    <span class="title" id="gcPopupTitle"></span>
-    <button type="button" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--muted)" onclick="gcClosePopup()">&#x2715;</button>
+{# ── Detail modal (moved to body via JS) ── #}
+<div class="modal fade" id="gcDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:480px">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" id="gcDetailTitle" style="color:var(--text);font-size:.97rem"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="gcDetailBody" style="padding:4px 20px 8px"></div>
+      <div class="modal-footer" id="gcDetailActions" style="border-top:1px solid var(--line);gap:8px;flex-wrap:wrap"></div>
+    </div>
   </div>
-  <div class="gc-popup-body" id="gcPopupBody"></div>
-  <div class="gc-popup-actions" id="gcPopupActions"></div>
 </div>
 
-{# ── Create / Edit modal ── #}
+{# ── Create / Edit modal (moved to body via JS) ── #}
 <div class="modal fade" id="gcCreateModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
     <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
@@ -471,36 +467,37 @@
     document.getElementById('gcListView').innerHTML = html;
   }
 
-  /* ── Show entry detail popup ── */
+  /* ── Show entry detail modal ── */
   window.gcShowEntry = function(id) {
     var e = gcEntries.find(function(x){ return x.id === id; });
     if (!e) return;
     var col = GC_COLORS[e.entry_type] || '#64748b';
-    document.getElementById('gcPopupTitle').textContent = e.title;
+    document.getElementById('gcDetailTitle').innerHTML =
+      '<span class="gc-dot" style="background:' + col + ';width:12px;height:12px;vertical-align:middle;margin-right:6px"></span>' + escH(e.title);
 
-    var body = '<div class="gc-popup-row"><span class="gc-popup-lbl">Type</span>'
-             + '<span class="gc-popup-val"><span class="gc-dot" style="background:' + col + '"></span>' + escH(e.entry_type) + '</span></div>'
-             + '<div class="gc-popup-row"><span class="gc-popup-lbl">Staff</span><span class="gc-popup-val">' + escH(e.user_name || '—') + '</span></div>'
-             + '<div class="gc-popup-row"><span class="gc-popup-lbl">Dates</span><span class="gc-popup-val">' + fmtDate(e.start_date)
+    var body = '<div class="gc-detail-row"><span class="gc-detail-lbl">Type</span>'
+             + '<span class="gc-detail-val">' + escH(e.entry_type) + '</span></div>'
+             + '<div class="gc-detail-row"><span class="gc-detail-lbl">Staff</span><span class="gc-detail-val">' + escH(e.user_name || '—') + '</span></div>'
+             + '<div class="gc-detail-row"><span class="gc-detail-lbl">Dates</span><span class="gc-detail-val">' + fmtDate(e.start_date)
              + (e.end_date !== e.start_date ? ' – ' + fmtDate(e.end_date) : '') + '</span></div>';
     if (!e.all_day && e.start_time) {
-      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Time</span><span class="gc-popup-val">' + escH(e.start_time) + (e.end_time ? ' – ' + escH(e.end_time) : '') + '</span></div>';
+      body += '<div class="gc-detail-row"><span class="gc-detail-lbl">Time</span><span class="gc-detail-val">' + escH(e.start_time) + (e.end_time ? ' – ' + escH(e.end_time) : '') + '</span></div>';
     }
-    body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Status</span>'
-          + '<span class="gc-popup-val"><span class="gc-status-badge gc-status-' + e.status + '">' + e.status.charAt(0).toUpperCase()+e.status.slice(1) + '</span></span></div>';
+    body += '<div class="gc-detail-row"><span class="gc-detail-lbl">Status</span>'
+          + '<span class="gc-detail-val"><span class="gc-status-badge gc-status-' + e.status + '">' + e.status.charAt(0).toUpperCase()+e.status.slice(1) + '</span></span></div>';
     if (IS_ADMIN && e.visibility === 'admin_only') {
-      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Visibility</span><span class="gc-popup-val" style="color:#dc2626;font-weight:600">Admin Only</span></div>';
+      body += '<div class="gc-detail-row"><span class="gc-detail-lbl">Visibility</span><span class="gc-detail-val" style="color:#dc2626;font-weight:600">Admin Only</span></div>';
     }
     if (e.notes) {
-      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Notes</span><span class="gc-popup-val">' + escH(e.notes) + '</span></div>';
+      body += '<div class="gc-detail-row"><span class="gc-detail-lbl">Notes</span><span class="gc-detail-val">' + escH(e.notes) + '</span></div>';
     }
     if (e.approved_by_name) {
-      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Approved by</span><span class="gc-popup-val">' + escH(e.approved_by_name) + (e.approved_at ? ' on ' + e.approved_at.slice(0,10) : '') + '</span></div>';
+      body += '<div class="gc-detail-row"><span class="gc-detail-lbl">Approved by</span><span class="gc-detail-val">' + escH(e.approved_by_name) + (e.approved_at ? ' on ' + e.approved_at.slice(0,10) : '') + '</span></div>';
     }
     if (e.created_by_name) {
-      body += '<div class="gc-popup-row" style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px"><span class="gc-popup-lbl">Created by</span><span class="gc-popup-val" style="color:var(--muted)">' + escH(e.created_by_name) + '</span></div>';
+      body += '<div class="gc-detail-row" style="border-bottom:none"><span class="gc-detail-lbl">Created by</span><span class="gc-detail-val" style="color:var(--muted)">' + escH(e.created_by_name) + '</span></div>';
     }
-    document.getElementById('gcPopupBody').innerHTML = body;
+    document.getElementById('gcDetailBody').innerHTML = body;
 
     var actions = '';
     if (IS_ADMIN) {
@@ -517,14 +514,12 @@
         actions += '<button class="btn btn-outline-secondary btn-sm" onclick="gcSetStatus(' + id + ',\'cancelled\')">Cancel</button>';
       }
     }
-    document.getElementById('gcPopupActions').innerHTML = actions;
+    if (!actions) {
+      actions = '<span style="font-size:.8rem;color:var(--muted)">No actions available</span>';
+    }
+    document.getElementById('gcDetailActions').innerHTML = actions;
 
-    document.getElementById('gcOverlay').style.display = 'block';
-    var popup = document.getElementById('gcPopup');
-    popup.style.display = 'block';
-    popup.style.top  = '15%';
-    popup.style.left = '50%';
-    popup.style.transform = 'translateX(-50%)';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('gcDetailModal')).show();
   };
 
   window.gcShowDayList = function(iso) {
@@ -540,8 +535,8 @@
   };
 
   window.gcClosePopup = function() {
-    document.getElementById('gcOverlay').style.display = 'none';
-    document.getElementById('gcPopup').style.display   = 'none';
+    var dm = bootstrap.Modal.getInstance(document.getElementById('gcDetailModal'));
+    if (dm) dm.hide();
   };
 
   /* ── Status change ── */
@@ -692,6 +687,20 @@
 
   /* ── Init ── */
   gcLoadEntries();
+
+  /* ── Move modals to <body> to escape .ax-shell stacking context ──
+     .ax-shell has position:relative;z-index:1 which creates a stacking
+     context. Bootstrap appends its backdrop to <body> at z-index:1040,
+     which sits above the entire .ax-shell context (z-index:1), causing
+     the backdrop to intercept all click events on modals inside .ax-shell.
+     Moving the modals to <body> puts them in the same stacking context
+     as the backdrop, so z-index comparisons work correctly. ── */
+  ['gcDetailModal','gcCreateModal'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentNode !== document.body) {
+      document.body.appendChild(el);
+    }
+  });
 })();
 </script>
 {% endblock %}
