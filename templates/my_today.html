@@ -109,6 +109,31 @@
 </div>
 {% endif %}
 
+{# ── Calendar Notices Today ─────────────────────────────────────────────────── #}
+{% if calendar_notices %}
+<div class="mb-4">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Calendar Notices Today</span>
+    <a href="/group-calendar" style="font-size:.75rem;color:var(--accent);text-decoration:none">View Calendar &rsaquo;</a>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    {% for n in calendar_notices %}
+    {% set color = gc_colors.get(n.entry_type, '#64748b') %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:var(--panel2);border-left:4px solid {{ color }}">
+      <div style="flex:1;min-width:0">
+        <span style="font-weight:600;font-size:.86rem;color:var(--text)">{{ n.title }}</span>
+        <span style="font-size:.75rem;color:var(--muted);margin-left:8px">{{ n.entry_type }}</span>
+        {% if n.user_name %}<span style="font-size:.75rem;color:var(--muted);margin-left:6px">&mdash; {{ n.user_name }}</span>{% endif %}
+      </div>
+      {% if n.start_date != n.end_date %}
+      <span style="font-size:.72rem;color:var(--muted);white-space:nowrap">{{ n.start_date[8:10] }}/{{ n.start_date[5:7] }} &ndash; {{ n.end_date[8:10] }}/{{ n.end_date[5:7] }}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {# ══════════════════════════════════════════════
    DAY VIEW — exactly as the original
    ══════════════════════════════════════════════ #}

@@ -1,0 +1,697 @@
+{% extends "layout.html" %}
+{% block title %}Axionx | Group Calendar{% endblock %}
+{% block page_title %}Group Calendar{% endblock %}
+{% block content %}
+<style>
+  .gc-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .gc-view-btn{padding:5px 14px;font-size:.82rem;font-weight:600;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--text);cursor:pointer;transition:background .15s}
+  .gc-view-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .gc-filter select{font-size:.83rem;padding:4px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--text)}
+
+  /* ── Month grid ── */
+  .gc-month-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .gc-month-hdr{font-size:.72rem;font-weight:700;text-align:center;padding:8px 4px;background:var(--panel2);border-bottom:1px solid var(--line);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .gc-month-cell{border-bottom:1px solid var(--line);border-left:1px solid var(--line);min-height:90px;padding:4px;position:relative;vertical-align:top}
+  .gc-month-cell:nth-child(7n+1){border-left:0}
+  .gc-month-cell.other-month{background:var(--panel2);opacity:.55}
+  .gc-month-cell.is-today{background:rgba(37,99,235,.04)}
+  .gc-month-day-num{font-size:.74rem;font-weight:600;color:var(--muted);margin-bottom:3px;display:inline-block}
+  .gc-month-day-num.today-num{background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:.68rem}
+  .gc-chip{font-size:.69rem;padding:2px 5px;border-radius:4px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:#fff;cursor:pointer;line-height:1.4}
+  .gc-chip:hover{filter:brightness(.9)}
+  .gc-chip.status-proposed{opacity:.75;border-left:2px solid rgba(255,255,255,.6)}
+  .gc-chip.status-rejected{opacity:.4;text-decoration:line-through}
+  .gc-month-more{font-size:.67rem;color:var(--accent);cursor:pointer;font-weight:600;display:block}
+
+  /* ── Week grid ── */
+  .gc-week-grid{display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  .gc-week-hdr{font-size:.75rem;font-weight:600;text-align:center;padding:9px 4px;background:var(--panel2);border-bottom:1px solid var(--line);color:var(--muted)}
+  .gc-week-hdr.today-col{background:rgba(37,99,235,.08);color:var(--accent)}
+  .gc-week-cell{border-left:1px solid var(--line);min-height:140px;padding:6px 4px;position:relative}
+  .gc-week-cell:first-child{border-left:0}
+
+  /* ── List view ── */
+  .gc-list-tbl{width:100%;border-collapse:collapse}
+  .gc-list-tbl th{font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;background:var(--panel2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+  .gc-list-tbl td{padding:8px 10px;border-bottom:1px solid var(--line);font-size:.85rem;vertical-align:middle}
+  .gc-list-tbl tr:hover{background:rgba(37,99,235,.03);cursor:pointer}
+  .gc-status-badge{font-size:.68rem;padding:2px 8px;border-radius:6px;font-weight:600;color:#fff;display:inline-block}
+  .gc-status-proposed{background:#f97316}
+  .gc-status-approved{background:#16a34a}
+  .gc-status-rejected{background:#6b7280}
+  .gc-status-cancelled{background:#9ca3af;color:#111}
+
+  /* ── Popup ── */
+  .gc-popup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:9998;display:none}
+  .gc-popup{position:fixed;z-index:9999;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);width:420px;max-width:92vw;max-height:90vh;overflow-y:auto;display:none}
+  .gc-popup-hdr{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .gc-popup-hdr .title{font-weight:650;font-size:.95rem}
+  .gc-popup-body{padding:14px 16px}
+  .gc-popup-row{display:flex;gap:8px;margin-bottom:8px;font-size:.85rem}
+  .gc-popup-lbl{color:var(--muted);min-width:90px;font-weight:500;flex-shrink:0}
+  .gc-popup-val{color:var(--text);flex:1}
+  .gc-popup-actions{padding:10px 16px 14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+  .gc-popup-actions .btn{font-size:.78rem;padding:4px 12px}
+
+  /* ── Colour dot in list ── */
+  .gc-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;flex-shrink:0}
+
+  .gc-empty{text-align:center;padding:40px 20px;color:var(--muted);font-size:.9rem}
+  .gc-loading{text-align:center;padding:24px;color:var(--muted);font-size:.85rem}
+</style>
+
+{# ── Toolbar ── #}
+<div class="gc-toolbar">
+  <div style="display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden">
+    <button class="gc-view-btn active" id="btnMonth" onclick="gcSetView('month')">Month</button>
+    <button class="gc-view-btn" id="btnWeek"  onclick="gcSetView('week')"  style="border-left:1px solid var(--line);border-radius:0">Week</button>
+    <button class="gc-view-btn" id="btnList"  onclick="gcSetView('list')"  style="border-left:1px solid var(--line);border-radius:0">List</button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px">
+    <button class="btn btn-outline-secondary btn-sm" onclick="gcNav(-1)">&#8249;</button>
+    <span id="gcPeriodLabel" style="font-weight:650;font-size:.95rem;min-width:160px;text-align:center"></span>
+    <button class="btn btn-outline-secondary btn-sm" onclick="gcNav(1)">&#8250;</button>
+    <button class="btn btn-sm" onclick="gcGoToday()" style="border:1px solid var(--line);background:#fff;font-size:.78rem;padding:4px 10px">Today</button>
+  </div>
+
+  <div class="gc-filter" style="display:flex;gap:8px;flex-wrap:wrap">
+    {% if is_admin %}
+    <select id="gcFilterUser" onchange="gcLoadEntries()">
+      <option value="all">All Staff</option>
+      {% for u in users %}
+      <option value="{{ u.id }}">{{ u.full_name }}</option>
+      {% endfor %}
+    </select>
+    <select id="gcFilterStatus" onchange="gcLoadEntries()">
+      <option value="all">All Statuses</option>
+      <option value="proposed">Proposed</option>
+      <option value="approved">Approved</option>
+      <option value="rejected">Rejected</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    {% endif %}
+    <select id="gcFilterType" onchange="gcLoadEntries()">
+      <option value="all">All Types</option>
+      {% for t in entry_types %}
+      <option value="{{ t }}">{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div style="margin-left:auto">
+    {% if is_admin %}
+    <button class="btn btn-primary btn-sm" onclick="gcOpenCreate()">+ New Entry</button>
+    {% else %}
+    <button class="btn btn-outline-primary btn-sm" onclick="gcOpenCreate()">+ Submit Leave / Unavailable</button>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Legend ── #}
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;font-size:.75rem;color:var(--text)">
+  {% for type, color in gc_colors.items() %}
+  <span><span class="gc-dot" style="background:{{ color }}"></span>{{ type }}</span>
+  {% endfor %}
+</div>
+
+{# ── Calendar views ── #}
+<div id="gcMonthView"></div>
+<div id="gcWeekView" style="display:none"></div>
+<div id="gcListView" style="display:none"></div>
+
+{# ── Entry popup ── #}
+<div class="gc-popup-overlay" id="gcOverlay" onclick="gcClosePopup()"></div>
+<div class="gc-popup" id="gcPopup">
+  <div class="gc-popup-hdr">
+    <span class="title" id="gcPopupTitle"></span>
+    <button type="button" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--muted)" onclick="gcClosePopup()">&#x2715;</button>
+  </div>
+  <div class="gc-popup-body" id="gcPopupBody"></div>
+  <div class="gc-popup-actions" id="gcPopupActions"></div>
+</div>
+
+{# ── Create / Edit modal ── #}
+<div class="modal fade" id="gcCreateModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" id="gcModalTitle" style="color:var(--text)">New Calendar Entry</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="gcCreateError" class="alert alert-danger" style="display:none"></div>
+
+        <div class="mb-3">
+          <label class="form-label form-label-sm fw-semibold">Title <span class="text-danger">*</span></label>
+          <input type="text" id="gcTitle" class="form-control" placeholder="e.g. Annual Leave — Jane">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label form-label-sm fw-semibold">Type <span class="text-danger">*</span></label>
+          <select id="gcType" class="form-select" onchange="gcTypeChanged()">
+            <option value="">— select type —</option>
+            {% for t in entry_types %}
+            <option value="{{ t }}" {% if not is_admin and t not in ('Proposed Leave','Agent Unavailable') %}disabled{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="row g-2 mb-3">
+          <div class="col">
+            <label class="form-label form-label-sm fw-semibold">Start Date <span class="text-danger">*</span></label>
+            <input type="date" id="gcStartDate" class="form-control">
+          </div>
+          <div class="col">
+            <label class="form-label form-label-sm fw-semibold">End Date <span class="text-danger">*</span></label>
+            <input type="date" id="gcEndDate" class="form-control">
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" id="gcAllDay" checked onchange="gcToggleTime()">
+            <label class="form-check-label form-label-sm" for="gcAllDay">All Day</label>
+          </div>
+        </div>
+        <div id="gcTimeSection" style="display:none" class="row g-2 mb-3">
+          <div class="col">
+            <label class="form-label form-label-sm fw-semibold">Start Time</label>
+            <input type="time" id="gcStartTime" class="form-control" value="09:00">
+          </div>
+          <div class="col">
+            <label class="form-label form-label-sm fw-semibold">End Time</label>
+            <input type="time" id="gcEndTime" class="form-control" value="17:00">
+          </div>
+        </div>
+
+        {% if is_admin %}
+        <div class="mb-3">
+          <label class="form-label form-label-sm fw-semibold">Applies To (Staff Member)</label>
+          <select id="gcUserId" class="form-select">
+            <option value="">— not specific to one person —</option>
+            {% for u in users %}
+            <option value="{{ u.id }}">{{ u.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col">
+            <label class="form-label form-label-sm fw-semibold">Status</label>
+            <select id="gcStatus" class="form-select">
+              <option value="approved" selected>Approved</option>
+              <option value="proposed">Proposed</option>
+            </select>
+          </div>
+          <div class="col">
+            <label class="form-label form-label-sm fw-semibold">Visibility</label>
+            <select id="gcVisibility" class="form-select">
+              <option value="everyone" selected>Everyone</option>
+              <option value="admin_only">Admin Only</option>
+            </select>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="mb-2">
+          <label class="form-label form-label-sm fw-semibold">Notes</label>
+          <textarea id="gcNotes" class="form-control" rows="2" placeholder="Optional additional notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" id="gcSaveBtn" onclick="gcSaveEntry()">Save Entry</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+  var TODAY    = '{{ today }}';
+  var MY_UID   = {{ user_id or 0 }};
+  var GC_COLORS = {{ gc_colors | tojson }};
+  var EDITABLE_ENTRY_ID = null;
+
+  var gcView    = 'month';
+  var gcAnchor  = new Date(TODAY + 'T00:00:00');
+  var gcEntries = [];
+
+  /* ── Date helpers ── */
+  function isoDate(d) {
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function fmtDate(iso) {
+    if (!iso) return '';
+    var p = iso.split('-');
+    return p[2] + '/' + p[1] + '/' + p[0];
+  }
+  function dayOfWeek(iso) {
+    return new Date(iso + 'T00:00:00').getDay();
+  }
+
+  /* ── Period label ── */
+  function periodLabel() {
+    if (gcView === 'month') {
+      return gcAnchor.toLocaleString('default', {month:'long',year:'numeric'});
+    }
+    var mon = new Date(gcAnchor);
+    mon.setDate(mon.getDate() - mon.getDay() + (mon.getDay() === 0 ? -6 : 1));
+    var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return fmtDate(isoDate(mon)) + ' – ' + fmtDate(isoDate(sun));
+  }
+
+  /* ── Date range for query ── */
+  function queryRange() {
+    if (gcView === 'month') {
+      var y = gcAnchor.getFullYear(), m = gcAnchor.getMonth();
+      var start = new Date(y, m, 1);
+      var end   = new Date(y, m+1, 0);
+      // extend to full Mon–Sun grid
+      var gs = new Date(start); gs.setDate(gs.getDate() - (gs.getDay() || 7) + 1);
+      var ge = new Date(end);   ge.setDate(ge.getDate() + (7 - ge.getDay()) % 7);
+      return {start: isoDate(gs), end: isoDate(ge)};
+    } else {
+      var base = new Date(gcAnchor);
+      var day  = base.getDay() || 7;
+      var mon  = new Date(base); mon.setDate(base.getDate() - day + 1);
+      var sun  = new Date(mon);  sun.setDate(mon.getDate() + 6);
+      return {start: isoDate(mon), end: isoDate(sun)};
+    }
+  }
+
+  /* ── Navigation ── */
+  window.gcSetView = function(v) {
+    gcView = v;
+    ['month','week','list'].forEach(function(x){
+      document.getElementById('btn'+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle('active', x===v);
+    });
+    document.getElementById('gcMonthView').style.display = v==='month' ? '' : 'none';
+    document.getElementById('gcWeekView').style.display  = v==='week'  ? '' : 'none';
+    document.getElementById('gcListView').style.display  = v==='list'  ? '' : 'none';
+    gcLoadEntries();
+  };
+  window.gcNav = function(dir) {
+    if (gcView === 'list') {
+      gcAnchor.setDate(gcAnchor.getDate() + dir * 30);
+    } else if (gcView === 'month') {
+      gcAnchor.setMonth(gcAnchor.getMonth() + dir);
+    } else {
+      gcAnchor.setDate(gcAnchor.getDate() + dir * 7);
+    }
+    gcLoadEntries();
+  };
+  window.gcGoToday = function() {
+    gcAnchor = new Date(TODAY + 'T00:00:00');
+    gcLoadEntries();
+  };
+
+  /* ── Load entries from API ── */
+  window.gcLoadEntries = function() {
+    document.getElementById('gcPeriodLabel').textContent = periodLabel();
+    var rng       = queryRange();
+    var filterUser = (document.getElementById('gcFilterUser') || {}).value || 'all';
+    var filterType = document.getElementById('gcFilterType').value;
+    var filterStat = (document.getElementById('gcFilterStatus') || {}).value || 'all';
+    var url = '/group-calendar/api/entries?start=' + rng.start + '&end=' + rng.end
+            + '&user_id=' + filterUser + '&entry_type=' + encodeURIComponent(filterType)
+            + '&status=' + filterStat;
+
+    var loadEl = document.createElement('div');
+    loadEl.className = 'gc-loading';
+    loadEl.textContent = 'Loading…';
+
+    if (gcView === 'month') {
+      document.getElementById('gcMonthView').innerHTML = '';
+      document.getElementById('gcMonthView').appendChild(loadEl);
+    } else if (gcView === 'week') {
+      document.getElementById('gcWeekView').innerHTML = '';
+      document.getElementById('gcWeekView').appendChild(loadEl);
+    } else {
+      document.getElementById('gcListView').innerHTML = '';
+      document.getElementById('gcListView').appendChild(loadEl);
+    }
+
+    fetch(url, {credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        gcEntries = data;
+        if (gcView === 'month')     gcRenderMonth(rng);
+        else if (gcView === 'week') gcRenderWeek(rng);
+        else                        gcRenderList();
+      })
+      .catch(function(){
+        var el = document.getElementById(gcView==='month'?'gcMonthView':gcView==='week'?'gcWeekView':'gcListView');
+        el.innerHTML = '<div class="gc-empty">Failed to load entries.</div>';
+      });
+  };
+
+  /* ── Month render ── */
+  function gcRenderMonth(rng) {
+    var y = gcAnchor.getFullYear(), m = gcAnchor.getMonth();
+    // build entries by date
+    var byDate = {};
+    gcEntries.forEach(function(e) {
+      var d = new Date(e.start_date + 'T00:00:00');
+      var end = new Date(e.end_date + 'T00:00:00');
+      while (d <= end) {
+        var iso = isoDate(d);
+        if (!byDate[iso]) byDate[iso] = [];
+        byDate[iso].push(e);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+
+    var html = '<div class="gc-month-grid">';
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(d){
+      html += '<div class="gc-month-hdr">' + d + '</div>';
+    });
+
+    var gs = new Date(rng.start + 'T00:00:00');
+    var ge = new Date(rng.end   + 'T00:00:00');
+    var cur = new Date(gs);
+    while (cur <= ge) {
+      var iso    = isoDate(cur);
+      var inMon  = cur.getMonth() === m && cur.getFullYear() === y;
+      var isToday = iso === TODAY;
+      html += '<div class="gc-month-cell' + (inMon ? '' : ' other-month') + (isToday ? ' is-today' : '') + '">';
+      html += '<span class="gc-month-day-num' + (isToday ? ' today-num' : '') + '">' + cur.getDate() + '</span>';
+      var dayEnts = byDate[iso] || [];
+      var shown = 0;
+      dayEnts.forEach(function(e) {
+        if (shown >= 3) return;
+        shown++;
+        var col = GC_COLORS[e.entry_type] || '#64748b';
+        html += '<span class="gc-chip status-' + e.status + '" style="background:' + col + '" '
+              + 'onclick="gcShowEntry(' + e.id + ')" title="' + escH(e.title) + '">'
+              + escH(e.title) + (e.user_name ? ' — ' + escH(e.user_name) : '') + '</span>';
+      });
+      if (dayEnts.length > 3) {
+        html += '<span class="gc-month-more" onclick="gcShowDayList(\'' + iso + '\')">'
+              + '+ ' + (dayEnts.length - 3) + ' more</span>';
+      }
+      html += '</div>';
+      cur.setDate(cur.getDate() + 1);
+    }
+    html += '</div>';
+    document.getElementById('gcMonthView').innerHTML = html;
+  }
+
+  /* ── Week render ── */
+  function gcRenderWeek(rng) {
+    var byDate = {};
+    gcEntries.forEach(function(e) {
+      var d   = new Date(e.start_date + 'T00:00:00');
+      var end = new Date(e.end_date   + 'T00:00:00');
+      while (d <= end) {
+        var iso = isoDate(d);
+        if (!byDate[iso]) byDate[iso] = [];
+        byDate[iso].push(e);
+        d.setDate(d.getDate() + 1);
+      }
+    });
+
+    var days = [];
+    var cur  = new Date(rng.start + 'T00:00:00');
+    for (var i = 0; i < 7; i++) {
+      days.push(new Date(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    var WDAY = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+    var html = '<div class="gc-week-grid">';
+    days.forEach(function(d, i) {
+      var iso = isoDate(d);
+      var isToday = iso === TODAY;
+      html += '<div class="gc-week-hdr' + (isToday?' today-col':'') + '">'
+            + WDAY[i] + ' ' + d.getDate() + '/' + (d.getMonth()+1) + '</div>';
+    });
+    days.forEach(function(d) {
+      var iso  = isoDate(d);
+      var ents = byDate[iso] || [];
+      html += '<div class="gc-week-cell">';
+      ents.forEach(function(e) {
+        var col = GC_COLORS[e.entry_type] || '#64748b';
+        html += '<span class="gc-chip status-' + e.status + '" style="background:' + col + ';white-space:normal;overflow:visible" '
+              + 'onclick="gcShowEntry(' + e.id + ')" title="' + escH(e.title) + '">'
+              + escH(e.entry_type) + '<br><span style="opacity:.85">' + escH(e.title) + '</span></span>';
+      });
+      if (!ents.length) html += '<span style="font-size:.7rem;color:var(--muted)">&nbsp;</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+    document.getElementById('gcWeekView').innerHTML = html;
+  }
+
+  /* ── List render ── */
+  function gcRenderList() {
+    if (!gcEntries.length) {
+      document.getElementById('gcListView').innerHTML = '<div class="gc-empty">No entries found for this period.</div>';
+      return;
+    }
+    var html = '<div class="table-responsive"><table class="gc-list-tbl"><thead><tr>'
+             + '<th>Type</th><th>Title</th><th>Staff Member</th>'
+             + '<th>Start</th><th>End</th><th>Status</th>'
+             + (IS_ADMIN ? '<th>Visibility</th>' : '')
+             + '</tr></thead><tbody>';
+    gcEntries.forEach(function(e) {
+      var col = GC_COLORS[e.entry_type] || '#64748b';
+      html += '<tr onclick="gcShowEntry(' + e.id + ')">'
+            + '<td><span class="gc-dot" style="background:' + col + '"></span>' + escH(e.entry_type) + '</td>'
+            + '<td style="font-weight:500">' + escH(e.title) + '</td>'
+            + '<td>' + escH(e.user_name || '—') + '</td>'
+            + '<td>' + fmtDate(e.start_date) + '</td>'
+            + '<td>' + fmtDate(e.end_date)   + '</td>'
+            + '<td><span class="gc-status-badge gc-status-' + e.status + '">' + e.status.charAt(0).toUpperCase()+e.status.slice(1) + '</span></td>'
+            + (IS_ADMIN ? '<td>' + escH(e.visibility === 'admin_only' ? 'Admin Only' : 'Everyone') + '</td>' : '')
+            + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('gcListView').innerHTML = html;
+  }
+
+  /* ── Show entry detail popup ── */
+  window.gcShowEntry = function(id) {
+    var e = gcEntries.find(function(x){ return x.id === id; });
+    if (!e) return;
+    var col = GC_COLORS[e.entry_type] || '#64748b';
+    document.getElementById('gcPopupTitle').textContent = e.title;
+
+    var body = '<div class="gc-popup-row"><span class="gc-popup-lbl">Type</span>'
+             + '<span class="gc-popup-val"><span class="gc-dot" style="background:' + col + '"></span>' + escH(e.entry_type) + '</span></div>'
+             + '<div class="gc-popup-row"><span class="gc-popup-lbl">Staff</span><span class="gc-popup-val">' + escH(e.user_name || '—') + '</span></div>'
+             + '<div class="gc-popup-row"><span class="gc-popup-lbl">Dates</span><span class="gc-popup-val">' + fmtDate(e.start_date)
+             + (e.end_date !== e.start_date ? ' – ' + fmtDate(e.end_date) : '') + '</span></div>';
+    if (!e.all_day && e.start_time) {
+      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Time</span><span class="gc-popup-val">' + escH(e.start_time) + (e.end_time ? ' – ' + escH(e.end_time) : '') + '</span></div>';
+    }
+    body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Status</span>'
+          + '<span class="gc-popup-val"><span class="gc-status-badge gc-status-' + e.status + '">' + e.status.charAt(0).toUpperCase()+e.status.slice(1) + '</span></span></div>';
+    if (IS_ADMIN && e.visibility === 'admin_only') {
+      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Visibility</span><span class="gc-popup-val" style="color:#dc2626;font-weight:600">Admin Only</span></div>';
+    }
+    if (e.notes) {
+      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Notes</span><span class="gc-popup-val">' + escH(e.notes) + '</span></div>';
+    }
+    if (e.approved_by_name) {
+      body += '<div class="gc-popup-row"><span class="gc-popup-lbl">Approved by</span><span class="gc-popup-val">' + escH(e.approved_by_name) + (e.approved_at ? ' on ' + e.approved_at.slice(0,10) : '') + '</span></div>';
+    }
+    if (e.created_by_name) {
+      body += '<div class="gc-popup-row" style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px"><span class="gc-popup-lbl">Created by</span><span class="gc-popup-val" style="color:var(--muted)">' + escH(e.created_by_name) + '</span></div>';
+    }
+    document.getElementById('gcPopupBody').innerHTML = body;
+
+    var actions = '';
+    if (IS_ADMIN) {
+      if (e.status === 'proposed') {
+        actions += '<button class="btn btn-success btn-sm" onclick="gcSetStatus(' + id + ',\'approved\')">Approve</button>';
+        actions += '<button class="btn btn-outline-danger btn-sm" onclick="gcSetStatus(' + id + ',\'rejected\')">Reject</button>';
+      }
+      if (e.status !== 'cancelled') {
+        actions += '<button class="btn btn-outline-secondary btn-sm" onclick="gcEditEntry(' + id + ')">Edit</button>';
+        actions += '<button class="btn btn-outline-danger btn-sm" onclick="gcSetStatus(' + id + ',\'cancelled\')">Cancel</button>';
+      }
+    } else {
+      if (e.created_by === MY_UID && e.status === 'proposed') {
+        actions += '<button class="btn btn-outline-secondary btn-sm" onclick="gcSetStatus(' + id + ',\'cancelled\')">Cancel</button>';
+      }
+    }
+    document.getElementById('gcPopupActions').innerHTML = actions;
+
+    document.getElementById('gcOverlay').style.display = 'block';
+    var popup = document.getElementById('gcPopup');
+    popup.style.display = 'block';
+    popup.style.top  = '15%';
+    popup.style.left = '50%';
+    popup.style.transform = 'translateX(-50%)';
+  };
+
+  window.gcShowDayList = function(iso) {
+    gcView = 'list';
+    ['month','week','list'].forEach(function(x){
+      document.getElementById('btn'+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle('active', x==='list');
+    });
+    document.getElementById('gcMonthView').style.display = 'none';
+    document.getElementById('gcWeekView').style.display  = 'none';
+    document.getElementById('gcListView').style.display  = '';
+    gcAnchor = new Date(iso + 'T00:00:00');
+    gcLoadEntries();
+  };
+
+  window.gcClosePopup = function() {
+    document.getElementById('gcOverlay').style.display = 'none';
+    document.getElementById('gcPopup').style.display   = 'none';
+  };
+
+  /* ── Status change ── */
+  window.gcSetStatus = function(id, status) {
+    gcClosePopup();
+    if (!confirm('Set this entry to ' + status + '?')) return;
+    fetch('/group-calendar/entries/' + id + '/status', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+      body: JSON.stringify({status: status})
+    }).then(function(r){return r.json();})
+      .then(function(d){ if (d.ok) gcLoadEntries(); else alert(d.error || 'Error'); })
+      .catch(function(){ alert('Network error.'); });
+  };
+
+  /* ── Open create modal ── */
+  window.gcOpenCreate = function() {
+    EDITABLE_ENTRY_ID = null;
+    document.getElementById('gcModalTitle').textContent = IS_ADMIN ? 'New Calendar Entry' : 'Submit Leave / Unavailable';
+    document.getElementById('gcTitle').value = '';
+    document.getElementById('gcType').value  = IS_ADMIN ? '' : 'Proposed Leave';
+    document.getElementById('gcStartDate').value = TODAY;
+    document.getElementById('gcEndDate').value   = TODAY;
+    document.getElementById('gcAllDay').checked  = true;
+    gcToggleTime();
+    document.getElementById('gcNotes').value = '';
+    var uidEl = document.getElementById('gcUserId');
+    if (uidEl) uidEl.value = '';
+    var statEl = document.getElementById('gcStatus');
+    if (statEl) statEl.value = 'approved';
+    var visEl = document.getElementById('gcVisibility');
+    if (visEl) visEl.value = 'everyone';
+    document.getElementById('gcCreateError').style.display = 'none';
+    document.getElementById('gcSaveBtn').disabled = false;
+    document.getElementById('gcSaveBtn').textContent = 'Save Entry';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('gcCreateModal')).show();
+  };
+
+  /* ── Open edit modal ── */
+  window.gcEditEntry = function(id) {
+    var e = gcEntries.find(function(x){ return x.id === id; });
+    if (!e) return;
+    gcClosePopup();
+    EDITABLE_ENTRY_ID = id;
+    document.getElementById('gcModalTitle').textContent = 'Edit Entry';
+    document.getElementById('gcTitle').value = e.title;
+    document.getElementById('gcType').value  = e.entry_type;
+    document.getElementById('gcStartDate').value = e.start_date;
+    document.getElementById('gcEndDate').value   = e.end_date;
+    document.getElementById('gcAllDay').checked  = !!e.all_day;
+    gcToggleTime();
+    if (!e.all_day) {
+      var stEl = document.getElementById('gcStartTime');
+      var etEl = document.getElementById('gcEndTime');
+      if (stEl) stEl.value = e.start_time || '09:00';
+      if (etEl) etEl.value = e.end_time   || '17:00';
+    }
+    document.getElementById('gcNotes').value = e.notes || '';
+    var uidEl = document.getElementById('gcUserId');
+    if (uidEl) uidEl.value = e.user_id || '';
+    var statEl = document.getElementById('gcStatus');
+    if (statEl) statEl.value = e.status;
+    var visEl = document.getElementById('gcVisibility');
+    if (visEl) visEl.value = e.visibility || 'everyone';
+    document.getElementById('gcCreateError').style.display = 'none';
+    document.getElementById('gcSaveBtn').disabled = false;
+    document.getElementById('gcSaveBtn').textContent = 'Save Changes';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('gcCreateModal')).show();
+  };
+
+  /* ── Save entry ── */
+  window.gcSaveEntry = function() {
+    var errEl  = document.getElementById('gcCreateError');
+    var saveBtn = document.getElementById('gcSaveBtn');
+    var title  = document.getElementById('gcTitle').value.trim();
+    var type   = document.getElementById('gcType').value;
+    var start  = document.getElementById('gcStartDate').value;
+    var end    = document.getElementById('gcEndDate').value;
+    var allDay = document.getElementById('gcAllDay').checked;
+    var notes  = document.getElementById('gcNotes').value.trim();
+    var stTime = allDay ? null : (document.getElementById('gcStartTime') || {}).value;
+    var etTime = allDay ? null : (document.getElementById('gcEndTime')   || {}).value;
+    var uidEl  = document.getElementById('gcUserId');
+    var statEl = document.getElementById('gcStatus');
+    var visEl  = document.getElementById('gcVisibility');
+
+    if (!title) { errEl.textContent='Title is required.'; errEl.style.display=''; return; }
+    if (!type)  { errEl.textContent='Please select a type.'; errEl.style.display=''; return; }
+    if (!start || !end) { errEl.textContent='Start and end dates are required.'; errEl.style.display=''; return; }
+    if (end < start) { errEl.textContent='End date cannot be before start date.'; errEl.style.display=''; return; }
+    if (!allDay && (!stTime || !etTime)) { errEl.textContent='Start and end times are required.'; errEl.style.display=''; return; }
+
+    errEl.style.display = 'none';
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    var payload = {
+      title: title, entry_type: type,
+      start_date: start, end_date: end,
+      all_day: allDay, notes: notes,
+      start_time: stTime, end_time: etTime,
+      user_id:    uidEl  ? (uidEl.value  || null) : null,
+      status:     statEl ? statEl.value : 'proposed',
+      visibility: visEl  ? visEl.value  : 'everyone',
+    };
+
+    var url = EDITABLE_ENTRY_ID
+            ? '/group-calendar/entries/' + EDITABLE_ENTRY_ID + '/edit'
+            : '/group-calendar/entries';
+
+    fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+      body: JSON.stringify(payload)
+    }).then(function(r){return r.json();})
+      .then(function(d) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = EDITABLE_ENTRY_ID ? 'Save Changes' : 'Save Entry';
+        if (d.ok) {
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('gcCreateModal')).hide();
+          gcLoadEntries();
+        } else {
+          errEl.textContent = d.error || 'Failed to save.';
+          errEl.style.display = '';
+        }
+      })
+      .catch(function() {
+        saveBtn.disabled = false;
+        saveBtn.textContent = EDITABLE_ENTRY_ID ? 'Save Changes' : 'Save Entry';
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.style.display = '';
+      });
+  };
+
+  /* ── Helpers ── */
+  window.gcToggleTime = function() {
+    var allDay = document.getElementById('gcAllDay').checked;
+    document.getElementById('gcTimeSection').style.display = allDay ? 'none' : '';
+  };
+  window.gcTypeChanged = function() {};
+
+  function escH(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Init ── */
+  gcLoadEntries();
+})();
+</script>
+{% endblock %}

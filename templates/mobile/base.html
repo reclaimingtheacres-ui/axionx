@@ -358,6 +358,13 @@ a { color: var(--accent); text-decoration: none; }
     Route
   </a>
 
+  <a href="{{ url_for('m_group_calendar') }}"
+     class="{{ 'active' if request.endpoint in ('m_group_calendar','m_group_calendar_create','m_group_calendar_status') }}"
+     aria-label="Calendar" role="tab">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    Cal
+  </a>
+
   <a href="{{ url_for('m_messages_list') }}"
      class="{{ 'active' if request.endpoint in ('m_messages_list','m_message_thread') }}"
      aria-label="Messages" role="tab">

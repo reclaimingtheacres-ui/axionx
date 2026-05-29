@@ -634,6 +634,11 @@ def _schema_is_current():
             rl_cols = [r[1] for r in conn.execute("PRAGMA table_info(repo_lock_records)").fetchall()]
             if "auction_yard_id" not in rl_cols:
                 return False
+            gc_tbl = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='group_calendar_entries'"
+            ).fetchone()
+            if not gc_tbl:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -721,6 +726,32 @@ def _startup_migrate():
         add_column_if_missing(_cur, "repo_lock_records", "tow_phone",          "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_operator",       "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_contact_number", "TEXT")
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_calendar_entries (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                title           TEXT NOT NULL,
+                entry_type      TEXT NOT NULL,
+                start_date      TEXT NOT NULL,
+                end_date        TEXT NOT NULL,
+                start_time      TEXT,
+                end_time        TEXT,
+                all_day         INTEGER NOT NULL DEFAULT 1,
+                user_id         INTEGER,
+                created_by      INTEGER NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'approved',
+                visibility      TEXT NOT NULL DEFAULT 'everyone',
+                notes           TEXT,
+                created_at      TEXT NOT NULL,
+                updated_at      TEXT NOT NULL,
+                approved_by     INTEGER,
+                approved_at     TEXT,
+                FOREIGN KEY(user_id)     REFERENCES users(id),
+                FOREIGN KEY(created_by)  REFERENCES users(id),
+                FOREIGN KEY(approved_by) REFERENCES users(id)
+            )
+        """)
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_gce_dates ON group_calendar_entries(start_date, end_date)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_gce_user  ON group_calendar_entries(user_id)")
         _conn.execute(
             "UPDATE jobs SET regulation_type='Regulated' WHERE regulation_type='REGULATED'"
         )
@@ -1777,6 +1808,33 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "client_update_requests", "request_type", "TEXT NOT NULL DEFAULT 'update_request'")
     add_column_if_missing(cur, "jobs", "last_client_response_at",   "TEXT")
     add_column_if_missing(cur, "jobs", "suspended_followup_due_at", "TEXT")
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS group_calendar_entries (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            title           TEXT NOT NULL,
+            entry_type      TEXT NOT NULL,
+            start_date      TEXT NOT NULL,
+            end_date        TEXT NOT NULL,
+            start_time      TEXT,
+            end_time        TEXT,
+            all_day         INTEGER NOT NULL DEFAULT 1,
+            user_id         INTEGER,
+            created_by      INTEGER NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'approved',
+            visibility      TEXT NOT NULL DEFAULT 'everyone',
+            notes           TEXT,
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            approved_by     INTEGER,
+            approved_at     TEXT,
+            FOREIGN KEY(user_id)     REFERENCES users(id),
+            FOREIGN KEY(created_by)  REFERENCES users(id),
+            FOREIGN KEY(approved_by) REFERENCES users(id)
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_gce_dates ON group_calendar_entries(start_date, end_date)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_gce_user  ON group_calendar_entries(user_id)")
 
     # Backfill status_changed_at for existing jobs that have no value yet.
     # Use the most recent lifecycle log entry where to_status = current status;
@@ -7109,6 +7167,24 @@ _CUR_ELIGIBLE_STATUSES = ("Suspended", "Awaiting Advice From Client", "Awaiting 
 _CUR_STALE_DAYS        = 28   # job must be in eligible status at least this long
 _CUR_COOLDOWN_DAYS     = 7    # days between Stage 1 and Stage 2, and Stage 2 and Stage 3
 _SUSPENDED_RESPONSE_WINDOW_DAYS = 10  # grace window after a recorded client response
+
+# ── Group Calendar ─────────────────────────────────────────────────────────────
+_GC_ENTRY_COLORS = {
+    "Proposed Leave":      "#f97316",
+    "Approved Leave":      "#dc2626",
+    "Public Holiday":      "#2563eb",
+    "Office Closed":       "#6b7280",
+    "Christmas Blackout":  "#9ca3af",
+    "Training / Meeting":  "#16a34a",
+    "Agent Unavailable":   "#7c3aed",
+    "Regional Deployment": "#0d9488",
+    "Other":               "#64748b",
+}
+_GC_ENTRY_TYPES    = list(_GC_ENTRY_COLORS.keys())
+_GC_CONFLICT_TYPES = frozenset([
+    "Approved Leave", "Agent Unavailable",
+    "Office Closed", "Public Holiday", "Christmas Blackout",
+])
 
 
 def _client_update_request_eligibility(conn, job_id: int) -> dict:
@@ -18651,11 +18727,41 @@ def my_today():
         ORDER BY ju.updated_at DESC
     """, (user_id,))
     update_drafts = cur.fetchall()
+
+    # ── Calendar Notices Today ───────────────────────────────────────────────
+    _gc_role     = session.get("role", "")
+    _gc_is_admin = _gc_role in ("admin", "both", "management")
+    _today_iso   = actual_today.isoformat()
+    try:
+        if _gc_is_admin:
+            _gc_rows = conn.execute("""
+                SELECT gce.*, u.full_name AS user_name
+                FROM group_calendar_entries gce
+                LEFT JOIN users u ON u.id = gce.user_id
+                WHERE gce.start_date <= ? AND gce.end_date >= ?
+                  AND gce.status = 'approved'
+                ORDER BY gce.entry_type, gce.title
+            """, (_today_iso, _today_iso)).fetchall()
+        else:
+            _gc_rows = conn.execute("""
+                SELECT gce.*, u.full_name AS user_name
+                FROM group_calendar_entries gce
+                LEFT JOIN users u ON u.id = gce.user_id
+                WHERE gce.start_date <= ? AND gce.end_date >= ?
+                  AND gce.status = 'approved'
+                  AND gce.visibility = 'everyone'
+                ORDER BY gce.entry_type, gce.title
+            """, (_today_iso, _today_iso)).fetchall()
+        calendar_notices = [dict(r) for r in _gc_rows]
+    except Exception:
+        calendar_notices = []
     conn.close()
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
                            today=today, today_display=today_display,
                            update_drafts=update_drafts,
+                           calendar_notices=calendar_notices,
+                           gc_colors=_GC_ENTRY_COLORS,
                            prev_date=prev_date, next_date=next_date,
                            is_today=is_today, view=view,
                            period_label=period_label,
@@ -28700,6 +28806,369 @@ def _demo_required(f):
             abort(404)
         return f(*args, **kwargs)
     return _wrapper
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GROUP CALENDAR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/group-calendar")
+@login_required
+def group_calendar():
+    conn     = db()
+    role     = session.get("role", "")
+    is_admin = role in ("admin", "both", "management")
+    users    = []
+    if is_admin:
+        users = conn.execute(
+            "SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name"
+        ).fetchall()
+    conn.close()
+    return render_template(
+        "group_calendar.html",
+        is_admin=is_admin,
+        users=users,
+        entry_types=_GC_ENTRY_TYPES,
+        gc_colors=_GC_ENTRY_COLORS,
+        today=datetime.now(_melbourne).strftime("%Y-%m-%d"),
+        user_id=session.get("user_id"),
+    )
+
+
+@app.get("/group-calendar/api/entries")
+@login_required
+def group_calendar_api_entries():
+    role     = session.get("role", "")
+    uid      = session.get("user_id")
+    is_admin = role in ("admin", "both", "management")
+
+    start_str   = request.args.get("start", "")
+    end_str     = request.args.get("end",   "")
+    filter_user = request.args.get("user_id", "all")
+    filter_type = request.args.get("entry_type", "all")
+    filter_stat = request.args.get("status", "all")
+
+    if not start_str or not end_str:
+        return jsonify({"error": "start and end required"}), 400
+
+    conn    = db()
+    wheres  = ["gce.start_date <= ? AND gce.end_date >= ?"]
+    params  = [end_str, start_str]
+
+    if not is_admin:
+        wheres.append("(gce.visibility = 'everyone' OR gce.user_id = ?)")
+        params.append(uid)
+        wheres.append("gce.status != 'rejected'")
+    else:
+        if filter_stat not in ("all", ""):
+            wheres.append("gce.status = ?")
+            params.append(filter_stat)
+
+    if filter_type not in ("all", ""):
+        wheres.append("gce.entry_type = ?")
+        params.append(filter_type)
+
+    if is_admin and filter_user not in ("all", "", None):
+        try:
+            wheres.append("gce.user_id = ?")
+            params.append(int(filter_user))
+        except (ValueError, TypeError):
+            pass
+
+    where_sql = " AND ".join(wheres)
+    rows = conn.execute(f"""
+        SELECT gce.*,
+               u.full_name  AS user_name,
+               cb.full_name AS created_by_name,
+               ab.full_name AS approved_by_name
+        FROM group_calendar_entries gce
+        LEFT JOIN users u  ON u.id  = gce.user_id
+        LEFT JOIN users cb ON cb.id = gce.created_by
+        LEFT JOIN users ab ON ab.id = gce.approved_by
+        WHERE {where_sql}
+        ORDER BY gce.start_date, gce.entry_type
+    """, params).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.post("/group-calendar/entries")
+@login_required
+def group_calendar_create():
+    role     = session.get("role", "")
+    uid      = session.get("user_id")
+    is_admin = role in ("admin", "both", "management")
+
+    data = request.get_json(silent=True) or {}
+
+    title       = (data.get("title")      or "").strip()
+    entry_type  = (data.get("entry_type") or "").strip()
+    start_date  = (data.get("start_date") or "").strip()
+    end_date    = (data.get("end_date")   or "").strip()
+    start_time  = (data.get("start_time") or "").strip() or None
+    end_time    = (data.get("end_time")   or "").strip() or None
+    all_day     = 1 if data.get("all_day", True) else 0
+    user_id_raw = data.get("user_id")
+    status      = (data.get("status")     or "approved").strip()
+    visibility  = (data.get("visibility") or "everyone").strip()
+    notes       = (data.get("notes")      or "").strip() or None
+
+    if not title:
+        return jsonify({"ok": False, "error": "Title is required."}), 400
+    if entry_type not in _GC_ENTRY_TYPES:
+        return jsonify({"ok": False, "error": "Invalid entry type."}), 400
+    if not start_date or not end_date:
+        return jsonify({"ok": False, "error": "Start and end dates are required."}), 400
+    if end_date < start_date:
+        return jsonify({"ok": False, "error": "End date cannot be before start date."}), 400
+    if not all_day and (not start_time or not end_time):
+        return jsonify({"ok": False, "error": "Start/end times are required for timed entries."}), 400
+
+    if not is_admin:
+        if entry_type not in ("Proposed Leave", "Agent Unavailable"):
+            return jsonify({"ok": False, "error": "Agents can only create Proposed Leave or Agent Unavailable entries."}), 403
+        user_id    = uid
+        status     = "proposed"
+        visibility = "everyone"
+    else:
+        try:
+            user_id = int(user_id_raw) if user_id_raw else None
+        except (ValueError, TypeError):
+            user_id = None
+        if status not in ("proposed", "approved", "rejected", "cancelled"):
+            status = "approved"
+        if visibility not in ("everyone", "admin_only"):
+            visibility = "everyone"
+
+    ts          = now_ts()
+    approved_by = None
+    approved_at = None
+    if status == "approved" and is_admin:
+        approved_by = uid
+        approved_at = ts
+
+    conn = db()
+    cur  = conn.cursor()
+    cur.execute("""
+        INSERT INTO group_calendar_entries
+            (title, entry_type, start_date, end_date, start_time, end_time,
+             all_day, user_id, created_by, status, visibility, notes,
+             created_at, updated_at, approved_by, approved_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (title, entry_type, start_date, end_date, start_time, end_time,
+          all_day, user_id, uid, status, visibility, notes,
+          ts, ts, approved_by, approved_at))
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    audit("group_calendar", new_id, "created",
+          f"{entry_type}: {title} ({start_date}–{end_date})")
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.post("/group-calendar/entries/<int:entry_id>/edit")
+@login_required
+def group_calendar_edit(entry_id: int):
+    role     = session.get("role", "")
+    uid      = session.get("user_id")
+    is_admin = role in ("admin", "both", "management")
+
+    conn  = db()
+    entry = conn.execute(
+        "SELECT * FROM group_calendar_entries WHERE id = ?", (entry_id,)
+    ).fetchone()
+    if not entry:
+        conn.close()
+        return jsonify({"ok": False, "error": "Entry not found."}), 404
+
+    if not is_admin:
+        if entry["created_by"] != uid or entry["status"] != "proposed":
+            conn.close()
+            return jsonify({"ok": False, "error": "You cannot edit this entry."}), 403
+
+    data       = request.get_json(silent=True) or {}
+    title      = (data.get("title")      or entry["title"]).strip()
+    entry_type = (data.get("entry_type") or entry["entry_type"]).strip()
+    start_date = (data.get("start_date") or entry["start_date"]).strip()
+    end_date   = (data.get("end_date")   or entry["end_date"]).strip()
+    start_time = (data.get("start_time") or "").strip() or None
+    end_time   = (data.get("end_time")   or "").strip() or None
+    all_day    = 1 if data.get("all_day", bool(entry["all_day"])) else 0
+    notes      = (data.get("notes") or "").strip() or None
+
+    if end_date < start_date:
+        conn.close()
+        return jsonify({"ok": False, "error": "End date cannot be before start date."}), 400
+    if entry_type not in _GC_ENTRY_TYPES:
+        conn.close()
+        return jsonify({"ok": False, "error": "Invalid entry type."}), 400
+
+    visibility = entry["visibility"]
+    status     = entry["status"]
+    if is_admin:
+        v = (data.get("visibility") or "").strip()
+        if v in ("everyone", "admin_only"):
+            visibility = v
+        s = (data.get("status") or "").strip()
+        if s in ("proposed", "approved", "rejected", "cancelled"):
+            status = s
+
+    ts = now_ts()
+    conn.execute("""
+        UPDATE group_calendar_entries
+        SET title=?, entry_type=?, start_date=?, end_date=?,
+            start_time=?, end_time=?, all_day=?, visibility=?,
+            status=?, notes=?, updated_at=?
+        WHERE id=?
+    """, (title, entry_type, start_date, end_date,
+          start_time, end_time, all_day, visibility,
+          status, notes, ts, entry_id))
+    conn.commit()
+    conn.close()
+    audit("group_calendar", entry_id, "edited", f"{entry_type}: {title}")
+    return jsonify({"ok": True})
+
+
+@app.post("/group-calendar/entries/<int:entry_id>/status")
+@login_required
+def group_calendar_status(entry_id: int):
+    role     = session.get("role", "")
+    uid      = session.get("user_id")
+    is_admin = role in ("admin", "both", "management")
+
+    data       = request.get_json(silent=True) or {}
+    new_status = (data.get("status") or "").strip()
+    if new_status not in ("approved", "rejected", "cancelled"):
+        return jsonify({"ok": False, "error": "Invalid status."}), 400
+
+    conn  = db()
+    entry = conn.execute(
+        "SELECT * FROM group_calendar_entries WHERE id = ?", (entry_id,)
+    ).fetchone()
+    if not entry:
+        conn.close()
+        return jsonify({"ok": False, "error": "Entry not found."}), 404
+
+    if new_status in ("approved", "rejected") and not is_admin:
+        conn.close()
+        return jsonify({"ok": False, "error": "Only admin can approve or reject entries."}), 403
+    if new_status == "cancelled" and not is_admin and entry["created_by"] != uid:
+        conn.close()
+        return jsonify({"ok": False, "error": "You cannot cancel this entry."}), 403
+
+    ts          = now_ts()
+    approved_by = entry["approved_by"]
+    approved_at = entry["approved_at"]
+    if new_status == "approved":
+        approved_by = uid
+        approved_at = ts
+
+    conn.execute("""
+        UPDATE group_calendar_entries
+        SET status=?, approved_by=?, approved_at=?, updated_at=?
+        WHERE id=?
+    """, (new_status, approved_by, approved_at, ts, entry_id))
+    conn.commit()
+    conn.close()
+    audit("group_calendar", entry_id, f"status_{new_status}",
+          f"Entry {entry_id} → {new_status}")
+    return jsonify({"ok": True})
+
+
+@app.get("/group-calendar/api/conflict-check")
+@login_required
+def group_calendar_conflict_check():
+    """Non-blocking advisory: check if an agent has a conflicting calendar entry."""
+    user_id_raw = request.args.get("user_id", "")
+    date_str    = request.args.get("date",    "")
+    if not user_id_raw or not date_str:
+        return jsonify({"conflict": False})
+    try:
+        check_uid = int(user_id_raw)
+    except (ValueError, TypeError):
+        return jsonify({"conflict": False})
+
+    conn = db()
+    try:
+        conflict_types = list(_GC_CONFLICT_TYPES)
+        placeholders   = ",".join("?" * len(conflict_types))
+        row = conn.execute(f"""
+            SELECT title, entry_type FROM group_calendar_entries
+            WHERE user_id = ? AND start_date <= ? AND end_date >= ?
+              AND status = 'approved'
+              AND entry_type IN ({placeholders})
+            LIMIT 1
+        """, [check_uid, date_str, date_str] + conflict_types).fetchone()
+    except Exception:
+        conn.close()
+        return jsonify({"conflict": False})
+    conn.close()
+    if row:
+        return jsonify({"conflict": True,
+                        "entry_type": row["entry_type"],
+                        "title": row["title"]})
+    return jsonify({"conflict": False})
+
+
+# ── Mobile Group Calendar ──────────────────────────────────────────────────────
+
+@app.get("/m/group-calendar")
+@login_required
+def m_group_calendar():
+    role     = session.get("role", "")
+    uid      = session.get("user_id")
+    is_admin = role in ("admin", "both", "management")
+    today_str = datetime.now(_melbourne).strftime("%Y-%m-%d")
+
+    from datetime import timedelta as _td_gc, date as _date_gc
+    end_str = (_date_gc.fromisoformat(today_str) + _td_gc(days=30)).isoformat()
+
+    conn = db()
+    try:
+        if is_admin:
+            entries = conn.execute("""
+                SELECT gce.*, u.full_name AS user_name
+                FROM group_calendar_entries gce
+                LEFT JOIN users u ON u.id = gce.user_id
+                WHERE gce.end_date >= ? AND gce.start_date <= ?
+                  AND gce.status != 'cancelled'
+                ORDER BY gce.start_date, gce.entry_type
+            """, (today_str, end_str)).fetchall()
+        else:
+            entries = conn.execute("""
+                SELECT gce.*, u.full_name AS user_name
+                FROM group_calendar_entries gce
+                LEFT JOIN users u ON u.id = gce.user_id
+                WHERE gce.end_date >= ? AND gce.start_date <= ?
+                  AND (gce.visibility = 'everyone' OR gce.created_by = ?)
+                  AND gce.status != 'rejected'
+                ORDER BY gce.start_date, gce.entry_type
+            """, (today_str, end_str, uid)).fetchall()
+        entry_list = [dict(r) for r in entries]
+    except Exception:
+        entry_list = []
+    conn.close()
+    return render_template(
+        "mobile/group_calendar.html",
+        entries=entry_list,
+        is_admin=is_admin,
+        entry_types=_GC_ENTRY_TYPES,
+        gc_colors=_GC_ENTRY_COLORS,
+        today=today_str,
+        user_id=uid,
+    )
+
+
+@app.post("/m/group-calendar/entries")
+@login_required
+def m_group_calendar_create():
+    return group_calendar_create()
+
+
+@app.post("/m/group-calendar/entries/<int:entry_id>/status")
+@login_required
+def m_group_calendar_status(entry_id: int):
+    return group_calendar_status(entry_id)
 
 
 @app.route("/demo")

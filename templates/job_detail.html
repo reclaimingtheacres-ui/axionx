@@ -5148,6 +5148,10 @@ function adocOpenEditJob() {
       </div>
       <div class="modal-body">
         <div id="abk-error" class="alert alert-danger mb-3" style="display:none"></div>
+        <div id="abk-conflict-warn" class="alert alert-warning d-flex align-items-start gap-2 mb-3" style="display:none;font-size:.84rem">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span id="abk-conflict-warn-text"></span>
+        </div>
 
         <!-- Date & Time -->
         <div class="row g-3 mb-3 align-items-center">
@@ -5634,6 +5638,28 @@ function offNoteCancel(id) {
 
     var checkedIds = [];
     document.querySelectorAll('.abk-staff-chk:checked').forEach(function(cb){ checkedIds.push(cb.value); });
+
+    // ── Advisory conflict check — non-blocking ────────────────────────────────
+    (function() {
+      var warnEl = document.getElementById('abk-conflict-warn');
+      var textEl = document.getElementById('abk-conflict-warn-text');
+      if (!warnEl || !textEl || !date || !checkedIds.length) return;
+      warnEl.style.display = 'none';
+      Promise.all(checkedIds.map(function(uid) {
+        return fetch('/group-calendar/api/conflict-check?user_id=' + encodeURIComponent(uid) + '&date=' + encodeURIComponent(date),
+          { credentials: 'same-origin' })
+          .then(function(r) { return r.json(); })
+          .catch(function() { return { conflict: false }; });
+      })).then(function(results) {
+        var hits = results.filter(function(r) { return r.conflict; });
+        if (hits.length) {
+          textEl.textContent = 'Advisory: one or more selected agents has a Group Calendar conflict on this date ('
+            + hits.map(function(h) { return h.entry_type; }).join(', ')
+            + '). You can still save — this is for information only.';
+          warnEl.style.display = '';
+        }
+      });
+    })();
 
     var fd = new FormData();
     var parts = date.split('-');

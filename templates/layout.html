@@ -367,6 +367,9 @@
           <span id="ax-msg-badge" style="display:none;background:var(--accent);color:#fff;font-size:.6rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle;line-height:1.6">0</span>
         </a>
         {% endif %}
+        {% if session.get('user_id') and not is_demo_client %}
+        <a href="/group-calendar" class="{% if request.path.startswith('/group-calendar') %}active{% endif %}">Group Calendar</a>
+        {% endif %}
         {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
         <button type="button" class="ax-menu-btn{% if request.path.startswith('/schedule') or request.path.startswith('/map') or request.path.startswith('/route-planner') %} active{% endif %}" data-popup="ax-planning-popup">
           Planning
