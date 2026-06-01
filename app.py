@@ -5453,7 +5453,7 @@ def job_detail(job_id: int):
     cur.execute("""
         SELECT jc.id AS jc_id, jc.role, jc.sort_order,
                cu.id AS customer_id, cu.first_name, cu.last_name, cu.company,
-               cu.email, cu.address,
+               cu.email, cu.address, cu.dob,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
                 WHERE cpn.entity_type='customer' AND cpn.entity_id = cu.id
                 ORDER BY CASE WHEN cpn.label='Mobile' THEN 0 ELSE 1 END LIMIT 1) AS primary_phone

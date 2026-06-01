@@ -373,6 +373,7 @@
                     <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
                     {% set _lc_best_addr = lc.address or job.job_address or '' %}
                     {% if _lc_best_addr %}<div class="small" style="color:var(--muted)">{{ _lc_best_addr }}</div>{% endif %}
+                    <div class="small" style="color:var(--muted)">DOB: {{ lc.dob if lc.dob else 'DOB not recorded' }}</div>
                     {% if lc.primary_phone %}
                       <div class="small mt-1">
                         <span class="ax-ph" onclick="axPhone('{{ lc.primary_phone }}',event)">{{ lc.primary_phone }}</span>
@@ -396,6 +397,12 @@
             {% endfor %}
           {% else %}
             <div class="small" style="color:var(--muted)">No customers linked.</div>
+          {% endif %}
+          {% if job.job_address %}
+            <div class="mt-2 pt-2" style="border-top:1px solid var(--line)">
+              <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em;margin-bottom:2px">JOB LOCATION ADDRESS</div>
+              <div class="small">{{ job.job_address }}</div>
+            </div>
           {% endif %}
         </div>
       </div>
