@@ -143,7 +143,7 @@
       </ul>
     </div>
 
-    {% if session.get('role') in ('admin','both','agent') and client_update_info %}
+    {% if session.get('role') in ('admin','both','management','agent') and client_update_info %}
       {% set _cur_label = client_update_info.get('button_label', 'Request Client Update') %}
       {% if client_update_info.eligible %}
     <button class="btn btn-warning btn-sm" type="button" id="btnClientUpdateRequest"
@@ -158,7 +158,7 @@
       {% endif %}
     {% endif %}
 
-    {% if session.get('role') in ('admin','both','management') and client_update_info and client_update_info.get('phase') != 'pending_closure' and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
+    {% if session.get('role') in ('admin','both','management') and client_update_info and client_update_info.get('last_sent_at') and client_update_info.get('phase') not in ('pending_closure', 'grace_period') %}
     <button class="btn btn-outline-success btn-sm" type="button"
             onclick="openClientResponseModal()">
       Client Responded
@@ -6952,7 +6952,7 @@ function axOpenEditRole(jcId, currentRole) {
 }
 </script>
 
-{% if session.get('role') in ('admin','both','agent') and client_update_info and client_update_info.eligible %}
+{% if session.get('role') in ('admin','both','management','agent') and client_update_info and client_update_info.eligible %}
 <!-- ── Request Client Update Modal ──────────────────────────────────────────── -->
 <div class="modal fade" id="clientUpdateRequestModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
