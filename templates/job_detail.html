@@ -4013,7 +4013,8 @@ window.anToggleMax = function() {
   var content = document.getElementById('addNoteContent');
   if (!isMax) { content.style.width = ''; content.style.height = ''; }
 };
-document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', function() {
+var _anModal = document.getElementById('addNoteModal');
+if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
   var modal = this;
   modal.classList.remove('an-maximised');
   var btn = document.getElementById('anMaxBtn');
@@ -4078,7 +4079,8 @@ document.getElementById('addNoteModal').addEventListener('hidden.bs.modal', func
     anUpdateReviewBtn();
   }
 
-  document.getElementById('an_text').addEventListener('input', anDetectCategory);
+  var _anText = document.getElementById('an_text');
+  if (_anText) _anText.addEventListener('input', anDetectCategory);
   var _anFileEl = document.getElementById('an_file');
   if (_anFileEl) {
     _anFileEl.addEventListener('change', function() {
@@ -5584,13 +5586,14 @@ function offNoteCancel(id) {
 (function() {
   var abkModal = null;
 
-  document.getElementById('abk_unassigned').addEventListener('change', function() {
+  var _abkUnassigned = document.getElementById('abk_unassigned');
+  if (_abkUnassigned) _abkUnassigned.addEventListener('change', function() {
     document.getElementById('abk_staff_section').style.opacity = this.checked ? '0.35' : '1';
     document.getElementById('abk_staff_section').style.pointerEvents = this.checked ? 'none' : '';
   });
 
   var abkEl = document.getElementById('addBookingModal');
-  abkEl.addEventListener('show.bs.modal', function() {
+  if (abkEl) abkEl.addEventListener('show.bs.modal', function() {
     document.getElementById('abk-error').style.display = 'none';
     var today = new Date();
     var yyyy = today.getFullYear();
@@ -6696,7 +6699,8 @@ document.addEventListener('DOMContentLoaded', function() {
       .catch(function(){ alert('Error loading customer data'); _ecModal.hide(); });
   };
 
-  document.getElementById('ec_notes').addEventListener('input', function(){
+  var _ecNotes = document.getElementById('ec_notes');
+  if (_ecNotes) _ecNotes.addEventListener('input', function(){
     this.style.height = 'auto';
     this.style.height = this.scrollHeight + 'px';
   });
@@ -6752,9 +6756,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (rows.length && !document.querySelector('#' + listId + ' input[name="' + radioName + '"]:checked')) rows[0].checked = true;
   };
 
-  document.getElementById('editCustomerModal').addEventListener('hidden.bs.modal', function() {
+  var _ecModalEl = document.getElementById('editCustomerModal');
+  if (_ecModalEl) _ecModalEl.addEventListener('hidden.bs.modal', function() {
     var form = document.getElementById('editCustomerForm');
-    form.reset();
+    if (form) form.reset();
     document.getElementById('ecCompanyList').innerHTML = '';
     document.getElementById('ecAddressList').innerHTML = '';
     document.getElementById('ecSaveStatus').textContent = '';
@@ -6763,7 +6768,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (_nt) _nt.style.height = '';
   });
 
-  document.getElementById('editCustomerForm').addEventListener('submit', function(e) {
+  var _ecFormEl = document.getElementById('editCustomerForm');
+  if (_ecFormEl) _ecFormEl.addEventListener('submit', function(e) {
     e.preventDefault();
     var btn = document.getElementById('ecSaveBtn');
     var status = document.getElementById('ecSaveStatus');
