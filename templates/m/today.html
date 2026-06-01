@@ -20,6 +20,40 @@
   {% endif %}
 </div>
 
+{# ── Group Calendar Notices — above job cards, not counted as jobs ── #}
+{% if calendar_notices %}
+<div style="margin-bottom:14px;">
+  {% for n in calendar_notices %}
+  {% set color = gc_colors.get(n.entry_type, '#64748b') %}
+  <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;
+              border-radius:12px;margin-bottom:6px;
+              background:var(--card);border-left:4px solid {{ color }};
+              box-shadow:0 1px 3px rgba(0,0,0,.06);">
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:3px;">
+        {% if n.status == 'proposed' %}
+        <span style="font-size:.62rem;font-weight:700;background:#f97316;color:#fff;
+                     border-radius:4px;padding:1px 5px;letter-spacing:.04em;">PENDING</span>
+        {% endif %}
+        <span style="font-size:.62rem;font-weight:700;color:#fff;border-radius:4px;
+                     padding:1px 6px;background:{{ color }};letter-spacing:.04em;
+                     white-space:nowrap;">{{ n.entry_type | upper }}</span>
+      </div>
+      <div style="font-size:.9rem;font-weight:600;color:var(--text);line-height:1.3;">{{ n.title }}</div>
+      {% if n.user_name %}
+      <div style="font-size:.78rem;color:var(--muted);margin-top:1px;">{{ n.user_name }}</div>
+      {% endif %}
+    </div>
+    {% if n.start_time and not n.all_day %}
+    <div style="font-size:.82rem;font-weight:600;color:{{ color }};white-space:nowrap;flex-shrink:0;padding-top:2px;">
+      {{ n.start_time[:5] }}{% if n.end_time %}&ndash;{{ n.end_time[:5] }}{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% set all_items = [] %}
 
 {% if drafts %}

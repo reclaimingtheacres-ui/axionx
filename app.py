@@ -20406,6 +20406,30 @@ def m_today():
         WHERE ju.created_by_user_id = ? AND ju.status = 'draft'
         ORDER BY ju.updated_at DESC
     """, (uid,)).fetchall()
+
+    # ── Group Calendar notices for the selected date ─────────────────────────
+    # Reuses the same visibility rules and entry-type list as desktop My Today.
+    _gc_role     = session.get("role", "")
+    _gc_is_admin = _gc_role in ("admin", "both", "management")
+    _nt_list     = list(_MY_TODAY_NOTICE_TYPES)
+    _nt_ph       = ",".join("?" * len(_nt_list))
+    _vis_cond    = "" if _gc_is_admin else "AND gce.visibility = 'everyone'"
+    try:
+        _gc_raw = conn.execute(f"""
+            SELECT gce.*, u.full_name AS user_name
+            FROM group_calendar_entries gce
+            LEFT JOIN users u ON u.id = gce.user_id
+            WHERE gce.start_date <= ? AND gce.end_date >= ?
+              AND (
+                (gce.status = 'approved' AND gce.entry_type IN ({_nt_ph}))
+                OR (gce.status = 'proposed' AND gce.entry_type = 'Proposed Leave')
+              )
+              {_vis_cond}
+            ORDER BY gce.entry_type, gce.title
+        """, [today, today] + _nt_list).fetchall()
+        calendar_notices = [dict(r) for r in _gc_raw]
+    except Exception:
+        calendar_notices = []
     conn.close()
 
     draft_job_ids = {d["job_id"] for d in drafts_raw}
@@ -20415,7 +20439,9 @@ def m_today():
                            cues=cues, schedules=schedules,
                            drafts=drafts_raw, draft_job_ids=draft_job_ids,
                            prev_date=prev_date, next_date=next_date,
-                           is_today=is_today)
+                           is_today=is_today,
+                           calendar_notices=calendar_notices,
+                           gc_colors=_GC_ENTRY_COLORS)
 
 
 def _mobile_jobs_query(uid, role, params_in):
