@@ -5659,16 +5659,33 @@ function offNoteCancel(id) {
       if (!warnEl || !textEl || !date || !checkedIds.length) return;
       warnEl.style.display = 'none';
       Promise.all(checkedIds.map(function(uid) {
-        return fetch('/group-calendar/api/conflict-check?user_id=' + encodeURIComponent(uid) + '&date=' + encodeURIComponent(date),
+        return fetch('/group-calendar/api/conflict-check?user_id=' + encodeURIComponent(uid)
+                     + '&date=' + encodeURIComponent(date)
+                     + '&time=' + encodeURIComponent(time),
           { credentials: 'same-origin' })
           .then(function(r) { return r.json(); })
-          .catch(function() { return { conflict: false }; });
+          .catch(function() { return { conflict: false, entries: [], proposed: [] }; });
       })).then(function(results) {
-        var hits = results.filter(function(r) { return r.conflict; });
-        if (hits.length) {
-          textEl.textContent = 'Advisory: one or more selected agents has a Group Calendar conflict on this date ('
-            + hits.map(function(h) { return h.entry_type; }).join(', ')
-            + '). You can still save — this is for information only.';
+        var hardHits = results.filter(function(r) { return r.conflict || (r.entries && r.entries.length); });
+        var softHits = results.filter(function(r) { return r.proposed && r.proposed.length; });
+        if (hardHits.length || softHits.length) {
+          var parts = [];
+          if (hardHits.length) {
+            var allEnts = [];
+            hardHits.forEach(function(h) {
+              var ents = h.entries && h.entries.length ? h.entries
+                         : (h.conflict ? [{entry_type: h.entry_type, title: h.title}] : []);
+              ents.forEach(function(e) {
+                allEnts.push((e.entry_type || '') + (e.start_time ? ' ' + e.start_time + '–' + e.end_time : ''));
+              });
+            });
+            parts.push('Advisory: one or more agents has a Group Calendar conflict on this date ('
+                       + allEnts.join(', ') + '). You can still save.');
+          }
+          if (softHits.length) {
+            parts.push('Note: one or more agents has a pending leave request on this date.');
+          }
+          textEl.textContent = parts.join(' ');
           warnEl.style.display = '';
         }
       });
@@ -6289,23 +6306,14 @@ function offNoteCancel(id) {
     });
   };
 
-  window.saveSchedEdit = function(sid) {
-    var dateVal = document.getElementById('se-date-' + sid).value;
-    var timeVal = document.getElementById('se-time-' + sid).value || '09:00';
-    var btId = document.getElementById('se-bt-' + sid).value;
-    var agentId = document.getElementById('se-agent-' + sid).value;
-    var notes = document.getElementById('se-notes-' + sid).value;
+  function _execSchedSave(sid, dateVal, timeVal, btId, agentId, notes) {
     var msg = document.getElementById('se-msg-' + sid);
-
-    if (!dateVal) { alert('Please select a date.'); return; }
-
     var dt = dateVal + 'T' + timeVal + ':00';
     var fd = new FormData();
     fd.append('scheduled_for', dt);
     fd.append('booking_type_id', btId);
     fd.append('assigned_to_user_id', agentId);
     fd.append('notes', notes);
-
     fetch('/schedule/api/' + sid + '/update', { method: 'POST', body: fd })
       .then(function(r){
         if (!r.ok) {
@@ -6324,6 +6332,49 @@ function offNoteCancel(id) {
       .catch(function(e){
         if (msg) { msg.textContent = 'Network error: ' + (e.message || 'Please try again.'); msg.style.display = ''; msg.style.color = '#dc2626'; }
       });
+  }
+
+  window.saveSchedEdit = function(sid) {
+    var dateVal = document.getElementById('se-date-' + sid).value;
+    var timeVal = document.getElementById('se-time-' + sid).value || '09:00';
+    var btId    = document.getElementById('se-bt-'   + sid).value;
+    var agentEl = document.getElementById('se-agent-' + sid);
+    var agentId = agentEl ? agentEl.value : '';
+    var notes   = document.getElementById('se-notes-' + sid).value;
+    var msg     = document.getElementById('se-msg-'   + sid);
+
+    if (!dateVal) { alert('Please select a date.'); return; }
+
+    if (agentId && dateVal) {
+      fetch('/group-calendar/api/conflict-check?user_id=' + encodeURIComponent(agentId)
+            + '&date=' + encodeURIComponent(dateVal)
+            + '&time=' + encodeURIComponent(timeVal),
+            { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .catch(function() { return { conflict: false, entries: [], proposed: [] }; })
+        .then(function(result) {
+          var warnParts = [];
+          var ents = result.entries && result.entries.length ? result.entries
+                     : (result.conflict ? [{entry_type: result.entry_type, title: result.title}] : []);
+          if (ents.length) {
+            warnParts.push('Advisory: calendar conflict \u2014 '
+              + ents.map(function(e) {
+                  return (e.entry_type || '') + (e.start_time ? ' ' + e.start_time + '\u2013' + e.end_time : '');
+                }).join(', ') + '.');
+          }
+          if (result.proposed && result.proposed.length) {
+            warnParts.push('Agent has a pending leave request on this date.');
+          }
+          if (warnParts.length && msg) {
+            msg.textContent = warnParts.join(' ') + ' Saving anyway.';
+            msg.style.display = '';
+            msg.style.color = '#d97706';
+          }
+          _execSchedSave(sid, dateVal, timeVal, btId, agentId, notes);
+        });
+    } else {
+      _execSchedSave(sid, dateVal, timeVal, btId, agentId, notes);
+    }
   };
 })();
 </script>

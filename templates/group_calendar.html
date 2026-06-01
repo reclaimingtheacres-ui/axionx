@@ -430,7 +430,7 @@
       html += '<div class="gc-week-cell" onclick="gcOpenCreateForDate(\'' + iso + '\')" style="cursor:pointer">';
       ents.forEach(function(e) {
         var col = GC_COLORS[e.entry_type] || '#64748b';
-        html += '<span class="gc-chip status-' + e.status + '" style="background:' + col + ';white-space:normal;overflow:visible" '
+        html += '<span class="gc-chip status-' + e.status + '" style="background:' + col + '" '
               + 'onclick="event.stopPropagation();gcShowEntry(' + e.id + ')" title="' + escH(e.title) + '">'
               + escH(e.entry_type) + '<br><span style="opacity:.85">' + escH(e.title) + '</span></span>';
       });

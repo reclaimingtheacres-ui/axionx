@@ -7184,6 +7184,13 @@ _GC_ENTRY_TYPES    = list(_GC_ENTRY_COLORS.keys())
 _GC_CONFLICT_TYPES = frozenset([
     "Approved Leave", "Agent Unavailable",
     "Office Closed", "Public Holiday", "Christmas Blackout",
+    "Training / Meeting", "Regional Deployment",
+])
+# Types shown as calendar notices inside My Today views
+_MY_TODAY_NOTICE_TYPES = frozenset([
+    "Approved Leave", "Agent Unavailable",
+    "Office Closed", "Public Holiday", "Christmas Blackout",
+    "Training / Meeting", "Regional Deployment",
 ])
 
 
@@ -18728,33 +18735,61 @@ def my_today():
     """, (user_id,))
     update_drafts = cur.fetchall()
 
-    # ── Calendar Notices Today ───────────────────────────────────────────────
+    # ── Calendar Notices — range query, per-day attachment ──────────────────
+    # Covers the full visible range: single day / week / calendar grid (month).
     _gc_role     = session.get("role", "")
     _gc_is_admin = _gc_role in ("admin", "both", "management")
-    _today_iso   = actual_today.isoformat()
+    _notice_start = (grid_start if grid_start else date_start).isoformat()
+    _notice_end   = (grid_end   if grid_end   else date_end  ).isoformat()
+    _notice_types_list = list(_MY_TODAY_NOTICE_TYPES)
+    _nt_ph = ",".join("?" * len(_notice_types_list))
+    _vis_cond = "" if _gc_is_admin else "AND gce.visibility = 'everyone'"
     try:
-        if _gc_is_admin:
-            _gc_rows = conn.execute("""
-                SELECT gce.*, u.full_name AS user_name
-                FROM group_calendar_entries gce
-                LEFT JOIN users u ON u.id = gce.user_id
-                WHERE gce.start_date <= ? AND gce.end_date >= ?
-                  AND gce.status = 'approved'
-                ORDER BY gce.entry_type, gce.title
-            """, (_today_iso, _today_iso)).fetchall()
-        else:
-            _gc_rows = conn.execute("""
-                SELECT gce.*, u.full_name AS user_name
-                FROM group_calendar_entries gce
-                LEFT JOIN users u ON u.id = gce.user_id
-                WHERE gce.start_date <= ? AND gce.end_date >= ?
-                  AND gce.status = 'approved'
-                  AND gce.visibility = 'everyone'
-                ORDER BY gce.entry_type, gce.title
-            """, (_today_iso, _today_iso)).fetchall()
-        calendar_notices = [dict(r) for r in _gc_rows]
+        _gc_raw = conn.execute(f"""
+            SELECT gce.*, u.full_name AS user_name
+            FROM group_calendar_entries gce
+            LEFT JOIN users u ON u.id = gce.user_id
+            WHERE gce.start_date <= ? AND gce.end_date >= ?
+              AND (
+                (gce.status = 'approved' AND gce.entry_type IN ({_nt_ph}))
+                OR (gce.status = 'proposed' AND gce.entry_type = 'Proposed Leave')
+              )
+              {_vis_cond}
+            ORDER BY gce.entry_type, gce.title
+        """, [_notice_end, _notice_start] + _notice_types_list).fetchall()
+
+        # Expand multi-day entries into per-day dict
+        _notices_by_day: dict = {}
+        for _gcr in _gc_raw:
+            _gcd = _gcr["start_date"]
+            _gce_d = _gcr["end_date"]
+            _gcn = dict(_gcr)
+            _d = datetime.strptime(_gcd, "%Y-%m-%d").date()
+            _dlast = datetime.strptime(_gce_d, "%Y-%m-%d").date()
+            while _d <= _dlast:
+                _iso = _d.isoformat()
+                _notices_by_day.setdefault(_iso, []).append(_gcn)
+                _d += _td(days=1)
+
+        # Day view: notices for the selected anchor date only
+        calendar_notices = _notices_by_day.get(anchor.isoformat(), [])
+
+        # Week view: attach notices to each column dict
+        for _wc in week_cols:
+            _wc["notices"] = _notices_by_day.get(_wc["iso"], [])
+
+        # Month view: attach notices to each day dict in the grid
+        for _week in cal_grid:
+            for _day in _week:
+                _day["notices"] = _notices_by_day.get(_day["iso"], [])
+
     except Exception:
         calendar_notices = []
+        for _wc in week_cols:
+            _wc.setdefault("notices", [])
+        for _week in cal_grid:
+            for _day in _week:
+                _day.setdefault("notices", [])
     conn.close()
 
     return render_template("my_today.html", cues=cues, schedules=schedules,
@@ -29149,36 +29184,76 @@ def group_calendar_status(entry_id: int):
 @app.get("/group-calendar/api/conflict-check")
 @login_required
 def group_calendar_conflict_check():
-    """Non-blocking advisory: check if an agent has a conflicting calendar entry."""
+    """Non-blocking advisory: check if an agent has a conflicting calendar entry.
+
+    Params:
+      user_id  – agent user ID
+      date     – ISO date YYYY-MM-DD
+      time     – optional HH:MM booking time; enables timed-overlap filtering
+
+    Returns:
+      {conflict, entry_type, title,        ← back-compat single-entry fields
+       entries: [{entry_type, title, start_time, end_time}],  ← all hard conflicts
+       proposed: [{entry_type, title}]}    ← soft warnings (Proposed Leave)
+    """
     user_id_raw = request.args.get("user_id", "")
     date_str    = request.args.get("date",    "")
+    time_str    = request.args.get("time",    "").strip()[:5]  # HH:MM
+    _empty = {"conflict": False, "entry_type": None, "title": None,
+              "entries": [], "proposed": []}
     if not user_id_raw or not date_str:
-        return jsonify({"conflict": False})
+        return jsonify(_empty)
     try:
         check_uid = int(user_id_raw)
     except (ValueError, TypeError):
-        return jsonify({"conflict": False})
+        return jsonify(_empty)
 
     conn = db()
     try:
         conflict_types = list(_GC_CONFLICT_TYPES)
         placeholders   = ",".join("?" * len(conflict_types))
-        row = conn.execute(f"""
-            SELECT title, entry_type FROM group_calendar_entries
+        rows = conn.execute(f"""
+            SELECT title, entry_type, start_time, end_time, all_day
+            FROM group_calendar_entries
             WHERE user_id = ? AND start_date <= ? AND end_date >= ?
               AND status = 'approved'
               AND entry_type IN ({placeholders})
-            LIMIT 1
-        """, [check_uid, date_str, date_str] + conflict_types).fetchone()
+        """, [check_uid, date_str, date_str] + conflict_types).fetchall()
+
+        proposed_rows = conn.execute("""
+            SELECT title, entry_type FROM group_calendar_entries
+            WHERE user_id = ? AND start_date <= ? AND end_date >= ?
+              AND status = 'proposed'
+              AND entry_type = 'Proposed Leave'
+        """, [check_uid, date_str, date_str]).fetchall()
     except Exception:
         conn.close()
-        return jsonify({"conflict": False})
+        return jsonify(_empty)
     conn.close()
-    if row:
-        return jsonify({"conflict": True,
-                        "entry_type": row["entry_type"],
-                        "title": row["title"]})
-    return jsonify({"conflict": False})
+
+    entries = []
+    for row in rows:
+        all_day = bool(row["all_day"]) or not (row["start_time"] and row["end_time"])
+        st = (row["start_time"] or "")[:5]
+        et = (row["end_time"]   or "")[:5]
+        if all_day or not time_str:
+            entries.append({"entry_type": row["entry_type"], "title": row["title"],
+                            "start_time": st or None, "end_time": et or None})
+        else:
+            if st and et and time_str >= st and time_str < et:
+                entries.append({"entry_type": row["entry_type"], "title": row["title"],
+                                "start_time": st, "end_time": et})
+
+    proposed = [{"entry_type": r["entry_type"], "title": r["title"]}
+                for r in proposed_rows]
+    conflict = len(entries) > 0
+    return jsonify({
+        "conflict":    conflict,
+        "entry_type":  entries[0]["entry_type"] if entries else None,
+        "title":       entries[0]["title"]       if entries else None,
+        "entries":     entries,
+        "proposed":    proposed,
+    })
 
 
 # ── Mobile Group Calendar ──────────────────────────────────────────────────────
