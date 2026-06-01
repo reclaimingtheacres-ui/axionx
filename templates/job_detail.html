@@ -3697,14 +3697,16 @@ document.addEventListener('click', function(e) {
   }
 
   /* Email button */
-  document.getElementById('previewEmailBtn').addEventListener('click', function() {
+  var _prevEmailBtn = document.getElementById('previewEmailBtn');
+  if (_prevEmailBtn) _prevEmailBtn.addEventListener('click', function() {
     var subject = 'Document: ' + _currentFilename;
     var body = 'Please find the file below.\n\nFile: ' + _currentFilename + '\nLink: ' + window.location.origin + _currentUrl;
     axEmailPicker(this, '', subject, body);
   });
 
   /* SMS button */
-  document.getElementById('previewSmsBtn').addEventListener('click', function() {
+  var _prevSmsBtn = document.getElementById('previewSmsBtn');
+  if (_prevSmsBtn) _prevSmsBtn.addEventListener('click', function() {
     var link = window.location.origin + _currentUrl;
     var msg = encodeURIComponent('Document: ' + _currentFilename + '\nLink: ' + link);
     window.location.href = 'sms:?body=' + msg;
@@ -3717,7 +3719,8 @@ document.addEventListener('click', function(e) {
       _previewModal.hide();
     }
   });
-  document.getElementById('filePreviewModal').addEventListener('hidden.bs.modal', function() {
+  var _prevModal = document.getElementById('filePreviewModal');
+  if (_prevModal) _prevModal.addEventListener('hidden.bs.modal', function() {
     if (_previewHistoryPushed) {
       _previewHistoryPushed = false;
       history.back();
