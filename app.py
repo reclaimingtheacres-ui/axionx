@@ -19640,8 +19640,8 @@ def api_map_data():
                 LEFT JOIN customers cu ON cu.id = j.customer_id
                 LEFT JOIN clients   c  ON c.id  = j.client_id
                 LEFT JOIN users     ag ON ag.id = j.assigned_user_id
-                WHERE j.status NOT IN ('Closed','Cancelled','Completed','Invoiced')
-                  AND j.status NOT IN {ARCHIVED_STATUSES!r}
+                WHERE j.status NOT IN {ARCHIVED_STATUSES!r}
+                  AND j.status != 'Cancelled'
                   AND j.job_address IS NOT NULL AND j.job_address != ''
                 ORDER BY j.updated_at DESC
             """).fetchall()

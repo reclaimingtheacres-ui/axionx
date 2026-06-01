@@ -87,20 +87,59 @@
   .ax-agent-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ax-agent-time { font-size: .68rem; color: var(--muted); flex-shrink: 0; }
   #ax-gmap { flex: 1; }
+  .ax-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: .73rem;
+    color: var(--text);
+    padding: 2px 0;
+  }
+  .ax-legend-dot {
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+  }
 </style>
 
 <div class="ax-map-wrap">
   <div class="ax-map-panel">
     <div class="ax-map-panel-inner">
       <div class="ax-map-panel-section">
-        <h6>Jobs</h6>
+        <h6>File Status</h6>
         <div class="ax-filter-btns">
           <button class="ax-filter-btn on" data-status="ALL">All</button>
-          <button class="ax-filter-btn on" data-status="Active">Active</button>
           <button class="ax-filter-btn on" data-status="New">New</button>
-          <button class="ax-filter-btn on" data-status="Pending">Pending</button>
+          <button class="ax-filter-btn on" data-status="Active">Active</button>
+          <button class="ax-filter-btn on" data-status="Active - Phone work only">Phone Only</button>
+          <button class="ax-filter-btn on" data-status="Suspended">Suspended</button>
+          <button class="ax-filter-btn on" data-status="Awaiting Advice From Client">Awaiting Advice</button>
+          <button class="ax-filter-btn on" data-status="Awaiting Instructions">Awaiting Instructions</button>
+          <button class="ax-filter-btn on" data-status="Completed">Completed</button>
+          <button class="ax-filter-btn on" data-status="Repossessed">Repossessed</button>
+          <button class="ax-filter-btn on" data-status="Surrendered">Surrendered</button>
+          <button class="ax-filter-btn on" data-status="Invoiced">Invoiced</button>
+          <button class="ax-filter-btn on" data-status="Closed">Closed</button>
+          <button class="ax-filter-btn on" data-status="Closed Field Call">Closed Field Call</button>
         </div>
         <div id="ax-job-count">Loading…</div>
+      </div>
+
+      <div class="ax-map-panel-section">
+        <h6>Colour Key</h6>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#22c55e"></span>New</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#3b82f6"></span>Active</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#60a5fa"></span>Active – Phone Only</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#ef4444"></span>Suspended</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#8b5cf6"></span>Awaiting Advice</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#a78bfa"></span>Awaiting Instructions</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#10b981"></span>Completed</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#06b6d4"></span>Repossessed</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#14b8a6"></span>Surrendered</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#f97316"></span>Invoiced</div>
+        <div class="ax-legend-row"><span class="ax-legend-dot" style="background:#6b7280"></span>Closed / Closed Field Call</div>
       </div>
 
       {% if is_admin %}
@@ -139,7 +178,9 @@
   var agentMarkers = {};
   var agentTrails  = {};
   var allJobs      = [];
-  var activeFilters = new Set(['ALL','Active','New','Pending']);
+
+  var ALL_STATUSES = ['New','Active','Active - Phone work only','Suspended','Awaiting Advice From Client','Awaiting Instructions','Completed','Repossessed','Surrendered','Invoiced','Closed','Closed Field Call'];
+  var activeFilters = new Set(['ALL'].concat(ALL_STATUSES));
   var selectedAgents = new Set();
 
   function _agentNameById() {
@@ -221,10 +262,19 @@
   }
 
   var STATUS_COLORS = {
-    'Active':  '#3b82f6',
-    'New':     '#22c55e',
-    'Pending': '#f59e0b',
-    'default': '#6b7280'
+    'New':                       '#22c55e',
+    'Active':                    '#3b82f6',
+    'Active - Phone work only':  '#60a5fa',
+    'Suspended':                 '#ef4444',
+    'Awaiting Advice From Client': '#8b5cf6',
+    'Awaiting Instructions':     '#a78bfa',
+    'Completed':                 '#10b981',
+    'Repossessed':               '#06b6d4',
+    'Surrendered':               '#14b8a6',
+    'Invoiced':                  '#f97316',
+    'Closed':                    '#6b7280',
+    'Closed Field Call':         '#9ca3af',
+    'default':                   '#94a3b8'
   };
 
   function markerIcon(color, size) {
@@ -334,7 +384,7 @@
       if (visible) shown++;
     });
     var countEl = document.getElementById('ax-job-count');
-    if (countEl) countEl.textContent = shown + ' job' + (shown !== 1 ? 's' : '') + ' shown';
+    if (countEl) countEl.textContent = shown + ' file' + (shown !== 1 ? 's' : '') + ' shown';
   }
 
   function _setJobCount(msg) {
@@ -464,12 +514,12 @@
       btn.addEventListener('click', function() {
         var s = btn.dataset.status;
         if (s === 'ALL') {
-          var allAreOn = ['Active','New','Pending'].every(function(x) { return activeFilters.has(x); });
+          var allAreOn = ALL_STATUSES.every(function(x) { return activeFilters.has(x); });
           if (allAreOn) {
             activeFilters.clear();
             document.querySelectorAll('.ax-filter-btn').forEach(function(b) { b.classList.remove('on'); });
           } else {
-            activeFilters = new Set(['ALL','Active','New','Pending']);
+            activeFilters = new Set(['ALL'].concat(ALL_STATUSES));
             document.querySelectorAll('.ax-filter-btn').forEach(function(b) { b.classList.add('on'); });
           }
         } else {
@@ -480,7 +530,7 @@
             activeFilters.add(s);
             btn.classList.add('on');
           }
-          var allOn = ['Active','New','Pending'].every(function(x) { return activeFilters.has(x); });
+          var allOn = ALL_STATUSES.every(function(x) { return activeFilters.has(x); });
           var allBtn = document.querySelector('.ax-filter-btn[data-status="ALL"]');
           if (allOn)  { activeFilters.add('ALL');    if (allBtn) allBtn.classList.add('on'); }
           else        { activeFilters.delete('ALL'); if (allBtn) allBtn.classList.remove('on'); }
