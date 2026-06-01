@@ -7253,6 +7253,28 @@ def _client_update_request_eligibility(conn, job_id: int) -> dict:
     _followup_due  = _followup_due.strip()
 
     if _last_response:
+        # Guard: only enter the post-response track when a real stale email was
+        # actually sent (result_status='sent', request_type update/closure) BEFORE
+        # the client response was recorded. Without this guard, files where the
+        # "Client Responded" button was clicked before any stale email was sent get
+        # permanently stuck in the post-response track and lose access to the normal
+        # stale workflow (neither button appears).
+        try:
+            _real_stale_sent = conn.execute("""
+                SELECT 1 FROM client_update_requests
+                WHERE job_id = ? AND result_status = 'sent'
+                  AND request_type IN ('update_request', 'closure_request')
+                  AND sent_at <= ?
+                LIMIT 1
+            """, (job_id, _last_response)).fetchone()
+        except Exception:
+            _real_stale_sent = None
+        if not _real_stale_sent:
+            # No real stale email preceded this response — treat as normal stale workflow
+            _last_response = ""
+            _followup_due  = ""
+
+    if _last_response:
         _ref         = job["display_ref"] or ""
         _cname       = (job["customer_name"] or "").strip()
         _client_name = (job["client_name"] or "").strip()
