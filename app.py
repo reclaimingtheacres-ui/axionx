@@ -5472,6 +5472,45 @@ def job_detail(job_id: int):
         cur.execute("SELECT id, first_name, last_name, company FROM customers ORDER BY last_name, first_name")
     all_customers = cur.fetchall()
 
+    # Build multi-phone / multi-email dicts for all linked customers (deduped, Mobile-first)
+    customer_phones: dict = {}
+    customer_emails: dict = {}
+    if linked_ids:
+        _lc_ph = ",".join("?" * len(linked_ids))
+        for _row in conn.execute(f"""
+            SELECT entity_id, phone_number FROM contact_phone_numbers
+            WHERE entity_type='customer' AND entity_id IN ({_lc_ph})
+            ORDER BY entity_id, CASE WHEN label='Mobile' THEN 0 ELSE 1 END, id
+        """, linked_ids).fetchall():
+            _cid = _row["entity_id"]
+            _num = (_row["phone_number"] or "").strip()
+            if _num:
+                customer_phones.setdefault(_cid, [])
+                if _num not in customer_phones[_cid]:
+                    customer_phones[_cid].append(_num)
+        for _row in conn.execute(f"""
+            SELECT id AS cid, email FROM customers
+            WHERE id IN ({_lc_ph}) AND email IS NOT NULL AND trim(email) != ''
+        """, linked_ids).fetchall():
+            _cid = _row["cid"]
+            _em  = (_row["email"] or "").strip()
+            if _em:
+                customer_emails.setdefault(_cid, [])
+                if _em not in customer_emails[_cid]:
+                    customer_emails[_cid].append(_em)
+        for _row in conn.execute(f"""
+            SELECT entity_id, email FROM contact_emails
+            WHERE entity_type='customer' AND entity_id IN ({_lc_ph})
+              AND email IS NOT NULL AND trim(email) != ''
+            ORDER BY entity_id, id
+        """, linked_ids).fetchall():
+            _cid = _row["entity_id"]
+            _em  = (_row["email"] or "").strip()
+            if _em:
+                customer_emails.setdefault(_cid, [])
+                if _em not in customer_emails[_cid]:
+                    customer_emails[_cid].append(_em)
+
     tow_operators = conn.execute("SELECT * FROM tow_operators WHERE active=1 ORDER BY company_name").fetchall()
     auction_yards  = conn.execute("SELECT * FROM auction_yards WHERE active=1 ORDER BY name").fetchall()
     form_templates = conn.execute("SELECT * FROM form_templates WHERE active=1 ORDER BY name").fetchall()
@@ -5587,6 +5626,8 @@ def job_detail(job_id: int):
                            ai_draft_count=ai_draft_count,
                            office_notes=office_notes,
                            client_update_info=_build_client_update_info(conn, job_id, role),
+                           customer_phones=customer_phones,
+                           customer_emails=customer_emails,
                            admin_users=admin_users,
                            enable_reschedule_modal=ENABLE_RESCHEDULE_MODAL)
 

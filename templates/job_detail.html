@@ -374,12 +374,24 @@
                     {% set _lc_best_addr = lc.address or job.job_address or '' %}
                     {% if _lc_best_addr %}<div class="small" style="color:var(--muted)">{{ _lc_best_addr }}</div>{% endif %}
                     <div class="small" style="color:var(--muted)">DOB: {{ lc.dob if lc.dob else 'DOB not recorded' }}</div>
-                    {% if lc.primary_phone %}
-                      <div class="small mt-1">
-                        <span class="ax-ph" onclick="axPhone('{{ lc.primary_phone }}',event)">{{ lc.primary_phone }}</span>
+                    {% set _lc_phones = customer_phones.get(lc.customer_id, []) %}
+                    {% if _lc_phones %}
+                      <div class="small mt-1" style="display:flex;flex-wrap:wrap;gap:0 2px;align-items:baseline">
+                        {% for _ph in _lc_phones %}
+                          {% if not loop.first %}<span style="color:var(--muted);padding:0 3px;user-select:none">|</span>{% endif %}
+                          <span class="ax-ph" onclick="axPhone('{{ _ph }}',event)">{{ _ph }}</span>
+                        {% endfor %}
                       </div>
                     {% endif %}
-                    {% if lc.email %}<div class="small"><button type="button" data-axep onclick="axEmailPicker(this,'{{ lc.email }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ lc.email }}</button></div>{% endif %}
+                    {% set _lc_emails = customer_emails.get(lc.customer_id, []) %}
+                    {% if _lc_emails %}
+                      <div class="small" style="display:flex;flex-wrap:wrap;gap:0 2px;align-items:baseline">
+                        {% for _em in _lc_emails %}
+                          {% if not loop.first %}<span style="color:var(--muted);padding:0 3px;user-select:none">|</span>{% endif %}
+                          <button type="button" data-axep onclick="axEmailPicker(this,'{{ _em }}','','')" style="background:none;border:0;padding:0;color:var(--accent);cursor:pointer;font-size:inherit">{{ _em }}</button>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
                   </div>
                   <div class="d-flex flex-column gap-1" style="flex-shrink:0;">
                     {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
