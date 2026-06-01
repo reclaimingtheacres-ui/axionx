@@ -3084,6 +3084,23 @@ def mel_dt_filter(ts_str):
     return dt.strftime("%d/%m/%y at ") + f"{hour}:{dt.strftime('%M')}{ampm}"
 
 
+def _parse_dob(s: str) -> str:
+    """Normalise a user-supplied DOB string to YYYY-MM-DD for storage.
+    Accepts DD/MM/YYYY, DD-MM-YYYY, and pass-through YYYY-MM-DD.
+    Returns empty string for blank or unrecognisable input.
+    """
+    s = (s or "").strip()
+    if not s:
+        return ""
+    parts = s.replace("-", "/").split("/")
+    if len(parts) == 3:
+        if len(parts[0]) == 4:          # YYYY/MM/DD  ─ already normalised
+            return f"{parts[0]}-{parts[1].zfill(2)}-{parts[2].zfill(2)}"
+        if len(parts[2]) == 4:          # DD/MM/YYYY  ─ Australian input
+            return f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+    return ""
+
+
 @app.template_filter("fmt_dob")
 def fmt_dob_filter(dob_str):
     """Format a stored DOB (YYYY-MM-DD) as Australian DD/MM/YYYY.
@@ -9296,7 +9313,7 @@ def customer_create():
 
         role    = _get(roles, i)
         email   = _get(emails_personal, i)
-        dob     = _get(dobs, i)
+        dob     = _parse_dob(_get(dobs, i))
         address = _get(addresses, i)
         notes   = _get(notes_list, i)
 
@@ -9535,7 +9552,7 @@ def customer_edit_post(customer_id: int):
     company = request.form.get("company", "").strip()
     role = request.form.get("role", "").strip()
     email = request.form.get("email_personal", "").strip()
-    dob = request.form.get("dob", "").strip()
+    dob = _parse_dob(request.form.get("dob", ""))
     address = request.form.get("address", "").strip()
     notes = request.form.get("notes", "").strip()
     id_image = request.files.get("id_image")

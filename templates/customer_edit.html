@@ -32,7 +32,7 @@
         </div>
         <div class="col-12 col-md-4">
           <label class="form-label">Date of Birth</label>
-          <input class="form-control" name="dob" value="{{ customer.dob or '' }}" placeholder="YYYY-MM-DD">
+          <input class="form-control" name="dob" value="{{ customer.dob | fmt_dob if customer.dob else '' }}" placeholder="DD/MM/YYYY" maxlength="10" autocomplete="off">
         </div>
       </div>
 

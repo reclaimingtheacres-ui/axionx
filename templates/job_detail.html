@@ -6649,7 +6649,7 @@ document.addEventListener('DOMContentLoaded', function() {
               </div>
               <div class="col-12 col-md-4">
                 <label class="form-label small fw-semibold mb-0">Date of Birth</label>
-                <input class="form-control form-control-sm" name="dob" id="ec_dob" placeholder="YYYY-MM-DD">
+                <input class="form-control form-control-sm" name="dob" id="ec_dob" placeholder="DD/MM/YYYY" maxlength="10" autocomplete="off">
               </div>
             </div>
 
@@ -6728,7 +6728,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('ec_first_name').value = c.first_name;
         document.getElementById('ec_last_name').value = c.last_name;
         document.getElementById('ec_role').value = c.role;
-        document.getElementById('ec_dob').value = c.dob;
+        (function(){ var d=c.dob||''; if(d){var p=d.split('-');if(p.length===3&&p[0].length===4)d=p[2]+'/'+p[1]+'/'+p[0];} document.getElementById('ec_dob').value=d; })();
         document.getElementById('ec_email_personal').value = d.emails.personal;
         document.getElementById('ec_email_work').value = d.emails.work;
         document.getElementById('ec_email_other').value = d.emails.other;
