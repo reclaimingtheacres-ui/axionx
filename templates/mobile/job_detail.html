@@ -104,6 +104,10 @@
         <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">Customer #{{ customer.id }}</div>
       {% endif %}
     </div>
+    <div style="margin-bottom:8px;">
+      <div class="m-label">DOB</div>
+      <div style="font-size:.9rem;color:var(--text);">{{ customer.dob | fmt_dob if customer.dob else 'DOB not recorded' }}</div>
+    </div>
     {% else %}
     <div style="margin-bottom:12px;">
       <div class="m-label">Customer</div>

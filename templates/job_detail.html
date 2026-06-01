@@ -373,7 +373,7 @@
                     <div class="{% if lc.company %}small{% else %}fw-semibold small{% endif %}">{{ lc.first_name }} {{ lc.last_name }}</div>
                     {% set _lc_best_addr = lc.address or job.job_address or '' %}
                     {% if _lc_best_addr %}<div class="small" style="color:var(--muted)">{{ _lc_best_addr }}</div>{% endif %}
-                    <div class="small" style="color:var(--muted)">DOB: {{ lc.dob if lc.dob else 'DOB not recorded' }}</div>
+                    <div class="small" style="color:var(--muted)">DOB: {{ lc.dob | fmt_dob if lc.dob else 'DOB not recorded' }}</div>
                     {% set _lc_phones = customer_phones.get(lc.customer_id, []) %}
                     {% if _lc_phones %}
                       <div class="small mt-1" style="display:flex;flex-wrap:wrap;gap:0 2px;align-items:baseline">

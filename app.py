@@ -3084,6 +3084,21 @@ def mel_dt_filter(ts_str):
     return dt.strftime("%d/%m/%y at ") + f"{hour}:{dt.strftime('%M')}{ampm}"
 
 
+@app.template_filter("fmt_dob")
+def fmt_dob_filter(dob_str):
+    """Format a stored DOB (YYYY-MM-DD) as Australian DD/MM/YYYY.
+    Returns empty string for blank/None; passes through any value that cannot
+    be parsed as YYYY-MM-DD without raising an exception.
+    """
+    if not dob_str:
+        return ""
+    s = str(dob_str).strip()
+    parts = s.split("-")
+    if len(parts) == 3 and len(parts[0]) == 4:
+        return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    return s
+
+
 @app.template_filter("fmt_queue_dt")
 def fmt_queue_dt(ts_str):
     """Format a cue_items created_at string as '05Mar26 09:07' (Melbourne time)."""
