@@ -7265,6 +7265,10 @@ _MY_TODAY_NOTICE_TYPES = frozenset([
     "Office Closed", "Public Holiday", "Christmas Blackout",
     "Training / Meeting", "Regional Deployment",
 ])
+# Personal entry types — agents can only see their own; not other agents'
+_GC_PERSONAL_TYPES = frozenset([
+    "Proposed Leave", "Approved Leave", "Agent Unavailable",
+])
 
 
 def _client_update_request_eligibility(conn, job_id: int) -> dict:
@@ -18838,7 +18842,17 @@ def my_today():
     _notice_end   = (grid_end   if grid_end   else date_end  ).isoformat()
     _notice_types_list = list(_MY_TODAY_NOTICE_TYPES)
     _nt_ph = ",".join("?" * len(_notice_types_list))
-    _vis_cond = "" if _gc_is_admin else "AND gce.visibility = 'everyone'"
+    if _gc_is_admin:
+        _vis_cond   = ""
+        _vis_params = []
+    else:
+        _pt       = sorted(_GC_PERSONAL_TYPES)
+        _pt_ph    = ",".join("?" * len(_pt))
+        _vis_cond = (
+            "AND gce.visibility = 'everyone' "
+            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}))"
+        )
+        _vis_params = [session.get("user_id")] + _pt
     try:
         _gc_raw = conn.execute(f"""
             SELECT gce.*, u.full_name AS user_name
@@ -18851,7 +18865,7 @@ def my_today():
               )
               {_vis_cond}
             ORDER BY gce.entry_type, gce.title
-        """, [_notice_end, _notice_start] + _notice_types_list).fetchall()
+        """, [_notice_end, _notice_start] + _notice_types_list + _vis_params).fetchall()
 
         # Expand multi-day entries into per-day dict
         _notices_by_day: dict = {}
@@ -20508,7 +20522,17 @@ def m_today():
     _gc_is_admin = _gc_role in ("admin", "both", "management")
     _nt_list     = list(_MY_TODAY_NOTICE_TYPES)
     _nt_ph       = ",".join("?" * len(_nt_list))
-    _vis_cond    = "" if _gc_is_admin else "AND gce.visibility = 'everyone'"
+    if _gc_is_admin:
+        _vis_cond   = ""
+        _vis_params = []
+    else:
+        _pt       = sorted(_GC_PERSONAL_TYPES)
+        _pt_ph    = ",".join("?" * len(_pt))
+        _vis_cond = (
+            "AND gce.visibility = 'everyone' "
+            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}))"
+        )
+        _vis_params = [uid] + _pt
     try:
         _gc_raw = conn.execute(f"""
             SELECT gce.*, u.full_name AS user_name
@@ -20521,7 +20545,7 @@ def m_today():
               )
               {_vis_cond}
             ORDER BY gce.entry_type, gce.title
-        """, [today, today] + _nt_list).fetchall()
+        """, [today, today] + _nt_list + _vis_params).fetchall()
         calendar_notices = [dict(r) for r in _gc_raw]
     except Exception:
         calendar_notices = []
@@ -29104,8 +29128,17 @@ def group_calendar_api_entries():
     params  = [end_str, start_str]
 
     if not is_admin:
-        wheres.append("(gce.visibility = 'everyone' OR gce.user_id = ?)")
+        # Agents see their own entries OR general (non-personal) entries visible to everyone.
+        # Personal types (leave/unavailable) are only visible to the entry's own user.
+        _pt = sorted(_GC_PERSONAL_TYPES)  # stable order for placeholders
+        _pt_ph = ",".join("?" * len(_pt))
+        wheres.append(
+            f"(gce.user_id = ? OR (gce.visibility = 'everyone'"
+            f" AND gce.entry_type NOT IN ({_pt_ph})"
+            f" AND (gce.entry_type != 'Other' OR gce.user_id IS NULL)))"
+        )
         params.append(uid)
+        params.extend(_pt)
         wheres.append("gce.status != 'rejected'")
     else:
         if filter_stat not in ("all", ""):
@@ -29430,15 +29463,24 @@ def m_group_calendar():
                 ORDER BY gce.start_date, gce.entry_type
             """, (today_str, end_str)).fetchall()
         else:
-            entries = conn.execute("""
+            _pt = sorted(_GC_PERSONAL_TYPES)
+            _pt_ph = ",".join("?" * len(_pt))
+            entries = conn.execute(f"""
                 SELECT gce.*, u.full_name AS user_name
                 FROM group_calendar_entries gce
                 LEFT JOIN users u ON u.id = gce.user_id
                 WHERE gce.end_date >= ? AND gce.start_date <= ?
-                  AND (gce.visibility = 'everyone' OR gce.created_by = ?)
+                  AND (
+                    gce.user_id = ?
+                    OR (
+                      gce.visibility = 'everyone'
+                      AND gce.entry_type NOT IN ({_pt_ph})
+                      AND (gce.entry_type != 'Other' OR gce.user_id IS NULL)
+                    )
+                  )
                   AND gce.status != 'rejected'
                 ORDER BY gce.start_date, gce.entry_type
-            """, (today_str, end_str, uid)).fetchall()
+            """, (today_str, end_str, uid, *_pt)).fetchall()
         entry_list = [dict(r) for r in entries]
     except Exception:
         entry_list = []
