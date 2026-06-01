@@ -20921,6 +20921,8 @@ def m_job_detail(job_id):
 
     customer = None
     customer_mobile = ""
+    customer_phones_list = []
+    customer_emails_list = []
     if job["customer_id"]:
         customer = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone()
         phone_row = conn.execute(
@@ -20934,6 +20936,30 @@ def m_job_detail(job_id):
                 (job["customer_id"],)
             ).fetchone()
             customer_mobile = phone_row2["phone_number"] if phone_row2 else ""
+        # All phones (Mobile-first)
+        _ph_rows = conn.execute(
+            "SELECT phone_number FROM contact_phone_numbers WHERE entity_type='customer' AND entity_id=?"
+            " ORDER BY CASE label WHEN 'Mobile' THEN 0 ELSE 1 END, id",
+            (job["customer_id"],)
+        ).fetchall()
+        customer_phones_list = [r["phone_number"] for r in _ph_rows if r["phone_number"]]
+        if not customer_phones_list and customer_mobile:
+            customer_phones_list = [customer_mobile]
+        # All emails (customers.email first, then contact_emails)
+        _em_rows = conn.execute(
+            "SELECT email FROM contact_emails WHERE entity_type='customer' AND entity_id=? ORDER BY id",
+            (job["customer_id"],)
+        ).fetchall()
+        _em_seen: set = set()
+        _em_list: list = []
+        if customer and customer["email"]:
+            _em_list.append(customer["email"])
+            _em_seen.add(customer["email"].lower())
+        for _er in _em_rows:
+            if _er["email"] and _er["email"].lower() not in _em_seen:
+                _em_list.append(_er["email"])
+                _em_seen.add(_er["email"].lower())
+        customer_emails_list = _em_list
 
     client      = conn.execute("SELECT * FROM clients WHERE id=?", (job["client_id"],)).fetchone() if job["client_id"] else None
     _bill_to_id = job["bill_to_client_id"] if "bill_to_client_id" in job.keys() else None
@@ -20994,6 +21020,8 @@ def m_job_detail(job_id):
 
     return render_template("mobile/job_detail.html",
                            job=job, customer=customer, customer_mobile=customer_mobile,
+                           customer_phones_list=customer_phones_list,
+                           customer_emails_list=customer_emails_list,
                            client=client, bill_client=bill_client,
                            assets=assets, notes=notes, note_files_map=_note_files_map,
                            has_draft=has_draft, repo_lock_map=repo_lock_map,

@@ -96,7 +96,7 @@
     {# Customer name #}
     {% if customer %}
     {% set _cust_fullname = ((customer.first_name or '') ~ ' ' ~ (customer.last_name or ''))|trim %}
-    <div style="margin-bottom:12px;">
+    <div style="margin-bottom:10px;">
       <div class="m-label">Customer</div>
       {% if _cust_fullname %}
         <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">{{ _cust_fullname }}</div>
@@ -107,78 +107,22 @@
         <div style="font-weight:700;font-size:1.05rem;color:var(--text);line-height:1.25;">Customer #{{ customer.id }}</div>
       {% endif %}
     </div>
+
+    {# DOB — compact, right below name #}
+    <div style="margin-bottom:10px;font-size:.9rem;">
+      <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">DOB </span>
+      <span style="color:var(--text);">{{ customer.dob | fmt_dob if customer.dob else '—' }}</span>
+    </div>
+
     {% else %}
-    <div style="margin-bottom:12px;">
+    <div style="margin-bottom:10px;">
       <div class="m-label">Customer</div>
       <div style="color:var(--muted);font-style:italic;">No customer linked</div>
     </div>
     {% endif %}
 
-    {# ── Horizontal info grid: DOB · Email · Phone · Account No. · Agent ── #}
-    {% if customer or customer_mobile or job.account_number or job.regulation_type or (is_admin and assigned_agent_name) %}
-    <div style="display:flex;flex-wrap:wrap;gap:10px 20px;margin-bottom:12px;">
-
-      {% if customer %}
-      <div style="flex:1 1 42%;min-width:130px;">
-        <div class="m-label">DOB</div>
-        <div style="font-size:.9rem;color:var(--text);">{{ customer.dob | fmt_dob if customer.dob else '—' }}</div>
-      </div>
-      {% endif %}
-
-      {% if customer and customer.email %}
-      <div style="flex:1 1 42%;min-width:0;">
-        <div class="m-label">Email</div>
-        <a href="mailto:{{ customer.email }}"
-           style="font-size:.9rem;color:var(--accent);word-break:break-all;display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
-          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" style="flex-shrink:0;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          {{ customer.email }}
-        </a>
-      </div>
-      {% endif %}
-
-      {% if customer_mobile %}
-      <div style="flex:1 1 42%;min-width:130px;">
-        <div class="m-label">Phone</div>
-        <span class="ax-ph" onclick="axPhone('{{ customer_mobile }}',event)"
-              style="font-size:.95rem;font-weight:600;color:var(--accent);cursor:pointer;
-                     display:inline-flex;align-items:center;gap:5px;
-                     -webkit-user-select:none;user-select:none;">
-          <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" fill="none" stroke-width="2" style="flex-shrink:0;"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8 19.79 19.79 0 01.02 2.2 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/></svg>
-          {{ customer_mobile }}
-        </span>
-      </div>
-      {% endif %}
-
-      {% if job.account_number or job.regulation_type %}
-      <div style="flex:1 1 42%;min-width:130px;">
-        <div class="m-label">Account No.</div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          {% if job.account_number %}<span style="font-weight:600;font-size:.93rem;">{{ job.account_number }}</span>{% endif %}
-          {% if job.regulation_type %}
-          {% if job.regulation_type | upper == 'REGULATED' %}
-          <span style="display:inline-block;background:#fee2e2;color:#b91c1c;border:1.5px solid #fca5a5;
-                       border-radius:6px;padding:1px 7px;font-size:.66rem;font-weight:700;letter-spacing:.04em;">REGULATED</span>
-          {% else %}
-          <span style="display:inline-block;background:#dcfce7;color:#166534;border:1.5px solid #86efac;
-                       border-radius:6px;padding:1px 7px;font-size:.66rem;font-weight:700;letter-spacing:.04em;">UNREGULATED</span>
-          {% endif %}
-          {% endif %}
-        </div>
-      </div>
-      {% endif %}
-
-      {% if is_admin and assigned_agent_name %}
-      <div style="flex:1 1 42%;min-width:130px;">
-        <div class="m-label">Assigned Agent</div>
-        <div style="font-weight:600;font-size:.9rem;color:var(--text);">{{ assigned_agent_name }}</div>
-      </div>
-      {% endif %}
-
-    </div>
-    {% endif %}
-
-    {# Address — tappable for navigation — stays full width #}
-    <div style="margin-bottom:12px;">
+    {# Address — tappable for navigation — full width #}
+    <div style="margin-bottom:10px;">
       <div class="m-label">Address</div>
       {% if _has_addr %}
       <div onclick="document.getElementById('navChooser').style.display='flex'"
@@ -192,6 +136,54 @@
       <div style="font-size:.9rem;line-height:1.5;color:var(--text);">—</div>
       {% endif %}
     </div>
+
+    {# Phone — all on one line, pipe-separated, each number tappable #}
+    {% if customer_phones_list %}
+    <div style="margin-bottom:8px;font-size:.9rem;line-height:1.7;">
+      <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Ph </span>
+      {% for ph in customer_phones_list %}
+      <span class="ax-ph" onclick="axPhone('{{ ph }}',event)"
+            style="font-weight:600;color:var(--accent);cursor:pointer;-webkit-user-select:none;user-select:none;">{{ ph }}</span>{% if not loop.last %} <span style="color:var(--muted);margin:0 3px;">|</span> {% endif %}
+      {% endfor %}
+    </div>
+    {% elif customer_mobile %}
+    <div style="margin-bottom:8px;font-size:.9rem;line-height:1.7;">
+      <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Ph </span>
+      <span class="ax-ph" onclick="axPhone('{{ customer_mobile }}',event)"
+            style="font-weight:600;color:var(--accent);cursor:pointer;-webkit-user-select:none;user-select:none;">{{ customer_mobile }}</span>
+    </div>
+    {% endif %}
+
+    {# Email — all on one line, pipe-separated #}
+    {% if customer_emails_list %}
+    <div style="margin-bottom:8px;font-size:.9rem;line-height:1.7;word-break:break-all;">
+      <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Email </span>
+      {% for em in customer_emails_list %}
+      <a href="mailto:{{ em }}" style="color:var(--accent);text-decoration:none;">{{ em }}</a>{% if not loop.last %} <span style="color:var(--muted);margin:0 3px;">|</span> {% endif %}
+      {% endfor %}
+    </div>
+    {% elif customer and customer.email %}
+    <div style="margin-bottom:8px;font-size:.9rem;line-height:1.7;">
+      <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Email </span>
+      <a href="mailto:{{ customer.email }}" style="color:var(--accent);text-decoration:none;word-break:break-all;">{{ customer.email }}</a>
+    </div>
+    {% endif %}
+
+    {# Assigned Agent #}
+    {% if is_admin and assigned_agent_name %}
+    <div style="margin-bottom:8px;font-size:.9rem;">
+      <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Assigned Agent </span>
+      <span style="font-weight:600;color:var(--text);">{{ assigned_agent_name }}</span>
+    </div>
+    {% endif %}
+
+    {# Account No. #}
+    {% if job.account_number %}
+    <div style="font-size:.9rem;">
+      <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Account No. </span>
+      <span style="font-weight:600;color:var(--text);">{{ job.account_number }}</span>
+    </div>
+    {% endif %}
 
   </div>
 </div>
