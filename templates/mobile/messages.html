@@ -189,7 +189,7 @@
           </div>
           <div class="mc-meta">
             <span class="mc-time">
-              {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
+              {% if c.updated_at %}{{ c.updated_at | fmt_time }}{% endif %}
             </span>
             {% if c.unread > 0 %}
               <span class="mc-unread-num">{{ c.unread }}</span>

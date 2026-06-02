@@ -125,7 +125,7 @@
       <div class="mct-row{% if is_self %} self{% endif %}">
         <div class="mct-av{% if is_self %} self{% elif is_sys_msg %} system{% endif %}">{% if is_sys_msg %}AX{% else %}{{ sinit }}{% endif %}</div>
         <div class="mct-col">
-          <div class="mct-meta">{% if is_sys_msg %}AxionX Admin{% else %}{{ sname.split()[0] }}{% endif %} · {{ m.created_at[5:16].replace('T',' ') if m.created_at else '' }}</div>
+          <div class="mct-meta">{% if is_sys_msg %}AxionX Admin{% else %}{{ sname.split()[0] }}{% endif %} · {{ m.created_at | mel_dt if m.created_at else '' }}</div>
           {% if is_sys_msg and msg_recipients.get(m.id) %}
           <div class="mct-recip">Sent to: {{ msg_recipients[m.id] }}</div>
           {% endif %}

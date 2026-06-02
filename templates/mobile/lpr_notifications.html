@@ -55,8 +55,7 @@
         <div style="font-size:.82rem;color:var(--muted);">{{ n.body }}</div>
       </div>
       <div style="font-size:.7rem;color:var(--muted);white-space:nowrap;padding-top:2px;">
-        {{ n.created_at[11:16] if n.created_at else '' }}<br>
-        {{ n.created_at[:10] if n.created_at else '' }}
+        {{ n.created_at | mel_dt if n.created_at else '' }}
       </div>
     </div>
 

@@ -106,7 +106,7 @@
         {% endif %}
         <span class="text-muted small">
           #{{ e.id }} &middot; {{ e.assignments_total }} plate{{ 's' if e.assignments_total != 1 }}
-          assigned &middot; started {{ e.start_at[:10] if e.start_at else '?' }}
+          assigned &middot; started {{ e.start_at | fmt_date if e.start_at else '?' }}
         </span>
       </div>
       {# Header action buttons — direct bypass actions #}
@@ -396,7 +396,7 @@
             {{ d.decision_status | upper }}
           </span>
           <span style="color:#374151;">{{ d.recommended_action | upper }}</span>
-          {% if d.decided_at %}<span class="text-muted">{{ d.decided_at[:10] }}</span>{% endif %}
+          {% if d.decided_at %}<span class="text-muted">{{ d.decided_at | fmt_date }}</span>{% endif %}
           {% if d.notes_safe %}<span class="text-muted">&mdash; {{ d.notes_safe }}</span>{% endif %}
         </div>
         {% endfor %}

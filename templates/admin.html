@@ -57,7 +57,7 @@
       <div style="max-height:320px;overflow-y:auto">
         {% for r in recent %}
           <div class="d-flex gap-2 mb-2 small">
-            <span class="text-muted text-nowrap">{{ r.created_at[:16] }}</span>
+            <span class="text-muted text-nowrap">{{ r.created_at | mel_dt }}</span>
             <span class="fw-semibold text-nowrap">{{ r.actor_name or "System" }}</span>
             <span class="text-muted">{{ r.message }}</span>
           </div>

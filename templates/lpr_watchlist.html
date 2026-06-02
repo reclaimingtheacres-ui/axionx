@@ -79,7 +79,7 @@
               {% else %}—{% endif %}
             </td>
             <td class="small">{{ r.creator_name or '—' }}</td>
-            <td class="small text-nowrap">{{ r.created_at[:10] if r.created_at else '—' }}</td>
+            <td class="small text-nowrap">{{ r.created_at | fmt_date if r.created_at else '—' }}</td>
             <td>
               {% if r.active %}
               <span class="badge bg-success">Active</span>

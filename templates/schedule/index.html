@@ -216,12 +216,12 @@ function _formatTime12(iso){
   if(!iso||iso.length<16) return '';
   var h=parseInt(iso.substr(11,2),10),m=iso.substr(14,2);
   var ap=h>=12?'pm':'am';h=h%12||12;
-  return h+':'+m+' '+ap;
+  return h+':'+m+ap;
 }
 function _formatDateShort(iso){
   if(!iso||iso.length<10) return '';
   var parts=iso.substr(0,10).split('-');
-  return parts[2]+'/'+parts[1]+'/'+parts[0].substr(2);
+  return parts[2]+'/'+parts[1]+'/'+parts[0];
 }
 function _statusColor(s){
   if(s==='Completed') return '#16a34a';

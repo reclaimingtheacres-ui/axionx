@@ -87,7 +87,7 @@
                 {% endif %}
               </td>
               <td>{{ r.creator_name or '—' }}</td>
-              <td class="text-muted">{{ r.created_at[:10] if r.created_at else '—' }}</td>
+              <td class="text-muted">{{ r.created_at | fmt_date if r.created_at else '—' }}</td>
               <td>
                 <form method="POST"
                       action="{{ url_for('admin_lpr_proximity_toggle', rule_id=r.id) }}"

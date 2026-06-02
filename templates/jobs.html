@@ -438,7 +438,7 @@
                   <span style="font-size:.6rem;background:#fef2f2;color:#ef4444;border:1px solid #fecaca;border-radius:3px;padding:0 3px;margin-right:4px">OVERDUE</span>
                 {% endif %}
               {% endif %}
-              {{ j.next_scheduled[8:10] }}/{{ j.next_scheduled[5:7] }}/{{ j.next_scheduled[2:4] }} {{ j.next_scheduled[11:16] }}
+              {{ j.next_scheduled | mel_dt }}
             </div>
           {% else %}
             <div style="font-size:.68rem;color:var(--line)">No schedule</div>

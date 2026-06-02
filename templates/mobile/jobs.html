@@ -303,7 +303,7 @@
             {% if addr %}<div class="job-addr">{{ addr }}</div>{% endif %}
             <div class="job-meta">
               <span class="job-ref">{{ j.display_ref or j.internal_job_number }}{% if j.client_reference and j.client_reference not in (j.display_ref or '') %} ({{ j.client_reference }}){% endif %}</span>
-              {% if j.next_scheduled %}<span class="job-date">{{ j.next_scheduled[:10] }}</span>
+              {% if j.next_scheduled %}<span class="job-date">{{ j.next_scheduled | fmt_date }}</span>
               {% elif j.job_due_date  %}<span class="job-date">{{ j.job_due_date }}</span>{% endif %}
               {% if j.asset_reg %}<span class="job-date" style="font-weight:600;color:#6b7280;">{{ j.asset_reg }}</span>{% endif %}
             </div>

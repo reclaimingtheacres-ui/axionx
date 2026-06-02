@@ -272,7 +272,7 @@
               </div>
               <div class="msg-conv-meta">
                 <span class="msg-conv-time">
-                  {% if c.updated_at %}{{ c.updated_at[11:16] }}{% endif %}
+                  {% if c.updated_at %}{{ c.updated_at | fmt_time }}{% endif %}
                 </span>
                 {% if c.unread > 0 %}<span class="msg-unread-badge">{{ c.unread }}</span>{% endif %}
               </div>

@@ -316,7 +316,7 @@
             </td>
             <td style="color:var(--muted);">{{ r.recorder }}</td>
             <td style="white-space:nowrap;color:var(--muted);font-size:.75rem;">
-              {{ r.recorded_at[:10] if r.recorded_at else '—' }}
+              {{ r.recorded_at | fmt_date if r.recorded_at else '—' }}
             </td>
             <td class="pe-3" style="color:var(--muted);font-size:.78rem;max-width:200px;">
               {{ r.notes or '—' }}

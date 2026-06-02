@@ -3072,16 +3072,53 @@ def strip_ai_prefix(text):
 def mel_dt_filter(ts_str):
     """Format a stored timestamp as Australia/Melbourne local time.
 
-    Output format: '06/05/26 at 1:42pm'  (leading-zero date, no leading zero
-    on hour, lowercase am/pm).  Handles daylight saving automatically because
-    the underlying TZ is Australia/Melbourne via zoneinfo.
+    Output format: 'DD/MM/YYYY h:mma'  e.g. '02/06/2026 9:00am'.
+    No leading zero on hour, lowercase am/pm, 4-digit year.
+    Handles daylight saving automatically via zoneinfo.
     """
     dt = to_melbourne_time(ts_str)
     if not dt:
         return ts_str or "—"
     hour = int(dt.strftime("%I"))          # strip leading zero
     ampm = dt.strftime("%p").lower()       # 'am' / 'pm'
-    return dt.strftime("%d/%m/%y at ") + f"{hour}:{dt.strftime('%M')}{ampm}"
+    return dt.strftime("%d/%m/%Y ") + f"{hour}:{dt.strftime('%M')}{ampm}"
+
+
+@app.template_filter("fmt_date")
+def fmt_date_filter(date_str):
+    """Format a date string (YYYY-MM-DD or ISO timestamp) as DD/MM/YYYY.
+    Safe: returns empty string for None/blank, passes through unrecognised values.
+    """
+    if not date_str:
+        return ""
+    s = str(date_str).strip()[:10]          # take date portion only
+    parts = s.split("-")
+    if len(parts) == 3 and len(parts[0]) == 4:
+        return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    return str(date_str)
+
+
+@app.template_filter("fmt_time")
+def fmt_time_filter(ts_str):
+    """Extract time from a timestamp and format as h:mma (Melbourne local time).
+    Returns empty string if ts_str is blank or has no time component.
+    """
+    dt = to_melbourne_time(ts_str)
+    if not dt:
+        # Fallback: if it's a plain HH:MM string, parse it directly
+        s = (ts_str or "").strip()
+        if len(s) >= 5 and s[2] == ":":
+            try:
+                hh, mm = int(s[:2]), s[3:5]
+                ap = "am" if hh < 12 else "pm"
+                hh = hh % 12 or 12
+                return f"{hh}:{mm}{ap}"
+            except (ValueError, TypeError):
+                pass
+        return s or ""
+    hour = int(dt.strftime("%I"))
+    ampm = dt.strftime("%p").lower()
+    return f"{hour}:{dt.strftime('%M')}{ampm}"
 
 
 def _parse_dob(s: str) -> str:

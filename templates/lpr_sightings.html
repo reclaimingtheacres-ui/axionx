@@ -107,8 +107,7 @@
               {% elif r.escalated_to_office %}style="background:rgba(251,146,60,.07);"
               {% endif %}>
             <td class="ps-3 text-nowrap small">
-              {{ r.created_at[:10] }}
-              <span class="text-muted"> {{ r.created_at[11:16] }}</span>
+              {{ r.created_at | mel_dt }}
             </td>
             <td class="small">{{ r.agent_name or '—' }}</td>
             <td>

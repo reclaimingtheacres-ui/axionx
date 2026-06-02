@@ -36,7 +36,7 @@
     <span style="font-size:1.3rem">&#128451;</span>
     <div>
       <strong style="color:#b45309">Archived Historical File</strong>
-      <div style="font-size:.8rem;color:#92400e">Archived {{ job.archived_at[:10] if job.archived_at else '' }} — This file has been removed from active operations.</div>
+      <div style="font-size:.8rem;color:#92400e">Archived {{ job.archived_at | fmt_date if job.archived_at else '' }} — This file has been removed from active operations.</div>
     </div>
   </div>
   {% if session.get('role') in ('admin', 'both', 'management') %}
@@ -250,7 +250,7 @@
 {% endif %}
 
 <div class="d-xl-none" style="color:var(--muted);font-size:.78rem;margin-bottom:6px">
-  {{ job.job_type }} &middot; {{ job.visit_type }} &middot; {{ job.priority }}{% if job.internal_job_number %} &middot; {{ job.internal_job_number }}{% endif %}{% if not is_demo_client %}{% if job.assigned_name %} &middot; {{ job.assigned_name }}{% endif %}{% if next_schedule %} &middot; Next: {{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }} {{ next_schedule.scheduled_for[11:16] }}{% endif %}{% endif %}
+  {{ job.job_type }} &middot; {{ job.visit_type }} &middot; {{ job.priority }}{% if job.internal_job_number %} &middot; {{ job.internal_job_number }}{% endif %}{% if not is_demo_client %}{% if job.assigned_name %} &middot; {{ job.assigned_name }}{% endif %}{% if next_schedule %} &middot; Next: {{ next_schedule.scheduled_for | mel_dt }}{% endif %}{% endif %}
 </div>
 
 <!-- ======== TAB NAV ======== -->
@@ -1044,8 +1044,7 @@
             {% for s in job_lpr_sightings %}
             <tr {% if s.watchlist_hit %}style="background:rgba(124,58,237,.05);"{% elif s.escalated_to_office %}style="background:rgba(251,146,60,.05);"{% endif %}>
               <td class="ps-3 text-nowrap">
-                {{ s.created_at[:10] if s.created_at else '—' }}
-                <span style="color:var(--muted);"> {{ s.created_at[11:16] if s.created_at else '' }}</span>
+                {{ s.created_at | mel_dt if s.created_at else '—' }}
               </td>
               <td>{{ s.agent_name or '—' }}</td>
               <td><span style="font-family:monospace;font-weight:700;">{{ s.registration_normalised }}</span></td>
@@ -1158,7 +1157,7 @@
           {% endif %}
           {% if pi.computed_at %}
           <div class="small text-muted mt-2" style="font-size:.73rem;">
-            Computed {{ pi.computed_at[:10] }}
+            Computed {{ pi.computed_at | fmt_date }}
           </div>
           {% endif %}
         </div>
@@ -1547,8 +1546,8 @@ document.addEventListener('DOMContentLoaded', function() {
               {% for s in schedules %}
               {% set is_terminal = s.status in ('Completed', 'Cancelled') %}
               <tr id="sched-row-{{ s.id }}">
-                <td>{{ s.scheduled_for[:10].split('-')|reverse|join('/') }}</td>
-                <td>{{ s.scheduled_for[11:16] }}</td>
+                <td>{{ s.scheduled_for | fmt_date }}</td>
+                <td>{{ s.scheduled_for | fmt_time }}</td>
                 <td>{{ s.booking_type_name }}</td>
                 <td style="color:var(--muted);font-size:.85rem">{{ s.assigned_to_name or '—' }}</td>
                 <td style="color:var(--muted);font-size:.85rem">{{ s.notes or '—' }}</td>
@@ -2700,8 +2699,8 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
   <div class="mb-3">
     <div class="fw-bold small mb-2" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">SCHEDULE</div>
     {% if next_schedule %}
-    <div class="fw-semibold">{{ next_schedule.scheduled_for[8:10] }}/{{ next_schedule.scheduled_for[5:7] }}/{{ next_schedule.scheduled_for[:4] }}</div>
-    <div style="color:var(--muted)">{{ next_schedule.scheduled_for[11:16] }}{% if next_schedule.assigned_to_name %} &mdash; {{ next_schedule.assigned_to_name }}{% endif %}</div>
+    <div class="fw-semibold">{{ next_schedule.scheduled_for | fmt_date }}</div>
+    <div style="color:var(--muted)">{{ next_schedule.scheduled_for | fmt_time }}{% if next_schedule.assigned_to_name %} &mdash; {{ next_schedule.assigned_to_name }}{% endif %}</div>
     {% if next_schedule.booking_type_name %}<div class="small" style="color:var(--muted)">{{ next_schedule.booking_type_name }}</div>{% endif %}
     {% else %}
     <span style="color:var(--muted)">No upcoming booking</span>
@@ -2751,7 +2750,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
     <div style="font-size:.7rem;color:var(--muted);margin-top:4px">{{ client_update_info.days_in_status }} day{{ 's' if client_update_info.days_in_status != 1 }} since client response &mdash; follow-up in {{ client_update_info.cooldown_remaining }} day{{ 's' if client_update_info.cooldown_remaining != 1 }}</div>
     {% elif _phase == 'followup_sent' %}
     <span style="font-size:.75rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:2px 7px;font-weight:600">Follow-up Sent &mdash; Awaiting Response</span>
-    {% if client_update_info.last_sent_at %}<div style="font-size:.7rem;color:var(--muted);margin-top:4px">Follow-up sent: {{ client_update_info.last_sent_at[:10] }}</div>{% endif %}
+    {% if client_update_info.last_sent_at %}<div style="font-size:.7rem;color:var(--muted);margin-top:4px">Follow-up sent: {{ client_update_info.last_sent_at | fmt_date }}</div>{% endif %}
     {% elif _phase == 'pending_closure' %}
     <span style="font-size:.75rem;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 7px;font-weight:600">Pending Closure Review</span>
     {% elif _phase == 'post_response' %}
@@ -2762,7 +2761,7 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       {% if client_update_info.days_in_status >= 28 %}Overdue {% endif %}{{ client_update_info.days_in_status }} day{{ 's' if client_update_info.days_in_status != 1 }}
     </span>
     {% if client_update_info.last_sent_at %}
-    <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Last update request: {{ client_update_info.last_sent_at[:10] }}</div>
+    <div style="font-size:.7rem;color:var(--muted);margin-top:4px">Last update request: {{ client_update_info.last_sent_at | fmt_date }}</div>
     {% endif %}
     {% endif %}
   </div>

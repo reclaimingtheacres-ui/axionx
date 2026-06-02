@@ -50,7 +50,7 @@
       <div style="font-size:.82rem;color:var(--text);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ j.job_address }}</div>
       <div style="font-size:.75rem;color:var(--muted);">
         {% if j.asset_reg %}Rego: {{ j.asset_reg }} &nbsp;{% endif %}
-        {% if j.next_scheduled %}Next: {{ j.next_scheduled[:10] }}{% endif %}
+        {% if j.next_scheduled %}Next: {{ j.next_scheduled | fmt_date }}{% endif %}
       </div>
     </div>
     <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--muted)" fill="none" stroke-width="2" style="flex-shrink:0;margin-top:4px;"><polyline points="9 18 15 12 9 6"/></svg>

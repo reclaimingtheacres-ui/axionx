@@ -78,7 +78,7 @@
         <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
           {{ r.agent_notes or '<em class="text-muted">empty</em>' | safe }}
         </td>
-        <td class="text-muted">{{ (r.updated_at or r.created_at)[:16] }}</td>
+        <td class="text-muted">{{ (r.updated_at or r.created_at) | mel_dt }}</td>
         <td>
           {% if r.job_status in ('Closed','Closed Field Call','Invoiced','Cancelled','Completed','Repossessed','Surrendered','Archived - Invoiced','Cold Stored') %}
             <span class="text-danger" style="font-size:.75rem;font-weight:600">Inactive job</span>

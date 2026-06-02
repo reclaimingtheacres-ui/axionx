@@ -106,7 +106,7 @@
               {{ c.reason or '—' }}
             </td>
             <td style="font-size:.73rem;color:var(--muted);white-space:nowrap;">
-              {{ c.effective_from[:10] if c.effective_from else '—' }}
+              {{ c.effective_from | fmt_date if c.effective_from else '—' }}
             </td>
             <td class="pe-3">
               {% if not is_default %}
@@ -357,7 +357,7 @@
               {{ h.reason or '—' }}
             </td>
             <td class="pe-3 text-muted" style="white-space:nowrap;font-size:.73rem;">
-              {{ h.created_at[:10] if h.created_at else '—' }}
+              {{ h.created_at | fmt_date if h.created_at else '—' }}
             </td>
           </tr>
           {% endfor %}

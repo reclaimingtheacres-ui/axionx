@@ -92,8 +92,7 @@
           {% for r in rows %}
           <tr>
             <td class="ps-3 text-nowrap">
-              <span class="small">{{ r.created_at[:10] }}</span>
-              <span class="text-muted small"> {{ r.created_at[11:16] }}</span>
+              <span class="small">{{ r.created_at | mel_dt }}</span>
             </td>
             <td class="small">{{ r.agent_name or r.username }}</td>
             <td>

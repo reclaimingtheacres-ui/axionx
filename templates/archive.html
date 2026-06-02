@@ -142,7 +142,7 @@
       <td>{{ r.customer_label or '—' }}</td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.job_address or '—' }}</td>
       <td><span class="arch-badge arch-badge-active">{{ r.status }}</span></td>
-      <td>{{ r.updated_at[:10] if r.updated_at else '—' }}</td>
+      <td>{{ r.updated_at | fmt_date if r.updated_at else '—' }}</td>
       <td>{{ r.note_count }}</td>
       <td>{{ r.doc_count }}</td>
     </tr>
@@ -254,7 +254,7 @@
           <span class="arch-badge arch-badge-cold">Cold Stored</span>
         {% endif %}
       </td>
-      <td>{{ r.archived_at[:10] if r.archived_at else '—' }}</td>
+      <td>{{ r.archived_at | fmt_date if r.archived_at else '—' }}</td>
       <td>{{ r.archived_by_name or '—' }}</td>
       <td>{{ r.note_count }}</td>
       <td>{{ r.doc_count }}</td>

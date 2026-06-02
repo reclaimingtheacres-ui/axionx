@@ -215,7 +215,7 @@
           <div>
             <strong>{{ r.name or 'Untitled' }}</strong>
             <div style="font-size:.68rem;color:#94a3b8">
-              {{ r.route_mode }} &middot; {{ r.created_at[:10] }}
+              {{ r.route_mode }} &middot; {{ r.created_at | fmt_date }}
               {% if r.total_distance_meters %} &middot; {{ (r.total_distance_meters / 1000)|round(1) }} km{% endif %}
               {% if r.assigned_agent_name %}<br><span style="color:var(--accent)">Assigned: {{ r.assigned_agent_name }}</span>{% endif %}
             </div>

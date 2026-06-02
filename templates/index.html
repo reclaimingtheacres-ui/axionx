@@ -205,15 +205,13 @@
         <div style="font-size:.75rem;color:var(--muted);white-space:nowrap;margin-left:12px">
           {% set ua = j.updated_at %}
           {% set ua_date = ua[:10] %}
-          {% set ua_time = ua[11:16] %}
-          {% set ua_dd = ua[8:10] %}
-          {% set ua_mm = ua[5:7] %}
+          {% set ua_time = ua | fmt_time %}
           {% if ua_date == today_iso %}
             Today {{ ua_time }}
           {% elif ua_date == tomorrow_iso %}
             Tomorrow {{ ua_time }}
           {% else %}
-            {{ ua_dd }}/{{ ua_mm }} {{ ua_time }}
+            {{ ua | fmt_date }} {{ ua_time }}
           {% endif %}
         </div>
         {% endif %}
@@ -239,15 +237,13 @@
           {% if s.next_scheduled %}
             {% set ns = s.next_scheduled %}
             {% set ns_date = ns[:10] %}
-            {% set ns_time = ns[11:16] %}
-            {% set ns_dd = ns[8:10] %}
-            {% set ns_mm = ns[5:7] %}
+            {% set ns_time = ns | fmt_time %}
             {% if ns_date == today_iso %}
               <span style="font-size:.78rem;font-weight:500;color:#d97706">Today {{ ns_time }}</span>
             {% elif ns_date == tomorrow_iso %}
               <span style="font-size:.78rem;font-weight:500;color:#60a5fa">Tomorrow {{ ns_time }}</span>
             {% else %}
-              <span style="font-size:.78rem;font-weight:500;color:var(--muted)">{{ ns_dd }}/{{ ns_mm }} {{ ns_time }}</span>
+              <span style="font-size:.78rem;font-weight:500;color:var(--muted)">{{ ns | fmt_date }} {{ ns_time }}</span>
             {% endif %}
           {% endif %}
         </div>
@@ -328,11 +324,14 @@ function loadDashJobs(category, cardEl) {
           var ua_str = '';
           if (j.updated_at) {
             var ua_date = j.updated_at.substring(0,10);
-            var ua_time = j.updated_at.substring(11,16);
+            var _uaH = parseInt(j.updated_at.substring(11,13),10);
+            var _uaM = j.updated_at.substring(14,16);
+            var _uaAp = _uaH >= 12 ? 'pm' : 'am';
+            var ua_time = (_uaH % 12 || 12) + ':' + _uaM + _uaAp;
             if (ua_date === _todayIso) {
               ua_str = 'Today ' + ua_time;
             } else {
-              ua_str = j.updated_at.substring(8,10) + '/' + j.updated_at.substring(5,7) + ' ' + ua_time;
+              ua_str = j.updated_at.substring(8,10) + '/' + j.updated_at.substring(5,7) + '/' + j.updated_at.substring(0,4) + ' ' + ua_time;
             }
           }
           html += '<a href="/jobs/' + parseInt(j.id,10) + '" class="ax-feed-row">';

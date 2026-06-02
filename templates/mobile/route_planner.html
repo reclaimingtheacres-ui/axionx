@@ -59,7 +59,7 @@
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:.88rem">{{ r.name or 'Untitled Route' }}</div>
         <div style="font-size:.74rem;color:var(--muted)">
-          {{ r.created_at[:10] }}
+          {{ r.created_at | fmt_date }}
           {% if r.total_distance_meters %} &middot; {{ (r.total_distance_meters / 1000)|round(1) }} km{% endif %}
           {% if r.total_duration_seconds %} &middot; {{ (r.total_duration_seconds / 60)|round(0)|int }} min{% endif %}
         </div>

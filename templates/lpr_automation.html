@@ -92,7 +92,7 @@
       {% for ps in paused_scopes %}
       <div class="d-flex align-items-center gap-2 mb-1">
         <code style="font-size:.76rem;">{{ ps.scope_key }}</code>
-        <span class="text-muted">paused {{ ps.effective_from[:10] if ps.effective_from else '?' }}</span>
+        <span class="text-muted">paused {{ ps.effective_from | fmt_date if ps.effective_from else '?' }}</span>
         <span class="text-muted">&mdash; {{ ps.reason_text | truncate(60, true, '…') }}</span>
         <button class="btn btn-sm btn-outline-secondary py-0 px-2"
                 onclick="resumeScope('{{ ps.scope_key }}', this)">
@@ -230,7 +230,7 @@
           <div class="d-flex align-items-center gap-2">
             <span class="badge bg-warning text-dark">Cooldown active</span>
             <span>
-              Last auto-action: <strong>{{ last_auto_at[:10] if last_auto_at else '?' }}</strong>
+              Last auto-action: <strong>{{ last_auto_at | fmt_date if last_auto_at else '?' }}</strong>
               &mdash; {{ settings.cooldown_days }} day cooldown applies
             </span>
           </div>
@@ -252,7 +252,7 @@
           &middot; source <code>{{ active_ranking.source }}</code>
           {% endif %}
           <div class="text-muted" style="font-size:.75rem;">
-            Config #{{ active_ranking.id }} &middot; effective {{ active_ranking.effective_from[:10] if active_ranking.effective_from else '?' }}
+            Config #{{ active_ranking.id }} &middot; effective {{ active_ranking.effective_from | fmt_date if active_ranking.effective_from else '?' }}
           </div>
         </div>
       </div>

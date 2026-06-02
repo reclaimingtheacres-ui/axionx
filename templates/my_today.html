@@ -100,7 +100,7 @@
       </div>
       <div class="small text-muted">
         Update draft not applied — tap to complete
-        {% if d.created_at %}&nbsp;&middot;&nbsp;Started {{ d.created_at[:16]|replace('T',' ') }}{% endif %}
+        {% if d.created_at %}&nbsp;&middot;&nbsp;Started {{ d.created_at | mel_dt }}{% endif %}
       </div>
     </div>
     <span class="badge ms-2" style="background:#d97706;color:#fff;white-space:nowrap">Resume &rsaquo;</span>
@@ -164,7 +164,7 @@
           — {{ s.customer_label or s.customer_name or "No customer" }}
         </div>
         <div class="small text-muted">
-          {% if s.scheduled_for %}{{ s.scheduled_for[11:16] }}{% endif %}
+          {% if s.scheduled_for %}{{ s.scheduled_for | fmt_time }}{% endif %}
           {% if s.asset_reg %} | Reg: {{ s.asset_reg }}{% endif %}
           {% if s.status %} | {{ s.status }}{% endif %}
         </div>
@@ -306,7 +306,7 @@
               </a>
             </div>
             <div style="font-size:.68rem;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;">
-              {% if s.scheduled_for %}<span style="color:{{ bc }};font-weight:700;">{{ s.scheduled_for[11:16] }}</span> · {% endif %}{{ s.display_ref or s.internal_job_number }}{% if s.asset_reg %} · {{ s.asset_reg }}{% endif %}
+              {% if s.scheduled_for %}<span style="color:{{ bc }};font-weight:700;">{{ s.scheduled_for | fmt_time }}</span> · {% endif %}{{ s.display_ref or s.internal_job_number }}{% if s.asset_reg %} · {{ s.asset_reg }}{% endif %}
             </div>
             <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;">
               <span style="background:{{ bc }};color:#fff;border-radius:99px;padding:1px 6px;
@@ -433,7 +433,7 @@
                       color:#1e293b;text-decoration:none;
                       overflow:hidden;white-space:nowrap;text-overflow:ellipsis;"
                title="{{ s.customer_label or s.customer_name or s.internal_job_number }}">
-              {% if s.scheduled_for %}<span style="color:{{ bc }};font-weight:700;">{{ s.scheduled_for[11:16] }}</span> {% endif %}{{ s.customer_label or s.customer_name or s.internal_job_number }}
+              {% if s.scheduled_for %}<span style="color:{{ bc }};font-weight:700;">{{ s.scheduled_for | fmt_time }}</span> {% endif %}{{ s.customer_label or s.customer_name or s.internal_job_number }}
             </a>
             {% set ns.shown = ns.shown + 1 %}
           {% endif %}

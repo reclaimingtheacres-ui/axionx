@@ -104,7 +104,7 @@
     <div style="text-align:right;flex-shrink:0;">
       {% if s.scheduled_for %}
       <div style="font-size:.85rem;font-weight:600;color:var(--accent);">
-        {{ s.scheduled_for[11:16] if s.scheduled_for|length > 10 else '' }}
+        {{ s.scheduled_for | fmt_time if s.scheduled_for|length > 10 else '' }}
       </div>
       {% endif %}
       <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--muted)" fill="none" stroke-width="2" style="margin-top:4px;"><polyline points="9 18 15 12 9 6"/></svg>

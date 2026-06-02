@@ -64,7 +64,7 @@
                 {% endif %}
               </td>
               <td class="small text-muted" style="word-break:break-word;">{{ c.source_variants or '—' }}</td>
-              <td class="small text-muted">{{ c.created_at[:10] if c.created_at else '—' }}</td>
+              <td class="small text-muted">{{ c.created_at | fmt_date if c.created_at else '—' }}</td>
             </tr>
             {% endfor %}
           </tbody>
