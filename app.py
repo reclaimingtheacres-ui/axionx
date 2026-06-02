@@ -10481,6 +10481,13 @@ def repo_lock_submit(job_id: int, item_id: int):
         except Exception as _notif_err:
             app.logger.warning("repo_lock_submit: admin notification failed: %s", _notif_err)
 
+        # Internal message to Grant Cook (management only) — repossession effected.
+        # Duplicate-protected inside _notify_grant_repo_effected via lpr_notifications.
+        try:
+            _notify_grant_repo_effected(job_id, _rl_ref)
+        except Exception as _gc_err:
+            app.logger.warning("repo_lock_submit: Grant repo_effected notify failed: %s", _gc_err)
+
         return jsonify({"ok": True, "id": rec_id, "is_new": is_new,
                         "queue_id": queue_id, "status": "Submitted"})
 
@@ -29121,6 +29128,109 @@ def _gc_notify_leave_submitted(conn, submitter_id, submitter_name,
         )
     except Exception as exc:
         app.logger.warning("[gc_leave_notify] failed entry=%s error=%s", entry_id, exc)
+
+
+def _notify_grant_repo_effected(job_id: int, display_ref: str):
+    """Send 'Repossession Effected' internal message to Grant Cook's management login only.
+
+    Triggered by repo_lock_submit after commit.  Opens its own DB connection.
+
+    Duplicate protection: checks lpr_notifications for notification_type='repo_effected'
+    with the same job_id.  Only one notification is ever sent per repossession event.
+    A subsequent re-repossession (new repo_lock_record on the same job) will generate
+    a new notification because the lpr_notifications entry for the previous record will
+    already exist but a fresh submit with a cleared record is treated as a new event
+    (callers are responsible for clearing repo records when re-entering a repossession).
+    """
+    try:
+        conn = db()
+        _ensure_msg_tables(conn)
+        _lpr_notifications_ensure(conn)
+
+        # Locate Grant Cook's management login — matched by full_name; falls back to
+        # any active management user named Grant if the exact surname isn't found.
+        grant = conn.execute(
+            """SELECT id FROM users
+               WHERE active = 1 AND role = 'management'
+                 AND full_name LIKE '%Grant%Cook%'
+               LIMIT 1"""
+        ).fetchone()
+        if not grant:
+            grant = conn.execute(
+                """SELECT id FROM users
+                   WHERE active = 1 AND role = 'management'
+                     AND full_name LIKE '%Grant%'
+                   LIMIT 1"""
+            ).fetchone()
+        if not grant:
+            app.logger.warning(
+                "[repo_effected_notify] Grant Cook management user not found, "
+                "skipping job_id=%s", job_id
+            )
+            conn.close()
+            return
+
+        grant_id = grant["id"]
+
+        # ── Duplicate protection ────────────────────────────────────────────
+        # One notification per job_id per repossession event.  Subsequent saves,
+        # cost/yard edits, and document uploads must not re-fire this notification.
+        existing = conn.execute(
+            """SELECT id FROM lpr_notifications
+               WHERE user_id = ? AND notification_type = 'repo_effected'
+                 AND json_extract(data_json, '$.job_id') = ?
+               LIMIT 1""",
+            (grant_id, job_id)
+        ).fetchone()
+        if existing:
+            app.logger.info(
+                "[repo_effected_notify] duplicate suppressed for job_id=%s grant_id=%s",
+                job_id, grant_id
+            )
+            conn.close()
+            return
+
+        system_uid = _get_system_user_id(conn)
+
+        # Job-linked conversation: thread header renders "Linked to job: [REF link]"
+        # so Grant can click directly to the file from the message thread.
+        conv_id, _ = _get_or_create_direct_conv(conn, system_uid, grant_id, job_id=job_id)
+
+        msg_body = f"Repossession effected on file:\n\n{display_ref}"
+        ts = now_ts()
+        cur = conn.execute(
+            "INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?,?,?,?)",
+            (conv_id, system_uid, msg_body, ts)
+        )
+        msg_id = cur.lastrowid
+        conn.execute("UPDATE conversations SET updated_at=? WHERE id=?", (ts, conv_id))
+        # Mark read for the system sender only — Grant's inbox shows this as unread.
+        conn.execute(
+            "INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at) VALUES (?,?,?)",
+            (msg_id, system_uid, ts)
+        )
+        conn.commit()
+        conn.close()
+
+        # Bell notification + APNs push (opens its own connection internally).
+        # This also records the lpr_notifications row used for duplicate detection above.
+        _notify_user(
+            grant_id,
+            "Repossession Effected",
+            f"Repossession effected on file: {display_ref}",
+            "repo_effected",
+            {"type": "repo_effected", "job_id": job_id}
+        )
+
+        app.logger.info(
+            "[repo_effected_notify] sent to user_id=%s job_id=%s conv_id=%s ref=%s",
+            grant_id, job_id, conv_id, display_ref
+        )
+    except Exception as exc:
+        app.logger.warning(
+            "[repo_effected_notify] failed job_id=%s: %s", job_id, exc
+        )
+
 
 @app.get("/group-calendar")
 @login_required
