@@ -5590,7 +5590,7 @@ def job_detail(job_id: int):
     priorities = ["Low", "Normal", "High", "Urgent"]
     item_types = ["no_asset", "vehicle", "motorcycle", "trailer", "watercraft", "property", "equipment", "other"]
     doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
-    customer_roles = ["Primary", "Co-Borrower", "Guarantor", "Director", "Partner", "Spouse", "Occupant", "Third Party in Possession", "Other"]
+    customer_roles = ["Primary", "Co-Borrower", "Guarantor", "Director", "Partner", "Spouse", "Guest", "Occupant", "Third Party in Possession", "Other"]
 
     job_types = [r["name"] for r in conn.execute("SELECT name FROM job_types WHERE active=1 ORDER BY name").fetchall()]
 
