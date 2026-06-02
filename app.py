@@ -5356,6 +5356,43 @@ def _job_create_inner():
     return redirect(url_for("job_detail", job_id=job_id) + _redir_params)
 
 
+def _get_previous_jobs_for_customers(conn, job_id: int) -> list:
+    """Return all previous jobs that share at least one customer with the given job.
+
+    Excludes the current job.  Sorted oldest-first by job id.
+    Each dict has: job_id, display_ref, internal_job_number, status,
+                   client_name, customer_name, customer_id, note_count.
+    """
+    cust_rows = conn.execute(
+        "SELECT customer_id FROM job_customers WHERE job_id=? AND customer_id IS NOT NULL",
+        (job_id,)
+    ).fetchall()
+    if not cust_rows:
+        return []
+    cust_ids = [r["customer_id"] for r in cust_rows]
+    ph = ",".join("?" * len(cust_ids))
+    rows = conn.execute(f"""
+        SELECT DISTINCT
+               j.id                                              AS job_id,
+               COALESCE(j.display_ref, j.internal_job_number)   AS display_ref,
+               j.internal_job_number,
+               j.status,
+               c.name                                           AS client_name,
+               cu.first_name || ' ' || cu.last_name            AS customer_name,
+               jc.customer_id,
+               (SELECT COUNT(*) FROM job_field_notes fn
+                WHERE fn.job_id = j.id)                        AS note_count
+        FROM   job_customers jc
+        JOIN   jobs       j  ON j.id  = jc.job_id
+        LEFT JOIN clients c  ON c.id  = j.client_id
+        LEFT JOIN customers cu ON cu.id = jc.customer_id
+        WHERE  jc.customer_id IN ({ph})
+          AND  jc.job_id != ?
+        ORDER  BY j.id ASC
+    """, cust_ids + [job_id]).fetchall()
+    return [dict(r) for r in rows]
+
+
 @app.get("/jobs/<int:job_id>")
 @login_required
 def job_detail(job_id: int):
@@ -5669,6 +5706,14 @@ def job_detail(job_id: int):
         "SELECT id, full_name FROM users WHERE active = 1 AND role IN ('admin','both') ORDER BY full_name"
     ).fetchall()
 
+    # ── Previous file notes detection (admin/management only) ────────────────
+    previous_file_info = []
+    if role in ("admin", "both", "management"):
+        try:
+            previous_file_info = _get_previous_jobs_for_customers(conn, job_id)
+        except Exception:
+            previous_file_info = []
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -5699,6 +5744,7 @@ def job_detail(job_id: int):
                            customer_phones=customer_phones,
                            customer_emails=customer_emails,
                            admin_users=admin_users,
+                           previous_file_info=previous_file_info,
                            enable_reschedule_modal=ENABLE_RESCHEDULE_MODAL)
 
 
@@ -7952,6 +7998,107 @@ def job_client_response(job_id: int):
     audit("job", job_id, "client_response_recorded",
           f"Client response recorded. Follow-up due {due_ts[:10]}.")
     return jsonify({"ok": True, "followup_due": due_ts[:10]})
+
+
+@app.post("/jobs/<int:job_id>/previous-file-notes/attach")
+@login_required
+@admin_required
+def previous_file_notes_attach(job_id: int):
+    """Generate and attach a Previous File Notes PDF to the current job.
+
+    Gathers notes from every previous job that shares a customer with this job.
+    Groups are ordered oldest-first (by job id); notes within each group are
+    sorted by created_at ASC.  Uses generate_multi_job_previous_notes_pdf.
+    Admins may re-run; there is no duplicate block — each generation overwrites
+    nothing, it simply adds a new document if re-run.
+    """
+    conn = db()
+    if not conn.execute("SELECT id FROM jobs WHERE id=?", (job_id,)).fetchone():
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+
+    prev_jobs = _get_previous_jobs_for_customers(conn, job_id)
+    if not prev_jobs:
+        conn.close()
+        return jsonify({"ok": False,
+                        "error": "No previous files found for the linked customers."})
+    try:
+        from datetime import datetime as _dt
+        generated_date = _dt.now(_melbourne).strftime("%d/%m/%Y %H:%M")
+        groups = []
+        for pj in prev_jobs:
+            prev_jid = pj["job_id"]
+            notes_rows = conn.execute("""
+                SELECT jfn.note_text, jfn.created_at,
+                       COALESCE(jfn.note_type, '')       AS note_type,
+                       COALESCE(u.full_name, 'System')   AS author_name
+                FROM   job_field_notes jfn
+                LEFT JOIN users u ON u.id = jfn.created_by_user_id
+                WHERE  jfn.job_id = ?
+                ORDER  BY jfn.created_at ASC, jfn.id ASC
+            """, (prev_jid,)).fetchall()
+
+            items_raw = conn.execute(
+                "SELECT * FROM job_items WHERE job_id=?", (prev_jid,)
+            ).fetchall()
+            asset_parts = []
+            for it in items_raw:
+                it = dict(it)
+                ymm  = " ".join(filter(None, [it.get("year"), it.get("make"),
+                                               it.get("model")]))
+                line = ymm or it.get("description") or it.get("item_type", "")
+                if it.get("reg"):  line += f" REG: {it['reg']}"
+                if it.get("vin"):  line += f" VIN: {it['vin']}"
+                if line.strip():   asset_parts.append(line.strip())
+
+            prev_row = conn.execute(
+                "SELECT lender_name, job_address FROM jobs WHERE id=?", (prev_jid,)
+            ).fetchone()
+
+            groups.append({
+                "job_data": {
+                    "job_number":    pj.get("display_ref") or pj.get("internal_job_number", ""),
+                    "client_name":   pj.get("client_name", "") or "",
+                    "customer_name": pj.get("customer_name", "") or "",
+                    "lender_name":   (prev_row["lender_name"] if prev_row else "") or "",
+                    "job_address":   (prev_row["job_address"]  if prev_row else "") or "",
+                    "asset_details": "; ".join(asset_parts),
+                    "status":        pj.get("status", "") or "",
+                },
+                "notes": [dict(n) for n in notes_rows],
+            })
+
+        import pdf_gen as _pg
+        pdf_bytes = _pg.generate_multi_job_previous_notes_pdf(groups, generated_date)
+
+        uid    = session.get("user_id")
+        attach = _attach_pdf_to_job(
+            conn, job_id, uid, pdf_bytes,
+            "Previous File Notes.pdf",
+            "Previous File Notes"
+        )
+        conn.commit()
+        conn.close()
+
+        total_notes = sum(len(g["notes"]) for g in groups)
+        audit("job", job_id, "previous_file_notes_attached",
+              f"Previous File Notes PDF attached — {len(groups)} previous file(s), "
+              f"{total_notes} note(s).")
+        return jsonify({
+            "ok": True,
+            "document_id": attach["document_id"],
+            "file_count":  len(groups),
+            "note_count":  total_notes,
+        })
+    except Exception as _e:
+        app.logger.exception(
+            "previous_file_notes_attach failed job_id=%s: %s", job_id, _e
+        )
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": f"PDF generation failed: {_e}"}), 500
 
 
 @app.post("/jobs/<int:job_id>/archive")

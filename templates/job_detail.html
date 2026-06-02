@@ -165,6 +165,14 @@
     </button>
     {% endif %}
 
+    {% if session.get('role') in ('admin','both','management') and previous_file_info %}
+    <button class="btn btn-outline-info btn-sm" type="button"
+            onclick="openPrevFileNotesModal()"
+            title="Previous file notes are available for a linked customer">
+      Previous File Notes
+    </button>
+    {% endif %}
+
     <button class="btn btn-primary btn-sm" type="button"
             onclick="bootstrap.Modal.getOrCreateInstance(document.getElementById('addBookingModal')).show()">
       Add Bookings
@@ -7124,6 +7132,84 @@ function submitClientResponse() {
     alertBox.textContent = 'Network error: ' + e;
     btn.disabled = false;
     btn.textContent = 'Confirm \u2014 Client Responded';
+  });
+}
+</script>
+{% endif %}
+
+{% if session.get('role') in ('admin','both','management') and previous_file_info %}
+<!-- ── Previous File Notes Modal ────────────────────────────────────── -->
+<div class="modal fade" id="prevFileNotesModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:520px">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" style="color:var(--text)">Previous File Notes Available</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="font-size:.88rem;color:var(--text)">
+        <p class="mb-2">Previous file notes found for
+          <strong>{{ previous_file_info | length }} previous file{{ 's' if previous_file_info | length != 1 }}</strong>:</p>
+        <ul class="list-unstyled mb-3" style="font-size:.83rem">
+          {% for pf in previous_file_info %}
+          <li class="mb-1 d-flex align-items-baseline gap-2">
+            <span style="color:var(--text);font-weight:600">{{ pf.display_ref or pf.internal_job_number }}</span>
+            {% if pf.customer_name %}<span style="color:var(--muted)">&mdash; {{ pf.customer_name }}</span>{% endif %}
+            <span class="ms-auto" style="color:var(--muted);white-space:nowrap;font-size:.78rem">
+              {{ pf.note_count }} note{{ 's' if pf.note_count != 1 }}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="mb-3" style="color:var(--muted);font-size:.83rem">Confirming will generate a PDF of all previous file notes, grouped by file reference with notes in chronological order, and attach it as a document to the current job. This does not alter the original files.</p>
+        <div id="pfnAlertBox" class="alert d-none" role="alert"></div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line)">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-info btn-sm fw-semibold text-white" id="pfnConfirmBtn"
+                onclick="attachPrevFileNotes()">Generate &amp; Attach Previous File Notes PDF</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openPrevFileNotesModal() {
+  var alertBox = document.getElementById('pfnAlertBox');
+  var btn = document.getElementById('pfnConfirmBtn');
+  if (alertBox) { alertBox.className = 'alert d-none'; alertBox.textContent = ''; }
+  if (btn) { btn.disabled = false; btn.textContent = 'Generate \u0026 Attach Previous File Notes PDF'; }
+  new bootstrap.Modal(document.getElementById('prevFileNotesModal')).show();
+}
+function attachPrevFileNotes() {
+  var alertBox = document.getElementById('pfnAlertBox');
+  var btn = document.getElementById('pfnConfirmBtn');
+  alertBox.className = 'alert alert-info';
+  alertBox.textContent = 'Generating PDF\u2026 please wait.';
+  btn.disabled = true;
+  btn.textContent = 'Generating\u2026';
+  fetch('/jobs/{{ job.id }}/previous-file-notes/attach', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    credentials: 'same-origin'
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      alertBox.className = 'alert alert-success';
+      alertBox.textContent = 'Previous File Notes PDF attached successfully. Reloading\u2026';
+      setTimeout(function() { window._axSaveReload = true; window.location.reload(); }, 1400);
+    } else {
+      alertBox.className = 'alert alert-danger';
+      alertBox.textContent = data.error || 'Failed to generate PDF.';
+      btn.disabled = false;
+      btn.textContent = 'Generate \u0026 Attach Previous File Notes PDF';
+    }
+  })
+  .catch(function(e) {
+    alertBox.className = 'alert alert-danger';
+    alertBox.textContent = 'Network error: ' + e;
+    btn.disabled = false;
+    btn.textContent = 'Generate \u0026 Attach Previous File Notes PDF';
   });
 }
 </script>

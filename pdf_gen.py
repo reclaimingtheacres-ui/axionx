@@ -1699,6 +1699,188 @@ def generate_previous_file_notes_pdf(job_data: dict, notes: list) -> bytes:
 
 
 # =============================================================================
+# 8b. Multi-job Previous File Notes — grouped by previous file reference
+# =============================================================================
+
+def generate_multi_job_previous_notes_pdf(groups: list, generated_date: str = None) -> bytes:
+    """Generate a Previous File Notes PDF covering one or more previous jobs.
+
+    groups: list of dicts, each with:
+        "job_data" — dict with keys: job_number, client_name, customer_name,
+                                      lender_name, job_address, asset_details, status
+        "notes"    — list of dicts with keys: created_at, author_name, note_type,
+                                               note_text  (pre-sorted oldest-first)
+
+    Notes within each group are rendered in chronological order.
+    Groups are separated by a clearly labelled section header showing the
+    previous job reference.
+    """
+    from datetime import datetime as _dt
+
+    if not generated_date:
+        generated_date = _dt.now().strftime('%d/%m/%Y %H:%M')
+
+    BOTTOM    = 58
+    HDR_H     = 14
+    LINE_H    = 11
+    LABEL_W   = 112
+    SEC_HDR_H = 20
+
+    buf = io.BytesIO()
+    c   = rl_canvas.Canvas(buf, pagesize=A4)
+    c.setTitle('Previous File Notes')
+
+    y = [PAGE_H - MT]
+
+    def _new_page():
+        c.showPage()
+        y[0] = PAGE_H - MT
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(MUTED)
+        c.drawString(ML, y[0], 'PREVIOUS FILE NOTES (continued)')
+        y[0] -= 8
+        _hr(c, y[0])
+        y[0] -= 14
+
+    def _det(label, val):
+        if not val:
+            return
+        lines = simpleSplit(str(val), 'Helvetica', 8.5, CW - LABEL_W)
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(MUTED)
+        c.drawString(ML, y[0], label)
+        c.setFont('Helvetica', 8.5)
+        c.setFillColor(DARK)
+        for ln in lines:
+            c.drawString(ML + LABEL_W, y[0], ln)
+            y[0] -= 13
+
+    # ── Page 1 letterhead + title ──────────────────────────────────────────
+    y[0] = _swpi_letterhead(c)
+    y[0] -= 8
+
+    c.setFont('Helvetica-Bold', 13)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y[0], 'PREVIOUS FILE NOTES')
+    y[0] -= 6
+    _hr(c, y[0], strong=True)
+    y[0] -= 12
+
+    total_files = len(groups)
+    total_notes = sum(len(g.get('notes', [])) for g in groups)
+    c.setFont('Helvetica', 8.5)
+    c.setFillColor(MUTED)
+    c.drawString(ML, y[0],
+                 f'PDF Generated: {generated_date}'
+                 f'   \u2014   {total_files} previous file{"s" if total_files != 1 else ""}'
+                 f'   \u2014   {total_notes} note{"s" if total_notes != 1 else ""} total')
+    y[0] -= 16
+    _hr(c, y[0])
+    y[0] -= 14
+
+    if not groups:
+        c.setFont('Helvetica', 9)
+        c.setFillColor(MUTED)
+        c.drawCentredString(PAGE_W / 2, y[0], 'No previous files found.')
+        c.save()
+        buf.seek(0)
+        return buf.read()
+
+    for grp_idx, grp in enumerate(groups):
+        job_data = grp.get('job_data', {})
+        notes    = grp.get('notes', [])
+
+        # Ensure enough room for the section header + at least one note header
+        if y[0] - (SEC_HDR_H + 40) < BOTTOM:
+            _new_page()
+
+        # ── Section divider bar ────────────────────────────────────────────
+        c.setFillColor(HexColor('#1e3a5f'))
+        c.rect(ML, y[0] - SEC_HDR_H + 3, CW, SEC_HDR_H, fill=1, stroke=0)
+        job_no = job_data.get('job_number') or ''
+        c.setFont('Helvetica-Bold', 9.5)
+        c.setFillColor(white)
+        c.drawString(ML + 6, y[0] - SEC_HDR_H + 6, f'Previous File: {job_no}')
+        count_txt = f'{len(notes)} note{"s" if len(notes) != 1 else ""}'
+        c.setFont('Helvetica', 8.5)
+        c.drawRightString(ML + CW - 6, y[0] - SEC_HDR_H + 6, count_txt)
+        y[0] -= SEC_HDR_H + 4
+
+        # ── Compact detail block ───────────────────────────────────────────
+        _det('Client:',           job_data.get('client_name'))
+        _det('Customer:',         job_data.get('customer_name'))
+        _det('Lender:',           job_data.get('lender_name'))
+        _det('Address:',          job_data.get('job_address'))
+        _det('Security / Asset:', job_data.get('asset_details'))
+        _det('Status:',           job_data.get('status'))
+        y[0] -= 4
+
+        if not notes:
+            c.setFont('Helvetica', 8.5)
+            c.setFillColor(MUTED)
+            c.drawString(ML + 8, y[0], 'No notes recorded for this file.')
+            y[0] -= 16
+        else:
+            for note in notes:
+                raw_ts = note.get('created_at', '')
+                try:
+                    parsed   = _dt.strptime(str(raw_ts)[:19], '%Y-%m-%d %H:%M:%S')
+                    date_str = parsed.strftime('%d/%m/%Y %H:%M')
+                except Exception:
+                    date_str = str(raw_ts)[:16]
+
+                author    = (note.get('author_name') or 'System').strip()
+                note_type = (note.get('note_type')   or '').strip()
+                note_text = (note.get('note_text')   or '').strip()
+
+                header_line = f'{date_str}  \u2014  {author}'
+                if note_type:
+                    header_line += f'  [{note_type}]'
+
+                body_lines = []
+                for para in note_text.split('\n'):
+                    stripped = para.strip()
+                    if stripped:
+                        body_lines.extend(simpleSplit(stripped, 'Helvetica', 8.5, CW - 12))
+                    else:
+                        body_lines.append('')
+
+                needed_h = HDR_H + len(body_lines) * LINE_H + 10
+                if y[0] - needed_h < BOTTOM:
+                    _new_page()
+
+                # Note header bar
+                c.setFillColor(HexColor('#f3f4f6'))
+                c.rect(ML, y[0] - HDR_H + 2, CW, HDR_H, fill=1, stroke=0)
+                c.setFont('Helvetica-Bold', 8.5)
+                c.setFillColor(DARK)
+                c.drawString(ML + 4, y[0] - HDR_H + 5, header_line)
+                y[0] -= HDR_H
+
+                c.setFont('Helvetica', 8.5)
+                c.setFillColor(DARK)
+                for line in body_lines:
+                    if y[0] < BOTTOM:
+                        _new_page()
+                    if line:
+                        c.drawString(ML + 8, y[0], line)
+                    y[0] -= LINE_H
+
+                y[0] -= 8   # gap between notes
+
+        # Inter-group spacing + thin rule
+        if grp_idx < len(groups) - 1:
+            y[0] -= 8
+            if y[0] > BOTTOM:
+                _hr(c, y[0])
+                y[0] -= 10
+
+    c.save()
+    buf.seek(0)
+    return buf.read()
+
+
+# =============================================================================
 # 9. Complete Repo Pack — merge all applicable docs into one PDF
 # =============================================================================
 
@@ -1740,5 +1922,6 @@ if _DEMO_MODE:
     generate_voluntary_surrender_pdf = _wrap_pdf(generate_voluntary_surrender_pdf)
     generate_auction_letter_pdf  = _wrap_pdf(generate_auction_letter_pdf)
     generate_tow_letter_pdf      = _wrap_pdf(generate_tow_letter_pdf)
-    generate_previous_file_notes_pdf = _wrap_pdf(generate_previous_file_notes_pdf)
-    generate_repo_pack_pdf       = _wrap_pdf(generate_repo_pack_pdf)
+    generate_previous_file_notes_pdf      = _wrap_pdf(generate_previous_file_notes_pdf)
+    generate_multi_job_previous_notes_pdf = _wrap_pdf(generate_multi_job_previous_notes_pdf)
+    generate_repo_pack_pdf                = _wrap_pdf(generate_repo_pack_pdf)
