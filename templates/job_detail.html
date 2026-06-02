@@ -717,7 +717,7 @@
                     <span class="badge me-2 {% if item.item_type == 'no_asset' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ 'No Asset' if item.item_type == 'no_asset' else item.item_type }}</span>
                     {% if item.item_type == 'no_asset' %}
                       <span class="fw-semibold">{{ item.description or "Unsecured matter" }}</span>
-                    {% elif item.item_type in ('vehicle', 'motorcycle', 'trailer') %}
+                    {% elif item.item_type in ('vehicle', 'motorcycle', 'trailer', 'watercraft', 'Watercraft') %}
                       {% set _ymm = [item.year, item.make, item.model] | select | join(' ') %}
                       {% if item.description %}
                         <div class="fw-semibold">{{ item.description }}</div>
@@ -2979,7 +2979,7 @@ window.addEventListener('load', function () {
 
 <script>
 function showItemFields(type) {
-  var vehicleTypes = ['vehicle','motorcycle','trailer'];
+  var vehicleTypes = ['vehicle','motorcycle','trailer','watercraft'];
   var isNoAsset = (type === 'no_asset');
   ['vehicle','property','equipment'].forEach(t => {
     const el = document.getElementById('fields-' + t);

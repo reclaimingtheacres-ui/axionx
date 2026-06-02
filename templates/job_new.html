@@ -275,6 +275,7 @@
                   <option value="Vehicle" {% if _stype == 'Vehicle' %}selected{% endif %}>Vehicle</option>
                   <option value="Motorcycle" {% if _stype == 'Motorcycle' %}selected{% endif %}>Motorcycle</option>
                   <option value="Trailer" {% if _stype == 'Trailer' %}selected{% endif %}>Trailer</option>
+                  <option value="Watercraft" {% if _stype == 'Watercraft' %}selected{% endif %}>Watercraft</option>
                   <option value="Property" {% if _stype == 'Property' %}selected{% endif %}>Property</option>
                   <option value="Equipment" {% if _stype == 'Equipment' %}selected{% endif %}>Equipment</option>
                   <option value="Other" {% if _stype == 'Other' %}selected{% endif %}>Other</option>
@@ -1282,7 +1283,7 @@ function toggleParsed(btn) {
             var el = row.querySelector('.' + cls);
             if (el) el.value = val;
           }
-          var typeMap = {'no_asset':'No Asset','vehicle':'Vehicle','motorcycle':'Motorcycle','trailer':'Trailer','property':'Property','equipment':'Equipment'};
+          var typeMap = {'no_asset':'No Asset','vehicle':'Vehicle','motorcycle':'Motorcycle','trailer':'Trailer','watercraft':'Watercraft','property':'Property','equipment':'Equipment'};
           var typeSel = row.querySelector('select[name="asset_type[]"]');
           if (typeSel) {
             var want = typeMap[a.item_type] || 'Vehicle';

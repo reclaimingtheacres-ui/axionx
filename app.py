@@ -2713,6 +2713,7 @@ def _parse_instruction_text(text):
         "motorcycle": "Motorcycle", "motorbike": "Motorcycle", "bike": "Motorcycle",
         "scooter": "Motorcycle",
         "trailer": "Trailer", "caravan": "Trailer", "boat trailer": "Trailer",
+        "watercraft": "Watercraft", "vessel": "Watercraft", "jet ski": "Watercraft", "jetski": "Watercraft",
         "property": "Property", "real property": "Property", "land": "Property",
         "equipment": "Equipment", "machinery": "Equipment", "plant": "Equipment",
         "other": "Other",
@@ -4453,7 +4454,7 @@ def _jobs_list_inner():
                cu.last_name AS customer_last_name,
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg,
                COALESCE(
                    (SELECT u2.full_name FROM schedules s2
                     JOIN users u2 ON u2.id = s2.assigned_to_user_id
@@ -5587,7 +5588,7 @@ def job_detail(job_id: int):
     statuses = ["New", "Active", "Active - Phone work only", "Suspended", "Awaiting Advice From Client", "Completed", "Invoiced", "Cancelled"]
     visit_types = ["New Visit", "Re-attend", "First Update", "Urgent Update", "Phone Follow-up", "Locate Only"]
     priorities = ["Low", "Normal", "High", "Urgent"]
-    item_types = ["no_asset", "vehicle", "motorcycle", "trailer", "property", "equipment", "other"]
+    item_types = ["no_asset", "vehicle", "motorcycle", "trailer", "watercraft", "property", "equipment", "other"]
     doc_types = ["Instructions", "PPSR", "Contract", "Invoice", "Authority", "Form", "Other"]
     customer_roles = ["Primary", "Co-Borrower", "Guarantor", "Director", "Partner", "Spouse", "Occupant", "Third Party in Possession", "Other"]
 
@@ -8214,7 +8215,7 @@ def admin_archive():
                    COALESCE(c.nickname, c.name) AS client_name,
                    COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                    j.job_address, j.updated_at,
-                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg,
                    (SELECT COUNT(*) FROM job_field_notes n WHERE n.job_id = j.id) AS note_count,
                    (SELECT COUNT(*) FROM job_documents d WHERE d.job_id = j.id) AS doc_count
             FROM jobs j
@@ -8266,8 +8267,8 @@ def admin_archive():
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                (cu.first_name || ' ' || cu.last_name) AS customer_name,
                j.job_address, j.updated_at, j.lifecycle_status,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
-               (SELECT ji.vin FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_vin,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg,
+               (SELECT ji.vin FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_vin,
                (SELECT COUNT(*) FROM job_field_notes n WHERE n.job_id = j.id) AS note_count,
                (SELECT COUNT(*) FROM job_documents d WHERE d.job_id = j.id) AS doc_count,
                u.full_name AS archived_by_name
@@ -15954,7 +15955,7 @@ def geoop_repair_diagnostic():
         ).fetchone()[0]
 
         result["job_items_vehicle"] = conn.execute(
-            "SELECT COUNT(*) FROM job_items WHERE item_type IN ('vehicle','motorcycle','trailer')"
+            "SELECT COUNT(*) FROM job_items WHERE item_type IN ('vehicle','motorcycle','trailer','watercraft')"
         ).fetchone()[0]
 
         sample_npd = conn.execute("""
@@ -16949,7 +16950,7 @@ def _queue_row_sql():
                COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
                COALESCE(NULLIF(TRIM(cu.address), ''), j.job_address) AS resolved_address,
                (SELECT ji.reg FROM job_items ji
-                WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
+                WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg,
                ag.full_name AS agent_name,
                ag.email     AS agent_email,
                (SELECT ce.email FROM contact_emails ce
@@ -18741,7 +18742,7 @@ def my_today():
             SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
                    (cu.first_name || ' ' || cu.last_name) customer_name,
                    COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) asset_reg
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) asset_reg
             FROM cue_items ci
             JOIN jobs j ON j.id = ci.job_id
             LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -18758,7 +18759,7 @@ def my_today():
                    j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
                    COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg
             FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
             JOIN jobs j ON j.id = s.job_id
@@ -18783,7 +18784,7 @@ def my_today():
             SELECT ci.*, j.internal_job_number, j.client_reference, j.job_address,
                    (cu.first_name || ' ' || cu.last_name) customer_name,
                    COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) asset_reg
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) asset_reg
             FROM cue_items ci
             JOIN jobs j ON j.id = ci.job_id
             LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -18801,7 +18802,7 @@ def my_today():
                    j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
                    (cu.first_name || ' ' || cu.last_name) AS customer_name,
                    COALESCE(NULLIF(TRIM(COALESCE(cu.company,'')), ''), cu.last_name) AS customer_label,
-                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
+                   (SELECT ji.reg FROM job_items ji WHERE ji.job_id = j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg
             FROM schedules s
             JOIN booking_types bt ON bt.id = s.booking_type_id
             JOIN jobs j ON j.id = s.job_id
@@ -20512,7 +20513,7 @@ def m_today():
                j.job_address, j.id AS jid,
                COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
                         NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg
         FROM cue_items ci
         JOIN jobs j ON j.id = ci.job_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -20528,7 +20529,7 @@ def m_today():
                j.internal_job_number, j.client_reference, j.display_ref, j.job_address,
                COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
                         NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') LIMIT 1) AS asset_reg,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1) AS asset_reg,
                EXISTS (
                    SELECT 1 FROM job_field_notes fn
                    WHERE fn.job_id = j.id AND fn.review_status = 'submitted_for_review'
@@ -20737,8 +20738,8 @@ def _mobile_jobs_query(uid, role, params_in):
         SELECT j.*,
                COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
                         NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
-               (SELECT ji.reg  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_reg,
-               (SELECT ji.vin  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_vin,
+               (SELECT ji.reg  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') ORDER BY ji.id LIMIT 1) AS asset_reg,
+               (SELECT ji.vin  FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') ORDER BY ji.id LIMIT 1) AS asset_vin,
                (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
                 AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0 ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
@@ -20855,8 +20856,8 @@ def m_api_jobs_search():
                j.lender_name,
                COALESCE(NULLIF(TRIM(cu.first_name || ' ' || cu.last_name), ''),
                         NULLIF(TRIM(COALESCE(cu.company,'')), '')) AS customer_name,
-               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_reg,
-               (SELECT ji.vin FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer') ORDER BY ji.id LIMIT 1) AS asset_vin,
+               (SELECT ji.reg FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') ORDER BY ji.id LIMIT 1) AS asset_reg,
+               (SELECT ji.vin FROM job_items ji WHERE ji.job_id=j.id AND ji.item_type IN ('vehicle','motorcycle','trailer','watercraft') ORDER BY ji.id LIMIT 1) AS asset_vin,
                (SELECT s.scheduled_for FROM schedules s WHERE s.job_id=j.id
                 AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0 ORDER BY s.scheduled_for LIMIT 1) AS next_scheduled,
                (SELECT cpn.phone_number FROM contact_phone_numbers cpn
@@ -21138,7 +21139,7 @@ def m_update_builder(job_id):
         draft = conn.execute("SELECT * FROM job_updates WHERE id=?", (draft_id,)).fetchone()
 
     first_asset = conn.execute(
-        "SELECT * FROM job_items WHERE job_id=? AND item_type IN ('vehicle','motorcycle','trailer') LIMIT 1", (job_id,)
+        "SELECT * FROM job_items WHERE job_id=? AND item_type IN ('vehicle','motorcycle','trailer','watercraft') LIMIT 1", (job_id,)
     ).fetchone()
     asset_make_model = ""
     asset_reg = ""
