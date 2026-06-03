@@ -5418,6 +5418,7 @@ def _get_previous_jobs_for_customers(conn, job_id: int) -> list:
         LEFT JOIN customers cu ON cu.id = jc.customer_id
         WHERE  jc.customer_id IN ({ph})
           AND  jc.job_id != ?
+          AND  j.status IN ('Completed', 'Invoiced', 'Archived - Invoiced', 'Cold Stored')
         ORDER  BY j.id ASC
     """, cust_ids + [job_id]).fetchall()
     return [dict(r) for r in rows]
