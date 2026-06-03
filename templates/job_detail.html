@@ -7149,6 +7149,18 @@ function submitClientResponse() {
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" style="font-size:.88rem;color:var(--text)">
+        {% set _pfn_customers = job_linked_customers | selectattr('customer_id', 'ne', None) | list %}
+        <div class="mb-3 px-2 py-2" style="background:var(--bg);border-radius:8px;border:1px solid var(--line);font-size:.82rem;">
+          <span style="color:var(--muted);font-weight:600;letter-spacing:.03em">LINKED CUSTOMER{{ 'S' if _pfn_customers | length != 1 }}:</span>
+          {% if _pfn_customers %}
+            {% for lc in _pfn_customers %}
+            <span style="color:var(--text);margin-left:6px;">{{ lc.first_name }} {{ lc.last_name }}{% if lc.company %} ({{ lc.company }}){% endif %}{% if not loop.last %},{% endif %}</span>
+            {% endfor %}
+          {% else %}
+            <span style="color:var(--muted);margin-left:6px;font-style:italic">None linked</span>
+          {% endif %}
+          <div style="color:var(--muted);font-size:.78rem;margin-top:3px;">Previous files will be pulled for the customer{{ 's' if _pfn_customers | length != 1 }} above — verify this is correct before generating.</div>
+        </div>
         <p class="mb-2">Previous file notes found for
           <strong>{{ previous_file_info | length }} previous file{{ 's' if previous_file_info | length != 1 }}</strong>:</p>
         <ul class="list-unstyled mb-3" style="font-size:.83rem">
