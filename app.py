@@ -4654,6 +4654,12 @@ def job_clone_data(job_id: int):
         "SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,)
     ).fetchall()
     _ak = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()]
+    file_notes = conn.execute(
+        """SELECT id, note_text FROM job_field_notes
+           WHERE job_id=? AND note_category='file_note' AND review_status='published'
+           ORDER BY id""",
+        (job_id,)
+    ).fetchall()
     conn.close()
 
     def cents_to_str(c):
@@ -4696,7 +4702,11 @@ def job_clone_data(job_id: int):
                 "notes":            a["notes"] or "",
             }
             for a in assets
-        ]
+        ],
+        "file_notes": [
+            {"id": n["id"], "text": n["note_text"]}
+            for n in file_notes
+        ],
     })
 
 
@@ -5319,6 +5329,24 @@ def _job_create_inner():
                     pass
             cur.execute("DELETE FROM pending_uploads WHERE id = ?", (pu_row["id"],))
             cur.execute("DELETE FROM document_extractions WHERE id = ?", (int(autofill_id),))
+
+    cloned_notes_raw = request.form.get("cloned_notes", "").strip()
+    if cloned_notes_raw:
+        try:
+            cloned_notes = json.loads(cloned_notes_raw)
+            uid = session.get("user_id")
+            for cn in cloned_notes:
+                txt = (cn.get("text") or "").strip()
+                if txt:
+                    cur.execute(
+                        """INSERT INTO job_field_notes
+                           (job_id, created_by_user_id, note_text, created_at,
+                            note_category, review_status, published_at, source_field_note_id)
+                           VALUES (?, ?, ?, ?, 'file_note', 'published', ?, ?)""",
+                        (job_id, uid, txt, now, now, cn.get("id"))
+                    )
+        except Exception:
+            pass
 
     conn.commit()
 

@@ -99,6 +99,7 @@
 <form method="post" id="newJobForm">
 {% if autofill_id %}<input type="hidden" name="autofill_id" value="{{ autofill_id }}">{% endif %}
 <input type="hidden" name="add_another" id="add_another_input" value="">
+<input type="hidden" name="cloned_notes" id="cloned_notes_input" value="">
 
 <div class="nj-two-col">
 
@@ -1184,6 +1185,14 @@ function toggleParsed(btn) {
         html += '</div>';
       });
     }
+    if (d.file_notes && d.file_notes.length) {
+      html += '<hr><div style="font-weight:600;font-size:.82rem;color:var(--muted);margin-bottom:6px;">FILE NOTES (' + d.file_notes.length + ' will be copied)</div>';
+      d.file_notes.forEach(function (n) {
+        var preview = (n.text || '').slice(0, 120);
+        if ((n.text || '').length > 120) preview += '\u2026';
+        html += '<div style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:5px;font-size:.82rem;white-space:pre-wrap;color:var(--text);">' + escHtml(preview) + '</div>';
+      });
+    }
     return html;
   }
 
@@ -1332,6 +1341,11 @@ function toggleParsed(btn) {
         });
         if (typeof window.axionSyncAssets === 'function') window.axionSyncAssets();
       }
+    }
+
+    var cnInput = document.getElementById('cloned_notes_input');
+    if (cnInput) {
+      cnInput.value = (d.file_notes && d.file_notes.length) ? JSON.stringify(d.file_notes) : '';
     }
 
     document.getElementById('newJobForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
