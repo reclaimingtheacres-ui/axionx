@@ -639,6 +639,9 @@ def _schema_is_current():
             ).fetchone()
             if not gc_tbl:
                 return False
+            sched_cols = [c[1] for c in conn.execute("PRAGMA table_info(schedules)").fetchall()]
+            if "actioned_at" not in sched_cols:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -1139,6 +1142,7 @@ def init_db():
     add_column_if_missing(cur, "system_settings", "email_signature", "TEXT")
     add_column_if_missing(cur, "schedules", "assigned_to_user_id", "INTEGER")
     add_column_if_missing(cur, "schedules", "hidden", "INTEGER NOT NULL DEFAULT 0")
+    add_column_if_missing(cur, "schedules", "actioned_at", "TEXT")
     add_column_if_missing(cur, "jobs", "lat", "REAL")
     add_column_if_missing(cur, "jobs", "lng", "REAL")
 
@@ -5542,7 +5546,8 @@ def job_detail(job_id: int):
         JOIN booking_types bt ON bt.id = s.booking_type_id
         LEFT JOIN users u ON u.id = s.assigned_to_user_id
         WHERE s.job_id = ? AND s.hidden = 0
-              AND s.status NOT IN ('Completed', 'Cancelled')
+              AND (s.status NOT IN ('Completed', 'Cancelled')
+                   OR (s.status = 'Completed' AND s.actioned_at IS NOT NULL))
         ORDER BY s.scheduled_for ASC
     """, (job_id,))
     schedules = cur.fetchall()
@@ -17333,8 +17338,8 @@ def my_schedule_attended(sched_id: int):
     old_status = sched["status"]
     old_scheduled = sched["scheduled_for"]
     conn.execute(
-        "UPDATE schedules SET status='Completed' WHERE id=?",
-        (sched_id,)
+        "UPDATE schedules SET status='Completed', actioned_at=? WHERE id=?",
+        (ts, sched_id)
     )
     _write_schedule_history(conn.cursor(), sched_id, sched["job_id"], "completed",
                             old_scheduled_for=old_scheduled, new_scheduled_for=old_scheduled,
@@ -21464,7 +21469,10 @@ def m_quick_note_save(job_id):
                 _old_status = _sched_row["status"]
                 _ts3        = now_ts()
                 _cur3       = conn.cursor()
-                _cur3.execute("UPDATE schedules SET status='Completed' WHERE id=?", (_sid,))
+                _cur3.execute(
+                    "UPDATE schedules SET status='Completed', actioned_at=? WHERE id=?",
+                    (_ts3, _sid)
+                )
                 _write_schedule_history(
                     _cur3, _sid, job_id, "completed",
                     _old_sched, _old_sched,
