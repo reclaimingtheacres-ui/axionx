@@ -30193,5 +30193,45 @@ def demo_reset_complete():
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# In-app daily backup safety net
+# Provides a second layer of protection independent of backup_scheduler.py.
+# If the scheduler process is not running (Azure container recycle, Replit
+# workflow restart, deployment), this thread ensures a backup still occurs.
+#
+# Runs as a daemon thread inside each gunicorn worker.  Checks every hour
+# whether it is past the daily backup window (15:30 UTC = 02:30 AEST) and
+# whether a local backup already exists for today; triggers one if not.
+# ─────────────────────────────────────────────────────────────────────────────
+def _app_backup_watchdog():
+    import time as _t
+    _t.sleep(45)   # let the app settle after startup before first check
+    _last_run_date = None
+    while True:
+        try:
+            now_utc = datetime.utcnow()
+            today   = now_utc.date()
+            past_window = (now_utc.hour > 15 or
+                           (now_utc.hour == 15 and now_utc.minute >= 30))
+            if past_window and _last_run_date != today:
+                try:
+                    from backup_to_azure import (backup as _do_backup,
+                                                 backup_exists_today as _bex)
+                    if not _bex():
+                        app.logger.info("[backup-watchdog] No local backup for today — triggering.")
+                        _do_backup()
+                        app.logger.info("[backup-watchdog] Backup completed successfully.")
+                    _last_run_date = today
+                except Exception as _be:
+                    app.logger.warning("[backup-watchdog] Backup attempt failed: %s", _be)
+        except Exception:
+            pass
+        _t.sleep(3600)   # re-check every hour
+
+threading.Thread(
+    target=_app_backup_watchdog, daemon=True, name="backup-watchdog"
+).start()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)

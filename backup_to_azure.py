@@ -8,7 +8,7 @@ DB_PATH = os.environ.get("DB_PATH", "axion.db")
 BACKUP_DIR = os.path.dirname(os.path.abspath(DB_PATH)) or "."
 CONTAINER = "axionx-backups"
 RETENTION_DAYS = 30
-LOCAL_KEEP = 7
+LOCAL_KEEP = 3
 
 
 def _sqlite_backup(src_path, dst_path):
@@ -28,18 +28,26 @@ def _rotate_local(backup_dir, keep=LOCAL_KEEP):
     for old in files[keep:]:
         try:
             os.remove(old)
-            print(f"Rotated local backup: {old}")
+            print(f"Rotated local backup: {old}", flush=True)
         except OSError as e:
-            print(f"Could not remove {old}: {e}")
+            print(f"Could not remove {old}: {e}", flush=True)
+
+
+def backup_exists_today(backup_dir=None):
+    """Return True if a local backup file for today already exists."""
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    d = backup_dir or BACKUP_DIR
+    return bool(glob.glob(os.path.join(d, f"axion_backup_{today}_*.db")))
 
 
 def backup():
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
 
     local_backup = os.path.join(BACKUP_DIR, f"axion_backup_{timestamp}.db")
-    print(f"SQLite backup {DB_PATH} -> {local_backup} ...", flush=True)
+    print(f"LOCAL BACKUP START: {DB_PATH} -> {local_backup}", flush=True)
     _sqlite_backup(DB_PATH, local_backup)
-    print(f"Local backup written: {local_backup} ({os.path.getsize(local_backup)} bytes)", flush=True)
+    size = os.path.getsize(local_backup)
+    print(f"LOCAL BACKUP SUCCESS: {local_backup} ({size:,} bytes)", flush=True)
 
     _rotate_local(BACKUP_DIR)
 
@@ -53,10 +61,10 @@ def backup():
             blob_service = BlobServiceClient.from_connection_string(conn_str)
             container = blob_service.get_container_client(CONTAINER)
             container.upload_blob(name=blob_name, data=compressed, overwrite=True)
-            print(f"Azure backup uploaded: {blob_name}", flush=True)
+            print(f"AZURE UPLOAD SUCCESS: {blob_name}", flush=True)
             _cleanup_azure(container)
         except Exception as e:
-            print(f"Azure upload failed (local backup is safe): {e}", flush=True)
+            print(f"AZURE UPLOAD FAILED (local backup retained): {e}", flush=True)
     else:
         print("AZURE_STORAGE_CONNECTION_STRING not set — skipping Azure upload.", flush=True)
 
@@ -66,7 +74,7 @@ def _cleanup_azure(container):
     for blob in container.list_blobs():
         if blob.last_modified.replace(tzinfo=datetime.timezone.utc) < cutoff:
             container.delete_blob(blob.name)
-            print(f"Deleted old Azure backup: {blob.name}")
+            print(f"Deleted old Azure backup: {blob.name}", flush=True)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import urllib.request
 import urllib.parse
 import json
 
-from backup_to_azure import backup
+from backup_to_azure import backup, backup_exists_today
 
 DB_PATH = os.path.abspath(os.environ.get("DB_PATH", "axion.db"))
 ARCHIVED_STATUSES = ("Archived - Invoiced", "Cold Stored")
@@ -24,6 +24,27 @@ print(f"  backup daily at {BACKUP_HOUR:02d}:{BACKUP_MINUTE:02d} UTC (02:30 AEST)
 last_run_date = None
 last_geocode_time = 0
 last_msg_cleanup_date = None
+
+# ── Startup catch-up ──────────────────────────────────────────────────────────
+# If the scheduler process was recycled (Azure restart, deployment, crash) after
+# the daily backup window has passed and no local backup exists for today, run
+# the backup immediately rather than waiting until tomorrow's window.
+_startup_now = datetime.datetime.now()
+if (
+    (_startup_now.hour > BACKUP_HOUR or
+     (_startup_now.hour == BACKUP_HOUR and _startup_now.minute >= BACKUP_MINUTE))
+    and not backup_exists_today()
+):
+    _ts = _startup_now.strftime("%Y-%m-%d %H:%M")
+    print(f"[{_ts}] Startup catch-up: today's backup is missing — running now…", flush=True)
+    try:
+        backup()
+        last_run_date = _startup_now.date()
+        print(f"[{_ts}] Startup catch-up backup completed.", flush=True)
+    except Exception:
+        print(f"[{_ts}] Startup catch-up backup FAILED:", flush=True)
+        traceback.print_exc()
+del _startup_now
 
 
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
