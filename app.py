@@ -8057,9 +8057,13 @@ def previous_file_notes_attach(job_id: int):
     nothing, it simply adds a new document if re-run.
     """
     conn = db()
-    if not conn.execute("SELECT id FROM jobs WHERE id=?", (job_id,)).fetchone():
+    _jrow = conn.execute(
+        "SELECT internal_job_number, display_ref FROM jobs WHERE id=?", (job_id,)
+    ).fetchone()
+    if not _jrow:
         conn.close()
         return jsonify({"ok": False, "error": "Job not found."}), 404
+    _job_ref = (_jrow["display_ref"] or _jrow["internal_job_number"] or str(job_id)).strip()
 
     prev_jobs = _get_previous_jobs_for_customers(conn, job_id)
     if not prev_jobs:
@@ -8116,9 +8120,10 @@ def previous_file_notes_attach(job_id: int):
         pdf_bytes = _pg.generate_multi_job_previous_notes_pdf(groups, generated_date)
 
         uid    = session.get("user_id")
+        pdf_filename = f"{_job_ref} - Previous File Notes.pdf"
         attach = _attach_pdf_to_job(
             conn, job_id, uid, pdf_bytes,
-            "Previous File Notes.pdf",
+            pdf_filename,
             "Previous File Notes"
         )
         conn.commit()
