@@ -165,11 +165,11 @@
     </button>
     {% endif %}
 
-    {% if session.get('role') in ('admin','both','management') and previous_file_info and not prev_file_notes_already_generated %}
+    {% if session.get('role') in ('admin','both','management') and previous_file_info %}
     <button class="btn btn-outline-info btn-sm" type="button"
             onclick="openPrevFileNotesModal()"
-            title="Previous file notes are available for a linked customer">
-      Previous File Notes
+            title="{% if prev_file_notes_already_generated %}Previous File Notes PDF already generated — click to regenerate{% else %}Previous file notes are available for a linked customer{% endif %}">
+      {% if prev_file_notes_already_generated %}↺ Regenerate File Notes{% else %}Previous File Notes{% endif %}
     </button>
     {% endif %}
 

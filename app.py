@@ -6163,15 +6163,17 @@ def job_clone(job_id: int):
                 [new_id] + [item[c] for c in cols_p]
             )
 
-        # ── Copy job_customers (multi-customer links) ───────────────────
-        for jc in conn.execute(
-                "SELECT customer_id, role, sort_order FROM job_customers "
-                "WHERE job_id = ?", (job_id,)).fetchall():
+        # ── Copy job_customers — PRIMARY only ───────────────────────────
+        # Only carry the primary customer (matching jobs.customer_id).
+        # Copying ALL job_customers from the source propagates any stale/
+        # incorrect customer links that existed on the source job, which
+        # causes wrong Previous File Notes PDFs on the new job.
+        if src.get("customer_id"):
             conn.execute(
                 "INSERT OR IGNORE INTO job_customers "
                 "(job_id, customer_id, role, sort_order, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (new_id, jc["customer_id"], jc["role"], jc["sort_order"], now)
+                (new_id, src["customer_id"], "Primary", 0, now)
             )
 
         # ── Clone interaction ───────────────────────────────────────────
