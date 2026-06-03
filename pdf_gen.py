@@ -1669,7 +1669,7 @@ def generate_previous_file_notes_pdf(job_data: dict, notes: list) -> bytes:
             else:
                 body_lines.append('')   # blank line between paragraphs
 
-        needed_h = HDR_H + len(body_lines) * LINE_H + 10
+        needed_h = HDR_H + 4 + len(body_lines) * LINE_H + 10
         if y[0] - needed_h < BOTTOM:
             _new_page()
 
@@ -1679,7 +1679,7 @@ def generate_previous_file_notes_pdf(job_data: dict, notes: list) -> bytes:
         c.setFont('Helvetica-Bold', 8.5)
         c.setFillColor(DARK)
         c.drawString(ML + 4, y[0] - HDR_H + 5, header_line)
-        y[0] -= HDR_H
+        y[0] -= HDR_H + 4  # extra gap between header bar and body text
 
         # Note body
         c.setFont('Helvetica', 8.5)
@@ -1845,7 +1845,7 @@ def generate_multi_job_previous_notes_pdf(groups: list, generated_date: str = No
                     else:
                         body_lines.append('')
 
-                needed_h = HDR_H + len(body_lines) * LINE_H + 10
+                needed_h = HDR_H + 4 + len(body_lines) * LINE_H + 10
                 if y[0] - needed_h < BOTTOM:
                     _new_page()
 
@@ -1855,7 +1855,7 @@ def generate_multi_job_previous_notes_pdf(groups: list, generated_date: str = No
                 c.setFont('Helvetica-Bold', 8.5)
                 c.setFillColor(DARK)
                 c.drawString(ML + 4, y[0] - HDR_H + 5, header_line)
-                y[0] -= HDR_H
+                y[0] -= HDR_H + 4  # extra gap between header bar and body text
 
                 c.setFont('Helvetica', 8.5)
                 c.setFillColor(DARK)

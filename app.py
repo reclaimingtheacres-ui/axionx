@@ -5739,9 +5739,18 @@ def job_detail(job_id: int):
 
     # ── Previous file notes detection (admin/management only) ────────────────
     previous_file_info = []
+    prev_file_notes_already_generated = False
     if role in ("admin", "both", "management"):
         try:
             previous_file_info = _get_previous_jobs_for_customers(conn, job_id)
+            if previous_file_info:
+                _pfn = conn.execute(
+                    """SELECT id FROM job_documents
+                       WHERE job_id=? AND title='Previous File Notes'
+                       LIMIT 1""",
+                    (job_id,)
+                ).fetchone()
+                prev_file_notes_already_generated = bool(_pfn)
         except Exception:
             previous_file_info = []
 
@@ -5776,6 +5785,7 @@ def job_detail(job_id: int):
                            customer_emails=customer_emails,
                            admin_users=admin_users,
                            previous_file_info=previous_file_info,
+                           prev_file_notes_already_generated=prev_file_notes_already_generated,
                            enable_reschedule_modal=ENABLE_RESCHEDULE_MODAL)
 
 

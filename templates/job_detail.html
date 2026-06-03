@@ -165,7 +165,7 @@
     </button>
     {% endif %}
 
-    {% if session.get('role') in ('admin','both','management') and previous_file_info %}
+    {% if session.get('role') in ('admin','both','management') and previous_file_info and not prev_file_notes_already_generated %}
     <button class="btn btn-outline-info btn-sm" type="button"
             onclick="openPrevFileNotesModal()"
             title="Previous file notes are available for a linked customer">
