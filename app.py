@@ -4658,6 +4658,7 @@ def job_clone_data(job_id: int):
     def cents_to_str(c):
         return f"{c/100:.2f}" if c else ""
 
+    _ak = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()]
     return jsonify({
         "client_id":        job["client_id"],
         "client_name":      client["name"] if client else "",
@@ -4675,8 +4676,6 @@ def job_clone_data(job_id: int):
         "lender_name":      job["lender_name"] or "",
         "account_number":   job["account_number"] or "",
         "regulation_type":  job["regulation_type"] or "",
-        "arrears":          cents_to_str(job["arrears_cents"]),
-        "costs":            cents_to_str(job["costs_cents"]),
         "mmp":              cents_to_str(job["mmp_cents"]),
         "job_due_date":     job["job_due_date"] or "",
         "tp_referral":      job["tp_referral"] or "",
@@ -4691,11 +4690,11 @@ def job_clone_data(job_id: int):
                 "make":             a["make"] or "",
                 "model":            a["model"] or "",
                 "year":             a["year"] or "",
+                "colour":           (a["colour"] if "colour" in _ak else "") or "",
+                "engine_number":    (a["engine_number"] if "engine_number" in _ak else "") or "",
                 "property_address": a["property_address"] or "",
                 "serial_number":    a["serial_number"] or "",
                 "notes":            a["notes"] or "",
-                "arrears":          cents_to_str(a["arrears_cents"]),
-                "costs":            cents_to_str(a["costs_cents"]),
             }
             for a in assets
         ]
