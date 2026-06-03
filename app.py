@@ -4653,12 +4653,11 @@ def job_clone_data(job_id: int):
     assets = conn.execute(
         "SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,)
     ).fetchall()
+    _ak = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()]
     conn.close()
 
     def cents_to_str(c):
         return f"{c/100:.2f}" if c else ""
-
-    _ak = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()]
     return jsonify({
         "client_id":        job["client_id"],
         "client_name":      client["name"] if client else "",
