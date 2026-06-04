@@ -7245,7 +7245,7 @@ def job_status_update(job_id: int):
         INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status Update", f"Status changed to '{status}'.", now, now))
-    if status in ("Completed", "Cancelled") or (status == "Invoiced" and old_status == "Completed"):
+    if status in ("Completed", "Invoiced", "Cancelled"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
         pending_scheds = cur.execute(
@@ -8542,7 +8542,7 @@ def job_update(job_id: int):
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status/Visit Update", f"Status set to '{status}'. Visit type set to '{visit_type}'.", now, now))
 
-    if status in ("Completed", "Cancelled") or (status == "Invoiced" and old_status == "Completed"):
+    if status in ("Completed", "Invoiced", "Cancelled"):
         cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
                     (now, job_id))
         pending_scheds = cur.execute(
