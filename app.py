@@ -6583,6 +6583,29 @@ def schedule_api_cancel(sched_id):
     return jsonify({"ok": True})
 
 
+@app.post("/schedule/api/<int:sched_id>/delete")
+@login_required
+def schedule_api_delete(sched_id):
+    """Permanently delete a schedule record. Admin/management only."""
+    caller_role = session.get("role", "")
+    if caller_role not in ("admin", "both", "management"):
+        return jsonify({"ok": False, "error": "Not authorised."}), 403
+    conn = db()
+    cur = conn.cursor()
+    sched = cur.execute("SELECT id, job_id, scheduled_for, status FROM schedules WHERE id = ?", (sched_id,)).fetchone()
+    if not sched:
+        conn.close()
+        return jsonify({"ok": False, "error": "Booking not found."}), 404
+    cur.execute("DELETE FROM schedule_history WHERE schedule_id = ?", (sched_id,))
+    cur.execute("DELETE FROM schedules WHERE id = ?", (sched_id,))
+    conn.commit()
+    conn.close()
+    audit("schedule", sched_id, "deleted",
+          f"Schedule {sched_id} (job {sched['job_id']}, {sched['scheduled_for'][:10]}, "
+          f"status {sched['status']}) permanently deleted by admin.")
+    return jsonify({"ok": True})
+
+
 @app.get("/schedule/api/<int:sched_id>/history")
 @login_required
 def schedule_api_history(sched_id):

@@ -1584,6 +1584,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </td>
                 {% if session.get('role') in ('admin', 'both', 'management') %}
                 <td>
+                  <div class="d-flex gap-1">
                   {% if not is_terminal %}
                   <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-3"
                           style="font-size:.74rem;line-height:1.6;white-space:nowrap;min-width:48px"
@@ -1591,6 +1592,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     Edit
                   </button>
                   {% endif %}
+                  <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2"
+                          style="font-size:.74rem;line-height:1.6"
+                          onclick="deleteSchedule({{ s.id }})"
+                          title="Delete this booking">
+                    &#10005;
+                  </button>
+                  </div>
                 </td>
                 {% endif %}
               </tr>
@@ -6397,6 +6405,27 @@ function offNoteCancel(id) {
     } else {
       _execSchedSave(sid, dateVal, timeVal, btId, agentId, notes);
     }
+  };
+
+  window.deleteSchedule = function(sid) {
+    if (!confirm('Delete this booking permanently? This cannot be undone.')) return;
+    fetch('/schedule/api/' + sid + '/delete', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        var row = document.getElementById('sched-row-' + sid);
+        var editRow = document.getElementById('sched-edit-' + sid);
+        if (row) row.remove();
+        if (editRow) editRow.remove();
+      } else {
+        alert(data.error || 'Failed to delete booking.');
+      }
+    })
+    .catch(function() { alert('Network error. Please try again.'); });
   };
 })();
 </script>
