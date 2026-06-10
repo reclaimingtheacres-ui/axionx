@@ -24,17 +24,69 @@ def _parse_dt(s):
 def _ensure_throttle_table(cur):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS login_throttle (
-            key TEXT PRIMARY KEY,
-            fail_count INTEGER NOT NULL DEFAULT 0,
-            locked_until TEXT,
+            key                     TEXT PRIMARY KEY,
+            fail_count              INTEGER NOT NULL DEFAULT 0,
+            locked_until            TEXT,
             last_attempted_username TEXT,
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            updated_at              TEXT NOT NULL DEFAULT (datetime('now')),
+            released_by             TEXT,
+            released_at             TEXT
         )
     """)
-    try:
-        cur.execute("ALTER TABLE login_throttle ADD COLUMN last_attempted_username TEXT")
-    except Exception:
-        pass
+    for col in ("last_attempted_username", "released_by", "released_at"):
+        try:
+            cur.execute(f"ALTER TABLE login_throttle ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
+
+
+def _ensure_audit_table(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS login_audit_log (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_ts            TEXT NOT NULL DEFAULT (datetime('now')),
+            event_type          TEXT NOT NULL,
+            throttle_key        TEXT,
+            ip_address          TEXT,
+            username_attempted  TEXT,
+            fail_count          INTEGER DEFAULT 0,
+            is_locked           INTEGER DEFAULT 0,
+            released_by         TEXT,
+            released_at         TEXT,
+            notes               TEXT
+        )
+    """)
+    for idx_sql in (
+        "CREATE INDEX IF NOT EXISTS ix_lal_ts   ON login_audit_log(event_ts DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_lal_type ON login_audit_log(event_type)",
+        "CREATE INDEX IF NOT EXISTS ix_lal_key  ON login_audit_log(throttle_key)",
+    ):
+        try:
+            cur.execute(idx_sql)
+        except Exception:
+            pass
+
+
+def _write_audit(cur, event_type, key, ip_address=None, username=None,
+                 fail_count=0, is_locked=False, released_by=None,
+                 released_at=None, notes=None):
+    _ensure_audit_table(cur)
+    cur.execute("""
+        INSERT INTO login_audit_log
+            (event_ts, event_type, throttle_key, ip_address, username_attempted,
+             fail_count, is_locked, released_by, released_at, notes)
+        VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        event_type,
+        key or "",
+        (ip_address or "").strip(),
+        (username or "").lower().strip(),
+        int(fail_count),
+        1 if is_locked else 0,
+        released_by or "",
+        released_at or "",
+        notes or "",
+    ))
 
 
 def throttle_check(conn, key):
@@ -62,25 +114,26 @@ def throttle_check(conn, key):
     return True, None
 
 
-def throttle_fail(conn, key, username=None):
-    """Record a failed attempt.  Triggers a permanent lockout at _THROTTLE_LIMIT failures.
+def throttle_fail(conn, key, username=None, ip=None):
+    """Record a failed attempt. Triggers a permanent lockout at _THROTTLE_LIMIT failures.
 
     Args:
         key:      throttle key — "ip:<addr>" or "user:<email>"
         username: attempted email (stored for audit display; never a password)
+        ip:       client IP address — used for audit log when key is a user: key
     """
     cur = conn.cursor()
     _ensure_throttle_table(cur)
     cur.execute("SELECT fail_count, locked_until FROM login_throttle WHERE key=?", (key,))
     row = cur.fetchone()
 
-    # If already permanently locked, just bump the counter (don't downgrade the lock).
     already_locked = row and row["locked_until"] == _LOCKED_SENTINEL
     count = (row["fail_count"] if row else 0) + 1
-
     locked_until = _LOCKED_SENTINEL if (count >= _THROTTLE_LIMIT or already_locked) else None
+    newly_locked = (locked_until == _LOCKED_SENTINEL and not already_locked)
 
     username_val = (username or "").lower().strip()
+    ip_address = key[3:] if key.startswith("ip:") else (ip or "")
 
     if row:
         cur.execute(
@@ -92,12 +145,25 @@ def throttle_fail(conn, key, username=None):
         )
     else:
         cur.execute(
-            """INSERT INTO login_throttle (key, fail_count, locked_until, last_attempted_username)
+            """INSERT INTO login_throttle
+               (key, fail_count, locked_until, last_attempted_username)
                VALUES (?, ?, ?, ?)""",
             (key, count, locked_until, username_val),
         )
 
-    if locked_until == _LOCKED_SENTINEL and not already_locked:
+    if newly_locked:
+        notes = "Account locked after reaching maximum failed attempts."
+    elif already_locked:
+        notes = "Login attempt while account was locked."
+    else:
+        notes = None
+
+    _write_audit(cur, "failed_login", key,
+                 ip_address=ip_address, username=username_val,
+                 fail_count=count, is_locked=bool(locked_until),
+                 notes=notes)
+
+    if newly_locked:
         _logger.warning(
             "[LOGIN LOCKOUT] key=%r PERMANENTLY LOCKED — fail_count=%d last_username=%r",
             key, count, username_val,
@@ -114,8 +180,8 @@ def throttle_fail(conn, key, username=None):
         )
 
 
-def throttle_success(conn, key):
-    """Clear failed-attempt counter after a successful login.
+def throttle_success(conn, key, username=None, ip=None):
+    """Record a successful login and clear the failed-attempt counter.
 
     If an active lockout is in place the counter is NOT cleared — management
     must manually release the lock.  This prevents a locked account from being
@@ -125,14 +191,54 @@ def throttle_success(conn, key):
     _ensure_throttle_table(cur)
     cur.execute("SELECT locked_until FROM login_throttle WHERE key=?", (key,))
     row = cur.fetchone()
+
+    username_val = (username or "").lower().strip()
+    ip_address = key[3:] if key.startswith("ip:") else (ip or "")
+
+    _write_audit(cur, "successful_login", key,
+                 ip_address=ip_address, username=username_val,
+                 fail_count=0, is_locked=False)
+
     if row and row["locked_until"]:
         # Active lock — leave in place; only management can release.
         return
     cur.execute("DELETE FROM login_throttle WHERE key=?", (key,))
 
 
-def throttle_clear(conn, key):
-    """Management: manually release a lock and clear the failed-attempt record."""
-    conn.cursor().execute(
-        "DELETE FROM login_throttle WHERE key=?", (key,)
+def throttle_clear(conn, key, released_by=None):
+    """Management: release a lock.
+
+    Marks the throttle record as released (does NOT delete — history is preserved).
+    Writes a lockout_released event to the audit log.
+    """
+    cur = conn.cursor()
+    _ensure_throttle_table(cur)
+
+    cur.execute(
+        "SELECT fail_count, last_attempted_username FROM login_throttle WHERE key=?",
+        (key,)
     )
+    row = cur.fetchone()
+    fail_count = row["fail_count"] if row else 0
+    username = (row["last_attempted_username"] if row else "") or ""
+    ip_address = key[3:] if key.startswith("ip:") else ""
+
+    now_ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Mark as released rather than deleting — preserves history visibility
+    cur.execute("""
+        UPDATE login_throttle
+        SET locked_until = NULL,
+            fail_count   = 0,
+            released_by  = ?,
+            released_at  = datetime('now'),
+            updated_at   = datetime('now')
+        WHERE key = ?
+    """, (released_by or "", key))
+
+    _write_audit(cur, "lockout_released", key,
+                 ip_address=ip_address, username=username,
+                 fail_count=fail_count, is_locked=False,
+                 released_by=released_by,
+                 released_at=now_ts,
+                 notes=f"Lock released by {released_by or 'admin'}.")

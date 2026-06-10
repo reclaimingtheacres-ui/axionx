@@ -32,6 +32,8 @@
   .res-table td { font-size:.92rem; vertical-align:middle; }
   .res-table tr:last-child td { border-bottom:0; }
   .res-empty { color:var(--muted); font-size:.9rem; padding:1.2rem .5rem; }
+  .lockout-filter-btn { background:var(--hover); color:var(--text); border:1px solid var(--line); font-size:.82rem; padding:.25rem .7rem; }
+  .lockout-filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
 </style>
 
 <!-- Sub-navigation -->
@@ -95,42 +97,47 @@
   <div class="ax-card">
     <div class="ax-card-h" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
       <span>Login Security &amp; Lockouts</span>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+        <input type="text" id="lockoutSearch" class="form-control form-control-sm"
+               style="width:210px" placeholder="Search username or IP&hellip;"
+               oninput="lockoutSearchDebounce()">
         <button class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" onclick="lockoutLoad()">&#8635; Refresh</button>
-        <button class="btn btn-sm btn-outline-secondary" onclick="lockoutClearExpired()">Clear Inactive</button>
       </div>
     </div>
     <div class="ax-card-b">
       <p class="small mb-3" style="color:var(--muted)">
-        Failed login attempts are tracked separately by IP address and username. After <strong>3 failures</strong>, both the IP and the username are permanently locked until manually released here. A successful login only clears the counters if no lock is active — a locked account must be released by Management. Passwords are never stored here.
+        All login events are recorded permanently. After <strong>3 failed attempts</strong> both the IP address and the username are permanently locked until manually released here. Releasing a lock preserves the full audit history — the record is marked released, not deleted. Passwords are never stored here.
       </p>
 
       <div id="lockoutStatus" class="mb-3" style="display:none"></div>
 
-      <!-- Filter row -->
-      <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
-        <label class="d-flex align-items-center gap-2 small" style="color:var(--text);cursor:pointer">
-          <input type="checkbox" id="lockoutShowActive" checked onchange="lockoutRender()"> Show active only
-        </label>
-        <span id="lockoutCount" class="small" style="color:var(--muted)"></span>
+      <!-- Filter tabs -->
+      <div class="d-flex gap-1 mb-3 flex-wrap align-items-center">
+        <button class="btn btn-sm lockout-filter-btn active" data-filter="all_activity"      onclick="lockoutSetFilter(this)">All Activity</button>
+        <button class="btn btn-sm lockout-filter-btn"        data-filter="active_lockouts"   onclick="lockoutSetFilter(this)">Active Lockouts</button>
+        <button class="btn btn-sm lockout-filter-btn"        data-filter="failed_logins"     onclick="lockoutSetFilter(this)">Failed Logins</button>
+        <button class="btn btn-sm lockout-filter-btn"        data-filter="successful_logins" onclick="lockoutSetFilter(this)">Successful Logins</button>
+        <button class="btn btn-sm lockout-filter-btn"        data-filter="released"          onclick="lockoutSetFilter(this)">Released</button>
+        <span id="lockoutCount" class="small ms-2" style="color:var(--muted)"></span>
       </div>
 
       <div style="overflow-x:auto">
         <table class="table res-table mb-0" id="lockoutTable">
           <thead>
             <tr>
-              <th>Type</th>
-              <th>Value</th>
-              <th>Last Attempted Username</th>
-              <th>Fails</th>
+              <th style="white-space:nowrap">Date / Time</th>
+              <th>Username Attempted</th>
+              <th>IP Address</th>
+              <th>Event Type</th>
+              <th style="text-align:center">Fail Count</th>
               <th>Lock Status</th>
-              <th>Last Activity (UTC)</th>
-              <th>Status</th>
+              <th>Released By</th>
+              <th>Notes</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="lockoutTbody">
-            <tr><td colspan="8" class="res-empty text-center">Loading&hellip;</td></tr>
+            <tr><td colspan="9" class="res-empty text-center">Loading&hellip;</td></tr>
           </tbody>
         </table>
       </div>
@@ -1503,78 +1510,103 @@ function deleteYard(id, btn) {
 }
 
 /* ── Login Security / Lockout Panel ─────────────────────────────────── */
-var _lockoutData = [];
+var _lockoutFilter = 'all_activity';
+var _lockoutSearchTimer = null;
+
+function lockoutSearchDebounce() {
+  clearTimeout(_lockoutSearchTimer);
+  _lockoutSearchTimer = setTimeout(lockoutLoad, 380);
+}
+
+function lockoutSetFilter(btn) {
+  document.querySelectorAll('.lockout-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  _lockoutFilter = btn.dataset.filter || 'all_activity';
+  lockoutLoad();
+}
 
 function lockoutLoad() {
   var tbody = document.getElementById('lockoutTbody');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="res-empty text-center">Loading\u2026</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="res-empty text-center">Loading\u2026</td></tr>';
   var status = document.getElementById('lockoutStatus');
-  if (status) { status.style.display = 'none'; status.textContent = ''; }
+  if (status) status.style.display = 'none';
 
-  fetch('/admin/api/lockouts', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+  var search = ((document.getElementById('lockoutSearch') || {}).value || '').trim();
+  var url = '/admin/api/lockouts?filter=' + encodeURIComponent(_lockoutFilter) +
+            (search ? '&search=' + encodeURIComponent(search) : '');
+
+  fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      if (!d.ok) { lockoutShowStatus('Failed to load lockouts.', 'danger'); return; }
-      _lockoutData = d.entries || [];
-      lockoutRender();
+      if (!d.ok) { lockoutShowStatus('Failed to load records.', 'danger'); return; }
+      lockoutRender(d.entries || [], d.total || 0, d.locked_count || 0);
     })
-    .catch(function() { lockoutShowStatus('Network error loading lockouts.', 'danger'); });
+    .catch(function() { lockoutShowStatus('Network error loading records.', 'danger'); });
 }
 
-function lockoutRender() {
-  var tbody     = document.getElementById('lockoutTbody');
-  var activeOnly = document.getElementById('lockoutShowActive') && document.getElementById('lockoutShowActive').checked;
-  var rows = activeOnly ? _lockoutData.filter(function(e) { return e.active; }) : _lockoutData;
+function _lockoutFmtTime(utcStr) {
+  if (!utcStr) return '\u2014';
+  try {
+    var d = new Date(utcStr.trim().replace(' ', 'T') + 'Z');
+    if (isNaN(d.getTime())) return utcStr;
+    return d.toLocaleString();
+  } catch(e) { return utcStr; }
+}
 
+function _lockoutEventBadge(type) {
+  var map = {
+    'failed_login':     { label: 'Failed Login',      bg: '#fee2e2', fg: '#991b1b', bd: '#fca5a5' },
+    'successful_login': { label: 'Successful Login',   bg: '#dcfce7', fg: '#166534', bd: '#86efac' },
+    'lockout_released': { label: 'Lockout Released',   bg: '#eff6ff', fg: '#1d4ed8', bd: '#bfdbfe' },
+    'active_lockout':   { label: 'Active Lockout',     bg: '#fef3c7', fg: '#92400e', bd: '#fcd34d' },
+  };
+  var s = map[type] || { label: type, bg: '#f1f5f9', fg: '#475569', bd: '#e2e8f0' };
+  return '<span style="background:' + s.bg + ';color:' + s.fg + ';border:1px solid ' + s.bd +
+         ';border-radius:4px;padding:2px 7px;font-size:.72rem;font-weight:600;white-space:nowrap">' +
+         esc(s.label) + '</span>';
+}
+
+function _lockoutLockBadge(e) {
+  if (e.is_currently_locked) {
+    return '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 7px;font-size:.72rem;font-weight:600">\uD83D\uDD12 Locked</span>';
+  }
+  if (e.event_type === 'lockout_released' || e.released_by) {
+    return '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:4px;padding:2px 7px;font-size:.72rem">Released</span>';
+  }
+  if (e.is_locked) {
+    return '<span style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:2px 7px;font-size:.72rem">Locked at event</span>';
+  }
+  return '<span style="color:var(--muted);font-size:.82rem">\u2014</span>';
+}
+
+function lockoutRender(entries, total, lockedCount) {
+  var tbody   = document.getElementById('lockoutTbody');
   var countEl = document.getElementById('lockoutCount');
   if (countEl) {
-    var active = _lockoutData.filter(function(e) { return e.active; }).length;
-    countEl.textContent = active + ' locked, ' + _lockoutData.length + ' total';
+    countEl.textContent = total + ' record' + (total !== 1 ? 's' : '') +
+      (lockedCount > 0 ? ' \u00b7 ' + lockedCount + ' locked' : '');
   }
-
   if (!tbody) return;
-  if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="res-empty text-center">' + (activeOnly ? 'No active lockouts.' : 'No records found.') + '</td></tr>';
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="res-empty text-center">No records found.</td></tr>';
     return;
   }
 
   var html = '';
-  rows.forEach(function(e) {
-    var isPermanent = (e.locked_until === 'permanent');
-    var isLocked    = e.active;
-
-    var statusBadge = isPermanent
-      ? '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 7px;font-size:.75rem;font-weight:600">\uD83D\uDD12 Locked</span>'
-      : isLocked
-        ? '<span style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;padding:2px 7px;font-size:.75rem;font-weight:600">Locked</span>'
-        : '<span style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:.75rem">Inactive</span>';
-
-    var typeBadge = e.key_type === 'IP Address'
-      ? '<span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:4px;padding:1px 6px;font-size:.72rem">' + esc(e.key_type) + '</span>'
-      : '<span style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:4px;padding:1px 6px;font-size:.72rem">' + esc(e.key_type) + '</span>';
-
-    var userCell = (e.key_type === 'Username')
-      ? esc(e.key_value)
-      : (e.last_attempted_username ? esc(e.last_attempted_username) : '<span style="color:var(--muted)">\u2014</span>');
-
-    var lockCell = isPermanent
-      ? '<span style="color:#991b1b;font-weight:600;font-size:.82rem">Manual release required</span>'
-      : (e.locked_until
-          ? '<span style="font-size:.82rem">' + esc(e.locked_until) + '</span>'
-          : '<span style="color:var(--muted)">\u2014</span>');
-
-    var actionBtn = isLocked
-      ? '<button class="btn btn-sm btn-danger" style="padding:2px 10px;font-size:.78rem" onclick="lockoutRelease(' + JSON.stringify(e.key) + ', this)">Release</button>'
-      : '<button class="btn btn-sm btn-outline-secondary" style="padding:2px 10px;font-size:.78rem" onclick="lockoutRelease(' + JSON.stringify(e.key) + ', this)">Clear</button>';
+  entries.forEach(function(e) {
+    var actionBtn = e.is_currently_locked
+      ? '<button class="btn btn-sm btn-danger" style="padding:2px 10px;font-size:.78rem;white-space:nowrap" onclick="lockoutRelease(' + JSON.stringify(e.throttle_key) + ',this)">Release Lock</button>'
+      : '';
 
     html += '<tr>'
-      + '<td>' + typeBadge + '</td>'
-      + '<td style="font-family:monospace;font-size:.85rem">' + esc(e.key_value) + '</td>'
-      + '<td>' + userCell + '</td>'
-      + '<td style="font-weight:' + (isLocked ? '700' : '400') + ';color:' + (isLocked ? '#991b1b' : 'inherit') + '">' + esc(String(e.fail_count)) + '</td>'
-      + '<td>' + lockCell + '</td>'
-      + '<td style="font-size:.82rem;color:var(--muted)">' + esc(e.updated_at) + '</td>'
-      + '<td>' + statusBadge + '</td>'
+      + '<td style="font-size:.82rem;white-space:nowrap">' + esc(_lockoutFmtTime(e.event_ts)) + '</td>'
+      + '<td style="font-size:.85rem">' + (e.username_attempted ? esc(e.username_attempted) : '<span style="color:var(--muted)">\u2014</span>') + '</td>'
+      + '<td style="font-family:monospace;font-size:.83rem">' + (e.ip_address ? esc(e.ip_address) : '<span style="color:var(--muted)">\u2014</span>') + '</td>'
+      + '<td>' + _lockoutEventBadge(e.event_type) + '</td>'
+      + '<td style="text-align:center;font-weight:' + (e.is_locked ? '700' : '400') + ';color:' + (e.is_locked ? '#991b1b' : 'inherit') + '">' + (e.fail_count > 0 ? esc(String(e.fail_count)) : '<span style="color:var(--muted)">\u2014</span>') + '</td>'
+      + '<td>' + _lockoutLockBadge(e) + '</td>'
+      + '<td style="font-size:.82rem">' + (e.released_by ? esc(e.released_by) : '<span style="color:var(--muted)">\u2014</span>') + '</td>'
+      + '<td style="font-size:.82rem;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + esc(e.notes || '') + '">' + (e.notes ? esc(e.notes) : '<span style="color:var(--muted)">\u2014</span>') + '</td>'
       + '<td>' + actionBtn + '</td>'
       + '</tr>';
   });
@@ -1582,7 +1614,8 @@ function lockoutRender() {
 }
 
 function lockoutRelease(key, btn) {
-  var origText = btn ? btn.textContent : 'Release';
+  if (!confirm('Release the lock for "' + key + '"?\nLogin attempts from this address/account will be allowed again.')) return;
+  var origText = btn ? btn.textContent : 'Release Lock';
   if (btn) { btn.disabled = true; btn.textContent = '\u2026'; }
   fetch('/admin/api/lockouts/clear', {
     method: 'POST',
@@ -1596,7 +1629,7 @@ function lockoutRelease(key, btn) {
         if (btn) { btn.disabled = false; btn.textContent = origText; }
         return;
       }
-      lockoutShowStatus('Lock released.', 'success');
+      lockoutShowStatus('Lock released. Audit history preserved.', 'success');
       lockoutLoad();
     })
     .catch(function() {
@@ -1612,7 +1645,7 @@ function lockoutClearExpired() {
   })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      lockoutShowStatus(d.ok ? 'Inactive records cleared.' : (d.error || 'Failed.'), d.ok ? 'success' : 'danger');
+      lockoutShowStatus(d.ok ? 'Inactive state records cleared.' : (d.error || 'Failed.'), d.ok ? 'success' : 'danger');
       lockoutLoad();
     })
     .catch(function() { lockoutShowStatus('Network error.', 'danger'); });
@@ -1624,7 +1657,7 @@ function lockoutShowStatus(msg, type) {
   el.className = 'alert alert-' + type + ' py-2 small';
   el.textContent = msg;
   el.style.display = '';
-  setTimeout(function() { el.style.display = 'none'; }, 4000);
+  setTimeout(function() { el.style.display = 'none'; }, 5000);
 }
 
 /* ── Change Password ────────────────────────────────────────────────── */

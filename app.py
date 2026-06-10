@@ -642,6 +642,11 @@ def _schema_is_current():
             sched_cols = [c[1] for c in conn.execute("PRAGMA table_info(schedules)").fetchall()]
             if "actioned_at" not in sched_cols:
                 return False
+            lal_tbl = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='login_audit_log'"
+            ).fetchone()
+            if not lal_tbl:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -729,6 +734,26 @@ def _startup_migrate():
         add_column_if_missing(_cur, "repo_lock_records", "tow_phone",          "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_operator",       "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_contact_number", "TEXT")
+        add_column_if_missing(_cur, "login_throttle", "released_by", "TEXT")
+        add_column_if_missing(_cur, "login_throttle", "released_at", "TEXT")
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS login_audit_log (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_ts            TEXT NOT NULL DEFAULT (datetime('now')),
+                event_type          TEXT NOT NULL,
+                throttle_key        TEXT,
+                ip_address          TEXT,
+                username_attempted  TEXT,
+                fail_count          INTEGER DEFAULT 0,
+                is_locked           INTEGER DEFAULT 0,
+                released_by         TEXT,
+                released_at         TEXT,
+                notes               TEXT
+            )
+        """)
+        _conn.execute("CREATE INDEX IF NOT EXISTS ix_lal_ts   ON login_audit_log(event_ts DESC)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS ix_lal_type ON login_audit_log(event_type)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS ix_lal_key  ON login_audit_log(throttle_key)")
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS group_calendar_entries (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3852,16 +3877,16 @@ def login_post():
     user = cur.fetchone()
 
     if not user or not check_password_hash(user["password"], password):
-        throttle_fail(conn, ip_key,   username=email)
-        throttle_fail(conn, user_key, username=email)
+        throttle_fail(conn, ip_key,   username=email, ip=ip)
+        throttle_fail(conn, user_key, username=email, ip=ip)
         conn.commit()
         conn.close()
         audit("auth", None, "login_failed", f"Failed login attempt for '{email}'", {"ip": ip})
         flash("Invalid email or password.", "danger")
         return redirect(url_for("login"))
 
-    throttle_success(conn, ip_key)
-    throttle_success(conn, user_key)
+    throttle_success(conn, ip_key,   username=email, ip=ip)
+    throttle_success(conn, user_key, username=email, ip=ip)
     conn.commit()
     conn.close()
 
@@ -16666,75 +16691,130 @@ def admin_settings():
 @login_required
 @admin_required
 def admin_api_lockouts():
-    """Return all login throttle entries for the management panel."""
-    from datetime import datetime as _dt_lo
-    from security import _LOCKED_SENTINEL as _LS
+    """Return login security audit log with filter/search support."""
+    from security import (_LOCKED_SENTINEL as _LS,
+                          _ensure_audit_table as _eat,
+                          _ensure_throttle_table as _ett)
+    filter_type = (request.args.get("filter") or "all_activity").strip()
+    search = (request.args.get("search") or "").strip().lower()
+
     conn = db()
     try:
-        rows = conn.execute("""
-            SELECT key, fail_count, locked_until, last_attempted_username, updated_at
-            FROM login_throttle
-            ORDER BY updated_at DESC
-            LIMIT 200
-        """).fetchall()
-    except Exception:
+        _cur = conn.cursor()
+        _ett(_cur)
+        _eat(_cur)
+        conn.commit()
+
+        params = []
+        if filter_type == "active_lockouts":
+            where = "WHERE lt.locked_until = ?"
+            params.append(_LS)
+            if search:
+                where += " AND (LOWER(COALESCE(lt.last_attempted_username,'')) LIKE ? OR lt.key LIKE ?)"
+                params += [f"%{search}%", f"%{search}%"]
+            rows = conn.execute(f"""
+                SELECT
+                    NULL                                          AS id,
+                    lt.updated_at                                 AS event_ts,
+                    'active_lockout'                              AS event_type,
+                    lt.key                                        AS throttle_key,
+                    CASE WHEN lt.key LIKE 'ip:%'
+                         THEN SUBSTR(lt.key, 4) ELSE '' END       AS ip_address,
+                    COALESCE(lt.last_attempted_username, '')       AS username_attempted,
+                    lt.fail_count,
+                    1                                             AS is_locked,
+                    ''                                            AS released_by,
+                    ''                                            AS released_at,
+                    ''                                            AS notes,
+                    lt.locked_until                               AS current_lock_status
+                FROM login_throttle lt
+                {where}
+                ORDER BY lt.updated_at DESC
+            """, params).fetchall()
+        else:
+            where_clauses = []
+            if filter_type == "failed_logins":
+                where_clauses.append("al.event_type = 'failed_login'")
+            elif filter_type == "successful_logins":
+                where_clauses.append("al.event_type = 'successful_login'")
+            elif filter_type == "released":
+                where_clauses.append("al.event_type = 'lockout_released'")
+            if search:
+                where_clauses.append(
+                    "(LOWER(COALESCE(al.username_attempted,'')) LIKE ?"
+                    " OR COALESCE(al.ip_address,'') LIKE ?"
+                    " OR COALESCE(al.throttle_key,'') LIKE ?)"
+                )
+                params += [f"%{search}%", f"%{search}%", f"%{search}%"]
+            where_str = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+            rows = conn.execute(f"""
+                SELECT
+                    al.id,
+                    al.event_ts,
+                    al.event_type,
+                    al.throttle_key,
+                    al.ip_address,
+                    al.username_attempted,
+                    al.fail_count,
+                    al.is_locked,
+                    al.released_by,
+                    al.released_at,
+                    al.notes,
+                    COALESCE(lt.locked_until, '') AS current_lock_status
+                FROM login_audit_log al
+                LEFT JOIN login_throttle lt ON lt.key = al.throttle_key
+                {where_str}
+                ORDER BY al.event_ts DESC
+                LIMIT 500
+            """, params).fetchall()
+    except Exception as _le:
+        import logging as _ell
+        _ell.getLogger("axionx").error("[lockouts API] %s", _le)
         rows = []
     finally:
         conn.close()
-    now_utc = _dt_lo.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
     entries = []
     for r in rows:
-        key = r["key"] or ""
-        if key.startswith("ip:"):
-            key_type  = "IP Address"
-            key_value = key[3:]
-        elif key.startswith("user:"):
-            key_type  = "Username"
-            key_value = key[5:]
-        else:
-            key_type  = "Unknown"
-            key_value = key
-        lu = (r["locked_until"] or "").strip()
-        if lu == _LS:
-            is_active    = True
-            lock_display = "permanent"
-        elif lu:
-            # Legacy time-based row
-            is_active    = lu > now_utc
-            lock_display = lu
-        else:
-            is_active    = False
-            lock_display = ""
+        current_lock = (r["current_lock_status"] or "").strip()
         entries.append({
-            "key":                     key,
-            "key_type":                key_type,
-            "key_value":               key_value,
-            "fail_count":              r["fail_count"] or 0,
-            "locked_until":            lock_display,
-            "last_attempted_username": (r["last_attempted_username"] or ""),
-            "updated_at":              (r["updated_at"] or ""),
-            "active":                  is_active,
+            "id":                 r["id"],
+            "event_ts":           r["event_ts"] or "",
+            "event_type":         r["event_type"] or "",
+            "throttle_key":       r["throttle_key"] or "",
+            "ip_address":         r["ip_address"] or "",
+            "username_attempted": r["username_attempted"] or "",
+            "fail_count":         r["fail_count"] or 0,
+            "is_locked":          bool(r["is_locked"]),
+            "released_by":        r["released_by"] or "",
+            "released_at":        r["released_at"] or "",
+            "notes":              r["notes"] or "",
+            "current_lock_status":  current_lock,
+            "is_currently_locked":  (current_lock == _LS),
         })
-    return jsonify({"ok": True, "entries": entries})
+    locked_count = sum(1 for e in entries if e["is_currently_locked"])
+    return jsonify({"ok": True, "entries": entries,
+                    "total": len(entries), "locked_count": locked_count})
 
 
 @app.post("/admin/api/lockouts/clear")
 @login_required
 @admin_required
 def admin_api_lockout_clear():
-    """Manually clear a single throttle entry by key."""
+    """Manually release a single lockout by key. Records who released it."""
     key = ((request.get_json(silent=True) or {}).get("key") or "").strip()
     if not key:
         return jsonify({"ok": False, "error": "Key required."}), 400
+    released_by = str(session.get("user_name") or session.get("user_id") or "admin")
     conn = db()
     try:
-        throttle_clear(conn, key)
+        throttle_clear(conn, key, released_by=released_by)
         conn.commit()
     finally:
         conn.close()
-    audit("auth", None, "lockout_cleared",
-          f"Login lockout manually cleared for key: {key}",
-          {"cleared_by": session.get("user_id")})
+    audit("auth", None, "lockout_released",
+          f"Login lockout released for key: {key}",
+          {"released_by": released_by})
     return jsonify({"ok": True})
 
 
@@ -16742,8 +16822,7 @@ def admin_api_lockout_clear():
 @login_required
 @admin_required
 def admin_api_lockout_clear_expired():
-    """Remove throttle entries that have no active lock (below-threshold fail counts only).
-    Permanent locks are never touched by this endpoint — they require individual release."""
+    """Remove non-locked throttle state rows (does not touch audit log or permanent locks)."""
     from security import _LOCKED_SENTINEL as _LS2
     from datetime import datetime as _dt_ce
     now_utc = _dt_ce.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -16758,7 +16837,7 @@ def admin_api_lockout_clear_expired():
     finally:
         conn.close()
     audit("auth", None, "lockout_bulk_clear_inactive",
-          "Bulk-cleared inactive (unlocked) throttle records.",
+          "Bulk-cleared inactive (unlocked) throttle state records.",
           {"cleared_by": session.get("user_id")})
     return jsonify({"ok": True})
 
@@ -20710,16 +20789,16 @@ def m_login_post():
     user = conn.execute("SELECT * FROM users WHERE LOWER(email)=? AND active=1", (email,)).fetchone()
 
     if not user or not check_password_hash(user["password"], password):
-        throttle_fail(conn, ip_key,   username=email)
-        throttle_fail(conn, user_key, username=email)
+        throttle_fail(conn, ip_key,   username=email, ip=ip)
+        throttle_fail(conn, user_key, username=email, ip=ip)
         conn.commit()
         conn.close()
         audit("auth", None, "login_failed", f"Failed mobile login attempt for '{email}'", {"ip": ip})
         return render_template("mobile/login.html", error="Invalid email or password.",
                                prefill_email=email, next=next_path)
 
-    throttle_success(conn, ip_key)
-    throttle_success(conn, user_key)
+    throttle_success(conn, ip_key,   username=email, ip=ip)
+    throttle_success(conn, user_key, username=email, ip=ip)
     conn.commit()
     conn.close()
     session.permanent = True
