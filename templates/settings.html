@@ -1147,7 +1147,8 @@ function showTab(name) {
   if (pane) pane.style.display = '';
   var link = document.querySelector('.settings-nav .nav-link[data-tab="' + name + '"]');
   if (link) link.classList.add('active');
-  location.hash = name;
+  history.replaceState(null, '', location.pathname + (name !== 'job-numbers' ? '#' + name : ''));
+  window.scrollTo(0, 0);
 }
 
 document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
