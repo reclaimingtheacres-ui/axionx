@@ -865,6 +865,66 @@ function dupDeleteClient(clientId, name) {
 }
 </script>
 
+<!-- TAB: AI Draft Cleanup -->
+<div class="tab-pane-custom" id="tab-ai-drafts" style="display:none">
+  {% set total_drafts = ai_draft_cleanup.total_drafts %}
+  {% set on_inactive = ai_draft_cleanup.on_inactive %}
+  {% set blank_drafts = ai_draft_cleanup.blank_drafts %}
+  {% set will_discard = ai_draft_cleanup.will_discard %}
+  {% set affected_records = ai_draft_cleanup.affected_records %}
+  {% set schema_ready = ai_draft_cleanup.schema_ready %}
+  {% set ai_drafts_embedded = true %}
+  {% include "partials/ai_draft_cleanup_panel.html" %}
+</div>
+
+<!-- TAB: Login Security -->
+<div class="tab-pane-custom" id="tab-login-security" style="display:none">
+  <div class="ax-card">
+    <div class="ax-card-h" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+      <span>Login Security &amp; Lockouts</span>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" onclick="lockoutLoad()">&#8635; Refresh</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="lockoutClearExpired()">Clear Inactive</button>
+      </div>
+    </div>
+    <div class="ax-card-b">
+      <p class="small mb-3" style="color:var(--muted)">
+        Failed login attempts are tracked separately by IP address and username. After <strong>3 failures</strong>, both the IP and the username are permanently locked until manually released here. A successful login only clears the counters if no lock is active — a locked account must be released by Management. Passwords are never stored here.
+      </p>
+
+      <div id="lockoutStatus" class="mb-3" style="display:none"></div>
+
+      <!-- Filter row -->
+      <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+        <label class="d-flex align-items-center gap-2 small" style="color:var(--text);cursor:pointer">
+          <input type="checkbox" id="lockoutShowActive" checked onchange="lockoutRender()"> Show active only
+        </label>
+        <span id="lockoutCount" class="small" style="color:var(--muted)"></span>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table class="table res-table mb-0" id="lockoutTable">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Value</th>
+              <th>Last Attempted Username</th>
+              <th>Fails</th>
+              <th>Lock Status</th>
+              <th>Last Activity (UTC)</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="lockoutTbody">
+            <tr><td colspan="8" class="res-empty text-center">Loading&hellip;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block modals %}
@@ -1074,66 +1134,6 @@ function dupDeleteClient(clientId, name) {
           <tr><td><span class="badge" style="background:#6366f120;color:#6366f1;border:1px solid #6366f140">Cold Stored</span></td><td>Old archived files with attachments in compressed cold storage</td><td>Archive search (metadata only, attachments require retrieval)</td></tr>
         </tbody>
       </table>
-    </div>
-  </div>
-</div>
-
-<!-- TAB: AI Draft Cleanup -->
-<div class="tab-pane-custom" id="tab-ai-drafts" style="display:none">
-  {% set total_drafts = ai_draft_cleanup.total_drafts %}
-  {% set on_inactive = ai_draft_cleanup.on_inactive %}
-  {% set blank_drafts = ai_draft_cleanup.blank_drafts %}
-  {% set will_discard = ai_draft_cleanup.will_discard %}
-  {% set affected_records = ai_draft_cleanup.affected_records %}
-  {% set schema_ready = ai_draft_cleanup.schema_ready %}
-  {% set ai_drafts_embedded = true %}
-  {% include "partials/ai_draft_cleanup_panel.html" %}
-</div>
-
-<!-- TAB: Login Security -->
-<div class="tab-pane-custom" id="tab-login-security" style="display:none">
-  <div class="ax-card">
-    <div class="ax-card-h" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
-      <span>Login Security &amp; Lockouts</span>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <button class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" onclick="lockoutLoad()">&#8635; Refresh</button>
-        <button class="btn btn-sm btn-outline-secondary" onclick="lockoutClearExpired()">Clear Inactive</button>
-      </div>
-    </div>
-    <div class="ax-card-b">
-      <p class="small mb-3" style="color:var(--muted)">
-        Failed login attempts are tracked separately by IP address and username. After <strong>3 failures</strong>, both the IP and the username are permanently locked until manually released here. A successful login only clears the counters if no lock is active — a locked account must be released by Management. Passwords are never stored here.
-      </p>
-
-      <div id="lockoutStatus" class="mb-3" style="display:none"></div>
-
-      <!-- Filter row -->
-      <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
-        <label class="d-flex align-items-center gap-2 small" style="color:var(--text);cursor:pointer">
-          <input type="checkbox" id="lockoutShowActive" checked onchange="lockoutRender()"> Show active only
-        </label>
-        <span id="lockoutCount" class="small" style="color:var(--muted)"></span>
-      </div>
-
-      <div style="overflow-x:auto">
-        <table class="table res-table mb-0" id="lockoutTable">
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Value</th>
-              <th>Last Attempted Username</th>
-              <th>Fails</th>
-              <th>Lock Status</th>
-              <th>Last Activity (UTC)</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="lockoutTbody">
-            <tr><td colspan="8" class="res-empty text-center">Loading…</td></tr>
-          </tbody>
-        </table>
-      </div>
     </div>
   </div>
 </div>
