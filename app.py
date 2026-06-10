@@ -3838,10 +3838,14 @@ def login_post():
     allowed_ip,   locked_ip   = throttle_check(conn, ip_key)
     allowed_user, locked_user = throttle_check(conn, user_key)
     if not allowed_ip or not allowed_user:
-        locked_until = locked_ip or locked_user
         conn.close()
-        _ll.warning("[LOGIN BLOCKED] ip=%r email=%r locked_until=%r", ip, email, locked_until)
-        flash(f"Too many failed attempts. Try again after {locked_until} UTC.", "danger")
+        _ll.warning("[LOGIN BLOCKED] ip=%r email=%r ip_status=%r user_status=%r",
+                    ip, email, locked_ip, locked_user)
+        audit("auth", None, "login_blocked",
+              f"Login blocked for '{email}' — account or IP is locked.",
+              {"ip": ip})
+        flash("This account has been locked due to multiple failed login attempts. "
+              "Please contact an administrator to regain access.", "danger")
         return redirect(url_for("login"))
 
     cur.execute("SELECT * FROM users WHERE email = ? AND active = 1", (email,))
@@ -16664,6 +16668,7 @@ def admin_settings():
 def admin_api_lockouts():
     """Return all login throttle entries for the management panel."""
     from datetime import datetime as _dt_lo
+    from security import _LOCKED_SENTINEL as _LS
     conn = db()
     try:
         rows = conn.execute("""
@@ -16690,13 +16695,22 @@ def admin_api_lockouts():
             key_type  = "Unknown"
             key_value = key
         lu = (r["locked_until"] or "").strip()
-        is_active = bool(lu and lu > now_utc)
+        if lu == _LS:
+            is_active    = True
+            lock_display = "permanent"
+        elif lu:
+            # Legacy time-based row
+            is_active    = lu > now_utc
+            lock_display = lu
+        else:
+            is_active    = False
+            lock_display = ""
         entries.append({
             "key":                     key,
             "key_type":                key_type,
             "key_value":               key_value,
             "fail_count":              r["fail_count"] or 0,
-            "locked_until":            lu,
+            "locked_until":            lock_display,
             "last_attempted_username": (r["last_attempted_username"] or ""),
             "updated_at":              (r["updated_at"] or ""),
             "active":                  is_active,
@@ -16728,18 +16742,24 @@ def admin_api_lockout_clear():
 @login_required
 @admin_required
 def admin_api_lockout_clear_expired():
-    """Remove all throttle entries that are no longer actively locked."""
+    """Remove throttle entries that have no active lock (below-threshold fail counts only).
+    Permanent locks are never touched by this endpoint — they require individual release."""
+    from security import _LOCKED_SENTINEL as _LS2
     from datetime import datetime as _dt_ce
     now_utc = _dt_ce.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     conn = db()
     try:
         conn.execute("""
             DELETE FROM login_throttle
-            WHERE locked_until IS NULL OR locked_until <= ?
-        """, (now_utc,))
+            WHERE (locked_until IS NULL OR locked_until <= ?)
+              AND locked_until != ?
+        """, (now_utc, _LS2))
         conn.commit()
     finally:
         conn.close()
+    audit("auth", None, "lockout_bulk_clear_inactive",
+          "Bulk-cleared inactive (unlocked) throttle records.",
+          {"cleared_by": session.get("user_id")})
     return jsonify({"ok": True})
 
 
@@ -20674,10 +20694,17 @@ def m_login_post():
     allowed_ip,   locked_ip   = throttle_check(conn, ip_key)
     allowed_user, locked_user = throttle_check(conn, user_key)
     if not allowed_ip or not allowed_user:
-        locked_until = locked_ip or locked_user
         conn.close()
+        import logging as _mll
+        _mll.getLogger("axionx.security").warning(
+            "[LOGIN BLOCKED/mobile] ip=%r email=%r ip_status=%r user_status=%r",
+            ip, email, locked_ip, locked_user)
+        audit("auth", None, "login_blocked",
+              f"Mobile login blocked for '{email}' — account or IP is locked.",
+              {"ip": ip})
         return render_template("mobile/login.html",
-                               error=f"Too many failed attempts. Try again after {locked_until} UTC.",
+                               error="This account has been locked due to multiple failed login "
+                                     "attempts. Please contact an administrator to regain access.",
                                prefill_email=email, next=next_path)
 
     user = conn.execute("SELECT * FROM users WHERE LOWER(email)=? AND active=1", (email,)).fetchone()
