@@ -734,8 +734,9 @@ def _startup_migrate():
         add_column_if_missing(_cur, "repo_lock_records", "tow_phone",          "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_operator",       "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_contact_number", "TEXT")
-        add_column_if_missing(_cur, "login_throttle", "released_by", "TEXT")
-        add_column_if_missing(_cur, "login_throttle", "released_at", "TEXT")
+        add_column_if_missing(_cur, "login_throttle", "last_attempted_username", "TEXT")
+        add_column_if_missing(_cur, "login_throttle", "released_by",            "TEXT")
+        add_column_if_missing(_cur, "login_throttle", "released_at",            "TEXT")
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS login_audit_log (
                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
