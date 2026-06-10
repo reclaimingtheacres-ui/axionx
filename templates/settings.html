@@ -67,6 +67,9 @@
     <li class="nav-item">
       <a class="nav-link" href="/admin/settings?tab=ai-drafts" data-tab="ai-drafts">AI Draft Cleanup</a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#login-security" data-tab="login-security">Login Security</a>
+    </li>
     {% if not DEMO_MODE %}
     <li class="nav-item">
       <a class="nav-link" href="/admin/geoop-staging-audit">GeoOp Staging Audit</a>
@@ -1087,6 +1090,55 @@ function dupDeleteClient(clientId, name) {
   {% include "partials/ai_draft_cleanup_panel.html" %}
 </div>
 
+<!-- TAB: Login Security -->
+<div class="tab-pane-custom" id="tab-login-security" style="display:none">
+  <div class="ax-card">
+    <div class="ax-card-h" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+      <span>Login Security &amp; Lockouts</span>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" onclick="lockoutLoad()">&#8635; Refresh</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="lockoutClearExpired()">Clear Expired</button>
+      </div>
+    </div>
+    <div class="ax-card-b">
+      <p class="small mb-3" style="color:var(--muted)">
+        Failed login attempts are tracked separately by IP address and username. Either reaching 5 failures triggers a 10-minute lockout.
+        A successful login clears both counters. Passwords are never stored here.
+      </p>
+
+      <div id="lockoutStatus" class="mb-3" style="display:none"></div>
+
+      <!-- Filter row -->
+      <div class="d-flex gap-2 mb-3 flex-wrap align-items-center">
+        <label class="d-flex align-items-center gap-2 small" style="color:var(--text);cursor:pointer">
+          <input type="checkbox" id="lockoutShowActive" checked onchange="lockoutRender()"> Show active only
+        </label>
+        <span id="lockoutCount" class="small" style="color:var(--muted)"></span>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table class="table res-table mb-0" id="lockoutTable">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Value</th>
+              <th>Last Attempted Username</th>
+              <th>Fails</th>
+              <th>Locked Until (UTC)</th>
+              <th>Last Activity (UTC)</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="lockoutTbody">
+            <tr><td colspan="8" class="res-empty text-center">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ── Tab switching ──────────────────────────────────────────────────── */
 function showTab(name) {
@@ -1108,11 +1160,20 @@ document.querySelectorAll('.settings-nav .nav-link').forEach(function(link) {
 });
 
 (function() {
-  var validTabs = ['job-numbers', 'import-data', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder', 'data-management', 'ai-drafts'];
+  var validTabs = ['job-numbers', 'import-data', 'booking-types', 'tow-operators', 'auction-yards', 'ai-settings', 'change-password', 'duplicate-finder', 'data-management', 'ai-drafts', 'login-security'];
   var queryTab = new URLSearchParams(location.search).get('tab') || '';
   var hash = location.hash.replace('#', '');
-  showTab(validTabs.indexOf(queryTab) >= 0 ? queryTab : (validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers'));
+  var chosen = validTabs.indexOf(queryTab) >= 0 ? queryTab : (validTabs.indexOf(hash) >= 0 ? hash : 'job-numbers');
+  showTab(chosen);
+  if (chosen === 'login-security') lockoutLoad();
 })();
+
+/* ── Intercept showTab to auto-load lockout panel ───────────────────── */
+var _origShowTab = showTab;
+showTab = function(name) {
+  _origShowTab(name);
+  if (name === 'login-security') lockoutLoad();
+};
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1439,6 +1500,104 @@ function deleteYard(id, btn) {
         }
       }
     });
+}
+
+/* ── Login Security / Lockout Panel ─────────────────────────────────── */
+var _lockoutData = [];
+
+function lockoutLoad() {
+  var tbody = document.getElementById('lockoutTbody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="res-empty text-center">Loading…</td></tr>';
+  var status = document.getElementById('lockoutStatus');
+  if (status) { status.style.display = 'none'; status.textContent = ''; }
+
+  fetch('/admin/api/lockouts', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) { lockoutShowStatus('Failed to load lockouts.', 'danger'); return; }
+      _lockoutData = d.entries || [];
+      lockoutRender();
+    })
+    .catch(function() { lockoutShowStatus('Network error loading lockouts.', 'danger'); });
+}
+
+function lockoutRender() {
+  var tbody  = document.getElementById('lockoutTbody');
+  var activeOnly = document.getElementById('lockoutShowActive') && document.getElementById('lockoutShowActive').checked;
+  var rows = activeOnly ? _lockoutData.filter(function(e) { return e.active; }) : _lockoutData;
+
+  var countEl = document.getElementById('lockoutCount');
+  if (countEl) {
+    var active = _lockoutData.filter(function(e) { return e.active; }).length;
+    countEl.textContent = active + ' active, ' + _lockoutData.length + ' total';
+  }
+
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="res-empty text-center">' + (activeOnly ? 'No active lockouts.' : 'No records found.') + '</td></tr>';
+    return;
+  }
+
+  var html = '';
+  rows.forEach(function(e) {
+    var badge = e.active
+      ? '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:4px;padding:2px 7px;font-size:.75rem;font-weight:600">Active</span>'
+      : '<span style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;border-radius:4px;padding:2px 7px;font-size:.75rem">Expired</span>';
+    var typeBadge = e.key_type === 'IP Address'
+      ? '<span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:4px;padding:1px 6px;font-size:.72rem">' + esc(e.key_type) + '</span>'
+      : '<span style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:4px;padding:1px 6px;font-size:.72rem">' + esc(e.key_type) + '</span>';
+    var userCell = (e.key_type === 'Username') ? esc(e.key_value) : (e.last_attempted_username ? esc(e.last_attempted_username) : '<span style="color:var(--muted)">—</span>');
+    var lockedUntil = e.locked_until ? esc(e.locked_until) : '<span style="color:var(--muted)">—</span>';
+    html += '<tr>'
+      + '<td>' + typeBadge + '</td>'
+      + '<td style="font-family:monospace;font-size:.85rem">' + esc(e.key_value) + '</td>'
+      + '<td>' + userCell + '</td>'
+      + '<td>' + esc(String(e.fail_count)) + '</td>'
+      + '<td style="font-size:.82rem">' + lockedUntil + '</td>'
+      + '<td style="font-size:.82rem">' + esc(e.updated_at) + '</td>'
+      + '<td>' + badge + '</td>'
+      + '<td><button class="btn btn-sm btn-outline-danger" style="padding:2px 8px;font-size:.78rem" onclick="lockoutClear(' + JSON.stringify(e.key) + ', this)">Clear</button></td>'
+      + '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function lockoutClear(key, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  fetch('/admin/api/lockouts/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    body: JSON.stringify({ key: key })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) { lockoutShowStatus(d.error || 'Clear failed.', 'danger'); if (btn) { btn.disabled = false; btn.textContent = 'Clear'; } return; }
+      lockoutShowStatus('Lockout cleared.', 'success');
+      lockoutLoad();
+    })
+    .catch(function() { lockoutShowStatus('Network error.', 'danger'); if (btn) { btn.disabled = false; btn.textContent = 'Clear'; } });
+}
+
+function lockoutClearExpired() {
+  fetch('/admin/api/lockouts/clear-all-expired', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      lockoutShowStatus(d.ok ? 'Expired records cleared.' : (d.error || 'Failed.'), d.ok ? 'success' : 'danger');
+      lockoutLoad();
+    })
+    .catch(function() { lockoutShowStatus('Network error.', 'danger'); });
+}
+
+function lockoutShowStatus(msg, type) {
+  var el = document.getElementById('lockoutStatus');
+  if (!el) return;
+  el.className = 'alert alert-' + type + ' py-2 small';
+  el.textContent = msg;
+  el.style.display = '';
+  setTimeout(function() { el.style.display = 'none'; }, 4000);
 }
 
 /* ── Change Password ────────────────────────────────────────────────── */

@@ -91,7 +91,7 @@ def _maybe_convert_heic(file_storage):
     jpeg_bytes, new_name = _convert_heic_to_jpeg(file_storage)
     return jpeg_bytes, new_name, True
 
-from security import throttle_check, throttle_fail, throttle_success
+from security import throttle_check, throttle_fail, throttle_success, throttle_clear
 from datetime import timedelta as _td
 
 app = Flask(__name__)
@@ -3766,11 +3766,29 @@ def login():
     return render_template("login.html")
 
 
+def _strip_port(addr: str) -> str:
+    """Remove source port from an IP address string.
+
+    Handles:
+      IPv4 with port  — 49.183.137.233:3115  → 49.183.137.233
+      IPv6 bracketed  — [::1]:443            → ::1
+      Pure IPv6       — ::1                  → ::1  (unchanged)
+      No port         — 49.183.137.233       → 49.183.137.233
+    """
+    addr = (addr or "").strip()
+    if addr.startswith("["):        # [IPv6]:port notation
+        end = addr.find("]")
+        return addr[1:end] if end > 0 else addr
+    if addr.count(":") == 1:       # exactly one colon → IPv4:port
+        return addr.split(":")[0]
+    return addr                     # pure IPv6 or already clean
+
+
 def _client_ip():
     xff = request.headers.get("X-Forwarded-For", "")
     if xff:
-        return xff.split(",")[0].strip()
-    return request.remote_addr or ""
+        return _strip_port(xff.split(",")[0].strip())
+    return _strip_port(request.remote_addr or "")
 
 def _audit(event: str, ip: str, ok: bool):
     print(f"[BREAKGLASS] {datetime.utcnow().isoformat()}Z event={event} ok={ok} ip={ip}")
@@ -3804,18 +3822,25 @@ def break_glass():
 
 @app.post("/login")
 def login_post():
+    import logging as _login_log
+    _ll = _login_log.getLogger("axionx.security")
+
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "").strip()
 
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
-    ip_key = f"ip:{ip}"
+    ip       = _client_ip()
+    ip_key   = f"ip:{ip}"
+    user_key = f"user:{email}"
 
     conn = db()
     cur = conn.cursor()
 
-    allowed, locked_until = throttle_check(conn, ip_key)
-    if not allowed:
+    allowed_ip,   locked_ip   = throttle_check(conn, ip_key)
+    allowed_user, locked_user = throttle_check(conn, user_key)
+    if not allowed_ip or not allowed_user:
+        locked_until = locked_ip or locked_user
         conn.close()
+        _ll.warning("[LOGIN BLOCKED] ip=%r email=%r locked_until=%r", ip, email, locked_until)
         flash(f"Too many failed attempts. Try again after {locked_until} UTC.", "danger")
         return redirect(url_for("login"))
 
@@ -3823,7 +3848,8 @@ def login_post():
     user = cur.fetchone()
 
     if not user or not check_password_hash(user["password"], password):
-        throttle_fail(conn, ip_key)
+        throttle_fail(conn, ip_key,   username=email)
+        throttle_fail(conn, user_key, username=email)
         conn.commit()
         conn.close()
         audit("auth", None, "login_failed", f"Failed login attempt for '{email}'", {"ip": ip})
@@ -3831,6 +3857,7 @@ def login_post():
         return redirect(url_for("login"))
 
     throttle_success(conn, ip_key)
+    throttle_success(conn, user_key)
     conn.commit()
     conn.close()
 
@@ -16631,6 +16658,91 @@ def admin_settings():
                            ai_draft_cleanup=ai_draft_cleanup)
 
 
+@app.get("/admin/api/lockouts")
+@login_required
+@admin_required
+def admin_api_lockouts():
+    """Return all login throttle entries for the management panel."""
+    from datetime import datetime as _dt_lo
+    conn = db()
+    try:
+        rows = conn.execute("""
+            SELECT key, fail_count, locked_until, last_attempted_username, updated_at
+            FROM login_throttle
+            ORDER BY updated_at DESC
+            LIMIT 200
+        """).fetchall()
+    except Exception:
+        rows = []
+    finally:
+        conn.close()
+    now_utc = _dt_lo.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    entries = []
+    for r in rows:
+        key = r["key"] or ""
+        if key.startswith("ip:"):
+            key_type  = "IP Address"
+            key_value = key[3:]
+        elif key.startswith("user:"):
+            key_type  = "Username"
+            key_value = key[5:]
+        else:
+            key_type  = "Unknown"
+            key_value = key
+        lu = (r["locked_until"] or "").strip()
+        is_active = bool(lu and lu > now_utc)
+        entries.append({
+            "key":                     key,
+            "key_type":                key_type,
+            "key_value":               key_value,
+            "fail_count":              r["fail_count"] or 0,
+            "locked_until":            lu,
+            "last_attempted_username": (r["last_attempted_username"] or ""),
+            "updated_at":              (r["updated_at"] or ""),
+            "active":                  is_active,
+        })
+    return jsonify({"ok": True, "entries": entries})
+
+
+@app.post("/admin/api/lockouts/clear")
+@login_required
+@admin_required
+def admin_api_lockout_clear():
+    """Manually clear a single throttle entry by key."""
+    key = ((request.get_json(silent=True) or {}).get("key") or "").strip()
+    if not key:
+        return jsonify({"ok": False, "error": "Key required."}), 400
+    conn = db()
+    try:
+        throttle_clear(conn, key)
+        conn.commit()
+    finally:
+        conn.close()
+    audit("auth", None, "lockout_cleared",
+          f"Login lockout manually cleared for key: {key}",
+          {"cleared_by": session.get("user_id")})
+    return jsonify({"ok": True})
+
+
+@app.post("/admin/api/lockouts/clear-all-expired")
+@login_required
+@admin_required
+def admin_api_lockout_clear_expired():
+    """Remove all throttle entries that are no longer actively locked."""
+    from datetime import datetime as _dt_ce
+    now_utc = _dt_ce.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    conn = db()
+    try:
+        conn.execute("""
+            DELETE FROM login_throttle
+            WHERE locked_until IS NULL OR locked_until <= ?
+        """, (now_utc,))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
 @app.get("/admin/api/duplicates")
 @login_required
 @admin_required
@@ -20554,12 +20666,15 @@ def m_login_post():
     email    = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
     next_path = request.args.get("next", "").strip()
-    ip       = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
+    ip       = _client_ip()
     ip_key   = f"ip:{ip}"
+    user_key = f"user:{email}"
 
     conn = db()
-    allowed, locked_until = throttle_check(conn, ip_key)
-    if not allowed:
+    allowed_ip,   locked_ip   = throttle_check(conn, ip_key)
+    allowed_user, locked_user = throttle_check(conn, user_key)
+    if not allowed_ip or not allowed_user:
+        locked_until = locked_ip or locked_user
         conn.close()
         return render_template("mobile/login.html",
                                error=f"Too many failed attempts. Try again after {locked_until} UTC.",
@@ -20568,13 +20683,16 @@ def m_login_post():
     user = conn.execute("SELECT * FROM users WHERE LOWER(email)=? AND active=1", (email,)).fetchone()
 
     if not user or not check_password_hash(user["password"], password):
-        throttle_fail(conn, ip_key)
+        throttle_fail(conn, ip_key,   username=email)
+        throttle_fail(conn, user_key, username=email)
         conn.commit()
         conn.close()
+        audit("auth", None, "login_failed", f"Failed mobile login attempt for '{email}'", {"ip": ip})
         return render_template("mobile/login.html", error="Invalid email or password.",
                                prefill_email=email, next=next_path)
 
     throttle_success(conn, ip_key)
+    throttle_success(conn, user_key)
     conn.commit()
     conn.close()
     session.permanent = True
