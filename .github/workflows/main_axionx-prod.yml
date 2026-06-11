@@ -64,3 +64,4 @@ jobs:
           app-name: 'axionx-prod'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3B6583AC3C6343A2944A51F74544EA8C }}
+          package: python-app
