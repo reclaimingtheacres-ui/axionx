@@ -7,6 +7,7 @@ on:
 
 jobs:
   build-and-deploy:
+    if: false  # Disabled — superseded by main_axionx-prod.yml (Azure portal workflow)
     runs-on: ubuntu-latest
 
     steps:
