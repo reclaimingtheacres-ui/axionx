@@ -21,7 +21,13 @@ FAR delay-reason thresholds are per-activity-type, not a single global value.
 - Client-side JS uses the general threshold (8 h / 480 min) because the UI only surfaces general field notes; Repo Lock threshold is enforced server-side via the auto-derived activity_occurred_at.
 - To add a new activity type: add a key to `_FAR_THRESHOLDS_MINUTES`, update `_far_threshold_minutes()`, and extend the SQL CASE expression.
 
-## Repo Lock specifics
-- `repo_lock_submit()` derives `activity_occurred_at` from `repo_date` + `start_time` already in the form — no new UI field required.
-- `reporting_delay_minutes` is computed via `_far_calc_delay()` and inserted into `job_field_notes` at submission time.
-- `delay_reason` is not collected on the Repo Lock form (no UI for it); the 30-min threshold flags it in the dashboard for admin review.
+## Compliance score formula
+Score = (same_day×3 + next_day×1 − late×2) ÷ timestamped_notes. Historical notes with no `activity_occurred_at` are excluded entirely — only notes carrying a FAR timestamp contribute to the score. Agents with zero timestamped notes show `None` / "N/A".
+
+**Why:** Pre-FAR historical notes have no timestamp through no fault of the agent. Including them in the denominator (or penalising them as "no timestamp") produces misleading negative scores.
+
+## Repo Lock — delay_reason gap (future work)
+- `repo_lock_submit()` derives `activity_occurred_at` from `repo_date` + `start_time` and writes `reporting_delay_minutes`.
+- `delay_reason` is NOT collected — no UI field exists on the Repo Lock form.
+- Repo Lock delays over 30 min appear as "Missing Reason" in the FAR dashboard for admin review. This is the accepted interim behaviour.
+- A `delay_reason` field on the Repo Lock form has been noted for future improvement.

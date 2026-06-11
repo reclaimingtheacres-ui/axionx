@@ -172,13 +172,17 @@
           </td>
           <td style="text-align:center" class="{% if a.missing_reason > 0 %}warn{% endif %}">{{ a.missing_reason }}</td>
           <td style="text-align:center">
+            {% if a.compliance_score is none %}
+              <span style="color:#9ca3af;font-size:.78rem">N/A</span>
+            {% else %}
             <div class="score-bar">
-              {% set bar_w = [((a.compliance_score + 3) / 6 * 80)|round|int, 0]|max %}
+              {% set bar_w = [((a.compliance_score + 1) / 4 * 80)|round|int, 0]|max %}
               <div class="score-bar-inner" style="width:{{ bar_w }}px;background:{% if a.compliance_score >= 2 %}#16a34a{% elif a.compliance_score >= 0 %}#d97706{% else %}#dc2626{% endif %}"></div>
               <span style="font-size:.78rem;font-weight:700;color:{% if a.compliance_score >= 2 %}#15803d{% elif a.compliance_score >= 0 %}#a16207{% else %}#dc2626{% endif %}">
                 {{ a.compliance_score }}
               </span>
             </div>
+            {% endif %}
           </td>
           <td style="text-align:center">{{ a.reviewed }}</td>
         </tr>
@@ -315,8 +319,9 @@
   {% endif %}
 
   <div style="margin-top:10px;font-size:.72rem;color:var(--muted);line-height:1.6">
-    <strong>Compliance Score</strong> = (Same Day × 3 + Next Day × 1 − Late × 2 − No Timestamp) ÷ Total Notes.
-    Higher is better.
+    <strong>Compliance Score</strong> = (Same Day × 3 + Next Day × 1 − Late × 2) ÷ Timestamped Notes.
+    Only notes with an <em>Activity Occurred At</em> timestamp are included — historical notes created before FAR was introduced are excluded.
+    Agents with no timestamped notes in the period show <strong>N/A</strong>. Higher is better.
     Thresholds for requiring a delay reason:
     <strong>Repo Lock — {{ far_threshold_repo_minutes }}min</strong> ·
     <strong>General field activity — {{ far_threshold_general_hours }}h</strong>.

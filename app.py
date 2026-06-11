@@ -18934,15 +18934,21 @@ def mgmt_field_activity_delays():
         r["sd_pct"]  = round(100 * r["same_day"] / wt) if wt else 0
         r["nd_pct"]  = round(100 * r["next_day"] / wt) if wt else 0
         r["late_pct"] = round(100 * r["late"] / wt) if wt else 0
-        # Compliance score: weighted (same_day=3, next_day=1, late=-2, no_ts=-1 per note)
-        r["compliance_score"] = round(
-            (r["same_day"] * 3 + r["next_day"] * 1 - r["late"] * 2 - (tn - wt)) / max(tn, 1), 2
-        )
+        # Compliance score: only from timestamped notes — historical notes (no activity_occurred_at)
+        # are excluded entirely so pre-FAR data does not penalise agents.
+        # Score = (same_day×3 + next_day×1 − late×2) ÷ timestamped_notes
+        # None when no timestamped notes exist in the period.
+        if wt > 0:
+            r["compliance_score"] = round(
+                (r["same_day"] * 3 + r["next_day"] * 1 - r["late"] * 2) / wt, 2
+            )
+        else:
+            r["compliance_score"] = None
         r["rank"] = rank
         agent_data.append(r)
 
-    # Re-sort by compliance_score descending for the performance ranking
-    agent_data.sort(key=lambda x: x["compliance_score"], reverse=True)
+    # Re-sort by compliance_score descending; None (no timestamped notes) sorts last
+    agent_data.sort(key=lambda x: (x["compliance_score"] is None, -(x["compliance_score"] or 0)))
     for i, a in enumerate(agent_data, 1):
         a["rank"] = i
 
