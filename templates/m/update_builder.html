@@ -64,6 +64,15 @@ Update Builder
       </div>
     </div>
     <div class="m-form-group">
+      <label class="m-label">Activity Occurred At <span style="font-weight:400;color:var(--muted);font-size:.78rem;">(optional — if different from above)</span></label>
+      <input type="datetime-local" id="ub_activity_occurred_at" class="m-input">
+      <div style="font-size:.72rem;color:var(--muted);margin-top:4px;">Leave blank to use the date/time fields above. Used for reporting timeliness tracking.</div>
+    </div>
+    <div class="m-form-group" id="ub_delay_reason_row" style="display:none;">
+      <label class="m-label" style="color:#d97706;">Delay Reason <span style="font-weight:400;font-size:.78rem;">(required for late reporting)</span></label>
+      <textarea id="ub_delay_reason" class="m-input" rows="2" placeholder="Why is this activity being reported late?" style="resize:none;border-color:#fcd34d;background:#fffbeb;"></textarea>
+    </div>
+    <div class="m-form-group">
       <label class="m-label">Property Description <span class="text-muted text-sm">(optional)</span></label>
       <input type="text" id="property_description" class="m-input" placeholder="e.g. residential dwelling" value="{{ draft.property_description or '' }}">
     </div>
@@ -210,9 +219,11 @@ Update Builder
 
   function formData() {
     return {
-      draft_id:             DRAFT_ID,
-      attend_date:          $$('attend_date').value,
-      attend_time:          $$('attend_time').value,
+      draft_id:                DRAFT_ID,
+      attend_date:             $$('attend_date').value,
+      attend_time:             $$('attend_time').value,
+      activity_occurred_at:    $$('ub_activity_occurred_at') ? $$('ub_activity_occurred_at').value : '',
+      delay_reason:            $$('ub_delay_reason') ? $$('ub_delay_reason').value : '',
       is_first_attendance:  $$('vt_new').checked,
       property_description: $$('property_description').value,
       calling_card:         $$('calling_card').checked,
@@ -240,6 +251,23 @@ Update Builder
     } else {
       fetch(url, {method:'POST', body:body, headers:{'Content-Type':'application/json'}});
     }
+  }
+
+  var _UB_FAR_THRESHOLD_MS = 12 * 3600 * 1000;
+  function updateFarDelayRow() {
+    var occEl = $$('ub_activity_occurred_at');
+    var row   = $$('ub_delay_reason_row');
+    if (!occEl || !row) return;
+    var show = false;
+    if (occEl.value) {
+      show = (Date.now() - new Date(occEl.value).getTime()) > _UB_FAR_THRESHOLD_MS;
+    }
+    row.style.display = show ? '' : 'none';
+    if (!show) { var dr = $$('ub_delay_reason'); if (dr) dr.value = ''; }
+  }
+  if ($$('ub_activity_occurred_at')) {
+    $$('ub_activity_occurred_at').addEventListener('change', updateFarDelayRow);
+    updateFarDelayRow();
   }
 
   function updatePhoneRow() {

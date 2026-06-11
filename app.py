@@ -633,6 +633,9 @@ def _schema_is_current():
                 return False
             if "last_assigned_user_id" not in jobs_cols:
                 return False
+            jfn_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_field_notes)").fetchall()]
+            if "activity_occurred_at" not in jfn_cols:
+                return False
             rl_cols = [r[1] for r in conn.execute("PRAGMA table_info(repo_lock_records)").fetchall()]
             if "auction_yard_id" not in rl_cols:
                 return False
@@ -731,6 +734,10 @@ def _startup_migrate():
         _cur = _conn.cursor()
         add_column_if_missing(_cur, "jobs", "last_client_response_at",   "TEXT")
         add_column_if_missing(_cur, "jobs", "suspended_followup_due_at", "TEXT")
+        add_column_if_missing(_cur, "job_field_notes", "activity_occurred_at",    "TEXT")
+        add_column_if_missing(_cur, "job_field_notes", "reporting_delay_minutes", "INTEGER")
+        add_column_if_missing(_cur, "job_field_notes", "delay_reason",            "TEXT")
+        add_column_if_missing(_cur, "job_field_notes", "delay_reviewed_at",       "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "auction_yard_id",    "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "notice_delivery",    "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_phone",          "TEXT")
@@ -1661,6 +1668,10 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "job_field_notes",       "audio_filename",        "TEXT")
     add_column_if_missing(cur, "job_field_notes",       "updated_at",            "TEXT")
     add_column_if_missing(cur, "job_field_notes",       "updated_by_user_id",    "INTEGER")
+    add_column_if_missing(cur, "job_field_notes",       "activity_occurred_at",    "TEXT")
+    add_column_if_missing(cur, "job_field_notes",       "reporting_delay_minutes", "INTEGER")
+    add_column_if_missing(cur, "job_field_notes",       "delay_reason",            "TEXT")
+    add_column_if_missing(cur, "job_field_notes",       "delay_reviewed_at",       "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS mobile_auth_tokens (
@@ -7481,6 +7492,22 @@ _CUR_ELIGIBLE_STATUSES = ("Suspended", "Awaiting Advice From Client", "Awaiting 
 _CUR_STALE_DAYS        = 28   # job must be in eligible status at least this long
 _CUR_COOLDOWN_DAYS     = 7    # days between Stage 1 and Stage 2, and Stage 2 and Stage 3
 _SUSPENDED_RESPONSE_WINDOW_DAYS = 10  # grace window after a recorded client response
+_FAR_DELAY_REASON_THRESHOLD_HOURS = 12  # delay beyond which a reason is prompted in the UI
+
+
+def _far_calc_delay(activity_occurred_at: str, created_at: str):
+    """Return delay in whole minutes between activity_occurred_at and created_at.
+    Returns None if activity_occurred_at is empty/invalid or if delay is negative."""
+    if not activity_occurred_at:
+        return None
+    try:
+        from datetime import datetime as _dtf
+        ao = _dtf.fromisoformat(activity_occurred_at[:19])
+        cr = _dtf.fromisoformat(created_at[:19])
+        diff = int((cr - ao).total_seconds() / 60)
+        return max(0, diff)
+    except Exception:
+        return None
 
 # ── Group Calendar ─────────────────────────────────────────────────────────────
 _GC_ENTRY_COLORS = {
@@ -12563,12 +12590,19 @@ def add_job_note(job_id: int):
     else:
         _rev_stat = "private_scratch" if _note_cat == "field_note" else "published"
 
+    _act_occ_raw = request.form.get("activity_occurred_at", "").strip()
+    _act_occ     = _act_occ_raw if _act_occ_raw else None
+    _delay_reason = request.form.get("delay_reason", "").strip() or None
+    _delay_mins   = _far_calc_delay(_act_occ, ts) if _act_occ else None
+
     cur.execute("""
         INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
-                                     note_category, review_status, published_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                     note_category, review_status, published_at,
+                                     activity_occurred_at, reporting_delay_minutes, delay_reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (job_id, author_id, note_text, ts, _note_cat, _rev_stat,
-          ts if _rev_stat == "published" else None))
+          ts if _rev_stat == "published" else None,
+          _act_occ, _delay_mins, _delay_reason))
 
     note_id = cur.lastrowid
 
@@ -14272,12 +14306,18 @@ def update_builder_save(job_id: int):
 
     review_status = "approved" if save_mode == "field_note" else "submitted_for_review"
 
+    _ub_act_occ    = (data.get("activity_occurred_at") or "").strip() or None
+    _ub_delay_rsn  = (data.get("delay_reason") or "").strip() or None
+    _ub_delay_mins = _far_calc_delay(_ub_act_occ, ts) if _ub_act_occ else None
+
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
-                                        note_type, note_category, review_status)
-           VALUES (?,?,?,?,?,?,?)""",
-        (job_id, uid, final_text, ts, note_type, "field_note", review_status)
+                                        note_type, note_category, review_status,
+                                        activity_occurred_at, reporting_delay_minutes, delay_reason)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (job_id, uid, final_text, ts, note_type, "field_note", review_status,
+         _ub_act_occ, _ub_delay_mins, _ub_delay_rsn)
     )
     note_id = cur.lastrowid
 
@@ -18747,6 +18787,304 @@ def mgmt_agent_performance():
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Field Activity Reporting Delay Dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/management/field-activity-delays")
+@management_required
+def mgmt_field_activity_delays():
+    """Management dashboard: agent field-note reporting timeliness."""
+    from datetime import datetime as _dt, timedelta as _td
+
+    today          = _dt.now(_melbourne).date()
+    date_to_str    = request.args.get("date_to",   today.isoformat())
+    date_from_str  = request.args.get("date_from", (today - _td(days=30)).isoformat())
+    agent_filter   = request.args.get("agent_id",  "").strip()
+    delay_cat      = request.args.get("delay_cat", "all").strip()  # all/same_day/next_day/late/no_timestamp
+
+    conn = db()
+
+    all_agents_list = conn.execute(
+        "SELECT id, full_name FROM users WHERE role IN ('agent','both') AND active=1 ORDER BY full_name"
+    ).fetchall()
+
+    # ── Agent filter clause ────────────────────────────────────────────────
+    agent_clause = "AND n.created_by_user_id = :agent_id" if agent_filter else ""
+    agent_params = {"agent_id": int(agent_filter)} if agent_filter else {}
+
+    # ── Delay category filter clause ───────────────────────────────────────
+    if delay_cat == "same_day":
+        delay_clause = "AND n.activity_occurred_at IS NOT NULL AND date(n.activity_occurred_at) = date(n.created_at)"
+    elif delay_cat == "next_day":
+        delay_clause = ("AND n.activity_occurred_at IS NOT NULL "
+                        "AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) = 1")
+    elif delay_cat == "late":
+        delay_clause = ("AND n.activity_occurred_at IS NOT NULL "
+                        "AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) > 1")
+    elif delay_cat == "no_timestamp":
+        delay_clause = "AND n.activity_occurred_at IS NULL"
+    else:
+        delay_clause = ""
+
+    base_params = dict(date_from=date_from_str, date_to=date_to_str, **agent_params)
+
+    # ── Overall summary totals ─────────────────────────────────────────────
+    tot_row = conn.execute(f"""
+        SELECT
+            COUNT(*) AS total_notes,
+            COUNT(n.activity_occurred_at) AS with_timestamp,
+            ROUND(AVG(CASE WHEN n.activity_occurred_at IS NOT NULL THEN n.reporting_delay_minutes END), 0) AS avg_delay,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND date(n.activity_occurred_at) = date(n.created_at) THEN 1 ELSE 0 END) AS same_day,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) = 1
+                     THEN 1 ELSE 0 END) AS next_day,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) > 1
+                     THEN 1 ELSE 0 END) AS late,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND n.reporting_delay_minutes > :threshold_mins
+                      AND (n.delay_reason IS NULL OR n.delay_reason = '') THEN 1 ELSE 0 END) AS missing_reason,
+            SUM(CASE WHEN n.delay_reviewed_at IS NOT NULL THEN 1 ELSE 0 END) AS reviewed
+        FROM job_field_notes n
+        WHERE n.note_category = 'field_note'
+          AND n.review_status NOT IN ('private_scratch')
+          AND date(n.created_at) BETWEEN :date_from AND :date_to
+          {agent_clause}
+    """, dict(**base_params, threshold_mins=_FAR_DELAY_REASON_THRESHOLD_HOURS * 60)).fetchone()
+
+    totals = dict(tot_row) if tot_row else {}
+    totals.setdefault("total_notes", 0)
+    totals.setdefault("with_timestamp", 0)
+    totals.setdefault("avg_delay", None)
+    totals.setdefault("same_day", 0)
+    totals.setdefault("next_day", 0)
+    totals.setdefault("late", 0)
+    totals.setdefault("missing_reason", 0)
+    totals.setdefault("reviewed", 0)
+    _ts_pct = round(100 * totals["with_timestamp"] / totals["total_notes"]) if totals["total_notes"] else 0
+    _sd_pct = round(100 * totals["same_day"] / totals["with_timestamp"]) if totals["with_timestamp"] else 0
+
+    # ── Per-agent summary ──────────────────────────────────────────────────
+    agent_rows = conn.execute(f"""
+        SELECT
+            u.id, u.full_name,
+            COUNT(*) AS total_notes,
+            COUNT(n.activity_occurred_at) AS with_timestamp,
+            ROUND(AVG(CASE WHEN n.activity_occurred_at IS NOT NULL THEN n.reporting_delay_minutes END), 0) AS avg_delay,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND date(n.activity_occurred_at) = date(n.created_at) THEN 1 ELSE 0 END) AS same_day,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) = 1
+                     THEN 1 ELSE 0 END) AS next_day,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) > 1
+                     THEN 1 ELSE 0 END) AS late,
+            SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                      AND n.reporting_delay_minutes > :threshold_mins
+                      AND (n.delay_reason IS NULL OR n.delay_reason = '') THEN 1 ELSE 0 END) AS missing_reason,
+            SUM(CASE WHEN n.delay_reviewed_at IS NOT NULL THEN 1 ELSE 0 END) AS reviewed
+        FROM job_field_notes n
+        JOIN users u ON u.id = n.created_by_user_id
+        WHERE n.note_category = 'field_note'
+          AND n.review_status NOT IN ('private_scratch')
+          AND date(n.created_at) BETWEEN :date_from AND :date_to
+          {agent_clause}
+        GROUP BY u.id, u.full_name
+        ORDER BY late DESC, avg_delay DESC NULLS LAST, u.full_name
+    """, dict(**base_params, threshold_mins=_FAR_DELAY_REASON_THRESHOLD_HOURS * 60)).fetchall()
+
+    # Compute per-agent derived metrics and ranking
+    agent_data = []
+    for rank, row in enumerate(agent_rows, 1):
+        r = dict(row)
+        wt = r["with_timestamp"] or 0
+        tn = r["total_notes"] or 1
+        r["ts_pct"]  = round(100 * wt / tn) if tn else 0
+        r["sd_pct"]  = round(100 * r["same_day"] / wt) if wt else 0
+        r["nd_pct"]  = round(100 * r["next_day"] / wt) if wt else 0
+        r["late_pct"] = round(100 * r["late"] / wt) if wt else 0
+        # Compliance score: weighted (same_day=3, next_day=1, late=-2, no_ts=-1 per note)
+        r["compliance_score"] = round(
+            (r["same_day"] * 3 + r["next_day"] * 1 - r["late"] * 2 - (tn - wt)) / max(tn, 1), 2
+        )
+        r["rank"] = rank
+        agent_data.append(r)
+
+    # Re-sort by compliance_score descending for the performance ranking
+    agent_data.sort(key=lambda x: x["compliance_score"], reverse=True)
+    for i, a in enumerate(agent_data, 1):
+        a["rank"] = i
+
+    # ── Detail table (notes with timestamp, filtered) ──────────────────────
+    detail_rows = conn.execute(f"""
+        SELECT n.id, n.job_id, n.created_at, n.activity_occurred_at,
+               n.reporting_delay_minutes, n.delay_reason, n.delay_reviewed_at,
+               SUBSTR(n.note_text, 1, 120) AS note_preview,
+               j.display_ref, j.job_type,
+               u.full_name AS agent_name
+        FROM job_field_notes n
+        JOIN jobs j ON j.id = n.job_id
+        JOIN users u ON u.id = n.created_by_user_id
+        WHERE n.note_category = 'field_note'
+          AND n.review_status NOT IN ('private_scratch')
+          AND date(n.created_at) BETWEEN :date_from AND :date_to
+          {agent_clause}
+          {delay_clause}
+        ORDER BY n.reporting_delay_minutes DESC NULLS LAST, n.created_at DESC
+        LIMIT 200
+    """, base_params).fetchall()
+
+    # ── Repo compliance sub-set ────────────────────────────────────────────
+    repo_types = ("Upgrade to Repo/Collect", "Collect Only")
+    repo_type_clause = " OR ".join(["j.job_type = ?" for _ in repo_types])
+    repo_type_like   = " OR ".join(["j.job_type LIKE ?"] * 2)
+    repo_params_list = [date_from_str, date_to_str] + list(repo_types) + ["%Repo%", "%Repossess%"]
+    if agent_filter:
+        repo_params_list.insert(0, int(agent_filter))
+        repo_agent_clause = "AND n.created_by_user_id = ? "
+    else:
+        repo_agent_clause = ""
+
+    repo_rows = conn.execute(f"""
+        SELECT u.id, u.full_name,
+               COUNT(*) AS total_notes,
+               COUNT(n.activity_occurred_at) AS with_timestamp,
+               ROUND(AVG(CASE WHEN n.activity_occurred_at IS NOT NULL THEN n.reporting_delay_minutes END), 0) AS avg_delay,
+               SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                         AND date(n.activity_occurred_at) = date(n.created_at) THEN 1 ELSE 0 END) AS same_day,
+               SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
+                         AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) > 0
+                        THEN 1 ELSE 0 END) AS delayed
+        FROM job_field_notes n
+        JOIN jobs j ON j.id = n.job_id
+        JOIN users u ON u.id = n.created_by_user_id
+        WHERE n.note_category = 'field_note'
+          AND n.review_status NOT IN ('private_scratch')
+          {repo_agent_clause}
+          AND date(n.created_at) BETWEEN ? AND ?
+          AND ({repo_type_clause} OR {repo_type_like})
+        GROUP BY u.id, u.full_name
+        ORDER BY delayed DESC, u.full_name
+    """, repo_params_list).fetchall()
+
+    conn.close()
+
+    return render_template(
+        "management_field_activity_delays.html",
+        totals=totals,
+        ts_pct=_ts_pct,
+        sd_pct=_sd_pct,
+        agent_data=agent_data,
+        detail_rows=detail_rows,
+        repo_rows=repo_rows,
+        agents_list=all_agents_list,
+        agent_filter=agent_filter,
+        delay_cat=delay_cat,
+        date_from=date_from_str,
+        date_to=date_to_str,
+        far_threshold_hours=_FAR_DELAY_REASON_THRESHOLD_HOURS,
+    )
+
+
+@app.get("/management/field-activity-delays/export.csv")
+@management_required
+def mgmt_field_activity_delays_csv():
+    """CSV export of field activity reporting delays."""
+    import csv, io
+    from datetime import datetime as _dt, timedelta as _td
+
+    today          = _dt.now(_melbourne).date()
+    date_to_str    = request.args.get("date_to",   today.isoformat())
+    date_from_str  = request.args.get("date_from", (today - _td(days=30)).isoformat())
+    agent_filter   = request.args.get("agent_id",  "").strip()
+    agent_clause   = "AND n.created_by_user_id = :agent_id" if agent_filter else ""
+    base_params    = {"date_from": date_from_str, "date_to": date_to_str}
+    if agent_filter:
+        base_params["agent_id"] = int(agent_filter)
+
+    conn = db()
+    rows = conn.execute(f"""
+        SELECT n.id, j.display_ref, u.full_name AS agent_name, j.job_type,
+               n.activity_occurred_at, n.created_at,
+               n.reporting_delay_minutes,
+               CASE
+                 WHEN n.activity_occurred_at IS NULL THEN 'No Timestamp'
+                 WHEN date(n.activity_occurred_at) = date(n.created_at) THEN 'Same Day'
+                 WHEN CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) = 1 THEN 'Next Day'
+                 ELSE 'Late'
+               END AS delay_category,
+               n.delay_reason,
+               n.delay_reviewed_at,
+               SUBSTR(n.note_text, 1, 200) AS note_preview
+        FROM job_field_notes n
+        JOIN jobs j ON j.id = n.job_id
+        JOIN users u ON u.id = n.created_by_user_id
+        WHERE n.note_category = 'field_note'
+          AND n.review_status NOT IN ('private_scratch')
+          AND date(n.created_at) BETWEEN :date_from AND :date_to
+          {agent_clause}
+        ORDER BY n.reporting_delay_minutes DESC NULLS LAST, n.created_at DESC
+    """, base_params).fetchall()
+    conn.close()
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([
+        "Note ID", "Job Ref", "Agent", "Job Type",
+        "Activity Occurred At", "Reported At", "Delay (minutes)",
+        "Delay Category", "Delay Reason", "Reviewed At", "Note Preview"
+    ])
+    for r in rows:
+        writer.writerow([
+            r["id"], r["display_ref"], r["agent_name"], r["job_type"],
+            r["activity_occurred_at"] or "", r["created_at"],
+            r["reporting_delay_minutes"] if r["reporting_delay_minutes"] is not None else "",
+            r["delay_category"], r["delay_reason"] or "", r["delay_reviewed_at"] or "",
+            r["note_preview"] or "",
+        ])
+
+    fname = f"field_activity_delays_{date_from_str}_to_{date_to_str}.csv"
+    return out.getvalue(), 200, {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": f'attachment; filename="{fname}"',
+    }
+
+
+@app.post("/management/field-activity-delays/<int:note_id>/review")
+@management_required
+def mgmt_field_activity_review(note_id: int):
+    """Mark a delayed field note as reviewed by an admin."""
+    conn = db()
+    note = conn.execute(
+        "SELECT id, note_category, delay_reviewed_at FROM job_field_notes WHERE id=?", (note_id,)
+    ).fetchone()
+    if not note or note["note_category"] != "field_note":
+        conn.close()
+        return jsonify({"ok": False, "error": "Note not found."}), 404
+
+    ts = now_ts()
+    conn.execute(
+        "UPDATE job_field_notes SET delay_reviewed_at=? WHERE id=?", (ts, note_id)
+    )
+    conn.commit()
+    conn.close()
+    audit("field_note", note_id, "delay_reviewed", "Reporting delay reviewed by admin.")
+    return jsonify({"ok": True, "reviewed_at": ts})
+
+
+@app.post("/management/field-activity-delays/<int:note_id>/unreview")
+@management_required
+def mgmt_field_activity_unreview(note_id: int):
+    """Clear the reviewed flag on a delayed field note."""
+    conn = db()
+    conn.execute("UPDATE job_field_notes SET delay_reviewed_at=NULL WHERE id=?", (note_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.get("/reports/aged-suspended")
 @admin_required
 def report_aged_suspended():
@@ -21723,14 +22061,20 @@ def m_quick_note_save(job_id):
     else:
         _note_cat = "field_note"
         _rev_stat = "private_scratch"
+    _m_act_occ    = (request.form.get("activity_occurred_at") or "").strip() or None
+    _m_delay_rsn  = (request.form.get("delay_reason") or "").strip() or None
+    _m_delay_mins = _far_calc_delay(_m_act_occ, ts) if _m_act_occ else None
+
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at,
                                         note_type, audio_filename, note_category, review_status,
-                                        published_at)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
+                                        published_at, activity_occurred_at,
+                                        reporting_delay_minutes, delay_reason)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (job_id, uid, note_text, ts, note_type, audio_filename, _note_cat, _rev_stat,
-         ts if _rev_stat == "published" else None)
+         ts if _rev_stat == "published" else None,
+         _m_act_occ, _m_delay_mins, _m_delay_rsn)
     )
     note_id = cur.lastrowid
 

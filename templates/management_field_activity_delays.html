@@ -1,0 +1,358 @@
+{% extends "layout.html" %}
+{% block page_title %}Field Activity Reporting{% endblock %}
+
+{% block content %}
+<style>
+  .mgmt-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 20px;flex:1;min-width:150px}
+  .mgmt-card .label{font-size:.72rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+  .mgmt-card .value{font-size:1.75rem;font-weight:700;color:var(--text);line-height:1.1}
+  .mgmt-card .sub{font-size:.75rem;color:var(--muted);margin-top:2px}
+  .mgmt-card.warn  .value{color:#dc2626}
+  .mgmt-card.amber .value{color:#d97706}
+  .mgmt-card.good  .value{color:#16a34a}
+  .mgmt-section{font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+  .mgmt-table th{font-size:.72rem;font-weight:700;color:var(--muted);white-space:nowrap;border-bottom:2px solid var(--line);padding:8px 10px;background:#f8fafc}
+  .mgmt-table td{font-size:.82rem;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .mgmt-table tr:last-child td{border-bottom:none}
+  .mgmt-table tr.totals-row td{font-weight:700;background:#f8fafc;border-top:2px solid var(--line);border-bottom:none}
+  .mgmt-table td.warn{color:#dc2626;font-weight:600}
+  .mgmt-table td.amber{color:#d97706;font-weight:600}
+  .mgmt-table td.good{color:#16a34a;font-weight:600}
+  .mgmt-filter-bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px}
+  .mgmt-filter-bar label{font-size:.72rem;font-weight:600;color:var(--muted);display:block;margin-bottom:3px}
+  .mgmt-filter-bar .fg{display:flex;flex-direction:column}
+  .agent-name-cell{font-weight:600;color:var(--text)}
+  a.mgmt-link{color:var(--accent);text-decoration:none}
+  a.mgmt-link:hover{text-decoration:underline}
+  .delay-pill{display:inline-block;border-radius:20px;padding:2px 9px;font-size:.72rem;font-weight:700;white-space:nowrap}
+  .delay-pill.same-day{background:#dcfce7;color:#15803d}
+  .delay-pill.next-day{background:#fef9c3;color:#a16207}
+  .delay-pill.late{background:#fee2e2;color:#dc2626}
+  .delay-pill.no-ts{background:#f3f4f6;color:#6b7280}
+  .score-bar{display:flex;align-items:center;gap:6px}
+  .score-bar-inner{height:6px;border-radius:3px;background:var(--accent);flex-shrink:0}
+  .detail-preview{font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+  .reviewed-badge{display:inline-flex;align-items:center;gap:4px;background:#dcfce7;color:#15803d;border-radius:20px;padding:2px 9px;font-size:.72rem;font-weight:700}
+</style>
+
+<div style="max-width:1400px">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:1.15rem;font-weight:700;color:var(--text)">Field Activity Reporting</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:2px">Agent reporting timeliness — how quickly field notes are recorded after the activity occurred.</div>
+    </div>
+    <a href="/management/field-activity-delays/export.csv?date_from={{ date_from }}&date_to={{ date_to }}{% if agent_filter %}&agent_id={{ agent_filter }}{% endif %}{% if delay_cat != 'all' %}&delay_cat={{ delay_cat }}{% endif %}"
+       class="btn btn-outline-secondary btn-sm" style="font-size:.8rem">
+      ↓ Export CSV
+    </a>
+  </div>
+
+  <div class="ax-card" style="padding:16px 20px;margin-bottom:18px">
+    <form method="get" action="/management/field-activity-delays">
+      <div class="mgmt-filter-bar">
+        <div class="fg">
+          <label>From</label>
+          <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:150px">
+        </div>
+        <div class="fg">
+          <label>To</label>
+          <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width:150px">
+        </div>
+        <div class="fg">
+          <label>Agent</label>
+          <select name="agent_id" class="form-select form-select-sm" style="width:180px">
+            <option value="">All Agents</option>
+            {% for a in agents_list %}
+            <option value="{{ a.id }}" {% if agent_filter == a.id|string %}selected{% endif %}>{{ a.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fg">
+          <label>Category</label>
+          <select name="delay_cat" class="form-select form-select-sm" style="width:150px">
+            <option value="all"          {% if delay_cat == 'all'          %}selected{% endif %}>All Notes</option>
+            <option value="same_day"     {% if delay_cat == 'same_day'     %}selected{% endif %}>Same Day</option>
+            <option value="next_day"     {% if delay_cat == 'next_day'     %}selected{% endif %}>Next Day</option>
+            <option value="late"         {% if delay_cat == 'late'         %}selected{% endif %}>Late (&gt;1 day)</option>
+            <option value="no_timestamp" {% if delay_cat == 'no_timestamp' %}selected{% endif %}>No Timestamp</option>
+          </select>
+        </div>
+        <div class="fg" style="justify-content:flex-end">
+          <label>&nbsp;</label>
+          <div style="display:flex;gap:6px">
+            <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+            <a href="/management/field-activity-delays" class="btn btn-outline-secondary btn-sm">Reset</a>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="mgmt-section">Overall — {{ date_from }} to {{ date_to }}</div>
+
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px">
+    <div class="mgmt-card">
+      <div class="label">Field Notes</div>
+      <div class="value">{{ totals.total_notes }}</div>
+      <div class="sub">Within date range</div>
+    </div>
+    <div class="mgmt-card {% if ts_pct < 50 %}warn{% elif ts_pct < 80 %}amber{% else %}good{% endif %}">
+      <div class="label">Timestamp Coverage</div>
+      <div class="value">{{ ts_pct }}%</div>
+      <div class="sub">{{ totals.with_timestamp }} of {{ totals.total_notes }} notes</div>
+    </div>
+    <div class="mgmt-card good">
+      <div class="label">Same Day</div>
+      <div class="value">{{ totals.same_day }}</div>
+      <div class="sub">{{ sd_pct }}% of timestamped</div>
+    </div>
+    <div class="mgmt-card amber">
+      <div class="label">Next Day</div>
+      <div class="value">{{ totals.next_day }}</div>
+      <div class="sub">Reported following day</div>
+    </div>
+    <div class="mgmt-card {% if totals.late > 0 %}warn{% endif %}">
+      <div class="label">Late (&gt;1 day)</div>
+      <div class="value">{{ totals.late }}</div>
+      <div class="sub">2+ days after activity</div>
+    </div>
+    <div class="mgmt-card {% if totals.missing_reason > 0 %}warn{% endif %}">
+      <div class="label">Missing Reason</div>
+      <div class="value">{{ totals.missing_reason }}</div>
+      <div class="sub">Delayed, no explanation</div>
+    </div>
+    <div class="mgmt-card">
+      <div class="label">Avg Delay</div>
+      <div class="value">{% if totals.avg_delay %}{{ (totals.avg_delay / 60)|round(1) }}h{% else %}—{% endif %}</div>
+      <div class="sub">Mean delay (timestamped)</div>
+    </div>
+    <div class="mgmt-card good">
+      <div class="label">Admin Reviewed</div>
+      <div class="value">{{ totals.reviewed }}</div>
+      <div class="sub">Delays reviewed</div>
+    </div>
+  </div>
+
+  {% if agent_data %}
+
+  <div class="mgmt-section">Agent Compliance Ranking</div>
+
+  <div class="ax-card" style="overflow-x:auto;padding:0;margin-bottom:24px">
+    <table class="mgmt-table" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:center;width:40px">#</th>
+          <th style="text-align:left;min-width:140px">Agent</th>
+          <th style="text-align:center">Notes</th>
+          <th style="text-align:center">Timestamp %</th>
+          <th style="text-align:center">Same Day</th>
+          <th style="text-align:center">Next Day</th>
+          <th style="text-align:center">Late</th>
+          <th style="text-align:center">Avg Delay</th>
+          <th style="text-align:center">Missing Reason</th>
+          <th style="text-align:center">Compliance Score</th>
+          <th style="text-align:center">Reviewed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in agent_data %}
+        <tr>
+          <td style="text-align:center;color:var(--muted);font-weight:700">{{ a.rank }}</td>
+          <td class="agent-name-cell">{{ a.full_name }}</td>
+          <td style="text-align:center">{{ a.total_notes }}</td>
+          <td style="text-align:center" class="{% if a.ts_pct < 50 %}warn{% elif a.ts_pct < 80 %}amber{% else %}good{% endif %}">
+            {{ a.ts_pct }}%
+          </td>
+          <td style="text-align:center" class="good">{{ a.same_day }}</td>
+          <td style="text-align:center" class="amber">{{ a.next_day }}</td>
+          <td style="text-align:center" class="{% if a.late > 0 %}warn{% endif %}">{{ a.late }}</td>
+          <td style="text-align:center;color:var(--muted)">
+            {% if a.avg_delay %}{{ (a.avg_delay / 60)|round(1) }}h{% else %}—{% endif %}
+          </td>
+          <td style="text-align:center" class="{% if a.missing_reason > 0 %}warn{% endif %}">{{ a.missing_reason }}</td>
+          <td style="text-align:center">
+            <div class="score-bar">
+              {% set bar_w = [((a.compliance_score + 3) / 6 * 80)|round|int, 0]|max %}
+              <div class="score-bar-inner" style="width:{{ bar_w }}px;background:{% if a.compliance_score >= 2 %}#16a34a{% elif a.compliance_score >= 0 %}#d97706{% else %}#dc2626{% endif %}"></div>
+              <span style="font-size:.78rem;font-weight:700;color:{% if a.compliance_score >= 2 %}#15803d{% elif a.compliance_score >= 0 %}#a16207{% else %}#dc2626{% endif %}">
+                {{ a.compliance_score }}
+              </span>
+            </div>
+          </td>
+          <td style="text-align:center">{{ a.reviewed }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mgmt-section">Note Detail
+    <span style="font-weight:400;font-style:italic;text-transform:none;font-size:.72rem;margin-left:6px">
+      — top 200 by delay
+      {% if delay_cat != 'all' %}· filtered: {{ delay_cat|replace('_',' ')|title }}{% endif %}
+    </span>
+  </div>
+
+  <div class="ax-card" style="overflow-x:auto;padding:0;margin-bottom:24px">
+    <table class="mgmt-table" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left;min-width:100px">Job</th>
+          <th style="text-align:left">Agent</th>
+          <th style="text-align:left">Activity At</th>
+          <th style="text-align:left">Reported At</th>
+          <th style="text-align:center">Delay</th>
+          <th style="text-align:center">Category</th>
+          <th style="text-align:left;min-width:200px">Reason / Preview</th>
+          <th style="text-align:center">Reviewed</th>
+          <th style="text-align:center">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in detail_rows %}
+        {% set has_ts = r.activity_occurred_at %}
+        {% if has_ts %}
+          {% set ca = r.created_at[:10] %}
+          {% set oa = r.activity_occurred_at[:10] %}
+          {% if ca == oa %}
+            {% set dcat = 'same_day' %}
+          {% elif r.reporting_delay_minutes and r.reporting_delay_minutes <= 1440 %}
+            {% set dcat = 'next_day' %}
+          {% else %}
+            {% set dcat = 'late' %}
+          {% endif %}
+        {% else %}
+          {% set dcat = 'no_ts' %}
+        {% endif %}
+        <tr id="far-row-{{ r.id }}">
+          <td>
+            <a class="mgmt-link" href="/jobs/{{ r.job_id }}">{{ r.display_ref }}</a>
+            <div style="font-size:.7rem;color:var(--muted)">{{ r.job_type or '' }}</div>
+          </td>
+          <td>{{ r.agent_name }}</td>
+          <td style="color:var(--muted);font-size:.78rem;white-space:nowrap">
+            {% if r.activity_occurred_at %}{{ r.activity_occurred_at[:16]|replace('T',' ') }}{% else %}<span style="color:#9ca3af">—</span>{% endif %}
+          </td>
+          <td style="color:var(--muted);font-size:.78rem;white-space:nowrap">{{ r.created_at[:16]|replace('T',' ') }}</td>
+          <td style="text-align:center">
+            {% if r.reporting_delay_minutes is not none %}
+              {% set hrs = (r.reporting_delay_minutes / 60)|round(1) %}
+              {% if hrs < 24 %}{{ hrs }}h{% else %}{{ (r.reporting_delay_minutes / 1440)|round(1) }}d{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="text-align:center">
+            <span class="delay-pill {{ dcat|replace('_','-') }}">
+              {% if dcat == 'same_day' %}Same Day
+              {% elif dcat == 'next_day' %}Next Day
+              {% elif dcat == 'late' %}Late
+              {% else %}No Timestamp{% endif %}
+            </span>
+          </td>
+          <td>
+            {% if r.delay_reason %}
+              <span style="font-size:.78rem;color:#374151">{{ r.delay_reason }}</span>
+            {% elif r.note_preview %}
+              <span class="detail-preview">{{ r.note_preview }}</span>
+            {% else %}<span style="color:#9ca3af;font-size:.78rem">—</span>{% endif %}
+          </td>
+          <td style="text-align:center" id="far-reviewed-cell-{{ r.id }}">
+            {% if r.delay_reviewed_at %}
+              <span class="reviewed-badge">✓ Reviewed</span>
+            {% else %}
+              <span style="color:#9ca3af;font-size:.78rem">—</span>
+            {% endif %}
+          </td>
+          <td style="text-align:center">
+            {% if not r.delay_reviewed_at and (dcat == 'next_day' or dcat == 'late') %}
+            <button class="btn btn-outline-success btn-sm" style="font-size:.72rem;padding:2px 10px"
+                    onclick="farReview({{ r.id }}, this)">Mark Reviewed</button>
+            {% elif r.delay_reviewed_at %}
+            <button class="btn btn-link btn-sm text-muted" style="font-size:.72rem;padding:2px 6px"
+                    onclick="farUnreview({{ r.id }}, this)">Unreview</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if not detail_rows %}
+        <tr><td colspan="9" style="text-align:center;padding:28px;color:var(--muted)">No field notes match the current filters.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if repo_rows %}
+  <div class="mgmt-section">Repo / Collect — Reporting Timeliness</div>
+
+  <div class="ax-card" style="overflow-x:auto;padding:0;margin-bottom:24px">
+    <table class="mgmt-table" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th style="text-align:left">Agent</th>
+          <th style="text-align:center">Repo Notes</th>
+          <th style="text-align:center">Timestamped</th>
+          <th style="text-align:center">Avg Delay</th>
+          <th style="text-align:center">Same Day</th>
+          <th style="text-align:center">Delayed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in repo_rows %}
+        <tr>
+          <td class="agent-name-cell">{{ r.full_name }}</td>
+          <td style="text-align:center">{{ r.total_notes }}</td>
+          <td style="text-align:center">{{ r.with_timestamp }}</td>
+          <td style="text-align:center;color:var(--muted)">
+            {% if r.avg_delay %}{{ (r.avg_delay / 60)|round(1) }}h{% else %}—{% endif %}
+          </td>
+          <td style="text-align:center" class="good">{{ r.same_day }}</td>
+          <td style="text-align:center" class="{% if r.delayed > 0 %}warn{% endif %}">{{ r.delayed }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div style="margin-top:10px;font-size:.72rem;color:var(--muted);line-height:1.6">
+    <strong>Compliance Score</strong> = (Same Day × 3 + Next Day × 1 − Late × 2 − No Timestamp) ÷ Total Notes.
+    Higher is better. Threshold for requiring a delay reason: <strong>{{ far_threshold_hours }}h</strong>.
+    Detail table capped at 200 rows; use CSV export for full data.
+  </div>
+
+  {% else %}
+  <div class="ax-card" style="padding:40px;text-align:center;color:var(--muted)">
+    No field notes found for the selected filters.
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+function farReview(noteId, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  fetch('/management/field-activity-delays/' + noteId + '/review', { method: 'POST', headers: {'X-CSRFToken': window._csrfToken || ''} })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.ok) { alert(d.error || 'Failed'); btn.disabled = false; btn.textContent = 'Mark Reviewed'; return; }
+      var cell = document.getElementById('far-reviewed-cell-' + noteId);
+      if (cell) cell.innerHTML = '<span class="reviewed-badge">✓ Reviewed</span>';
+      btn.outerHTML = '<button class="btn btn-link btn-sm text-muted" style="font-size:.72rem;padding:2px 6px" onclick="farUnreview(' + noteId + ', this)">Unreview</button>';
+    })
+    .catch(function(){ btn.disabled = false; btn.textContent = 'Mark Reviewed'; });
+}
+function farUnreview(noteId, btn) {
+  btn.disabled = true;
+  fetch('/management/field-activity-delays/' + noteId + '/unreview', { method: 'POST', headers: {'X-CSRFToken': window._csrfToken || ''} })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.ok) { btn.disabled = false; return; }
+      var cell = document.getElementById('far-reviewed-cell-' + noteId);
+      if (cell) cell.innerHTML = '<span style="color:#9ca3af;font-size:.78rem">—</span>';
+      btn.outerHTML = '<button class="btn btn-outline-success btn-sm" style="font-size:.72rem;padding:2px 10px" onclick="farReview(' + noteId + ', this)">Mark Reviewed</button>';
+    })
+    .catch(function(){ btn.disabled = false; });
+}
+</script>
+{% endblock %}

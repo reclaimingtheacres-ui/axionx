@@ -387,7 +387,8 @@
 
         {% if session.get('role') == 'management' and not is_demo_client %}
           <div class="hint">Management</div>
-          <a href="/management/agent-performance" class="{% if request.path.startswith('/management/') %}active{% endif %}">Agent Performance</a>
+          <a href="/management/agent-performance" class="{% if request.path == '/management/agent-performance' %}active{% endif %}">Agent Performance</a>
+          <a href="/management/field-activity-delays" class="{% if request.path.startswith('/management/field-activity-delays') %}active{% endif %}">Field Activity</a>
           <a href="/my/today" class="{% if request.path.startswith('/my/today') %}active{% endif %}">My Today</a>
           <a href="/schedule" class="{% if request.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
         {% endif %}

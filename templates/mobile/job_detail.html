@@ -773,6 +773,20 @@ function showTab(name) {
                      font-size:.78rem;font-weight:600;cursor:pointer;padding:0;">Remove</button>
     </div>
 
+    {# Activity Occurred At #}
+    <div style="margin-top:10px;">
+      <label style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:4px;">Activity Occurred At <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+      <input type="datetime-local" id="noteActivityOccurredAt"
+             style="width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:.88rem;font-family:inherit;outline:none;background:#fff;color:#111;">
+      <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">When did the activity happen? Leave blank if right now.</div>
+    </div>
+    <div id="noteDelayReasonRow" style="display:none;margin-top:8px;">
+      <label style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:4px;">Delay Reason</label>
+      <textarea id="noteDelayReason" rows="2"
+                placeholder="Why was this activity reported late?"
+                style="width:100%;padding:11px 12px;border:1.5px solid #fcd34d;border-radius:10px;font-size:.88rem;font-family:inherit;outline:none;resize:none;background:#fffbeb;"></textarea>
+    </div>
+
     {# Action row: mic, camera, gallery #}
     <div id="noteMediaRow" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;">
 
@@ -2088,6 +2102,21 @@ function _looksLikeFileUpdate(text) {
 
 var _smartPromptShown = false;
 
+// ── FAR: show/hide delay reason based on activity timestamp ──────────────────
+(function(){
+  var _FAR_MS = 12 * 3600 * 1000;
+  var occEl = document.getElementById('noteActivityOccurredAt');
+  var drRow = document.getElementById('noteDelayReasonRow');
+  if (!occEl || !drRow) return;
+  function _farCheck() {
+    var show = occEl.value && (Date.now() - new Date(occEl.value).getTime()) > _FAR_MS;
+    drRow.style.display = show ? '' : 'none';
+    if (!show) { var dr = document.getElementById('noteDelayReason'); if (dr) dr.value = ''; }
+  }
+  occEl.addEventListener('change', _farCheck);
+  occEl.addEventListener('input',  _farCheck);
+})();
+
 // ── Save via fetch ───────────────────────────────────────
 window.saveQuickNote = function(submitForReview) {
   var editNoteId = _editNoteId;
@@ -2163,6 +2192,17 @@ window.saveQuickNote = function(submitForReview) {
   }
   if (_notePhotoFile) fd.append('photo_file', _notePhotoFile);
   if (submitForReview) fd.append('submit_for_review', '1');
+  var _actOcc   = (document.getElementById('noteActivityOccurredAt') || {}).value || '';
+  var _delayRsn = (document.getElementById('noteDelayReason') || {}).value || '';
+  if (_actOcc)   fd.append('activity_occurred_at', _actOcc);
+  if (_delayRsn) fd.append('delay_reason', _delayRsn);
+  /* reset FAR fields after save */
+  var _aoel = document.getElementById('noteActivityOccurredAt');
+  var _drel = document.getElementById('noteDelayReason');
+  if (_aoel) _aoel.value = '';
+  if (_drel) _drel.value = '';
+  var _drow = document.getElementById('noteDelayReasonRow');
+  if (_drow) _drow.style.display = 'none';
 
   fetch('/m/job/{{ job.id }}/quick-note', { method: 'POST', body: fd })
     .then(function(r){ return r.json(); })

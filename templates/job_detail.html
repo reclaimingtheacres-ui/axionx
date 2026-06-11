@@ -4015,6 +4015,22 @@ document.addEventListener('click', function(e) {
             </div>
           </div>
 
+          <!-- Activity Occurred At (field notes only) -->
+          <div class="an-row" id="an_far_row" style="display:none">
+            <div class="an-label" style="padding-top:.2rem">Activity Occurred: <span class="info-dot" title="When did the field activity actually take place? Used for reporting timeliness tracking.">i</span></div>
+            <div>
+              <input type="datetime-local" class="form-control form-control-sm" name="activity_occurred_at" id="an_activity_occurred_at" style="max-width:210px">
+              <div class="text-muted" style="font-size:.7rem;margin-top:3px">Leave blank if the same time as this entry.</div>
+            </div>
+          </div>
+
+          <!-- Delay Reason (shown when delay > threshold) -->
+          <div class="an-row" id="an_delay_reason_row" style="display:none">
+            <div class="an-label" style="padding-top:.2rem">Delay Reason:</div>
+            <textarea class="form-control form-control-sm" name="delay_reason" id="an_delay_reason"
+                      rows="2" placeholder="Why was this activity reported late?" style="font-size:.83rem;resize:none"></textarea>
+          </div>
+
         </div>
         <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem;flex-wrap:wrap">
           {% if session.get('role') in ('admin', 'both', 'management') %}
@@ -4135,9 +4151,42 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
     var btn = document.getElementById('an_submit_review');
     if (btn) btn.style.display = isField ? '' : 'none';
   }
+  var _farThresholdMs = {{ (far_threshold_hours|default(12)) }} * 3600 * 1000;
+  function anUpdateFarFields() {
+    var farRow = document.getElementById('an_far_row');
+    if (!farRow) return;
+    var isField = _anHasCatToggle ? document.getElementById('an_cat_field').checked : true;
+    farRow.style.display = isField ? '' : 'none';
+    if (!isField) {
+      var occ = document.getElementById('an_activity_occurred_at');
+      if (occ) occ.value = '';
+      var dr = document.getElementById('an_delay_reason');
+      if (dr) dr.value = '';
+      var drRow = document.getElementById('an_delay_reason_row');
+      if (drRow) drRow.style.display = 'none';
+      return;
+    }
+    anCheckDelayReason();
+  }
+  function anCheckDelayReason() {
+    var occEl = document.getElementById('an_activity_occurred_at');
+    var drRow = document.getElementById('an_delay_reason_row');
+    if (!occEl || !drRow) return;
+    var val = occEl.value;
+    var show = false;
+    if (val) {
+      var diffMs = Date.now() - new Date(val).getTime();
+      show = diffMs > _farThresholdMs;
+    }
+    drRow.style.display = show ? '' : 'none';
+    if (!show) { var dr = document.getElementById('an_delay_reason'); if (dr) dr.value = ''; }
+  }
   document.querySelectorAll('input[name="note_category"]').forEach(function(r) {
-    r.addEventListener('change', function() { _anUserOverride = true; var h = document.getElementById('an_cat_hint'); if (h) h.textContent = ''; anUpdateReviewBtn(); });
+    r.addEventListener('change', function() { _anUserOverride = true; var h = document.getElementById('an_cat_hint'); if (h) h.textContent = ''; anUpdateReviewBtn(); anUpdateFarFields(); });
   });
+  var _anOccEl = document.getElementById('an_activity_occurred_at');
+  if (_anOccEl) _anOccEl.addEventListener('change', anCheckDelayReason);
+  anUpdateFarFields();
 
   window.anClear = function() {
     document.getElementById('an_text').value = '';
@@ -4147,6 +4196,9 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
     if (_anHasCatToggle) document.getElementById('an_cat_file').checked = true;
     _anUserOverride = false;
     var h = document.getElementById('an_cat_hint'); if (h) h.textContent = '';
+    var occ = document.getElementById('an_activity_occurred_at'); if (occ) occ.value = '';
+    var dr  = document.getElementById('an_delay_reason');          if (dr)  dr.value = '';
+    anUpdateFarFields();
     anSetNow();
   };
 
