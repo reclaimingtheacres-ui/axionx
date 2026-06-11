@@ -631,6 +631,8 @@ def _schema_is_current():
             jobs_cols = [r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()]
             if "last_client_response_at" not in jobs_cols:
                 return False
+            if "last_assigned_user_id" not in jobs_cols:
+                return False
             rl_cols = [r[1] for r in conn.execute("PRAGMA table_info(repo_lock_records)").fetchall()]
             if "auction_yard_id" not in rl_cols:
                 return False
@@ -737,6 +739,31 @@ def _startup_migrate():
         add_column_if_missing(_cur, "login_throttle", "last_attempted_username", "TEXT")
         add_column_if_missing(_cur, "login_throttle", "released_by",            "TEXT")
         add_column_if_missing(_cur, "login_throttle", "released_at",            "TEXT")
+        add_column_if_missing(_cur, "jobs", "last_assigned_user_id",            "INTEGER")
+        # Backfill last_assigned_user_id for historical terminal-status jobs.
+        # Priority: (1) repo_lock agent, (2) last schedule agent, (3) last field note author.
+        # Runs every startup but is a no-op once all rows are populated (WHERE IS NULL guard).
+        _cur.execute("""
+            UPDATE jobs SET last_assigned_user_id = COALESCE(
+                (SELECT rl.agent_user_id FROM repo_lock_records rl
+                 WHERE rl.job_id = jobs.id AND rl.submitted_at IS NOT NULL
+                   AND rl.agent_user_id IS NOT NULL
+                 ORDER BY rl.submitted_at DESC LIMIT 1),
+                (SELECT s.assigned_to_user_id FROM schedules s
+                 WHERE s.job_id = jobs.id AND s.hidden = 0
+                   AND s.assigned_to_user_id IS NOT NULL
+                 ORDER BY s.scheduled_for DESC LIMIT 1),
+                (SELECT n.created_by_user_id FROM job_field_notes n
+                 WHERE n.job_id = jobs.id AND n.note_category = 'field_note'
+                   AND n.created_by_user_id IS NOT NULL
+                 ORDER BY n.created_at DESC LIMIT 1)
+            )
+            WHERE status IN (
+                'Completed','Invoiced','Repossessed','Surrendered',
+                'Closed','Closed Field Call','Archived - Invoiced','Cancelled'
+            )
+            AND last_assigned_user_id IS NULL
+        """)
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS login_audit_log (
                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1815,6 +1842,7 @@ def _migrate_update_builder():
     # backfilled below for existing records using the most recent lifecycle entry
     # that matches the current status (falling back to jobs.updated_at).
     add_column_if_missing(cur, "jobs", "status_changed_at",                   "TEXT")
+    add_column_if_missing(cur, "jobs", "last_assigned_user_id",               "INTEGER")
     add_column_if_missing(cur, "jobs", "last_client_update_request_sent_at",  "TEXT")
     add_column_if_missing(cur, "jobs", "client_update_request_count",         "INTEGER DEFAULT 0")
 
@@ -7317,8 +7345,9 @@ def job_status_update(job_id: int):
     now = now_ts()
     conn = db()
     cur = conn.cursor()
-    _old_job = cur.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    _old_job = cur.execute("SELECT status, assigned_user_id FROM jobs WHERE id = ?", (job_id,)).fetchone()
     old_status = _old_job["status"] if _old_job else ""
+    _status_agent = _old_job["assigned_user_id"] if _old_job else None
     cur.execute("UPDATE jobs SET status = ?, updated_at = ?, status_changed_at = ? WHERE id = ?",
                 (status, now, now, job_id))
     cur.execute("""
@@ -7326,8 +7355,12 @@ def job_status_update(job_id: int):
         VALUES (?, ?, ?, ?, ?)
     """, (job_id, "Status Update", f"Status changed to '{status}'.", now, now))
     if status in ("Completed", "Invoiced", "Cancelled"):
-        cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
-                    (now, job_id))
+        cur.execute(
+            "UPDATE jobs SET assigned_user_id = NULL, "
+            "last_assigned_user_id = COALESCE(last_assigned_user_id, ?), "
+            "updated_at = ? WHERE id = ?",
+            (_status_agent, now, job_id)
+        )
         pending_scheds = cur.execute(
             "SELECT id, scheduled_for, status FROM schedules WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')",
             (job_id,)).fetchall()
@@ -8623,8 +8656,12 @@ def job_update(job_id: int):
     """, (job_id, "Status/Visit Update", f"Status set to '{status}'. Visit type set to '{visit_type}'.", now, now))
 
     if status in ("Completed", "Invoiced", "Cancelled"):
-        cur.execute("UPDATE jobs SET assigned_user_id = NULL, updated_at = ? WHERE id = ?",
-                    (now, job_id))
+        cur.execute(
+            "UPDATE jobs SET assigned_user_id = NULL, "
+            "last_assigned_user_id = COALESCE(last_assigned_user_id, ?), "
+            "updated_at = ? WHERE id = ?",
+            (old_agent, now, job_id)
+        )
         pending_scheds = cur.execute(
             "SELECT id, scheduled_for, status FROM schedules WHERE job_id = ? AND status NOT IN ('Completed', 'Cancelled')",
             (job_id,)).fetchall()
@@ -18504,7 +18541,7 @@ def mgmt_agent_performance():
     """Management-only Agent Performance Overview dashboard."""
     from datetime import datetime as _dt, timedelta as _td
 
-    today = _dt.utcnow().date()
+    today = _dt.now(_melbourne).date()
 
     date_to_str   = request.args.get("date_to",   today.isoformat())
     date_from_str = request.args.get("date_from", (today - _td(days=30)).isoformat())
@@ -18550,27 +18587,40 @@ def mgmt_agent_performance():
     ).fetchall()
     avg_age = {r["assigned_user_id"]: r["avg_age"] for r in rows}
 
-    # 2. Completed files in date range
+    # 2. Completed files in date range — attributed to last_assigned_user_id (preserved at
+    #    status-change time) with fallback to assigned_user_id for non-cleared terminal statuses.
     rows = conn.execute(
-        "SELECT assigned_user_id, COUNT(*) c FROM jobs "
+        "SELECT COALESCE(last_assigned_user_id, assigned_user_id) AS attr_uid, COUNT(*) c FROM jobs "
         "WHERE status IN ('Completed','Invoiced','Repossessed','Surrendered','Closed','Closed Field Call') "
         "AND date(COALESCE(status_changed_at, updated_at)) BETWEEN ? AND ? "
-        "AND assigned_user_id IS NOT NULL GROUP BY assigned_user_id",
+        "AND COALESCE(last_assigned_user_id, assigned_user_id) IS NOT NULL "
+        "GROUP BY attr_uid",
         (date_from_str, date_to_str),
     ).fetchall()
-    completed_files = {r["assigned_user_id"]: r["c"] for r in rows}
+    completed_files = {r["attr_uid"]: r["c"] for r in rows}
 
-    # 3. Repossessions in date range
+    # 3. Repossessions in date range — attributed to the agent who performed the repo
+    #    (repo_lock_records.agent_user_id), falling back to last_assigned_user_id then
+    #    assigned_user_id for repos that pre-date the repo lock system.
     rows = conn.execute(
-        "SELECT assigned_user_id, COUNT(*) c FROM jobs "
-        "WHERE status IN ('Repossessed','Completed','Invoiced') "
-        "AND (job_type IN ('Upgrade to Repo/Collect','Collect Only') "
-        "  OR job_type LIKE '%Repo%' OR job_type LIKE '%Repossess%') "
-        "AND date(COALESCE(status_changed_at, updated_at)) BETWEEN ? AND ? "
-        "AND assigned_user_id IS NOT NULL GROUP BY assigned_user_id",
+        """SELECT COALESCE(
+                (SELECT rl.agent_user_id FROM repo_lock_records rl
+                 WHERE rl.job_id = j.id AND rl.submitted_at IS NOT NULL
+                   AND rl.agent_user_id IS NOT NULL
+                 ORDER BY rl.submitted_at DESC LIMIT 1),
+                j.last_assigned_user_id,
+                j.assigned_user_id
+           ) AS repo_uid, COUNT(*) c
+           FROM jobs j
+           WHERE j.status IN ('Repossessed','Completed','Invoiced')
+           AND (j.job_type IN ('Upgrade to Repo/Collect','Collect Only')
+             OR j.job_type LIKE '%Repo%' OR j.job_type LIKE '%Repossess%')
+           AND date(COALESCE(j.status_changed_at, j.updated_at)) BETWEEN ? AND ?
+           GROUP BY repo_uid
+           HAVING repo_uid IS NOT NULL""",
         (date_from_str, date_to_str),
     ).fetchall()
-    repossessions = {r["assigned_user_id"]: r["c"] for r in rows}
+    repossessions = {r["repo_uid"]: r["c"] for r in rows}
 
     # 5+6. Attendances and Re-attendances (schedule completions, booking_types 1/2/3)
     rows = conn.execute(
@@ -18613,12 +18663,15 @@ def mgmt_agent_performance():
     ).fetchall()
     overdue_files = {r["assigned_user_id"]: r["c"] for r in rows}
 
-    # 9. No note update in past 7 days (active files)
+    # 9. No agent field activity in past 7 days (active files).
+    #    Only field_note category is checked — admin correspondence, client emails,
+    #    document uploads and system notes do not count as agent field activity.
     rows = conn.execute(
         f"SELECT j.assigned_user_id, COUNT(DISTINCT j.id) c FROM jobs j "
         f"WHERE j.status NOT IN ({inactive_ph}) AND j.assigned_user_id IS NOT NULL "
         f"AND NOT EXISTS ("
         f"  SELECT 1 FROM job_field_notes n WHERE n.job_id=j.id "
+        f"  AND n.note_category = 'field_note' "
         f"  AND date(n.created_at) >= date('now','-7 days')) "
         f"GROUP BY j.assigned_user_id",
         INACTIVE_JOB_STATUSES,
