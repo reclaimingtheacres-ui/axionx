@@ -4151,7 +4151,7 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
     var btn = document.getElementById('an_submit_review');
     if (btn) btn.style.display = isField ? '' : 'none';
   }
-  var _farThresholdMs = {{ (far_threshold_hours|default(12)) }} * 3600 * 1000;
+  var _farThresholdMs = {{ (far_threshold_general_minutes|default(480)) }} * 60 * 1000;
   function anUpdateFarFields() {
     var farRow = document.getElementById('an_far_row');
     if (!farRow) return;

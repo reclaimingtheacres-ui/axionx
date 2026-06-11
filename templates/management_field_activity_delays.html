@@ -316,7 +316,10 @@
 
   <div style="margin-top:10px;font-size:.72rem;color:var(--muted);line-height:1.6">
     <strong>Compliance Score</strong> = (Same Day × 3 + Next Day × 1 − Late × 2 − No Timestamp) ÷ Total Notes.
-    Higher is better. Threshold for requiring a delay reason: <strong>{{ far_threshold_hours }}h</strong>.
+    Higher is better.
+    Thresholds for requiring a delay reason:
+    <strong>Repo Lock — {{ far_threshold_repo_minutes }}min</strong> ·
+    <strong>General field activity — {{ far_threshold_general_hours }}h</strong>.
     Detail table capped at 200 rows; use CSV export for full data.
   </div>
 

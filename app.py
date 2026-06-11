@@ -7492,7 +7492,22 @@ _CUR_ELIGIBLE_STATUSES = ("Suspended", "Awaiting Advice From Client", "Awaiting 
 _CUR_STALE_DAYS        = 28   # job must be in eligible status at least this long
 _CUR_COOLDOWN_DAYS     = 7    # days between Stage 1 and Stage 2, and Stage 2 and Stage 3
 _SUSPENDED_RESPONSE_WINDOW_DAYS = 10  # grace window after a recorded client response
-_FAR_DELAY_REASON_THRESHOLD_HOURS = 12  # delay beyond which a reason is prompted in the UI
+# Per-activity-type FAR thresholds (minutes). Add new keys here for future types.
+_FAR_THRESHOLDS_MINUTES = {
+    "repo":    30,   # Repossession activity — Repo Lock submitted > 30 min after activity
+    "general": 480,  # All other field activity — 8 hours
+}
+_FAR_THRESHOLD_GENERAL_HOURS = _FAR_THRESHOLDS_MINUTES["general"] // 60  # 8
+
+
+def _far_threshold_minutes(note_type: str = None, job_type: str = None) -> int:
+    """Return the FAR delay-reason threshold in minutes for the given note/job type.
+    Extensible: add new keys to _FAR_THRESHOLDS_MINUTES as new activity types are defined."""
+    nt = (note_type or "").lower()
+    jt = (job_type or "").lower()
+    if nt == "repo lock" or "repo" in jt or "collect" in jt:
+        return _FAR_THRESHOLDS_MINUTES["repo"]
+    return _FAR_THRESHOLDS_MINUTES["general"]
 
 
 def _far_calc_delay(activity_occurred_at: str, created_at: str):
@@ -10700,13 +10715,27 @@ def repo_lock_submit(job_id: int, item_id: int):
             "INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at) VALUES (?,?,?,?,?)",
             (job_id, "Repo Lock Submitted", note_text, ts, ts)
         )
+        # Derive activity_occurred_at from repo_date + start_time already in the form
+        _rl_act_occ = None
+        if values.get("repo_date"):
+            _rl_time = (values.get("start_time") or "").strip()
+            if _rl_time and len(_rl_time) >= 4:
+                _rl_act_occ = f"{values['repo_date']}T{_rl_time}"
+                if len(_rl_time) <= 5:   # "HH:MM" → add seconds
+                    _rl_act_occ += ":00"
+            else:
+                _rl_act_occ = f"{values['repo_date']}T00:00:00"
+        _rl_delay_mins = _far_calc_delay(_rl_act_occ, ts) if _rl_act_occ else None
+
         fn_cur = conn.execute(
             """INSERT INTO job_field_notes
                    (job_id, created_by_user_id, note_text, created_at,
-                    note_type, note_category, review_status)
-               VALUES (?,?,?,?,?,?,?)""",
+                    note_type, note_category, review_status,
+                    activity_occurred_at, reporting_delay_minutes)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (job_id, uid, note_text, ts,
-             "Repo Lock", "field_note", "submitted_for_review")
+             "Repo Lock", "field_note", "submitted_for_review",
+             _rl_act_occ, _rl_delay_mins)
         )
         _rl_note_id = fn_cur.lastrowid
         try:
@@ -18844,7 +18873,7 @@ def mgmt_field_activity_delays():
                       AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) > 1
                      THEN 1 ELSE 0 END) AS late,
             SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
-                      AND n.reporting_delay_minutes > :threshold_mins
+                      AND n.reporting_delay_minutes > (CASE n.note_type WHEN 'Repo Lock' THEN 30 ELSE 480 END)
                       AND (n.delay_reason IS NULL OR n.delay_reason = '') THEN 1 ELSE 0 END) AS missing_reason,
             SUM(CASE WHEN n.delay_reviewed_at IS NOT NULL THEN 1 ELSE 0 END) AS reviewed
         FROM job_field_notes n
@@ -18852,7 +18881,7 @@ def mgmt_field_activity_delays():
           AND n.review_status NOT IN ('private_scratch')
           AND date(n.created_at) BETWEEN :date_from AND :date_to
           {agent_clause}
-    """, dict(**base_params, threshold_mins=_FAR_DELAY_REASON_THRESHOLD_HOURS * 60)).fetchone()
+    """, base_params).fetchone()
 
     totals = dict(tot_row) if tot_row else {}
     totals.setdefault("total_notes", 0)
@@ -18882,7 +18911,7 @@ def mgmt_field_activity_delays():
                       AND CAST(julianday(date(n.created_at)) - julianday(date(n.activity_occurred_at)) AS INTEGER) > 1
                      THEN 1 ELSE 0 END) AS late,
             SUM(CASE WHEN n.activity_occurred_at IS NOT NULL
-                      AND n.reporting_delay_minutes > :threshold_mins
+                      AND n.reporting_delay_minutes > (CASE n.note_type WHEN 'Repo Lock' THEN 30 ELSE 480 END)
                       AND (n.delay_reason IS NULL OR n.delay_reason = '') THEN 1 ELSE 0 END) AS missing_reason,
             SUM(CASE WHEN n.delay_reviewed_at IS NOT NULL THEN 1 ELSE 0 END) AS reviewed
         FROM job_field_notes n
@@ -18893,7 +18922,7 @@ def mgmt_field_activity_delays():
           {agent_clause}
         GROUP BY u.id, u.full_name
         ORDER BY late DESC, avg_delay DESC NULLS LAST, u.full_name
-    """, dict(**base_params, threshold_mins=_FAR_DELAY_REASON_THRESHOLD_HOURS * 60)).fetchall()
+    """, base_params).fetchall()
 
     # Compute per-agent derived metrics and ranking
     agent_data = []
@@ -18984,7 +19013,8 @@ def mgmt_field_activity_delays():
         delay_cat=delay_cat,
         date_from=date_from_str,
         date_to=date_to_str,
-        far_threshold_hours=_FAR_DELAY_REASON_THRESHOLD_HOURS,
+        far_threshold_repo_minutes=_FAR_THRESHOLDS_MINUTES["repo"],
+        far_threshold_general_hours=_FAR_THRESHOLD_GENERAL_HOURS,
     )
 
 
