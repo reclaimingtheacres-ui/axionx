@@ -27,6 +27,30 @@ description: AxionX has two separate deployment targets — Azure App Service (p
 
 **Why:** Having both active caused a race condition — two workflows deploying to the same App Service slot on every push to main, using different publish profiles.
 
+## Critical: download-artifact@v4 path convention
+
+`upload-artifact@v4` with `name: python-app` + `path: .` uploads all workspace files flat.
+`download-artifact@v4` with NO `path:` key extracts into `$GITHUB_WORKSPACE/python-app/` (adds a named subdirectory automatically).
+`webapps-deploy@v3` with `package: .` then deploys the parent — sending `python-app/app.py` NESTED one level deep. Azure never updates its root `app.py`.
+
+**The fix (both keys are required):**
+```yaml
+- uses: actions/download-artifact@v4
+  with:
+    name: python-app
+    path: python-app        # ← force extract INTO named subdirectory
+
+- uses: azure/webapps-deploy@v3
+  with:
+    package: python-app     # ← deploy the subdirectory's CONTENTS, not parent
+```
+
+**Why:** Without `path: python-app` on download, v4 creates a `python-app/` subdirectory anyway. Without `package: python-app` on deploy, the entire workspace (including the subdirectory) is zipped, nesting `app.py` one level deep. Azure Oryx reuses its cached build at `/tmp/XXXX/` and the new code never runs.
+
+## OneDeploy restart behaviour
+
+OneDeploy marking "success" in GitHub Actions logs does NOT guarantee an immediate app restart. Sometimes a second `workflow_dispatch` run is required to unstick the App Service and load the new code. Symptom: all GH Actions steps green, but the new route still returns 404 (Flask 404 from AxionX template, confirming the running code is old). Fix: trigger a second `workflow_dispatch` run.
+
 ## Replit deployment (separate, NOT production)
 
 - URL: `https://AaxionConsole.replit.app` — a Replit-managed autoscale deployment
@@ -41,5 +65,6 @@ description: AxionX has two separate deployment targets — Azure App Service (p
 
 **How to apply:**
 - Never assume "deploying in Replit" = deploying to the live site
-- After pushing FAR or any feature, check Azure directly (`axionx.com.au`) not the Replit preview
-- If Azure doesn't reflect a push, check GitHub Actions for `main_axionx-prod.yml` run status
+- After pushing any feature, verify on Azure directly (`axionx.com.au`) — unauthenticated hit on a protected route should return 302, not 404
+- If Azure returns 404 (Flask template 404 served by gunicorn) after a "successful" deploy, trigger a second `workflow_dispatch` run to force a proper restart
+- Check GitHub Actions for `main_axionx-prod.yml` run status; `azure-deploy.yml` must always be skipped
