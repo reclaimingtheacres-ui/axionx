@@ -1,0 +1,30 @@
+# Exclude large runtime/cache directories from the deployment image.
+# Without this the image exceeds the 8 GiB limit (primary offenders:
+# .pythonlibs ~7.5 GiB, .cache ~4.1 GiB).
+
+.pythonlibs/
+.cache/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+
+# Backup archives and local DB snapshots — not needed in production
+axionx_backup_*.zip
+axionx-backup.zip
+ios-update.zip
+axion_backup_*.db
+axion_demo.db
+axionx.db
+database.db
+
+# Development/agent tooling
+.local/
+.agents/
+.canvas/
+artifacts/
+
+# Uploaded user files (served from Azure Blob in production)
+uploads/
+attached_assets/
+recovery_target_docs/
