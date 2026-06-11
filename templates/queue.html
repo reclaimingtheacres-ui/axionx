@@ -255,10 +255,11 @@
     data-agent="{{ (c.agent_name or '')|e }}"
     data-agent-id="{{ c.job_assigned_uid or '' }}"
     data-client="{{ (c.client_name or '')|e }}"
+    data-display-ref="{{ (c.display_ref or '')|e }}"
     data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.resolved_address or c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}"
     style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions,.q-status-dd')){queueRowClick(this,{{ c.id }},{% if show_note_col %}true{% else %}false{% endif %});}">
   <td>
-    <button class="q-dismiss" title="Dismiss" onclick="event.stopPropagation();confirmDismiss({{ c.id }})">&#10005;</button>
+    <button class="q-dismiss" title="Dismiss" onclick="event.stopPropagation();confirmDismiss({{ c.id }}, '{{ c.display_ref|e }}')">&#10005;</button>
   </td>
   <td>
     <a class="q-job-link" href="/jobs/{{ c.job_id }}{% if show_note_col %}?from_cue={{ c.id }}#tab-notes{% endif %}">{{ c.display_ref }}</a>
@@ -309,10 +310,11 @@
     data-agent="{{ (c.agent_name or '')|e }}"
     data-agent-id="{{ c.job_assigned_uid or '' }}"
     data-client="{{ (c.client_name or '')|e }}"
+    data-display-ref="{{ (c.display_ref or '')|e }}"
     data-search="{{ (c.display_ref or '')|lower }} {{ (c.customer_label or c.customer_name or '')|lower }} {{ (c.resolved_address or c.job_address or '')|lower }} {{ (c.client_name or '')|lower }} {{ (c.agent_name or '')|lower }}"
     style="cursor:pointer" onclick="if(!event.target.closest('button,a,.q-actions,.q-status-dd')){queueRowClick(this,{{ c.id }},false);}">
   <td>
-    <button class="q-dismiss" title="Dismiss" onclick="event.stopPropagation();confirmDismiss({{ c.id }})">&#10005;</button>
+    <button class="q-dismiss" title="Dismiss" onclick="event.stopPropagation();confirmDismiss({{ c.id }}, '{{ c.display_ref|e }}')">&#10005;</button>
   </td>
   <td>
     <a class="q-job-link" href="/jobs/{{ c.job_id }}">{{ c.display_ref }}</a>
@@ -456,7 +458,7 @@ function _esc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function dismissItem(cueId) {
+function dismissItem(cueId, jobRef) {
   var row = document.getElementById('qrow-' + cueId);
   fetch('/queue/' + cueId + '/dismiss', {
     method: 'POST',
@@ -468,14 +470,17 @@ function dismissItem(cueId) {
       if (row) row.remove();
       updateSectionCounts();
       updateSummary();
+      var jn = data.job_number || jobRef || 'No Job Linked';
+      qShowToast('Queue item ' + cueId + ' dismissed (Job ' + jn + ')', 'ok');
     }
   })
   .catch(function(){ alert('Could not dismiss item. Please try again.'); });
 }
 
-function confirmDismiss(cueId) {
-  if (confirm('Delete this queue entry?')) {
-    dismissItem(cueId);
+function confirmDismiss(cueId, jobRef) {
+  var label = jobRef ? ' \u2014 Job ' + jobRef : '';
+  if (confirm('Delete this queue entry' + label + '?')) {
+    dismissItem(cueId, jobRef);
   }
 }
 
@@ -491,6 +496,8 @@ function queueRowClick(row, cueId, isNoteReview) {
 function updateCueStatus(sel) {
   var cueId = sel.dataset.cueId;
   var newStatus = sel.value;
+  var row = sel.closest('tr');
+  var jobRef = row ? (row.dataset.displayRef || '') : '';
   fetch('/queue/' + cueId + '/status', {
     method: 'POST',
     headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
@@ -500,9 +507,13 @@ function updateCueStatus(sel) {
   .then(function(data){
     if (data.ok) {
       sel.className = 'q-cue-select q-cue-' + newStatus;
+      var jn = data.job_number || jobRef || 'No Job Linked';
+      var statusLabels = {open:'open', in_review:'in review', held:'held', resolved:'resolved'};
+      var statusLabel = statusLabels[newStatus] || newStatus;
+      qShowToast('Queue item ' + cueId + ' ' + statusLabel + ' (Job ' + jn + ')', 'ok');
       if (newStatus === 'resolved') {
-        var row = sel.closest('tr');
-        if (row) { row.style.opacity = '0.4'; setTimeout(function(){ row.remove(); updateSectionCounts(); updateSummary(); }, 800); }
+        var resolvedRow = sel.closest('tr');
+        if (resolvedRow) { resolvedRow.style.opacity = '0.4'; setTimeout(function(){ resolvedRow.remove(); updateSectionCounts(); updateSummary(); }, 800); }
       }
     } else {
       alert(data.error || 'Failed to update status.');

@@ -17657,6 +17657,8 @@ def cue_create():
     ts = now_ts()
     conn = db()
     cur = conn.cursor()
+    _jrow = cur.execute("SELECT internal_job_number FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    job_number = (_jrow["internal_job_number"] or str(job_id)) if _jrow else str(job_id)
     cur.execute("""
         INSERT INTO cue_items (job_id, visit_type, due_date, priority, status, assigned_user_id, instructions, created_by_user_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'Pending', ?, ?, ?, ?, ?)
@@ -17666,10 +17668,10 @@ def cue_create():
     conn.close()
 
     audit("cue", cue_id, "create",
-          f"Cue created for job {job_id} due {due_date} ({visit_type}).",
+          f"Cue created for job {job_id} (Job {job_number}) due {due_date} ({visit_type}).",
           {"job_id": job_id, "due_date": due_date, "visit_type": visit_type, "assigned_user_id": assigned_user_id})
 
-    flash("Item added to queue.", "success")
+    flash(f"Item added to queue (Job {job_number}).", "success")
     return redirect(url_for("job_queue", date=due_date))
 
 
@@ -17693,9 +17695,11 @@ def cue_complete(cue_id: int):
     conn.commit()
     job_id = cue["job_id"]
     visit_type = (cue["visit_type"] or "").strip()
+    _jrow2 = conn.execute("SELECT internal_job_number FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    job_number = (_jrow2["internal_job_number"] or "No Job Linked") if _jrow2 else "No Job Linked"
     conn.close()
 
-    audit("cue", cue_id, "status_change", f"Cue {cue_id} marked Completed.")
+    audit("cue", cue_id, "status_change", f"Cue {cue_id} marked Completed (Job {job_number}).")
 
     if visit_type in _ATTENDANCE_CUE_TYPES:
         return redirect(url_for("update_builder", job_id=job_id))
@@ -17828,12 +17832,17 @@ def queue_job_attachments(job_id: int):
 def queue_dismiss(cue_id: int):
     ts = now_ts()
     conn = db()
+    _row = conn.execute(
+        "SELECT ci.job_id, j.internal_job_number FROM cue_items ci "
+        "LEFT JOIN jobs j ON j.id = ci.job_id WHERE ci.id = ?",
+        (cue_id,)).fetchone()
+    job_number = (_row["internal_job_number"] or "No Job Linked") if _row else "No Job Linked"
     conn.execute("UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?, cue_status='resolved' WHERE id=?",
                  (ts, ts, cue_id))
     conn.commit()
     conn.close()
-    audit("cue", cue_id, "dismiss", f"Queue item {cue_id} dismissed.")
-    return jsonify({"ok": True})
+    audit("cue", cue_id, "dismiss", f"Queue item {cue_id} dismissed (Job {job_number}).")
+    return jsonify({"ok": True, "job_number": job_number})
 
 
 @app.post("/queue/<int:cue_id>/status")
@@ -17845,6 +17854,11 @@ def queue_update_status(cue_id: int):
         return jsonify({"ok": False, "error": "Invalid status"}), 400
     ts = now_ts()
     conn = db()
+    _row = conn.execute(
+        "SELECT ci.job_id, j.internal_job_number FROM cue_items ci "
+        "LEFT JOIN jobs j ON j.id = ci.job_id WHERE ci.id = ?",
+        (cue_id,)).fetchone()
+    job_number = (_row["internal_job_number"] or "No Job Linked") if _row else "No Job Linked"
     if new_status == "resolved":
         conn.execute(
             "UPDATE cue_items SET cue_status=?, status='Completed', completed_at=?, updated_at=? WHERE id=?",
@@ -17855,8 +17869,8 @@ def queue_update_status(cue_id: int):
             (new_status, ts, cue_id))
     conn.commit()
     conn.close()
-    audit("cue", cue_id, "status_change", f"Queue item {cue_id} → {new_status}")
-    return jsonify({"ok": True})
+    audit("cue", cue_id, "status_change", f"Queue item {cue_id} → {new_status} (Job {job_number})")
+    return jsonify({"ok": True, "job_number": job_number})
 
 
 @app.post("/jobs/<int:job_id>/notes/<int:note_id>/submit-for-review")
@@ -18469,11 +18483,13 @@ def cue_assign(cue_id: int):
 
     cur.execute("UPDATE cue_items SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
                 (assigned_user_id, ts, cue_id))
+    _jrow3 = cur.execute("SELECT internal_job_number FROM jobs WHERE id = ?", (before["job_id"],)).fetchone() if before["job_id"] else None
+    job_number = (_jrow3["internal_job_number"] or "No Job Linked") if _jrow3 else "No Job Linked"
     conn.commit()
     conn.close()
 
     audit("cue", cue_id, "assign",
-          f"Cue {cue_id} assigned to user {assigned_user_id or 'Unassigned'}.",
+          f"Cue {cue_id} assigned to user {assigned_user_id or 'Unassigned'} (Job {job_number}).",
           {"from": before["assigned_user_id"], "to": assigned_user_id, "job_id": before["job_id"]})
 
     return ("OK", 200)
