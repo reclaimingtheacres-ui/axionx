@@ -4,3 +4,4 @@
 - [Agent attribution — last_assigned_user_id](agent-attribution.md) — assigned_user_id is cleared to NULL on Completed/Invoiced/Cancelled; last_assigned_user_id preserves the agent for reporting.
 - [FAR thresholds per activity type](far-thresholds.md) — Repo Lock = 30 min, general field = 8 h; single constant was wrong; use _FAR_THRESHOLDS_MINUTES dict + CASE SQL expression.
 - [Azure deployment architecture](azure-deployment-architecture.md) — live platform is Azure App Service (axionx.com.au), NOT Replit; main_axionx-prod.yml is the only active GH Actions workflow; azure-deploy.yml disabled.
+- [Replit test DB passwords](replit-test-passwords.md) — never change real user account passwords in axion.db for testing; original passwords are Manage2024! for management@axion.local and admin@axion.local.
