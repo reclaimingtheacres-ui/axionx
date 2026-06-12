@@ -4020,7 +4020,7 @@ document.addEventListener('click', function(e) {
             <div class="an-label" style="padding-top:.2rem">Activity Occurred: <span class="info-dot" title="When did the field activity actually take place? Used for reporting timeliness tracking.">i</span></div>
             <div>
               <input type="datetime-local" class="form-control form-control-sm" name="activity_occurred_at" id="an_activity_occurred_at" style="max-width:210px">
-              <div class="text-muted" style="font-size:.7rem;margin-top:3px">Leave blank if the same time as this entry.</div>
+              <div class="text-muted" style="font-size:.7rem;margin-top:3px">Defaults to now — adjust if the activity happened earlier.</div>
             </div>
           </div>
 
@@ -4083,6 +4083,16 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
       minute: parts.minute
     };
   }
+  function _anLocalNowDtl() {
+    var now = new Date();
+    var parts = {};
+    new Intl.DateTimeFormat('en-AU', {
+      timeZone: 'Australia/Melbourne',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(now).forEach(function(p){ parts[p.type] = p.value; });
+    return parts.year + '-' + parts.month + '-' + parts.day + 'T' + parts.hour + ':' + parts.minute;
+  }
 
   function anSetNow() {
     var t = anNow();
@@ -4092,6 +4102,8 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
     if (dateEl) dateEl.value = t.dateStr;
     if (hourEl) hourEl.value = t.hour;
     if (minEl)  minEl.value  = t.minute;
+    var occEl = document.getElementById('an_activity_occurred_at');
+    if (occEl) { occEl.value = _anLocalNowDtl(); }
   }
 
   var _anFieldRe = /\b(attended|attendance|spoke\s+with|telephoned|voicemail|left\s+a?\s*message|sms\s+sent|call(?:ed)?|contact(?:ed)?|door\s*knock|no\s+answer|site\s+visit)\b/i;
@@ -4196,7 +4208,7 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
     if (_anHasCatToggle) document.getElementById('an_cat_file').checked = true;
     _anUserOverride = false;
     var h = document.getElementById('an_cat_hint'); if (h) h.textContent = '';
-    var occ = document.getElementById('an_activity_occurred_at'); if (occ) occ.value = '';
+    var occ = document.getElementById('an_activity_occurred_at'); if (occ) occ.value = _anLocalNowDtl();
     var dr  = document.getElementById('an_delay_reason');          if (dr)  dr.value = '';
     anUpdateFarFields();
     anSetNow();

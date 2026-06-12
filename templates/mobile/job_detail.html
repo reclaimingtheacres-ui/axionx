@@ -775,10 +775,10 @@ function showTab(name) {
 
     {# Activity Occurred At #}
     <div style="margin-top:10px;">
-      <label style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:4px;">Activity Occurred At <span style="font-weight:400;text-transform:none;">(optional)</span></label>
+      <label style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:4px;">Activity Occurred At <span style="font-weight:400;text-transform:none;">(adjust if earlier)</span></label>
       <input type="datetime-local" id="noteActivityOccurredAt"
              style="width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:.88rem;font-family:inherit;outline:none;background:#fff;color:#111;">
-      <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">When did the activity happen? Leave blank if right now.</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:3px;">Defaults to now — adjust if the activity happened earlier.</div>
     </div>
     <div id="noteDelayReasonRow" style="display:none;margin-top:8px;">
       <label style="font-size:.72rem;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:4px;">Delay Reason</label>
@@ -1926,6 +1926,8 @@ window.openNoteSheet = function(editData) {
     if (textEl)    textEl.value = '';
     if (saveBtnEl) saveBtnEl.textContent = _noteDefaultSaveLabel;
     if (submitBtnEl) submitBtnEl.style.display = '';
+    var _occEl = document.getElementById('noteActivityOccurredAt');
+    if (_occEl) { _occEl.value = _farLocalNow(); _occEl.dispatchEvent(new Event('change')); }
   }
 
   var ov = document.getElementById('noteSheetOverlay');
@@ -2101,6 +2103,14 @@ function _looksLikeFileUpdate(text) {
 }
 
 var _smartPromptShown = false;
+
+// ── FAR: local-now formatter for datetime-local inputs ───────────────────────
+function _farLocalNow() {
+  var d = new Date();
+  var pad = function(n){ return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+         'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
 
 // ── FAR: show/hide delay reason based on activity timestamp ──────────────────
 (function(){
