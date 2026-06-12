@@ -63,6 +63,17 @@
           </div>
         </div>
 
+        <!-- FAR: delay reason (shown when attendance > 8 h ago) -->
+        <div id="ub_delay_reason_row" class="mb-3" style="display:none">
+          <label class="form-label small mb-1">
+            Reporting Delay Reason
+            <span class="badge bg-warning text-dark ms-1" style="font-size:.7rem;vertical-align:middle">Late Report</span>
+          </label>
+          <textarea id="ub_delay_reason" class="form-control form-control-sm" rows="2"
+                    placeholder="Why was this activity reported more than 8 hours after it occurred?"></textarea>
+          <div class="form-text" style="color:var(--muted);font-size:.75rem">Required when reporting more than 8 hours after the activity.</div>
+        </div>
+
         <!-- First / Re-attendance -->
         <div class="mb-3">
           <label class="form-label small mb-1">Attendance Type</label>
@@ -431,6 +442,20 @@
     $('neighbour_other_wrap').style.display = this.value === 'other' ? 'block' : 'none';
   });
 
+  // ── FAR: show/hide delay reason when attendance is > 8 h ago ─────────────
+  const _UB_FAR_MS = 8 * 60 * 60 * 1000;
+  function _ubCheckFar() {
+    const d = $('attend_date').value, t = $('attend_time').value;
+    if (!d || !t) { $('ub_delay_reason_row').style.display = 'none'; return; }
+    const occMs = new Date(d + 'T' + t).getTime();
+    const late = !isNaN(occMs) && (Date.now() - occMs) > _UB_FAR_MS;
+    $('ub_delay_reason_row').style.display = late ? 'block' : 'none';
+    if (!late) $('ub_delay_reason').value = '';
+  }
+  $('attend_date').addEventListener('change', _ubCheckFar);
+  $('attend_time').addEventListener('change', _ubCheckFar);
+  _ubCheckFar();
+
   function getNeighbourOutcome() {
     if (!$('neighbour_toggle').checked) return '';
     const val = $('neighbour_outcome').value;
@@ -463,6 +488,11 @@
       phone_number_used: ($('phone_number_used').value || '').trim(),
       neighbour_outcome: getNeighbourOutcome(),
       agent_notes: ($('agent_notes').value || '').trim(),
+      activity_occurred_at: (function() {
+        const d = $('attend_date').value, t = $('attend_time').value;
+        return (d && t) ? (d + 'T' + t) : null;
+      })(),
+      delay_reason: ($('ub_delay_reason').value || '').trim() || null,
     };
   }
 
