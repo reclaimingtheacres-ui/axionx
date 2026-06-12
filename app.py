@@ -18893,8 +18893,8 @@ def mgmt_field_activity_delays():
                       AND (n.delay_reason IS NULL OR n.delay_reason = '') THEN 1 ELSE 0 END) AS missing_reason,
             SUM(CASE WHEN n.delay_reviewed_at IS NOT NULL THEN 1 ELSE 0 END) AS reviewed
         FROM job_field_notes n
-        WHERE n.note_category = 'field_note'
-          AND n.review_status NOT IN ('private_scratch')
+        JOIN users u ON u.id = n.created_by_user_id
+        WHERE u.role IN ('agent', 'both')
           AND date(n.created_at) BETWEEN :date_from AND :date_to
           {agent_clause}
     """, base_params).fetchone()
@@ -18932,8 +18932,7 @@ def mgmt_field_activity_delays():
             SUM(CASE WHEN n.delay_reviewed_at IS NOT NULL THEN 1 ELSE 0 END) AS reviewed
         FROM job_field_notes n
         JOIN users u ON u.id = n.created_by_user_id
-        WHERE n.note_category = 'field_note'
-          AND n.review_status NOT IN ('private_scratch')
+        WHERE u.role IN ('agent', 'both')
           AND date(n.created_at) BETWEEN :date_from AND :date_to
           {agent_clause}
         GROUP BY u.id, u.full_name
@@ -18978,8 +18977,7 @@ def mgmt_field_activity_delays():
         FROM job_field_notes n
         JOIN jobs j ON j.id = n.job_id
         JOIN users u ON u.id = n.created_by_user_id
-        WHERE n.note_category = 'field_note'
-          AND n.review_status NOT IN ('private_scratch')
+        WHERE u.role IN ('agent', 'both')
           AND date(n.created_at) BETWEEN :date_from AND :date_to
           {agent_clause}
           {delay_clause}
@@ -19011,8 +19009,7 @@ def mgmt_field_activity_delays():
         FROM job_field_notes n
         JOIN jobs j ON j.id = n.job_id
         JOIN users u ON u.id = n.created_by_user_id
-        WHERE n.note_category = 'field_note'
-          AND n.review_status NOT IN ('private_scratch')
+        WHERE u.role IN ('agent', 'both')
           {repo_agent_clause}
           AND date(n.created_at) BETWEEN ? AND ?
           AND ({repo_type_clause} OR {repo_type_like})
@@ -19073,8 +19070,7 @@ def mgmt_field_activity_delays_csv():
         FROM job_field_notes n
         JOIN jobs j ON j.id = n.job_id
         JOIN users u ON u.id = n.created_by_user_id
-        WHERE n.note_category = 'field_note'
-          AND n.review_status NOT IN ('private_scratch')
+        WHERE u.role IN ('agent', 'both')
           AND date(n.created_at) BETWEEN :date_from AND :date_to
           {agent_clause}
         ORDER BY n.reporting_delay_minutes DESC NULLS LAST, n.created_at DESC
@@ -19110,9 +19106,12 @@ def mgmt_field_activity_review(note_id: int):
     """Mark a delayed field note as reviewed by an admin."""
     conn = db()
     note = conn.execute(
-        "SELECT id, note_category, delay_reviewed_at FROM job_field_notes WHERE id=?", (note_id,)
+        """SELECT n.id, n.delay_reviewed_at
+           FROM job_field_notes n
+           JOIN users u ON u.id = n.created_by_user_id
+           WHERE n.id = ? AND u.role IN ('agent', 'both')""", (note_id,)
     ).fetchone()
-    if not note or note["note_category"] != "field_note":
+    if not note:
         conn.close()
         return jsonify({"ok": False, "error": "Note not found."}), 404
 
