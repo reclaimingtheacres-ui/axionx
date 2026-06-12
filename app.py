@@ -821,6 +821,14 @@ def _startup_migrate():
         _conn.execute(
             "UPDATE jobs SET regulation_type='Unregulated' WHERE regulation_type='UNREGULATED'"
         )
+        # Performance: missing indexes on messaging and queue tables
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_cp_user_id       ON conversation_participants(user_id)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_job_id      ON conversations(job_id)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_updated     ON conversations(updated_at)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_ci_job_id        ON cue_items(job_id)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_ci_visit_status  ON cue_items(visit_type, status)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_ci_assigned_due  ON cue_items(assigned_user_id, due_date, status)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_ci_due_status    ON cue_items(due_date, status)")
         _conn.commit()
         _conn.close()
         import logging as _log
@@ -1141,6 +1149,14 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_cpn_entity ON contact_phone_numbers(entity_type, entity_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jfn_job_review ON job_field_notes(job_id, review_status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_ji_job_type ON job_items(job_id, item_type)")
+    # Performance: missing indexes on messaging and queue tables
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cp_user_id       ON conversation_participants(user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_conv_job_id      ON conversations(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_conv_updated     ON conversations(updated_at)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_job_id        ON cue_items(job_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_visit_status  ON cue_items(visit_type, status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_assigned_due  ON cue_items(assigned_user_id, due_date, status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_due_status    ON cue_items(due_date, status)")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS booking_types (
