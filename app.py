@@ -5887,14 +5887,14 @@ def _dcg_poc_data(conn, job_id: int):
             # The note that fills the 3rd slot (index 2 when sorted newest-first)
             _anchor = poc_7d_timestamps[2] if len(poc_7d_timestamps) >= 3 else poc_7d_timestamps[-1]
             try:
-                _next_dt = _dt.fromisoformat(_anchor[:19]) + _td(days=7)
+                _next_dt = _dt.fromisoformat(_anchor[:19]) + _td(days=8)
                 _diff    = (_next_dt.date() - now.date()).days
                 if _diff <= 0:
                     next_eligible = "Today"
                 elif _diff == 1:
                     next_eligible = "Tomorrow"
                 else:
-                    next_eligible = _next_dt.strftime("%-d %b")
+                    next_eligible = _next_dt.strftime("%-d %B %Y")
             except Exception:
                 next_eligible = "—"
 
