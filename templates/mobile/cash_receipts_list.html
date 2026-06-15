@@ -1,0 +1,75 @@
+{% extends "mobile/base.html" %}
+{% block title %}Cash Receipts{% endblock %}
+
+{% block content %}
+<div class="m-content">
+
+  <div style="margin-bottom:16px;">
+    <a href="/m/job/{{ job_id }}" style="font-size:.82rem;color:#6b7280;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:8px;">
+      ← Back to Job
+    </a>
+    <h1 style="font-size:1.05rem;font-weight:700;color:#111;margin:0 0 2px;">Cash Receipts</h1>
+    <div style="font-size:.78rem;color:#6b7280;">Job {{ job.internal_job_number or ('#' ~ job.id) }}</div>
+  </div>
+
+  <a href="/m/forms/generate?type=cash_receipt&job_id={{ job_id }}"
+     style="display:block;text-align:center;padding:12px;background:#16a34a;color:#fff;border-radius:10px;font-size:.88rem;font-weight:700;text-decoration:none;margin-bottom:16px;">
+    + New Cash Receipt
+  </a>
+
+  {% if receipts %}
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    {% for r in receipts %}
+    <div style="background:#fff;border:1px solid {% if r.voided_at %}#fecaca{% else %}#e5e7eb{% endif %};border-radius:12px;overflow:hidden;">
+      <div style="padding:12px 14px 10px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div>
+          <div style="font-size:.72rem;color:#6b7280;margin-bottom:2px;font-family:monospace;">{{ r.receipt_number }}</div>
+          <div style="font-weight:700;font-size:.95rem;color:#16a34a;">
+            ${{ "%.2f"|format(r.amount|float) }}
+            <span style="font-size:.78rem;font-weight:400;color:#6b7280;">{{ r.payment_method }}</span>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          {% if r.voided_at %}
+          <span style="background:#fef2f2;color:#dc2626;border-radius:20px;padding:2px 10px;font-size:.72rem;font-weight:700;">VOIDED</span>
+          {% else %}
+          <span style="background:#f0fdf4;color:#16a34a;border-radius:20px;padding:2px 10px;font-size:.72rem;font-weight:700;">Valid</span>
+          {% endif %}
+          <div style="font-size:.72rem;color:#9ca3af;margin-top:4px;">
+            {{ r.received_at[:16]|replace('T',' ') if r.received_at else '' }}
+          </div>
+        </div>
+      </div>
+      <div style="border-top:1px solid #f3f4f6;padding:8px 14px;font-size:.78rem;color:#6b7280;">
+        {% if r.received_from_name %}From: <strong style="color:#374151;">{{ r.received_from_name }}</strong>{% if r.received_from_phone %} · {{ r.received_from_phone }}{% endif %}{% endif %}
+        {% if r.agent_name_display %}<span style="margin-left:8px;">Agent: {{ r.agent_name_display }}</span>{% endif %}
+      </div>
+      {% if r.void_reason %}
+      <div style="border-top:1px solid #fecaca;padding:8px 14px;font-size:.75rem;color:#dc2626;background:#fef2f2;">
+        Void reason: {{ r.void_reason }}
+      </div>
+      {% endif %}
+      <div style="border-top:1px solid #f3f4f6;padding:8px 14px;background:#fafafa;">
+        {% if not r.voided_at %}
+        <a href="/jobs/{{ job_id }}/cash-receipts/{{ r.id }}/pdf" target="_blank"
+           style="font-size:.82rem;color:#2563eb;text-decoration:none;font-weight:600;">
+          📄 View PDF
+        </a>
+        {% else %}
+        <span style="font-size:.78rem;color:#9ca3af;">Receipt voided — PDF unavailable</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:32px 20px;text-align:center;">
+    <div style="font-size:2rem;margin-bottom:8px;">💵</div>
+    <div style="font-size:.88rem;font-weight:600;color:#374151;margin-bottom:4px;">No receipts yet</div>
+    <div style="font-size:.78rem;color:#9ca3af;">Tap the button above to issue a cash payment receipt.</div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

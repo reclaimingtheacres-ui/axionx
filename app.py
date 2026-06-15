@@ -657,6 +657,11 @@ def _schema_is_current():
             ).fetchone()
             if not hp_tbl:
                 return False
+            cr_tbl = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cash_receipts'"
+            ).fetchone()
+            if not cr_tbl:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -940,6 +945,34 @@ def _startup_migrate():
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_jhr_job ON job_hardship_records(job_id)")
         _seed_hardship_providers(_conn.cursor())
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS cash_receipts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                receipt_number TEXT NOT NULL UNIQUE,
+                job_id INTEGER NOT NULL,
+                client_job_number TEXT,
+                client_name TEXT,
+                customer_name TEXT,
+                security_description TEXT,
+                registration TEXT,
+                received_at TEXT NOT NULL,
+                amount TEXT NOT NULL,
+                payment_method TEXT NOT NULL DEFAULT 'Cash',
+                received_from_name TEXT NOT NULL,
+                received_from_phone TEXT,
+                agent_user_id INTEGER,
+                agent_name TEXT,
+                notes TEXT,
+                pdf_stored_filename TEXT,
+                voided_at TEXT,
+                voided_by_user_id INTEGER,
+                void_reason TEXT,
+                created_at TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                FOREIGN KEY(job_id) REFERENCES jobs(id)
+            )
+        """)
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_cr_job ON cash_receipts(job_id)")
         _conn.commit()
         _conn.close()
         import logging as _log
@@ -2094,6 +2127,34 @@ def _migrate_update_builder():
     """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jhr_job ON job_hardship_records(job_id)")
     _seed_hardship_providers(cur)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS cash_receipts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        receipt_number TEXT NOT NULL UNIQUE,
+        job_id INTEGER NOT NULL,
+        client_job_number TEXT,
+        client_name TEXT,
+        customer_name TEXT,
+        security_description TEXT,
+        registration TEXT,
+        received_at TEXT NOT NULL,
+        amount TEXT NOT NULL,
+        payment_method TEXT NOT NULL DEFAULT 'Cash',
+        received_from_name TEXT NOT NULL,
+        received_from_phone TEXT,
+        agent_user_id INTEGER,
+        agent_name TEXT,
+        notes TEXT,
+        pdf_stored_filename TEXT,
+        voided_at TEXT,
+        voided_by_user_id INTEGER,
+        void_reason TEXT,
+        created_at TEXT NOT NULL,
+        created_by_user_id INTEGER,
+        FOREIGN KEY(job_id) REFERENCES jobs(id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_cr_job ON cash_receipts(job_id)")
 
     conn.commit()
     conn.close()
@@ -6090,6 +6151,18 @@ def job_detail(job_id: int):
     except Exception:
         pass
 
+    cash_receipts = []
+    try:
+        cash_receipts = [dict(r) for r in conn.execute("""
+            SELECT cr.*, u.full_name AS agent_name_display
+            FROM cash_receipts cr
+            LEFT JOIN users u ON u.id = cr.created_by_user_id
+            WHERE cr.job_id = ?
+            ORDER BY cr.created_at DESC
+        """, (job_id,)).fetchall()]
+    except Exception:
+        pass
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -6126,7 +6199,8 @@ def job_detail(job_id: int):
                            hardship_record=hardship_record,
                            hardship_provider=hardship_provider,
                            hardship_candidates=hardship_candidates,
-                           all_hardship_providers=all_hardship_providers)
+                           all_hardship_providers=all_hardship_providers,
+                           cash_receipts=cash_receipts)
 
 
 def _sync_job_customer_id(cur, job_id):
@@ -12266,6 +12340,17 @@ _FORMS_CATALOGUE = [
         "available":   False,
         "generate_url": "#",
     },
+    {
+        "id":          "cash_receipt",
+        "name":        "Cash Payment Receipt",
+        "description": "Issue a signed cash receipt when a customer pays an agent in the field.",
+        "short":       "Cash Receipt",
+        "tags":        ["Cash", "Payment", "Receipt"],
+        "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+        "available":   True,
+        "mobile_only": True,
+        "generate_url": "/m/forms/generate?type=cash_receipt",
+    },
 ]
 
 _FORMS_META = {f["id"]: f for f in _FORMS_CATALOGUE}
@@ -12294,9 +12379,10 @@ def forms_dashboard():
         conn = db()
         job = _forms_job_context(conn, job_id)
         conn.close()
+    catalogue = [f for f in _FORMS_CATALOGUE if not f.get("mobile_only")]
     catalogue = (
-        [f for f in _FORMS_CATALOGUE if not f["id"].startswith("wise_")]
-        if DEMO_MODE else _FORMS_CATALOGUE
+        [f for f in catalogue if not f["id"].startswith("wise_")]
+        if DEMO_MODE else catalogue
     )
     return render_template("forms.html",
                            forms=catalogue,
@@ -12510,6 +12596,11 @@ def m_forms_generate():
     job_id    = request.args.get("job_id",  type=int)
     item_id   = request.args.get("item_id", type=int)
 
+    if form_type == "cash_receipt":
+        if not job_id:
+            return redirect(url_for("m_forms"))
+        return redirect(url_for("m_cash_receipt_new", job_id=job_id))
+
     _MOBILE_FORM_MAP = {
         "vir":                 "m_repo_lock_vir",
         "transport":           "m_repo_lock_transport",
@@ -12559,6 +12650,298 @@ def _m_form_back(job_id: int) -> dict:
         "back_label":  "Back to Forms",
         "mobile_mode": True,
     }
+
+
+# ──────────────────────────── Cash Payment Receipts ──────────────────────────
+
+@app.get("/m/jobs/<int:job_id>/cash-receipt/new")
+@login_required
+def m_cash_receipt_new(job_id: int):
+    """Mobile: show cash receipt form."""
+    role = session.get("role", "")
+    uid  = session.get("user_id")
+    conn = db()
+    job_row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job_row:
+        conn.close()
+        return redirect(url_for("m_forms"))
+    job = dict(job_row)
+    if role not in ("admin", "management", "both"):
+        has_access = (job.get("assigned_user_id") == uid) or conn.execute(
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?"
+            " AND status NOT IN ('Cancelled','Completed') AND hidden=0",
+            (job_id, uid)
+        ).fetchone()
+        if not has_access:
+            conn.close()
+            return redirect(url_for("m_forms", job_id=job_id))
+    job = _forms_job_context(conn, job_id) or job
+    agent_row = conn.execute("SELECT full_name FROM users WHERE id=?", (uid,)).fetchone()
+    agent_name = agent_row["full_name"] if agent_row else ""
+    client_row = (conn.execute("SELECT name FROM clients WHERE id=?", (job.get("client_id"),)).fetchone()
+                  if job.get("client_id") else None)
+    client_name = client_row["name"] if client_row else ""
+    item_row = conn.execute(
+        "SELECT description, registration FROM job_items WHERE job_id=? ORDER BY id LIMIT 1",
+        (job_id,)
+    ).fetchone()
+    security_description = item_row["description"] if item_row else ""
+    registration         = item_row["registration"] if item_row else ""
+    conn.close()
+    from datetime import datetime as _dt
+    now_local = _dt.now().strftime("%Y-%m-%dT%H:%M")
+    return render_template("mobile/cash_receipt_form.html",
+                           job=job, job_id=job_id,
+                           agent_name=agent_name,
+                           client_name=client_name,
+                           security_description=security_description,
+                           registration=registration,
+                           now_local=now_local,
+                           **_m_form_back(job_id))
+
+
+@app.post("/m/jobs/<int:job_id>/cash-receipt/save")
+@login_required
+def m_cash_receipt_save(job_id: int):
+    """Mobile: validate, save receipt, generate PDF, add file note."""
+    role = session.get("role", "")
+    uid  = session.get("user_id")
+    data = request.get_json(silent=True) or {}
+
+    amount_str = str(data.get("amount") or "").strip()
+    try:
+        amount_val = float(amount_str)
+        if amount_val <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "error": "A valid amount greater than $0.00 is required."}), 400
+
+    received_from = (data.get("received_from_name") or "").strip()
+    if not received_from:
+        return jsonify({"ok": False, "error": "Name of person who made the payment is required."}), 400
+    if not data.get("declaration"):
+        return jsonify({"ok": False, "error": "You must confirm the declaration before submitting."}), 400
+
+    conn = db()
+    job_row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job_row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+    job = dict(job_row)
+
+    if role not in ("admin", "management", "both"):
+        has_access = (job.get("assigned_user_id") == uid) or conn.execute(
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?"
+            " AND status NOT IN ('Cancelled','Completed') AND hidden=0",
+            (job_id, uid)
+        ).fetchone()
+        if not has_access:
+            conn.close()
+            return jsonify({"ok": False, "error": "Access denied."}), 403
+
+    ts = now_ts()
+    from datetime import datetime as _dt
+    receipt_number = f"CR-{job_id}-{_dt.now().strftime('%Y%m%d%H%M%S')}"
+
+    agent_row  = conn.execute("SELECT full_name FROM users WHERE id=?", (uid,)).fetchone()
+    agent_name = agent_row["full_name"] if agent_row else str(uid)
+
+    received_at    = (data.get("received_at") or ts[:16]).strip()
+    client_name    = (data.get("client_name") or "").strip()
+    amount_fmt     = f"{amount_val:.2f}"
+    payment_method = (data.get("payment_method") or "Cash").strip()
+    notes          = (data.get("notes") or "").strip() or None
+    job_ref        = job.get("display_ref") or job.get("internal_job_number") or str(job_id)
+
+    conn.execute("""
+        INSERT INTO cash_receipts
+            (receipt_number, job_id, client_job_number, client_name, customer_name,
+             security_description, registration, received_at, amount, payment_method,
+             received_from_name, received_from_phone, agent_user_id, agent_name,
+             notes, created_at, created_by_user_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (receipt_number, job_id,
+          (data.get("client_job_number") or "").strip() or None,
+          client_name or None,
+          (data.get("customer_name") or "").strip() or None,
+          (data.get("security_description") or "").strip() or None,
+          (data.get("registration") or "").strip().upper() or None,
+          received_at, amount_fmt, payment_method,
+          received_from,
+          (data.get("received_from_phone") or "").strip() or None,
+          uid, agent_name, notes, ts, uid))
+    receipt_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    import pdf_gen as _pg
+    pdf_data = {
+        "receipt_number":       receipt_number,
+        "received_at":          received_at,
+        "job_ref":              job_ref,
+        "client_job_number":    (data.get("client_job_number") or "").strip(),
+        "client_name":          client_name,
+        "customer_name":        (data.get("customer_name") or "").strip(),
+        "security_description": (data.get("security_description") or "").strip(),
+        "registration":         (data.get("registration") or "").strip().upper(),
+        "amount":               amount_fmt,
+        "payment_method":       payment_method,
+        "received_from_name":   received_from,
+        "received_from_phone":  (data.get("received_from_phone") or "").strip(),
+        "agent_name":           agent_name,
+        "notes":                notes or "",
+    }
+    attach = None
+    try:
+        pdf_bytes   = _pg.cash_receipt_pdf(pdf_data)
+        pdf_filename = f"CashReceipt-{receipt_number}.pdf"
+        attach = _attach_pdf_to_job(conn, job_id, uid, pdf_bytes, pdf_filename,
+                                    "Cash Payment Receipt", ts)
+        conn.execute("UPDATE cash_receipts SET pdf_stored_filename=? WHERE id=?",
+                     (attach["stored_filename"], receipt_id))
+    except Exception as _pdf_err:
+        import logging as _log
+        _log.error("[CASH_RECEIPT] PDF generation failed: %s", _pdf_err)
+
+    amount_display = f"${amount_val:,.2f}"
+    note_text = (f"Cash payment receipt issued by our agent for {amount_display} received from "
+                 f"{received_from}. Receipt number {receipt_number}.")
+    conn.execute("""
+        INSERT INTO job_field_notes
+            (job_id, note_category, note_text, review_status, created_by_user_id, created_at, updated_at)
+        VALUES (?, 'file_note', ?, 'published', ?, ?, ?)
+    """, (job_id, note_text, uid, ts, ts))
+
+    conn.commit()
+    conn.close()
+    audit("cash_receipt", uid, "receipt_created",
+          f"Cash receipt {receipt_number} created for job {job_id}.", {"job_id": job_id})
+
+    result = {"ok": True, "message": "Cash receipt saved.", "receipt_number": receipt_number}
+    if attach:
+        result["document_id"] = attach["document_id"]
+        result["preview_url"] = url_for("m_doc_stream_job_doc",
+                                        doc_id=attach["document_id"],
+                                        tok=_make_mobile_view_token(uid), uid=uid)
+    return jsonify(result)
+
+
+@app.get("/m/jobs/<int:job_id>/cash-receipts")
+@login_required
+def m_job_cash_receipts(job_id: int):
+    """Mobile: list cash receipts for a job."""
+    role = session.get("role", "")
+    uid  = session.get("user_id")
+    conn = db()
+    job_row = conn.execute(
+        "SELECT id, display_ref, internal_job_number FROM jobs WHERE id=?", (job_id,)
+    ).fetchone()
+    if not job_row:
+        conn.close()
+        return redirect(url_for("m_job_detail", job_id=job_id))
+    if role in ("admin", "management", "both"):
+        receipts = conn.execute("""
+            SELECT cr.*, u.full_name AS agent_name_display
+            FROM cash_receipts cr LEFT JOIN users u ON u.id = cr.created_by_user_id
+            WHERE cr.job_id=? ORDER BY cr.created_at DESC
+        """, (job_id,)).fetchall()
+    else:
+        receipts = conn.execute("""
+            SELECT cr.*, u.full_name AS agent_name_display
+            FROM cash_receipts cr LEFT JOIN users u ON u.id = cr.created_by_user_id
+            WHERE cr.job_id=? AND cr.created_by_user_id=? ORDER BY cr.created_at DESC
+        """, (job_id, uid)).fetchall()
+    conn.close()
+    return render_template("mobile/cash_receipts_list.html",
+                           job=dict(job_row), job_id=job_id,
+                           receipts=[dict(r) for r in receipts],
+                           role=role)
+
+
+@app.get("/jobs/<int:job_id>/cash-receipts/<int:receipt_id>/pdf")
+@login_required
+def job_cash_receipt_pdf(job_id: int, receipt_id: int):
+    """Stream/download a cash receipt PDF."""
+    from flask import send_file as _sf
+    role = session.get("role", "")
+    uid  = session.get("user_id")
+    conn = db()
+    receipt = conn.execute(
+        "SELECT * FROM cash_receipts WHERE id=? AND job_id=?", (receipt_id, job_id)
+    ).fetchone()
+    if not receipt:
+        conn.close()
+        abort(404)
+    r = dict(receipt)
+    conn.close()
+    if role not in ("admin", "management", "both") and r.get("created_by_user_id") != uid:
+        abort(403)
+
+    stored = r.get("pdf_stored_filename")
+    if stored:
+        path = os.path.join(UPLOAD_FOLDER, stored)
+        if os.path.exists(path):
+            return _sf(path, mimetype="application/pdf", as_attachment=False,
+                       download_name=f"CashReceipt-{r['receipt_number']}.pdf")
+
+    import pdf_gen as _pg, io as _io
+    try:
+        recv_at = r.get("received_at") or ""
+        pdf_bytes = _pg.cash_receipt_pdf({
+            "receipt_number":       r.get("receipt_number", ""),
+            "received_at":          recv_at,
+            "job_ref":              "",
+            "client_job_number":    r.get("client_job_number") or "",
+            "client_name":          r.get("client_name") or "",
+            "customer_name":        r.get("customer_name") or "",
+            "security_description": r.get("security_description") or "",
+            "registration":         r.get("registration") or "",
+            "amount":               r.get("amount") or "",
+            "payment_method":       r.get("payment_method") or "Cash",
+            "received_from_name":   r.get("received_from_name") or "",
+            "received_from_phone":  r.get("received_from_phone") or "",
+            "agent_name":           r.get("agent_name") or "",
+            "notes":                r.get("notes") or "",
+        })
+    except Exception:
+        abort(500)
+    return _sf(_io.BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=False,
+               download_name=f"CashReceipt-{r['receipt_number']}.pdf")
+
+
+@app.post("/jobs/<int:job_id>/cash-receipts/<int:receipt_id>/void")
+@admin_required
+def job_cash_receipt_void(job_id: int, receipt_id: int):
+    """Admin: void a cash receipt (soft-delete with mandatory reason)."""
+    uid  = session.get("user_id")
+    data = request.get_json(silent=True) or {}
+    void_reason = (data.get("void_reason") or "").strip()
+    if not void_reason:
+        return jsonify({"ok": False, "error": "A void reason is required."}), 400
+    conn = db()
+    receipt = conn.execute(
+        "SELECT * FROM cash_receipts WHERE id=? AND job_id=?", (receipt_id, job_id)
+    ).fetchone()
+    if not receipt:
+        conn.close()
+        return jsonify({"ok": False, "error": "Receipt not found."}), 404
+    r = dict(receipt)
+    if r.get("voided_at"):
+        conn.close()
+        return jsonify({"ok": False, "error": "Receipt is already voided."}), 400
+    ts = now_ts()
+    conn.execute("""
+        UPDATE cash_receipts SET voided_at=?, voided_by_user_id=?, void_reason=?
+        WHERE id=?
+    """, (ts, uid, void_reason, receipt_id))
+    conn.execute("""
+        INSERT INTO job_field_notes
+            (job_id, note_category, note_text, review_status, created_by_user_id, created_at, updated_at)
+        VALUES (?, 'file_note', ?, 'published', ?, ?, ?)
+    """, (job_id, f"Cash receipt {r['receipt_number']} voided. Reason: {void_reason}", uid, ts, ts))
+    conn.commit()
+    conn.close()
+    audit("cash_receipt", uid, "receipt_voided",
+          f"Cash receipt {r['receipt_number']} voided for job {job_id}.", {"job_id": job_id})
+    return jsonify({"ok": True})
 
 
 @app.get("/m/jobs/<int:job_id>/repo-lock/<int:rec_id>/vir")

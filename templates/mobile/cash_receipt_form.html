@@ -1,0 +1,249 @@
+{% extends "mobile/base.html" %}
+{% block title %}Cash Payment Receipt{% endblock %}
+
+{% block content %}
+<div class="m-content">
+
+  <div style="margin-bottom:16px;">
+    <a href="{{ back_url }}" style="font-size:.82rem;color:#6b7280;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:8px;">
+      ← {{ back_label }}
+    </a>
+    <h1 style="font-size:1.05rem;font-weight:700;color:#111;margin:0 0 4px;">Cash Payment Receipt</h1>
+    <p style="font-size:.78rem;color:#6b7280;margin:0;">Complete this form to issue a receipt for cash received from a customer.</p>
+  </div>
+
+  {% if job %}
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.8rem;color:#166534;">
+    Job <strong>{{ job.internal_job_number or ('#' ~ job.id) }}</strong>
+    {% if job.customer_name %} — {{ job.customer_name }}{% endif %}
+  </div>
+  {% endif %}
+
+  <div id="cr-success-banner" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:.88rem;color:#166534;font-weight:600;text-align:center;">
+    ✓ Cash receipt saved.
+  </div>
+
+  <div id="cr-error-banner" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:.82rem;color:#dc2626;"></div>
+
+  <form id="cr-form" style="display:flex;flex-direction:column;gap:0;">
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+      <div style="background:#f8fafc;padding:10px 14px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">
+        Date &amp; Time
+      </div>
+      <div style="padding:14px;">
+        <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Date / Time Received <span style="color:#dc2626">*</span></label>
+        <input type="datetime-local" id="cr-received-at" name="received_at" value="{{ now_local }}"
+               style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;-webkit-appearance:none;">
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+      <div style="background:#f8fafc;padding:10px 14px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">
+        Job Details
+      </div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Client / Lender</label>
+          <input type="text" id="cr-client-name" value="{{ client_name }}"
+                 style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Client Job Number</label>
+          <input type="text" id="cr-client-job" value="{{ job.client_job_number or '' }}"
+                 style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Customer Name</label>
+          <input type="text" id="cr-customer-name" value="{{ job.customer_name or '' }}"
+                 style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Security Description</label>
+            <input type="text" id="cr-security" value="{{ security_description }}"
+                   style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
+          </div>
+          <div>
+            <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Registration</label>
+            <input type="text" id="cr-registration" value="{{ registration }}"
+                   style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;text-transform:uppercase;">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+      <div style="background:#f0fdf4;padding:10px 14px;font-size:.72rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #bbf7d0;">
+        Payment
+      </div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Amount Received ($) <span style="color:#dc2626">*</span></label>
+          <input type="number" id="cr-amount" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00"
+                 style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:1.05rem;font-weight:600;">
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Payment Method</label>
+          <select id="cr-payment-method"
+                  style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
+            <option value="Cash" selected>Cash</option>
+            <option value="Bank Transfer">Bank Transfer</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+      <div style="background:#f8fafc;padding:10px 14px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">
+        Received From
+      </div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Name <span style="color:#dc2626">*</span></label>
+          <input type="text" id="cr-from-name" placeholder="Full name of person who paid"
+                 style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Phone Number</label>
+          <input type="tel" id="cr-from-phone" inputmode="tel"
+                 style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;">
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+      <div style="background:#f8fafc;padding:10px 14px;font-size:.72rem;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e5e7eb;">
+        Agent &amp; Notes
+      </div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Agent Name</label>
+          <input type="text" id="cr-agent-name" value="{{ agent_name }}" readonly
+                 style="width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:.9rem;background:#f9fafb;color:#6b7280;">
+        </div>
+        <div>
+          <label style="font-size:.78rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Notes / Payment Description</label>
+          <textarea id="cr-notes" rows="3" placeholder="Optional description or notes about this payment"
+                    style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;resize:none;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px;margin-bottom:16px;">
+      <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;">
+        <input type="checkbox" id="cr-declaration" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;accent-color:#16a34a;">
+        <span style="font-size:.82rem;color:#374151;line-height:1.5;">
+          I confirm I received the above cash amount from the customer/debtor and the details entered are correct.
+        </span>
+      </label>
+    </div>
+
+    <button type="submit" id="cr-submit-btn"
+            style="width:100%;padding:14px;background:#16a34a;color:#fff;border:none;border-radius:10px;font-size:1rem;font-weight:700;cursor:pointer;">
+      Save Receipt &amp; Generate PDF
+    </button>
+
+  </form>
+
+  <div id="cr-pdf-links" style="display:none;margin-top:14px;"></div>
+
+</div>
+
+<script>
+(function () {
+  var form    = document.getElementById('cr-form');
+  var btn     = document.getElementById('cr-submit-btn');
+  var errBan  = document.getElementById('cr-error-banner');
+  var okBan   = document.getElementById('cr-success-banner');
+  var pdfDiv  = document.getElementById('cr-pdf-links');
+  var jobId   = {{ job_id }};
+  var submitted = false;
+
+  function showErr(msg) {
+    errBan.textContent = msg;
+    errBan.style.display = 'block';
+    okBan.style.display  = 'none';
+    window.scrollTo(0, 0);
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (submitted) return;
+
+    errBan.style.display = 'none';
+
+    var amount = parseFloat(document.getElementById('cr-amount').value);
+    if (!amount || amount <= 0) {
+      return showErr('A valid amount greater than $0.00 is required.');
+    }
+    var fromName = document.getElementById('cr-from-name').value.trim();
+    if (!fromName) {
+      return showErr('Name of person who made the payment is required.');
+    }
+    if (!document.getElementById('cr-declaration').checked) {
+      return showErr('You must confirm the declaration before submitting.');
+    }
+
+    submitted = true;
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    var payload = {
+      received_at:          document.getElementById('cr-received-at').value,
+      client_name:          document.getElementById('cr-client-name').value.trim(),
+      client_job_number:    document.getElementById('cr-client-job').value.trim(),
+      customer_name:        document.getElementById('cr-customer-name').value.trim(),
+      security_description: document.getElementById('cr-security').value.trim(),
+      registration:         document.getElementById('cr-registration').value.trim().toUpperCase(),
+      amount:               amount.toFixed(2),
+      payment_method:       document.getElementById('cr-payment-method').value,
+      received_from_name:   fromName,
+      received_from_phone:  document.getElementById('cr-from-phone').value.trim(),
+      agent_name:           document.getElementById('cr-agent-name').value.trim(),
+      notes:                document.getElementById('cr-notes').value.trim(),
+      declaration:          true,
+    };
+
+    fetch('/m/jobs/' + jobId + '/cash-receipt/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) {
+        submitted = false;
+        btn.disabled = false;
+        btn.textContent = 'Save Receipt & Generate PDF';
+        return showErr(d.error || 'An error occurred. Please try again.');
+      }
+      okBan.style.display = 'block';
+      errBan.style.display = 'none';
+      form.style.display = 'none';
+      if (d.preview_url) {
+        pdfDiv.innerHTML = '<a href="' + d.preview_url + '" target="_blank" '
+          + 'style="display:block;text-align:center;padding:14px;background:#2563eb;color:#fff;border-radius:10px;font-size:.9rem;font-weight:700;text-decoration:none;margin-bottom:10px;">'
+          + '📄 View Receipt PDF</a>'
+          + '<a href="/m/jobs/' + jobId + '/cash-receipts" '
+          + 'style="display:block;text-align:center;padding:12px;background:#f3f4f6;color:#374151;border-radius:10px;font-size:.85rem;font-weight:600;text-decoration:none;">'
+          + 'View All Receipts</a>';
+      } else {
+        pdfDiv.innerHTML = '<a href="/m/jobs/' + jobId + '/cash-receipts" '
+          + 'style="display:block;text-align:center;padding:12px;background:#f3f4f6;color:#374151;border-radius:10px;font-size:.85rem;font-weight:600;text-decoration:none;">'
+          + 'View All Receipts</a>';
+      }
+      pdfDiv.style.display = 'block';
+      window.scrollTo(0, 0);
+    })
+    .catch(function () {
+      submitted = false;
+      btn.disabled = false;
+      btn.textContent = 'Save Receipt & Generate PDF';
+      showErr('Network error. Please check your connection and try again.');
+    });
+  });
+})();
+</script>
+{% endblock %}

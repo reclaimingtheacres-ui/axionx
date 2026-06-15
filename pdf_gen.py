@@ -1902,6 +1902,151 @@ def generate_repo_pack_pdf(pdfs: list[bytes]) -> bytes:
         return pdfs[0] if pdfs else b''
 
 
+# =============================================================================
+# Cash Payment Receipt PDF
+# =============================================================================
+
+def cash_receipt_pdf(data: dict) -> bytes:
+    """Generate a SWPI-style Cash Payment Receipt (A4 portrait).
+
+    Expected keys in data:
+      receipt_number, received_at, job_ref, client_job_number, client_name,
+      customer_name, security_description, registration, amount, payment_method,
+      received_from_name, received_from_phone, agent_name, notes
+    """
+    from datetime import datetime as _dt
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=A4)
+
+    # ── Letterhead ────────────────────────────────────────────────────────────
+    y = _swpi_letterhead(c)
+    y -= 8
+
+    _hr(c, y, strong=True)
+    y -= 15
+    c.setFont('Helvetica-Bold', 13)
+    c.setFillColor(DARK)
+    c.drawString(ML, y, 'CASH PAYMENT RECEIPT')
+    c.setFont('Helvetica', 8)
+    c.setFillColor(MUTED)
+    c.drawRightString(PAGE_W - MR, y, f"Receipt No: {_v(data, 'receipt_number')}")
+    y -= 14
+    _hr(c, y)
+    y -= 14
+
+    # ── Row helpers ────────────────────────────────────────────────────────────
+    COL_LBL = 130
+    HALF    = int(CW // 2)
+
+    def _row(label, value, yp):
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(MUTED)
+        c.drawString(ML, yp, label)
+        c.setFont('Helvetica', 9)
+        c.setFillColor(DARK)
+        c.drawString(ML + COL_LBL, yp, str(value or '—')[:72])
+        _hr(c, yp - 6)
+        return yp - 16
+
+    def _row2(lbl1, val1, lbl2, val2, yp):
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(MUTED)
+        c.drawString(ML, yp, lbl1)
+        c.setFont('Helvetica', 9)
+        c.setFillColor(DARK)
+        c.drawString(ML + 100, yp, str(val1 or '—')[:34])
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(MUTED)
+        c.drawString(ML + HALF, yp, lbl2)
+        c.setFont('Helvetica', 9)
+        c.setFillColor(DARK)
+        c.drawString(ML + HALF + 90, yp, str(val2 or '—')[:34])
+        _hr(c, yp - 6)
+        return yp - 16
+
+    # ── Receipt details ────────────────────────────────────────────────────────
+    c.setFont('Helvetica-Bold', 8.5)
+    c.setFillColor(HexColor('#1e293b'))
+    c.drawString(ML, y, 'RECEIPT DETAILS')
+    y -= 14
+
+    recv_raw = _v(data, 'received_at')
+    try:
+        recv_dt  = _dt.fromisoformat(recv_raw.replace('T', ' ')[:16])
+        recv_fmt = recv_dt.strftime('%d/%m/%Y %I:%M %p')
+    except Exception:
+        recv_fmt = recv_raw or '—'
+
+    y = _row('Date / Time Received:', recv_fmt, y)
+    y = _row2('AxionX Job Number:', _v(data, 'job_ref'),
+              'Client Job Number:', _v(data, 'client_job_number'), y)
+    y = _row('Client / Lender:', _v(data, 'client_name'), y)
+    y = _row('Customer Name:', _v(data, 'customer_name'), y)
+    y = _row2('Security Description:', _v(data, 'security_description'),
+              'Registration:', _v(data, 'registration'), y)
+    y -= 8
+
+    # ── Payment highlight ──────────────────────────────────────────────────────
+    _hr(c, y, strong=True)
+    y -= 16
+    c.setFont('Helvetica-Bold', 12)
+    c.setFillColor(DARK)
+    amt_raw = _v(data, 'amount')
+    try:
+        amt_fmt = f'${float(amt_raw):,.2f}'
+    except Exception:
+        amt_fmt = f'${amt_raw}'
+    c.drawString(ML, y, f'Amount Received:  {amt_fmt}')
+    c.setFont('Helvetica', 9)
+    c.setFillColor(MUTED)
+    c.drawRightString(PAGE_W - MR, y, f"Payment Method: {_v(data, 'payment_method', default='Cash')}")
+    y -= 12
+    _hr(c, y, strong=True)
+    y -= 16
+
+    y = _row2('Received From:', _v(data, 'received_from_name'),
+              'Phone:', _v(data, 'received_from_phone'), y)
+    y = _row('Received By (Agent):', _v(data, 'agent_name'), y)
+
+    # ── Notes ──────────────────────────────────────────────────────────────────
+    notes = _v(data, 'notes')
+    if notes:
+        y -= 4
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(MUTED)
+        c.drawString(ML, y, 'Notes / Payment Description:')
+        y -= 12
+        c.setFont('Helvetica', 8.5)
+        c.setFillColor(DARK)
+        for ln in simpleSplit(notes, 'Helvetica', 8.5, CW)[:5]:
+            c.drawString(ML, y, ln)
+            y -= 11
+        _hr(c, y - 2)
+        y -= 12
+
+    # ── Disclaimer box ─────────────────────────────────────────────────────────
+    y -= 14
+    disc_h = 42
+    c.setStrokeColor(LINE)
+    c.setFillColor(HexColor('#f8fafc'))
+    c.setLineWidth(0.4)
+    c.rect(ML, y - disc_h, CW, disc_h, fill=1, stroke=1)
+    disclaimer = (
+        'This receipt confirms cash received by our agent only. Allocation of the payment '
+        'to the account balance remains subject to confirmation by the client/lender.'
+    )
+    c.setFont('Helvetica-Oblique', 7.5)
+    c.setFillColor(MUTED)
+    disc_y = y - 12
+    for dl in simpleSplit(disclaimer, 'Helvetica-Oblique', 7.5, CW - 14):
+        c.drawString(ML + 7, disc_y, dl)
+        disc_y -= 10
+
+    c.save()
+    buf.seek(0)
+    return _demo_watermark_pdf(buf.read())
+
+
 # ── Demo watermark wrappers ────────────────────────────────────────────────────
 # In demo mode (AXIONX_DEMO_MODE=true) wrap every public document generator so
 # its output is stamped "DEMO DOCUMENT — NOT FOR OPERATIONAL USE" on every page.
@@ -1925,3 +2070,4 @@ if _DEMO_MODE:
     generate_previous_file_notes_pdf      = _wrap_pdf(generate_previous_file_notes_pdf)
     generate_multi_job_previous_notes_pdf = _wrap_pdf(generate_multi_job_previous_notes_pdf)
     generate_repo_pack_pdf                = _wrap_pdf(generate_repo_pack_pdf)
+    cash_receipt_pdf                      = _wrap_pdf(cash_receipt_pdf)
