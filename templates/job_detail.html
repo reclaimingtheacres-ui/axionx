@@ -3038,8 +3038,8 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
   <hr style="border-color:var(--line);margin:10px 0">
   <div>
     <div class="fw-bold small mb-1" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">POC</div>
-    <div style="font-size:.78rem;line-height:1.9">
-      <span style="color:var(--muted)">7D {{ dcg.poc_7d }}/3 &nbsp;·&nbsp; 30D {{ dcg.poc_30d }}/10 &nbsp;·&nbsp; Att {{ dcg.att_count }}/3 &nbsp;·&nbsp; Next </span><strong style="color:var(--text)">{{ dcg.next_eligible }}</strong>
+    <div style="font-size:.75rem;line-height:1.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+      <span style="color:var(--muted)">7D {{ dcg.poc_7d }}/3 &nbsp;·&nbsp; 30D {{ dcg.poc_30d }}/10 &nbsp;·&nbsp; Att {{ dcg.att_count }}/3 &nbsp;·&nbsp; Next </span><strong style="color:var(--text);white-space:nowrap">{{ dcg.next_eligible }}</strong>
     </div>
   </div>
   {% endif %}
