@@ -12836,11 +12836,11 @@ def m_cash_receipt_new(job_id: int):
                   if job.get("client_id") else None)
     client_name = client_row["name"] if client_row else ""
     item_row = conn.execute(
-        "SELECT description, registration FROM job_items WHERE job_id=? ORDER BY id LIMIT 1",
+        "SELECT description, reg FROM job_items WHERE job_id=? ORDER BY id LIMIT 1",
         (job_id,)
     ).fetchone()
     security_description = item_row["description"] if item_row else ""
-    registration         = item_row["registration"] if item_row else ""
+    registration         = item_row["reg"] if item_row else ""
     conn.close()
     from datetime import datetime as _dt
     now_local = _dt.now().strftime("%Y-%m-%dT%H:%M")
