@@ -5780,6 +5780,25 @@ def _get_previous_jobs_for_customers(conn, job_id: int) -> list:
 def _dcg_poc_data(conn, job_id: int):
     """Compute DCG Proof of Contact counters for a job (display-only).
 
+    POC detection uses explicit wording in published note text across ALL
+    note categories (field_note and file_note both count).  Only
+    review_status='published' is considered; private_scratch and
+    submitted_for_review are excluded.
+
+    Each note's POC contribution is extracted from text:
+      "three points of contact" / "3 points of contact"  → 3
+      "two points of contact"   / "2 points of contact"  → 2
+      "one point of contact"    / "1 point of contact"   → 1
+      "constitutes 0 point"     / "constitutes no point" → 0 (excluded)
+
+    Physical attendance (att_count) is counted separately: notes that
+    describe a physical field visit within the 7-day window.
+
+    TODO: Replace text-based detection with structured DB fields when added:
+      - poc_count (INTEGER)         — explicit POC value stored on each note
+      - is_physical_attendance (BOOLEAN) — agent/admin flags the note as a visit
+      - poc_override_reason (TEXT)  — reason for any manual POC override
+
     Returns dict with poc_7d, poc_30d, att_count, next_eligible,
     badge_label, badge_color.  Returns None on any error.
     """
@@ -5788,37 +5807,98 @@ def _dcg_poc_data(conn, job_id: int):
         now   = _dt.utcnow()
         cut7  = (now - _td(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
         cut30 = (now - _td(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
-        _w    = "job_id=? AND note_category='field_note' AND review_status='published'"
 
-        poc_7d  = (conn.execute(
-            f"SELECT COUNT(*) c FROM job_field_notes WHERE {_w} AND created_at>=?",
-            (job_id, cut7)).fetchone() or {"c": 0})["c"]
-        poc_30d = (conn.execute(
-            f"SELECT COUNT(*) c FROM job_field_notes WHERE {_w} AND created_at>=?",
-            (job_id, cut30)).fetchone() or {"c": 0})["c"]
+        # Fetch all published notes for this job regardless of category.
+        # private_scratch and submitted_for_review are intentionally excluded.
+        _notes = conn.execute("""
+            SELECT id, created_at, note_text, note_category
+            FROM   job_field_notes
+            WHERE  job_id = ? AND review_status = 'published'
+            ORDER  BY created_at DESC
+        """, (job_id,)).fetchall()
 
-        # next eligible: oldest of the 3 most-recent 7d contacts + 7 days
+        def _poc_value(text):
+            """Return integer POC value from note text, or None if no POC wording present."""
+            if not text:
+                return None
+            t = text.lower()
+            # Explicit zero — note states this attendance is NOT a POC
+            if ("constitutes 0 point" in t or "constitutes no point" in t
+                    or "0 points of contact" in t):
+                return 0
+            if "three points of contact" in t or "3 points of contact" in t:
+                return 3
+            if "two points of contact" in t or "2 points of contact" in t:
+                return 2
+            if ("one point of contact" in t or "1 point of contact" in t
+                    or "constitutes one point" in t or "constitutes 1 point" in t):
+                return 1
+            return None  # No POC wording — note does not contribute
+
+        def _is_physical_attendance(text):
+            """True when note text clearly describes a physical field visit.
+
+            Detects attended/re-attended language; does NOT fire on
+            phone-call-only or SMS-only notes.
+            """
+            if not text:
+                return False
+            t = text.lower()
+            return (
+                "re-attended" in t or "re attended" in t
+                or "agent re-attended" in t
+                or "attended at " in t
+                or "attended the property" in t
+                or "attended the address" in t
+                or "our agent attended" in t
+                or "agent attended" in t
+            )
+
+        poc_7d            = 0
+        poc_30d           = 0
+        att_count         = 0       # physical visits in the 7-day window
+        poc_7d_timestamps = []      # one entry per contributing note (for next-eligible calc)
+
+        for _n in _notes:
+            _created = (_n["created_at"] or "")
+            _text    = (_n["note_text"]   or "")
+            _pv      = _poc_value(_text)
+
+            if _pv is None or _pv == 0:
+                continue  # No POC wording, or explicitly zero — skip
+
+            in_30d = _created >= cut30
+            in_7d  = _created >= cut7
+
+            if in_30d:
+                poc_30d += _pv
+            if in_7d:
+                poc_7d  += _pv
+                poc_7d_timestamps.append(_created)
+                if _is_physical_attendance(_text):
+                    att_count += 1
+
+        # ── Next eligible date ──────────────────────────────────────────────
+        # When poc_7d >= 3 the 7-day window is full.  The next slot opens when
+        # the earliest POC-contributing note in the window expires (+ 7 days).
         next_eligible = "Today"
-        if poc_7d >= 3:
-            _oldest = conn.execute(
-                f"SELECT created_at FROM job_field_notes WHERE {_w} AND created_at>=?"
-                " ORDER BY created_at DESC LIMIT 1 OFFSET 2",
-                (job_id, cut7)
-            ).fetchone()
-            if _oldest:
-                try:
-                    _next_dt = _dt.fromisoformat(_oldest["created_at"][:19]) + _td(days=7)
-                    _diff    = (_next_dt.date() - now.date()).days
-                    if _diff <= 0:
-                        next_eligible = "Today"
-                    elif _diff == 1:
-                        next_eligible = "Tomorrow"
-                    else:
-                        next_eligible = _next_dt.strftime("%-d %b")
-                except Exception:
-                    next_eligible = "—"
+        if poc_7d >= 3 and poc_7d_timestamps:
+            poc_7d_timestamps.sort(reverse=True)
+            # The note that fills the 3rd slot (index 2 when sorted newest-first)
+            _anchor = poc_7d_timestamps[2] if len(poc_7d_timestamps) >= 3 else poc_7d_timestamps[-1]
+            try:
+                _next_dt = _dt.fromisoformat(_anchor[:19]) + _td(days=7)
+                _diff    = (_next_dt.date() - now.date()).days
+                if _diff <= 0:
+                    next_eligible = "Today"
+                elif _diff == 1:
+                    next_eligible = "Tomorrow"
+                else:
+                    next_eligible = _next_dt.strftime("%-d %b")
+            except Exception:
+                next_eligible = "—"
 
-        # badge colour
+        # ── Badge colour ────────────────────────────────────────────────────
         if poc_30d >= 10:
             badge_label, badge_color = f"DCG {poc_30d}/10", "#ef4444"
         elif poc_7d >= 3:
@@ -5831,7 +5911,7 @@ def _dcg_poc_data(conn, job_id: int):
         return {
             "poc_7d":        poc_7d,
             "poc_30d":       poc_30d,
-            "att_count":     poc_7d,   # physical attendance = 7-day published field notes
+            "att_count":     att_count,
             "next_eligible": next_eligible,
             "badge_label":   badge_label,
             "badge_color":   badge_color,
