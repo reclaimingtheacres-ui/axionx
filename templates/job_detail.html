@@ -253,6 +253,9 @@
     {% else %}
     <span style="background:{{ sc }}20;color:{{ sc }};border:1.5px solid {{ sc }}50;border-radius:999px;padding:3px 12px;font-size:.78rem;font-weight:600">{{ s }}</span>
     {% endif %}
+    {% if dcg %}
+    <span style="background:{{ dcg.badge_color }}20;color:{{ dcg.badge_color }};border:1.5px solid {{ dcg.badge_color }}50;border-radius:999px;padding:3px 10px;font-size:.7rem;font-weight:700;white-space:nowrap;letter-spacing:.02em;cursor:default" title="7-day: {{ dcg.poc_7d }}/3 · 30-day: {{ dcg.poc_30d }}/10 · Next: {{ dcg.next_eligible }}">{{ dcg.badge_label }}</span>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -3030,6 +3033,17 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       <span class="fw-semibold">{{ schedules|length }}</span>
     </div>
   </div>
+
+  {% if dcg %}
+  <hr style="border-color:var(--line);margin:10px 0">
+  <div>
+    <div class="fw-bold small mb-1" style="color:var(--muted);letter-spacing:.04em;font-size:.72rem">DCG POC</div>
+    <div style="font-size:.78rem;line-height:1.9">
+      <span style="color:{{ dcg.badge_color }};font-weight:700">{{ dcg.badge_label }}</span>
+      <span style="color:var(--muted)"> &nbsp;·&nbsp; 7D {{ dcg.poc_7d }}/3 &nbsp;·&nbsp; 30D {{ dcg.poc_30d }}/10 &nbsp;·&nbsp; Att {{ dcg.att_count }}/3 &nbsp;·&nbsp; Next </span><strong style="color:var(--text)">{{ dcg.next_eligible }}</strong>
+    </div>
+  </div>
+  {% endif %}
 
   {% if client_update_info and client_update_info.get('days_in_status') is not none and job.status in ('Suspended','Awaiting Advice From Client','Awaiting Instructions') %}
   <hr style="border-color:var(--line);margin:10px 0">

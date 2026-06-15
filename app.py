@@ -5777,6 +5777,69 @@ def _get_previous_jobs_for_customers(conn, job_id: int) -> list:
     return [dict(r) for r in rows]
 
 
+def _dcg_poc_data(conn, job_id: int):
+    """Compute DCG Proof of Contact counters for a job (display-only).
+
+    Returns dict with poc_7d, poc_30d, att_count, next_eligible,
+    badge_label, badge_color.  Returns None on any error.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        now   = _dt.utcnow()
+        cut7  = (now - _td(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
+        cut30 = (now - _td(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+        _w    = "job_id=? AND note_category='field_note' AND review_status='published'"
+
+        poc_7d  = (conn.execute(
+            f"SELECT COUNT(*) c FROM job_field_notes WHERE {_w} AND created_at>=?",
+            (job_id, cut7)).fetchone() or {"c": 0})["c"]
+        poc_30d = (conn.execute(
+            f"SELECT COUNT(*) c FROM job_field_notes WHERE {_w} AND created_at>=?",
+            (job_id, cut30)).fetchone() or {"c": 0})["c"]
+
+        # next eligible: oldest of the 3 most-recent 7d contacts + 7 days
+        next_eligible = "Today"
+        if poc_7d >= 3:
+            _oldest = conn.execute(
+                f"SELECT created_at FROM job_field_notes WHERE {_w} AND created_at>=?"
+                " ORDER BY created_at DESC LIMIT 1 OFFSET 2",
+                (job_id, cut7)
+            ).fetchone()
+            if _oldest:
+                try:
+                    _next_dt = _dt.fromisoformat(_oldest["created_at"][:19]) + _td(days=7)
+                    _diff    = (_next_dt.date() - now.date()).days
+                    if _diff <= 0:
+                        next_eligible = "Today"
+                    elif _diff == 1:
+                        next_eligible = "Tomorrow"
+                    else:
+                        next_eligible = _next_dt.strftime("%-d %b")
+                except Exception:
+                    next_eligible = "—"
+
+        # badge colour
+        if poc_30d >= 10:
+            badge_label, badge_color = f"DCG {poc_30d}/10", "#ef4444"
+        elif poc_7d >= 3:
+            badge_label, badge_color = "DCG 3/3", "#ef4444"
+        elif poc_7d == 2:
+            badge_label, badge_color = "DCG 2/3", "#f59e0b"
+        else:
+            badge_label, badge_color = f"DCG {poc_7d}/3", "#22c55e"
+
+        return {
+            "poc_7d":        poc_7d,
+            "poc_30d":       poc_30d,
+            "att_count":     poc_7d,   # physical attendance = 7-day published field notes
+            "next_eligible": next_eligible,
+            "badge_label":   badge_label,
+            "badge_color":   badge_color,
+        }
+    except Exception:
+        return None
+
+
 @app.get("/jobs/<int:job_id>")
 @login_required
 def job_detail(job_id: int):
@@ -6165,6 +6228,8 @@ def job_detail(job_id: int):
     except Exception:
         pass
 
+    dcg = _dcg_poc_data(conn, job_id)
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -6202,7 +6267,9 @@ def job_detail(job_id: int):
                            hardship_provider=hardship_provider,
                            hardship_candidates=hardship_candidates,
                            all_hardship_providers=all_hardship_providers,
-                           cash_receipts=cash_receipts)
+                           cash_receipts=cash_receipts,
+                           dcg=dcg,
+                           far_threshold_general_minutes=_FAR_THRESHOLDS_MINUTES["general"])
 
 
 def _sync_job_customer_id(cur, job_id):
@@ -23103,6 +23170,7 @@ def m_job_detail(job_id):
     except Exception:
         pass
 
+    dcg = _dcg_poc_data(conn, job_id)
     conn.close()
 
     is_admin = role in ("admin", "both", "management")
@@ -23119,7 +23187,8 @@ def m_job_detail(job_id):
                            assigned_agent_name=assigned_agent_name, is_admin=is_admin,
                            mob_uid=mob_uid, mob_view_tok=mob_view_tok,
                            hardship_record=m_hardship_record,
-                           hardship_provider=m_hardship_provider)
+                           hardship_provider=m_hardship_provider,
+                           dcg=dcg)
 
 
 @app.get("/m/job/<int:job_id>/note/new")

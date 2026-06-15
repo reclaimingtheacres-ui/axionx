@@ -12,6 +12,9 @@
 <span class="m-badge {% if job.status in ('Completed','Invoiced') %}m-badge-green{% elif job.status == 'Suspended' %}m-badge-amber{% elif job.status in ('Cancelled',) %}m-badge-red{% else %}m-badge-blue{% endif %}">
   {{ job.status }}
 </span>
+{% if dcg %}
+<span style="background:{{ dcg.badge_color }}20;color:{{ dcg.badge_color }};border:1.5px solid {{ dcg.badge_color }}40;border-radius:999px;padding:2px 8px;font-size:.67rem;font-weight:700;white-space:nowrap;margin-left:4px;display:inline-block;line-height:1.7">{{ dcg.badge_label }}</span>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -182,6 +185,14 @@
     <div style="font-size:.9rem;">
       <span style="font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);">Account No. </span>
       <span style="font-weight:600;color:var(--text);">{{ job.account_number }}</span>
+    </div>
+    {% endif %}
+
+    {# DCG POC compact line #}
+    {% if dcg %}
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:.78rem;">
+      <span style="color:{{ dcg.badge_color }};font-weight:700">{{ dcg.badge_label }}</span>
+      <span style="color:var(--muted)"> &nbsp;·&nbsp; 30D {{ dcg.poc_30d }}/10 &nbsp;·&nbsp; Att {{ dcg.att_count }}/3</span>
     </div>
     {% endif %}
 
