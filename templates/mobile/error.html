@@ -1,0 +1,12 @@
+{% extends "mobile/base.html" %}
+{% block title %}Error{% endblock %}
+{% block content %}
+<div class="m-content" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:32px 24px;">
+  <div style="width:56px;height:56px;background:#fee2e2;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:20px;">
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#dc2626" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  </div>
+  <div style="font-weight:700;font-size:1rem;color:#111;margin-bottom:8px;">Something went wrong</div>
+  <div style="font-size:.88rem;color:#6b7280;margin-bottom:28px;max-width:280px;line-height:1.5;">{{ message }}</div>
+  <a href="{{ back_url }}" style="display:inline-block;padding:12px 28px;background:#2563eb;color:#fff;border-radius:10px;font-weight:700;font-size:.88rem;text-decoration:none;">Go Back</a>
+</div>
+{% endblock %}

@@ -12496,8 +12496,9 @@ _FORMS_CATALOGUE = [
         "short":       "Cash Receipt",
         "tags":        ["Cash", "Payment", "Receipt"],
         "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
-        "available":   True,
-        "mobile_only": True,
+        "available":    True,
+        "mobile_only":  True,
+        "requires_job": True,
         "generate_url": "/forms/generate?type=cash_receipt",
     },
 ]
@@ -12726,9 +12727,11 @@ def m_forms():
         job = _forms_job_context(conn, job_id)
         conn.close()
     # Reuse same catalogue; route mobile users through /m/forms/generate
+    # Exclude forms that require a job context when none is provided
     forms_mobile = [
         {**f, "generate_url": f["generate_url"].replace("/forms/generate", "/m/forms/generate")}
         for f in _FORMS_CATALOGUE
+        if not (f.get("requires_job") and not job_id)
     ]
     return render_template("mobile/forms.html",
                            forms=forms_mobile, job=job, job_id=job_id)
@@ -12747,7 +12750,9 @@ def m_forms_generate():
 
     if form_type == "cash_receipt":
         if not job_id:
-            return redirect(url_for("m_forms"))
+            return render_template("mobile/error.html",
+                                   message="Please open this form from within a job.",
+                                   back_url=url_for("m_forms")), 400
         return redirect(url_for("m_cash_receipt_new", job_id=job_id))
 
     _MOBILE_FORM_MAP = {
