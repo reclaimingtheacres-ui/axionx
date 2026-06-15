@@ -12498,7 +12498,7 @@ _FORMS_CATALOGUE = [
         "icon":        '<svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
         "available":   True,
         "mobile_only": True,
-        "generate_url": "/m/forms/generate?type=cash_receipt",
+        "generate_url": "/forms/generate?type=cash_receipt",
     },
 ]
 
