@@ -3960,7 +3960,27 @@ def logout():
     reason = request.args.get("reason", "")
     user_id = session.get("user_id")
     user_name = session.get("user_name", "Unknown")
+    user_email = session.get("user_email", "")
     mobile = _is_mobile_request()
+    _lo_ip = _client_ip()
+    _lo_event = "session_timeout" if reason == "timeout" else "logout"
+    _lo_note = "Session auto-expired (inactivity)" if reason == "timeout" else "Manual logout"
+    if mobile:
+        _lo_note += " [mobile]"
+    try:
+        _lo_conn = db()
+        _lo_cur = _lo_conn.cursor()
+        from security import _ensure_audit_table as _eat2, _write_audit as _wa
+        _eat2(_lo_cur)
+        _wa(_lo_cur, _lo_event,
+            key=f"user:{user_email}" if user_email else "",
+            ip_address=_lo_ip,
+            username=user_email or user_name,
+            notes=_lo_note)
+        _lo_conn.commit()
+        _lo_conn.close()
+    except Exception:
+        pass
     if reason == "timeout" and user_id:
         audit("user", user_id, "logout", f"Session auto-expired due to inactivity: {user_name}", {})
     session.clear()
@@ -16862,6 +16882,8 @@ def admin_api_lockouts():
                 where_clauses.append("al.event_type = 'successful_login'")
             elif filter_type == "released":
                 where_clauses.append("al.event_type = 'lockout_released'")
+            elif filter_type == "logouts":
+                where_clauses.append("al.event_type IN ('logout','session_timeout')")
             if search:
                 where_clauses.append(
                     "(LOWER(COALESCE(al.username_attempted,'')) LIKE ?"
@@ -21271,6 +21293,8 @@ def m_login_post():
 
 @app.get("/m/logout")
 def m_logout():
+    _mlo_user = session.get("user_email", "") or session.get("user_name", "")
+    _mlo_ip   = _client_ip()
     token = request.args.get("token", "").strip()
     if token:
         conn = db()
@@ -21279,6 +21303,20 @@ def m_logout():
             (now_ts(), token))
         conn.commit()
         conn.close()
+    try:
+        _mlo_conn = db()
+        _mlo_cur  = _mlo_conn.cursor()
+        from security import _ensure_audit_table as _eat3, _write_audit as _wa3
+        _eat3(_mlo_cur)
+        _wa3(_mlo_cur, "logout",
+             key=f"user:{_mlo_user}" if _mlo_user else "",
+             ip_address=_mlo_ip,
+             username=_mlo_user,
+             notes="Manual logout [mobile app]")
+        _mlo_conn.commit()
+        _mlo_conn.close()
+    except Exception:
+        pass
     session.clear()
     return redirect(url_for("m_login"))
 

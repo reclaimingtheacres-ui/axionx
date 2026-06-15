@@ -118,6 +118,7 @@
         <button class="btn btn-sm lockout-filter-btn"        data-filter="failed_logins"     onclick="lockoutSetFilter(this)">Failed Logins</button>
         <button class="btn btn-sm lockout-filter-btn"        data-filter="successful_logins" onclick="lockoutSetFilter(this)">Successful Logins</button>
         <button class="btn btn-sm lockout-filter-btn"        data-filter="released"          onclick="lockoutSetFilter(this)">Released</button>
+        <button class="btn btn-sm lockout-filter-btn"        data-filter="logouts"           onclick="lockoutSetFilter(this)">Logouts</button>
         <span id="lockoutCount" class="small ms-2" style="color:var(--muted)"></span>
       </div>
 
@@ -1549,7 +1550,9 @@ function _lockoutFmtTime(utcStr) {
   try {
     var d = new Date(utcStr.trim().replace(' ', 'T') + 'Z');
     if (isNaN(d.getTime())) return utcStr;
-    return d.toLocaleString();
+    var pad = function(n){ return String(n).padStart(2,'0'); };
+    return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear()
+      + ', ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
   } catch(e) { return utcStr; }
 }
 
@@ -1559,6 +1562,8 @@ function _lockoutEventBadge(type) {
     'successful_login': { label: 'Successful Login',   bg: '#dcfce7', fg: '#166534', bd: '#86efac' },
     'lockout_released': { label: 'Lockout Released',   bg: '#eff6ff', fg: '#1d4ed8', bd: '#bfdbfe' },
     'active_lockout':   { label: 'Active Lockout',     bg: '#fef3c7', fg: '#92400e', bd: '#fcd34d' },
+    'logout':           { label: 'Logout',             bg: '#f1f5f9', fg: '#475569', bd: '#cbd5e1' },
+    'session_timeout':  { label: 'Session Timeout',    bg: '#fef3c7', fg: '#92400e', bd: '#fcd34d' },
   };
   var s = map[type] || { label: type, bg: '#f1f5f9', fg: '#475569', bd: '#e2e8f0' };
   return '<span style="background:' + s.bg + ';color:' + s.fg + ';border:1px solid ' + s.bd +
