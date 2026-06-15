@@ -804,6 +804,7 @@ def _startup_migrate():
         _cur = _conn.cursor()
         add_column_if_missing(_cur, "jobs", "last_client_response_at",   "TEXT")
         add_column_if_missing(_cur, "jobs", "suspended_followup_due_at", "TEXT")
+        add_column_if_missing(_cur, "jobs", "dcg_override",              "TEXT")
         add_column_if_missing(_cur, "job_field_notes", "activity_occurred_at",    "TEXT")
         add_column_if_missing(_cur, "job_field_notes", "reporting_delay_minutes", "INTEGER")
         add_column_if_missing(_cur, "job_field_notes", "delay_reason",            "TEXT")
@@ -2037,6 +2038,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "client_update_requests", "request_type", "TEXT NOT NULL DEFAULT 'update_request'")
     add_column_if_missing(cur, "jobs", "last_client_response_at",   "TEXT")
     add_column_if_missing(cur, "jobs", "suspended_followup_due_at", "TEXT")
+    add_column_if_missing(cur, "jobs", "dcg_override",              "TEXT")
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS group_calendar_entries (
