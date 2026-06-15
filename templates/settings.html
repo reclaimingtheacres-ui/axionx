@@ -106,7 +106,7 @@
     </div>
     <div class="ax-card-b">
       <p class="small mb-3" style="color:var(--muted)">
-        All login events are recorded permanently. After <strong>3 failed attempts</strong> both the IP address and the username are permanently locked until manually released here. Releasing a lock preserves the full audit history — the record is marked released, not deleted. Passwords are never stored here.
+        Login events are kept for <strong>4 days</strong> and cleared automatically each night. After <strong>3 failed attempts</strong> both the IP address and the username are permanently locked until manually released here. Records tied to an active lock are never auto-deleted. Passwords are never stored here.
       </p>
 
       <div id="lockoutStatus" class="mb-3" style="display:none"></div>
@@ -120,6 +120,9 @@
         <button class="btn btn-sm lockout-filter-btn"        data-filter="released"          onclick="lockoutSetFilter(this)">Released</button>
         <button class="btn btn-sm lockout-filter-btn"        data-filter="logouts"           onclick="lockoutSetFilter(this)">Logouts</button>
         <span id="lockoutCount" class="small ms-2" style="color:var(--muted)"></span>
+        <button class="btn btn-sm ms-auto" id="auditClearBtn"
+                style="background:none;border:1px solid var(--line);color:var(--muted);font-size:.78rem;"
+                onclick="lockoutAuditClear()">Clear &gt;4 days</button>
       </div>
 
       <div style="overflow-x:auto">
@@ -1654,6 +1657,30 @@ function lockoutClearExpired() {
       lockoutLoad();
     })
     .catch(function() { lockoutShowStatus('Network error.', 'danger'); });
+}
+
+function lockoutAuditClear() {
+  if (!confirm('Clear all login audit records older than 4 days?\n\nRecords tied to active locks will be preserved.')) return;
+  var btn = document.getElementById('auditClearBtn');
+  var origText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Clearing\u2026'; }
+  fetch('/admin/api/login-audit/clear', {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (btn) { btn.disabled = false; btn.textContent = origText; }
+      lockoutShowStatus(d.ok
+        ? 'Cleared ' + (d.deleted || 0) + ' records older than 4 days.'
+        : (d.error || 'Clear failed.'),
+        d.ok ? 'success' : 'danger');
+      lockoutLoad();
+    })
+    .catch(function() {
+      if (btn) { btn.disabled = false; btn.textContent = origText; }
+      lockoutShowStatus('Network error.', 'danger');
+    });
 }
 
 function lockoutShowStatus(msg, type) {

@@ -16987,6 +16987,35 @@ def admin_api_lockout_clear_expired():
     return jsonify({"ok": True})
 
 
+@app.post("/admin/api/login-audit/clear")
+@login_required
+@admin_required
+def admin_api_login_audit_clear():
+    """Manually clear login audit log entries older than the retention period.
+    Records tied to an active permanent lock are always preserved."""
+    from security import _LOCKED_SENTINEL as _LS3
+    days = 4
+    conn = db()
+    try:
+        result = conn.execute("""
+            DELETE FROM login_audit_log
+            WHERE event_ts < datetime('now', ?)
+              AND NOT EXISTS (
+                  SELECT 1 FROM login_throttle lt
+                  WHERE lt.key = login_audit_log.throttle_key
+                    AND lt.locked_until = ?
+              )
+        """, (f'-{days} days', _LS3))
+        deleted = result.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    audit("auth", session.get("user_id"), "login_audit_cleared",
+          f"Manually cleared {deleted} login audit records older than {days} days.",
+          {"deleted": deleted, "by": session.get("user_name")})
+    return jsonify({"ok": True, "deleted": deleted})
+
+
 @app.get("/admin/api/duplicates")
 @login_required
 @admin_required

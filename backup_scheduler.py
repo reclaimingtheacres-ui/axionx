@@ -17,6 +17,7 @@ BACKUP_MINUTE = 30
 MSG_CLEANUP_HOUR = 16
 MSG_CLEANUP_MINUTE = 30
 MSG_READ_RETENTION_DAYS = 7
+LOGIN_AUDIT_RETENTION_DAYS = 4
 
 print(f"Backup scheduler started — DB: {DB_PATH} (exists={os.path.exists(DB_PATH)})", flush=True)
 print(f"  backup daily at {BACKUP_HOUR:02d}:{BACKUP_MINUTE:02d} UTC (02:30 AEST), msg cleanup at {MSG_CLEANUP_HOUR:02d}:{MSG_CLEANUP_MINUTE:02d} UTC, geocode every 2 min", flush=True)
@@ -24,6 +25,7 @@ print(f"  backup daily at {BACKUP_HOUR:02d}:{BACKUP_MINUTE:02d} UTC (02:30 AEST)
 last_run_date = None
 last_geocode_time = 0
 last_msg_cleanup_date = None
+last_audit_cleanup_date = None
 
 # ── Startup catch-up ──────────────────────────────────────────────────────────
 # If the scheduler process was recycled (Azure restart, deployment, crash) after
@@ -212,6 +214,44 @@ def message_cleanup():
         conn.close()
 
 
+def login_audit_cleanup():
+    """Delete login audit records older than LOGIN_AUDIT_RETENTION_DAYS days.
+
+    Records tied to a currently active permanent lock are always preserved so
+    the full lockout history remains visible until an admin manually releases it.
+    """
+    if not os.path.exists(DB_PATH):
+        return
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    try:
+        tables = [r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='login_audit_log'"
+        ).fetchall()]
+        if 'login_audit_log' not in tables:
+            conn.close()
+            return
+
+        result = conn.execute("""
+            DELETE FROM login_audit_log
+            WHERE event_ts < datetime('now', ?)
+              AND NOT EXISTS (
+                  SELECT 1 FROM login_throttle lt
+                  WHERE lt.key = login_audit_log.throttle_key
+                    AND lt.locked_until = 'permanent'
+              )
+        """, (f'-{LOGIN_AUDIT_RETENTION_DAYS} days',))
+        deleted = result.rowcount
+        conn.commit()
+        print(f"[{now_str}] Login audit cleanup: deleted {deleted} records older than {LOGIN_AUDIT_RETENTION_DAYS} days (active locks preserved)", flush=True)
+    except Exception:
+        print(f"[{now_str}] Login audit cleanup failed:", flush=True)
+        traceback.print_exc()
+    finally:
+        conn.close()
+
+
 while True:
     now = datetime.datetime.now()
     today = now.date()
@@ -232,6 +272,14 @@ while True:
             last_msg_cleanup_date = today
         except Exception:
             print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Message cleanup failed:", flush=True)
+            traceback.print_exc()
+
+    if now.hour == MSG_CLEANUP_HOUR and now.minute == MSG_CLEANUP_MINUTE and last_audit_cleanup_date != today:
+        try:
+            login_audit_cleanup()
+            last_audit_cleanup_date = today
+        except Exception:
+            print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Login audit cleanup failed:", flush=True)
             traceback.print_exc()
 
     elapsed = time.time() - last_geocode_time
