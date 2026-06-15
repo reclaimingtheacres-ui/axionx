@@ -17965,6 +17965,10 @@ def job_hardship_unlink(job_id):
 @app.post("/jobs/<int:job_id>/hardship/send-email")
 @login_required
 def job_hardship_send_email(job_id):
+    role = session.get("role", "")
+    uid  = session.get("user_id")
+    if role not in ("admin", "management", "both"):
+        return jsonify({"ok": False, "error": "Admin or management access required to send hardship emails"}), 403
     data = request.get_json(silent=True) or {}
     to_email = (data.get("to_email") or "").strip()
     if not to_email:
@@ -17974,7 +17978,10 @@ def job_hardship_send_email(job_id):
     if not body:
         return jsonify({"ok": False, "error": "Message body required"}), 400
     conn = db()
-    uid = session.get("user_id")
+    job_row = conn.execute("SELECT id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job_row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found"}), 404
     _ts = now_ts()
     try:
         send_email(to_email, subject, body)
@@ -18003,11 +18010,25 @@ def job_hardship_send_email(job_id):
 @app.post("/jobs/<int:job_id>/hardship/mark-sms-sent")
 @login_required
 def job_hardship_mark_sms_sent(job_id):
+    role = session.get("role", "")
+    uid  = session.get("user_id")
     data = request.get_json(silent=True) or {}
     to_phone = (data.get("to_phone") or "").strip()
     msg_text  = (data.get("message") or "").strip()
     conn = db()
-    uid = session.get("user_id")
+    job_row = conn.execute("SELECT id, assigned_user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job_row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Job not found"}), 404
+    if role not in ("admin", "management", "both"):
+        has_access = (job_row["assigned_user_id"] == uid) or conn.execute(
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?"
+            " AND status NOT IN ('Cancelled','Completed') AND hidden=0",
+            (job_id, uid)
+        ).fetchone()
+        if not has_access:
+            conn.close()
+            return jsonify({"ok": False, "error": "Access denied"}), 403
     _ts = now_ts()
     conn.execute("""
         UPDATE job_hardship_records
@@ -18042,7 +18063,22 @@ def job_hardship_mark_sms_sent(job_id):
 @app.get("/jobs/<int:job_id>/hardship/preview")
 @login_required
 def job_hardship_preview(job_id):
+    role = session.get("role", "")
+    uid  = session.get("user_id")
     conn = db()
+    if role not in ("admin", "management", "both"):
+        job_row = conn.execute("SELECT id, assigned_user_id FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not job_row:
+            conn.close()
+            return jsonify({"ok": False, "error": "Job not found"}), 404
+        has_access = (job_row["assigned_user_id"] == uid) or conn.execute(
+            "SELECT 1 FROM schedules WHERE job_id=? AND assigned_to_user_id=?"
+            " AND status NOT IN ('Cancelled','Completed') AND hidden=0",
+            (job_id, uid)
+        ).fetchone()
+        if not has_access:
+            conn.close()
+            return jsonify({"ok": False, "error": "Access denied"}), 403
     _hr = conn.execute("""
         SELECT jhr.*, hp.lender_name, hp.phone_number,
                hp.sms_template, hp.email_subject_template, hp.email_body_template
@@ -18050,7 +18086,6 @@ def job_hardship_preview(job_id):
         JOIN hardship_providers hp ON hp.id = jhr.hardship_provider_id
         WHERE jhr.job_id=?
     """, (job_id,)).fetchone()
-    uid = session.get("user_id")
     _ur = conn.execute("SELECT full_name FROM users WHERE id=?", (uid,)).fetchone()
     conn.close()
     if not _hr:
