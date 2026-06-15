@@ -1850,16 +1850,16 @@ window.submitAddJob = function() {
 </div>
 
 <div class="modal fade" id="cloneModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" style="max-height:calc(100vh - 3.5rem);">
-    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;max-height:calc(100vh - 3.5rem);display:flex;flex-direction:column;">
-      <div class="modal-header" style="border-bottom:1px solid var(--line);flex-shrink:0;">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg" style="margin:1.75rem auto;">
+    <div class="modal-content" style="background:var(--panel2);border:1px solid var(--line);border-radius:16px;">
+      <div class="modal-header" style="border-bottom:1px solid var(--line);">
         <h5 class="modal-title" style="color:var(--text)">Clone Previous Job</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body" id="cloneModalBody" style="overflow-y:auto;flex:1 1 auto;">
+      <div class="modal-body" id="cloneModalBody" style="overflow-y:auto;max-height:calc(100vh - 220px);">
         <div class="text-center py-3" style="color:var(--muted)">Loading…</div>
       </div>
-      <div class="modal-footer" style="border-top:1px solid var(--line);flex-shrink:0;">
+      <div class="modal-footer" style="border-top:1px solid var(--line);">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="cloneConfirmBtn" style="display:none;">Clone into New Job</button>
       </div>
