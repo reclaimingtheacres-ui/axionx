@@ -1028,6 +1028,210 @@
       {% endif %}
     </div>
 
+  {# ── Hardship Assistance Panel ── #}
+  {% if hardship_provider or hardship_candidates or session.get('role') in ('admin','both','management') %}
+  <div style="padding:.75rem .9rem;border-radius:10px;background:var(--card);margin-top:.75rem;" id="hardship-panel">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="small fw-bold" style="color:var(--muted);letter-spacing:.04em">HARDSHIP ASSISTANCE</div>
+      {% if hardship_provider %}
+        <span class="badge {{ 'bg-secondary' if hardship_record and hardship_record.get('link_source') == 'auto' else 'bg-success' }} text-white" style="font-size:.7rem;">
+          {{ 'Auto-matched' if hardship_record and hardship_record.get('link_source') == 'auto' else 'Linked' }}
+        </span>
+      {% elif hardship_candidates %}
+        <span class="badge bg-warning text-dark" style="font-size:.7rem;">{{ hardship_candidates|length }} match{{ 'es' if hardship_candidates|length != 1 else '' }}</span>
+      {% endif %}
+    </div>
+
+    {% if hardship_provider %}
+    <div style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.6rem .8rem;font-size:.83rem;margin-bottom:.5rem;">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div>
+          <div class="fw-semibold">{{ hardship_provider.lender_name }}</div>
+          {% if hardship_provider.team_name %}<div style="color:var(--muted);font-size:.78rem">{{ hardship_provider.team_name }}</div>{% endif %}
+          {% if hardship_provider.phone_number %}
+          <div class="mt-1">
+            <a href="tel:{{ hardship_provider.phone_number }}" class="text-decoration-none fw-semibold" style="color:var(--accent)">📞 {{ hardship_provider.phone_number }}</a>
+          </div>
+          {% endif %}
+          {% if hardship_provider.category %}<div style="color:var(--muted);font-size:.75rem;margin-top:2px;">{{ hardship_provider.category }}</div>{% endif %}
+        </div>
+        {% if session.get('role') in ('admin','both','management') and not is_demo_client %}
+        <div class="d-flex gap-1 flex-shrink-0">
+          <button type="button" class="btn btn-outline-primary btn-sm" style="font-size:.74rem;" onclick="hardshipOpenSendModal()">Send</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.74rem;" onclick="hardshipUnlink({{ job.id }})">Unlink</button>
+        </div>
+        {% elif session.get('role') == 'agent' and hardship_provider.phone_number %}
+        <a href="sms:{{ hardship_provider.phone_number }}" class="btn btn-outline-success btn-sm" style="font-size:.74rem;">SMS</a>
+        {% endif %}
+      </div>
+      {% if hardship_record %}
+        {% if hardship_record.get('sms_sent_at') %}
+        <div class="mt-2 pt-2 border-top" style="font-size:.74rem;color:var(--muted)">
+          ✓ SMS recorded {{ hardship_record.sms_sent_at | fmt_date }}{% if hardship_record.get('sms_sent_to') %} → {{ hardship_record.sms_sent_to }}{% endif %}
+        </div>
+        {% endif %}
+        {% if hardship_record.get('email_sent_at') %}
+        <div class="{% if not hardship_record.get('sms_sent_at') %}mt-2 pt-2 border-top{% else %}mt-1{% endif %}" style="font-size:.74rem;color:var(--muted)">
+          ✓ Email sent {{ hardship_record.email_sent_at | fmt_date }}{% if hardship_record.get('email_sent_to') %} → {{ hardship_record.email_sent_to }}{% endif %}
+        </div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% elif hardship_candidates and session.get('role') in ('admin','both','management') %}
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem;">Multiple providers match — select one to link:</div>
+    {% for c in hardship_candidates %}
+    <div class="d-flex justify-content-between align-items-center mb-1" style="background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.4rem .7rem;font-size:.82rem;">
+      <div>
+        <span class="fw-semibold">{{ c.lender_name }}</span>
+        {% if c.phone_number %}<span class="ms-2 text-muted" style="font-size:.8rem">{{ c.phone_number }}</span>{% endif %}
+        {% if c.category %}<span class="ms-2 badge bg-secondary" style="font-size:.68rem;">{{ c.category }}</span>{% endif %}
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" style="font-size:.72rem;" onclick="hardshipLink({{ job.id }}, {{ c.id }})">Link</button>
+    </div>
+    {% endfor %}
+
+    {% elif session.get('role') in ('admin','both','management') %}
+    <div style="font-size:.8rem;color:var(--muted);font-style:italic;margin-bottom:.5rem;">No provider auto-matched for this job.</div>
+    {% endif %}
+
+    {% if session.get('role') in ('admin','both','management') and not hardship_provider and not is_demo_client %}
+    <div class="d-flex gap-2 align-items-center mt-1">
+      <select id="hp-manual-select" class="form-select form-select-sm" style="max-width:280px;font-size:.8rem;">
+        <option value="">— Link a provider manually —</option>
+        {% for p in all_hardship_providers %}
+        <option value="{{ p.id }}">{{ p.lender_name }}{% if p.phone_number %} · {{ p.phone_number }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <button type="button" class="btn btn-primary btn-sm" style="font-size:.78rem;" onclick="hardshipLinkSelected({{ job.id }})">Link</button>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ── Hardship Send Modal ── #}
+  <div class="modal fade" id="hardshipSendModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:520px;">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title mb-0 fw-bold">Send Hardship Assistance Details</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <ul class="nav nav-tabs mb-3" id="hpSendTabs" role="tablist">
+            <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#hpTabSms" type="button" role="tab">SMS</button></li>
+            <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#hpTabEmail" type="button" role="tab">Email</button></li>
+          </ul>
+          <div class="tab-content">
+            <div class="tab-pane fade show active" id="hpTabSms" role="tabpanel">
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Customer phone</label>
+                <input type="tel" id="hp-sms-to" class="form-control form-control-sm" placeholder="04xx xxx xxx">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Message</label>
+                <textarea id="hp-sms-body" class="form-control form-control-sm" rows="4" style="font-size:.82rem;resize:vertical"></textarea>
+              </div>
+              <div class="d-flex align-items-center gap-2 mb-3 p-2" style="background:var(--bg);border-radius:6px;border:1px solid var(--line);">
+                <a id="hp-sms-deeplink" href="sms:" class="btn btn-success btn-sm" style="white-space:nowrap">Open SMS App ↗</a>
+                <span style="font-size:.76rem;color:var(--muted)">Opens your SMS app with the number pre-filled. Then tap <strong>Mark as Sent</strong> below to record it.</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm w-100" onclick="hardshipMarkSmsSent({{ job.id }})">Mark as Sent &amp; Save Note</button>
+            </div>
+            <div class="tab-pane fade" id="hpTabEmail" role="tabpanel">
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Recipient email</label>
+                <input type="email" id="hp-email-to" class="form-control form-control-sm" placeholder="customer@example.com">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Subject</label>
+                <input type="text" id="hp-email-subject" class="form-control form-control-sm">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Body</label>
+                <textarea id="hp-email-body" class="form-control form-control-sm" rows="6" style="font-size:.82rem;resize:vertical"></textarea>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm w-100" onclick="hardshipSendEmail({{ job.id }})">Send Email &amp; Save Note</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    function hardshipLink(jobId, providerId) {
+      fetch('/jobs/' + jobId + '/hardship/link', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({provider_id: providerId})
+      }).then(r => r.json()).then(d => {
+        if (d.ok) location.reload(); else alert('Error: ' + d.error);
+      });
+    }
+    window.hardshipLink = hardshipLink;
+
+    window.hardshipLinkSelected = function(jobId) {
+      var sel = document.getElementById('hp-manual-select');
+      var pid = parseInt(sel.value);
+      if (!pid) { alert('Please select a provider first.'); return; }
+      hardshipLink(jobId, pid);
+    };
+
+    window.hardshipUnlink = function(jobId) {
+      if (!confirm('Remove the linked hardship provider from this job?')) return;
+      fetch('/jobs/' + jobId + '/hardship/unlink', {method: 'POST'})
+        .then(r => r.json()).then(d => {
+          if (d.ok) location.reload(); else alert('Error: ' + d.error);
+        });
+    };
+
+    window.hardshipOpenSendModal = function() {
+      fetch('/jobs/{{ job.id }}/hardship/preview')
+        .then(r => r.json()).then(d => {
+          if (!d.ok) { alert('Could not load message templates.'); return; }
+          document.getElementById('hp-sms-body').value      = d.sms || '';
+          document.getElementById('hp-email-subject').value = d.email_subject || '';
+          document.getElementById('hp-email-body').value    = d.email_body || '';
+          var dl = document.getElementById('hp-sms-deeplink');
+          if (dl && d.phone_number) dl.href = 'sms:' + d.phone_number;
+          new bootstrap.Modal(document.getElementById('hardshipSendModal')).show();
+        });
+    };
+
+    window.hardshipMarkSmsSent = function(jobId) {
+      var phone = document.getElementById('hp-sms-to').value.trim();
+      var msg   = document.getElementById('hp-sms-body').value.trim();
+      fetch('/jobs/' + jobId + '/hardship/mark-sms-sent', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({to_phone: phone, message: msg})
+      }).then(r => r.json()).then(d => {
+        if (d.ok) {
+          bootstrap.Modal.getInstance(document.getElementById('hardshipSendModal')).hide();
+          location.reload();
+        } else alert('Error: ' + d.error);
+      });
+    };
+
+    window.hardshipSendEmail = function(jobId) {
+      var to      = document.getElementById('hp-email-to').value.trim();
+      var subject = document.getElementById('hp-email-subject').value.trim();
+      var body    = document.getElementById('hp-email-body').value.trim();
+      if (!to) { alert('Please enter a recipient email address.'); return; }
+      if (!body) { alert('Message body cannot be empty.'); return; }
+      fetch('/jobs/' + jobId + '/hardship/send-email', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({to_email: to, subject: subject, body: body})
+      }).then(r => r.json()).then(d => {
+        if (d.ok) {
+          bootstrap.Modal.getInstance(document.getElementById('hardshipSendModal')).hide();
+          location.reload();
+        } else alert('Error: ' + d.error);
+      });
+    };
+  })();
+  </script>
+
   {# ── LPR Sightings Widget ── #}
   {% if job_lpr_sightings %}
   <div class="ax-card mb-3" style="margin-top:16px;">

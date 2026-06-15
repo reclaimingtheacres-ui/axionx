@@ -1,0 +1,325 @@
+{% extends "layout.html" %}
+{% block title %}Hardship Assistance Contacts{% endblock %}
+{% block content %}
+<div class="ax-page-wrap">
+  <div class="ax-page-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <h1 class="ax-page-title mb-0">Hardship Assistance Contacts</h1>
+      <div class="text-muted" style="font-size:.82rem;margin-top:2px;">Lender hardship contact database — auto-matched to jobs</div>
+    </div>
+    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#hpNewModal">+ Add Provider</button>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="d-flex gap-3 mb-3 flex-wrap">
+    <div class="badge bg-secondary" style="font-size:.82rem;padding:.45rem .8rem;">{{ providers | length }} total</div>
+    <div class="badge bg-success" style="font-size:.82rem;padding:.45rem .8rem;">{{ providers | selectattr('is_active') | list | length }} active</div>
+    <div class="badge bg-danger" style="font-size:.82rem;padding:.45rem .8rem;">{{ providers | rejectattr('is_active') | list | length }} inactive</div>
+  </div>
+
+  <!-- Search filter -->
+  <div class="mb-3" style="max-width:380px;">
+    <input type="text" id="hp-search" class="form-control form-control-sm" placeholder="Filter by name, category, keywords…" oninput="hpFilter(this.value)">
+  </div>
+
+  <!-- Table -->
+  <div class="table-responsive">
+    <table class="table table-sm align-middle ax-table" id="hp-table">
+      <thead>
+        <tr>
+          <th>Lender / Team</th>
+          <th>Phone</th>
+          <th>Category</th>
+          <th>Match Keywords</th>
+          <th class="text-center">Active</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in providers %}
+        <tr id="hp-row-{{ p.id }}" class="hp-row{{ ' table-secondary text-muted' if not p.is_active else '' }}" data-search="{{ (p.lender_name or '') | lower }} {{ (p.team_name or '') | lower }} {{ (p.category or '') | lower }} {{ (p.match_keywords or '') | lower }}">
+          <td>
+            <div class="fw-semibold">{{ p.lender_name }}</div>
+            {% if p.team_name %}<div style="font-size:.78rem;color:var(--muted)">{{ p.team_name }}</div>{% endif %}
+          </td>
+          <td>
+            {% if p.phone_number %}
+            <a href="tel:{{ p.phone_number }}" class="text-decoration-none fw-semibold" style="color:var(--accent)">{{ p.phone_number }}</a>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td style="font-size:.82rem;">{{ p.category or '—' }}</td>
+          <td style="font-size:.78rem;color:var(--muted);max-width:220px;">{{ p.match_keywords or '—' }}</td>
+          <td class="text-center">
+            <button type="button"
+              class="btn btn-sm {{ 'btn-success' if p.is_active else 'btn-outline-secondary' }}"
+              style="font-size:.72rem;padding:.2rem .55rem;"
+              onclick="hpToggle({{ p.id }}, this)"
+              title="{{ 'Deactivate' if p.is_active else 'Activate' }}">
+              {{ 'ON' if p.is_active else 'OFF' }}
+            </button>
+          </td>
+          <td>
+            <div class="d-flex gap-1 justify-content-end">
+              <button type="button" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;" data-hp='{{ p | tojson }}' onclick="hpOpenEdit(JSON.parse(this.dataset.hp))">Edit</button>
+              <button type="button" class="btn btn-outline-danger btn-sm" style="font-size:.72rem;" onclick="hpDelete({{ p.id }}, '{{ p.lender_name | e }}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4" style="font-style:italic;">No hardship providers configured yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- New Provider Modal -->
+<div class="modal fade" id="hpNewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold mb-0">Add Hardship Provider</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="hp-new-error" class="alert alert-danger d-none"></div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label form-label-sm fw-semibold">Lender Name <span class="text-danger">*</span></label>
+            <input type="text" id="hp-new-lender" class="form-control form-control-sm" placeholder="e.g. Westpac Assist">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label form-label-sm fw-semibold">Team / Department</label>
+            <input type="text" id="hp-new-team" class="form-control form-control-sm" placeholder="e.g. Financial Hardship Team">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label form-label-sm fw-semibold">Phone Number</label>
+            <input type="tel" id="hp-new-phone" class="form-control form-control-sm" placeholder="1800 xxx xxx">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label form-label-sm fw-semibold">Email</label>
+            <input type="email" id="hp-new-email" class="form-control form-control-sm" placeholder="hardship@lender.com.au">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label form-label-sm fw-semibold">Category</label>
+            <input type="text" id="hp-new-category" class="form-control form-control-sm" placeholder="e.g. Auto Finance">
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Match Keywords <span class="text-muted fw-normal">(comma-separated, used for auto-matching jobs)</span></label>
+            <input type="text" id="hp-new-keywords" class="form-control form-control-sm" placeholder="e.g. westpac, westpac auto">
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">SMS Template</label>
+            <textarea id="hp-new-sms" class="form-control form-control-sm" rows="3" style="resize:vertical;font-size:.82rem"></textarea>
+            <div class="form-text">Placeholders: <code>[lender]</code> <code>[number]</code> <code>[agent]</code></div>
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Email Subject Template</label>
+            <input type="text" id="hp-new-email-subject" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Email Body Template</label>
+            <textarea id="hp-new-email-body" class="form-control form-control-sm" rows="5" style="resize:vertical;font-size:.82rem"></textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Internal Notes</label>
+            <textarea id="hp-new-notes" class="form-control form-control-sm" rows="2" style="resize:vertical;font-size:.82rem" placeholder="Internal reference only"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="hpSaveNew()">Add Provider</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Provider Modal -->
+<div class="modal fade" id="hpEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-bold mb-0">Edit Hardship Provider</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="hp-edit-error" class="alert alert-danger d-none"></div>
+        <input type="hidden" id="hp-edit-id">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label form-label-sm fw-semibold">Lender Name <span class="text-danger">*</span></label>
+            <input type="text" id="hp-edit-lender" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label form-label-sm fw-semibold">Team / Department</label>
+            <input type="text" id="hp-edit-team" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label form-label-sm fw-semibold">Phone Number</label>
+            <input type="tel" id="hp-edit-phone" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label form-label-sm fw-semibold">Email</label>
+            <input type="email" id="hp-edit-email" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label form-label-sm fw-semibold">Category</label>
+            <input type="text" id="hp-edit-category" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Match Keywords</label>
+            <input type="text" id="hp-edit-keywords" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">SMS Template</label>
+            <textarea id="hp-edit-sms" class="form-control form-control-sm" rows="3" style="resize:vertical;font-size:.82rem"></textarea>
+            <div class="form-text">Placeholders: <code>[lender]</code> <code>[number]</code> <code>[agent]</code></div>
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Email Subject Template</label>
+            <input type="text" id="hp-edit-email-subject" class="form-control form-control-sm">
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Email Body Template</label>
+            <textarea id="hp-edit-email-body" class="form-control form-control-sm" rows="5" style="resize:vertical;font-size:.82rem"></textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label form-label-sm fw-semibold">Internal Notes</label>
+            <textarea id="hp-edit-notes" class="form-control form-control-sm" rows="2" style="resize:vertical;font-size:.82rem"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="hpSaveEdit()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Search / filter
+  window.hpFilter = function(q) {
+    q = q.trim().toLowerCase();
+    document.querySelectorAll('.hp-row').forEach(function(row) {
+      row.style.display = (!q || row.dataset.search.indexOf(q) !== -1) ? '' : 'none';
+    });
+  };
+
+  // Toggle active/inactive
+  window.hpToggle = function(id, btn) {
+    fetch('/admin/hardship-providers/' + id + '/toggle', {method: 'POST'})
+      .then(r => r.json()).then(d => {
+        if (!d.ok) { alert('Error: ' + (d.error || 'Unknown')); return; }
+        btn.textContent     = d.is_active ? 'ON' : 'OFF';
+        btn.className       = 'btn btn-sm ' + (d.is_active ? 'btn-success' : 'btn-outline-secondary');
+        btn.title           = d.is_active ? 'Deactivate' : 'Activate';
+        var row = document.getElementById('hp-row-' + id);
+        if (d.is_active) {
+          row.classList.remove('table-secondary', 'text-muted');
+        } else {
+          row.classList.add('table-secondary', 'text-muted');
+        }
+      });
+  };
+
+  // Open edit modal and populate fields
+  window.hpOpenEdit = function(p) {
+    document.getElementById('hp-edit-id').value           = p.id;
+    document.getElementById('hp-edit-lender').value       = p.lender_name || '';
+    document.getElementById('hp-edit-team').value         = p.team_name || '';
+    document.getElementById('hp-edit-phone').value        = p.phone_number || '';
+    document.getElementById('hp-edit-email').value        = p.email || '';
+    document.getElementById('hp-edit-category').value     = p.category || '';
+    document.getElementById('hp-edit-keywords').value     = p.match_keywords || '';
+    document.getElementById('hp-edit-sms').value          = p.sms_template || '';
+    document.getElementById('hp-edit-email-subject').value = p.email_subject_template || '';
+    document.getElementById('hp-edit-email-body').value   = p.email_body_template || '';
+    document.getElementById('hp-edit-notes').value        = p.internal_notes || '';
+    document.getElementById('hp-edit-error').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('hpEditModal')).show();
+  };
+
+  window.hpSaveNew = function() {
+    var errEl = document.getElementById('hp-new-error');
+    errEl.classList.add('d-none');
+    var payload = {
+      lender_name:           document.getElementById('hp-new-lender').value.trim(),
+      team_name:             document.getElementById('hp-new-team').value.trim(),
+      phone_number:          document.getElementById('hp-new-phone').value.trim(),
+      email:                 document.getElementById('hp-new-email').value.trim(),
+      category:              document.getElementById('hp-new-category').value.trim(),
+      match_keywords:        document.getElementById('hp-new-keywords').value.trim(),
+      sms_template:          document.getElementById('hp-new-sms').value.trim(),
+      email_subject_template: document.getElementById('hp-new-email-subject').value.trim(),
+      email_body_template:   document.getElementById('hp-new-email-body').value.trim(),
+      internal_notes:        document.getElementById('hp-new-notes').value.trim(),
+    };
+    if (!payload.lender_name) { errEl.textContent = 'Lender name is required.'; errEl.classList.remove('d-none'); return; }
+    fetch('/admin/hardship-providers/new', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    }).then(r => r.json()).then(d => {
+      if (d.ok) { location.reload(); }
+      else { errEl.textContent = d.error || 'Save failed.'; errEl.classList.remove('d-none'); }
+    });
+  };
+
+  window.hpSaveEdit = function() {
+    var id    = document.getElementById('hp-edit-id').value;
+    var errEl = document.getElementById('hp-edit-error');
+    errEl.classList.add('d-none');
+    var payload = {
+      lender_name:            document.getElementById('hp-edit-lender').value.trim(),
+      team_name:              document.getElementById('hp-edit-team').value.trim(),
+      phone_number:           document.getElementById('hp-edit-phone').value.trim(),
+      email:                  document.getElementById('hp-edit-email').value.trim(),
+      category:               document.getElementById('hp-edit-category').value.trim(),
+      match_keywords:         document.getElementById('hp-edit-keywords').value.trim(),
+      sms_template:           document.getElementById('hp-edit-sms').value.trim(),
+      email_subject_template: document.getElementById('hp-edit-email-subject').value.trim(),
+      email_body_template:    document.getElementById('hp-edit-email-body').value.trim(),
+      internal_notes:         document.getElementById('hp-edit-notes').value.trim(),
+    };
+    if (!payload.lender_name) { errEl.textContent = 'Lender name is required.'; errEl.classList.remove('d-none'); return; }
+    fetch('/admin/hardship-providers/' + id + '/edit', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    }).then(r => r.json()).then(d => {
+      if (d.ok) { location.reload(); }
+      else { errEl.textContent = d.error || 'Save failed.'; errEl.classList.remove('d-none'); }
+    });
+  };
+
+  window.hpDelete = function(id, name) {
+    if (!confirm('Delete "' + name + '"?\n\nIf this provider is linked to any jobs it will be deactivated instead of deleted.')) return;
+    fetch('/admin/hardship-providers/' + id + '/delete', {method: 'POST'})
+      .then(r => r.json()).then(d => {
+        if (!d.ok) { alert('Error: ' + (d.error || 'Unknown')); return; }
+        if (d.action === 'deleted') {
+          var row = document.getElementById('hp-row-' + id);
+          if (row) row.remove();
+        } else {
+          alert(d.message || 'Provider deactivated.');
+          location.reload();
+        }
+      });
+  };
+
+  // Pre-populate new modal SMS template default
+  var newModal = document.getElementById('hpNewModal');
+  if (newModal) {
+    newModal.addEventListener('show.bs.modal', function() {
+      var smsEl = document.getElementById('hp-new-sms');
+      var subEl = document.getElementById('hp-new-email-subject');
+      var bodyEl = document.getElementById('hp-new-email-body');
+      if (smsEl && !smsEl.value) smsEl.value = "Thank you for speaking with me today. Please contact the [lender] hardship assistance team on [number] to discuss your circumstances and available assistance options. Regards [agent]";
+      if (subEl && !subEl.value) subEl.value = "Hardship Assistance Contact Details";
+      if (bodyEl && !bodyEl.value) bodyEl.value = "Thank you for speaking with me today.\n\nShould you require hardship assistance, please contact the [lender] hardship assistance team on [number] to discuss your circumstances and available assistance options.\n\nRegards,\n\n[agent]";
+    });
+  }
+})();
+</script>
+{% endblock %}

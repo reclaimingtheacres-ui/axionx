@@ -120,6 +120,55 @@
 </div>
 {% endif %}
 
+<!-- Hardship Assistance -->
+{% if hardship_provider %}
+<div class="m-card">
+  <div class="m-card-header d-flex justify-content-between align-items-center">
+    <span>Hardship Assistance</span>
+    <span class="badge bg-success text-white" style="font-size:.68rem;">Linked</span>
+  </div>
+  <div class="m-card-body">
+    <div class="fw-semibold" style="font-size:.9rem;">{{ hardship_provider.lender_name }}</div>
+    {% if hardship_provider.team_name %}<div style="font-size:.78rem;color:var(--muted);">{{ hardship_provider.team_name }}</div>{% endif %}
+    {% if hardship_provider.phone_number %}
+    <div style="margin-top:8px;margin-bottom:8px;">
+      <a href="tel:{{ hardship_provider.phone_number }}" class="btn btn-outline-primary btn-sm me-2" style="font-size:.8rem;">📞 Call {{ hardship_provider.phone_number }}</a>
+      <a href="sms:{{ hardship_provider.phone_number }}" class="btn btn-outline-success btn-sm" style="font-size:.8rem;" onclick="hardshipMobileSmsOpen('{{ hardship_provider.phone_number }}')">SMS</a>
+    </div>
+    {% endif %}
+    {% if hardship_record %}
+      {% if hardship_record.get('sms_sent_at') %}
+      <div style="font-size:.75rem;color:var(--muted);">✓ SMS recorded {{ hardship_record.sms_sent_at | fmt_date }}</div>
+      {% endif %}
+      {% if hardship_record.get('email_sent_at') %}
+      <div style="font-size:.75rem;color:var(--muted);">✓ Email sent {{ hardship_record.email_sent_at | fmt_date }}</div>
+      {% endif %}
+    {% endif %}
+    {% if is_admin %}
+    <div style="margin-top:8px;">
+      <button type="button" class="btn btn-sm btn-outline-secondary w-100" style="font-size:.78rem;" onclick="hardshipMobileMarkSent({{ job.id }})">Mark SMS as Sent &amp; Save Note</button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<script>
+window.hardshipMobileSmsOpen = function(phone) {
+  var msg = document.querySelector('#hp-m-sms-body') ? document.querySelector('#hp-m-sms-body').value : '';
+};
+window.hardshipMobileMarkSent = function(jobId) {
+  var phone = prompt('Customer phone number:');
+  if (phone === null) return;
+  fetch('/jobs/' + jobId + '/hardship/mark-sms-sent', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({to_phone: phone})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.reload();
+    else alert('Error: ' + (d.error || 'Unknown'));
+  });
+};
+</script>
+{% endif %}
+
 <!-- Recent notes -->
 {% if notes %}
 <div class="m-card">

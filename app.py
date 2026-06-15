@@ -652,6 +652,11 @@ def _schema_is_current():
             ).fetchone()
             if not lal_tbl:
                 return False
+            hp_tbl = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='hardship_providers'"
+            ).fetchone()
+            if not hp_tbl:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -718,6 +723,66 @@ def add_column_if_missing(cur_or_conn, table, col, coltype):
     cols = [r["name"] for r in cur.fetchall()]
     if col not in cols:
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")
+
+
+# ── Hardship Assistance — seed constants ──────────────────────────────────────
+_HP_DEFAULT_SMS = (
+    "Thank you for speaking with me today. Please contact the [lender] hardship assistance "
+    "team on [number] to discuss your circumstances and available assistance options. Regards [agent]"
+)
+_HP_DEFAULT_EMAIL_SUBJECT = "Hardship Assistance Contact Details"
+_HP_DEFAULT_EMAIL_BODY = (
+    "Thank you for speaking with me today.\n\n"
+    "Should you require hardship assistance, please contact the [lender] hardship assistance "
+    "team on [number] to discuss your circumstances and available assistance options.\n\n"
+    "Regards,\n\n[agent]"
+)
+_HARDSHIP_SEED = [
+    # (lender_name, team_name, phone_number, email, website, category, match_keywords)
+    ("Westpac Assist",                     None, "1800067497",  None, None, "Bank / Auto Finance",      "westpac"),
+    ("Capital Assist",                      None, "1800642626",  None, None, "Auto Finance",             "capital finance,capital assist,capital"),
+    ("St George Auto Assist",               None, "1300833174",  None, None, "Auto Finance",             "st george auto,stgeorge auto"),
+    ("St George Assist Consumer",           None, "1800629795",  None, None, "Consumer Finance / Bank",  "st george consumer,stgeorge consumer"),
+    ("Bank of Melbourne Assist",            None, "1800600266",  None, None, "Bank / Auto Finance",      "bank of melbourne,bom"),
+    ("BankSA Assist",                       None, "1800679461",  None, None, "Bank / Auto Finance",      "banksa,bank sa"),
+    ("Mazda Finance Assist",                None, "1800693473",  None, None, "Auto Finance",             "mazda finance,mazda"),
+    ("Lexus Finance Assist",                None, "1800539473",  None, None, "Auto Finance",             "lexus finance,lexus"),
+    ("Hino Finance Assist",                 None, "1800446473",  None, None, "Auto Finance",             "hino finance,hino"),
+    ("PowerTorque Assist",                  None, "1800787473",  None, None, "Auto Finance",             "powertorque,power torque"),
+    ("PowerAlliance Assist",                None, "1800725473",  None, None, "Auto Finance",             "poweralliance,power alliance"),
+    ("Suzuki Finance Assist",               None, "1800723473",  None, None, "Auto Finance",             "suzuki finance,suzuki"),
+    ("Toyota Finance Assist",               None, "1800233979",  None, None, "Auto Finance",             "toyota finance,toyota"),
+    ("Commonwealth Bank Financial Assist",  None, "133095",      None, None, "Bank",                     "commonwealth bank financial,cba financial,commbank financial"),
+    ("Commonwealth Bank Ongoing Hardship",  None, "1300720814",  None, None, "Bank",                     "commonwealth bank hardship,cba hardship,commbank hardship,commonwealth ongoing"),
+    ("Bankwest Hardship",                   None, "1300769173",  None, None, "Bank",                     "bankwest,bank west"),
+    ("Macquarie Hardship",                  None, "1300363330",  None, None, "Bank / Finance",           "macquarie"),
+    ("NAB Assist",                          None, "1800701599",  None, None, "Bank",                     "nab,national australia"),
+    ("ANZ Financial Assistance",            None, "1800252845",  None, None, "Bank",                     "anz"),
+    ("Bendigo Bank Hardship",               None, "1300652146",  None, None, "Bank",                     "bendigo bank,bendigo"),
+    ("ING Hardship",                        None, "1300349166",  None, None, "Bank",                     "ing direct,ing bank,ing"),
+    ("Citi Hardship",                       None, "1800722879",  None, None, "Bank / Credit",            "citi,citibank"),
+    ("HSBC Hardship",                       None, "1300555988",  None, None, "Bank",                     "hsbc"),
+    ("BOQ Hardship",                        None, "1800079866",  None, None, "Bank",                     "boq,bank of queensland"),
+    ("Suncorp Hardship",                    None, "1800225223",  None, None, "Bank",                     "suncorp"),
+    ("UBank Hardship",                      None, "1300155426",  None, None, "Bank",                     "ubank,u bank"),
+]
+
+
+def _seed_hardship_providers(cur):
+    """Insert default hardship providers if they don't already exist (idempotent)."""
+    from datetime import datetime as _dt_hp
+    _now = _dt_hp.now().strftime("%Y-%m-%d %H:%M:%S")
+    for (lender_name, team_name, phone_number, email, website,
+         category, match_keywords) in _HARDSHIP_SEED:
+        cur.execute("""
+            INSERT OR IGNORE INTO hardship_providers
+                (lender_name, team_name, phone_number, email, website, category,
+                 match_keywords, sms_template, email_subject_template, email_body_template,
+                 is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        """, (lender_name, team_name, phone_number, email, website, category,
+              match_keywords, _HP_DEFAULT_SMS, _HP_DEFAULT_EMAIL_SUBJECT,
+              _HP_DEFAULT_EMAIL_BODY, _now, _now))
 
 
 def _startup_migrate():
@@ -829,6 +894,52 @@ def _startup_migrate():
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_ci_visit_status  ON cue_items(visit_type, status)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_ci_assigned_due  ON cue_items(assigned_user_id, due_date, status)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_ci_due_status    ON cue_items(due_date, status)")
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS hardship_providers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lender_name TEXT NOT NULL,
+                team_name TEXT,
+                phone_number TEXT,
+                email TEXT,
+                website TEXT,
+                category TEXT,
+                match_keywords TEXT,
+                sms_template TEXT,
+                email_subject_template TEXT,
+                email_body_template TEXT,
+                internal_notes TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                updated_at TEXT NOT NULL,
+                updated_by_user_id INTEGER
+            )
+        """)
+        _conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_hp_lender ON hardship_providers(lender_name)")
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS job_hardship_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL UNIQUE,
+                hardship_provider_id INTEGER,
+                linked_at TEXT,
+                linked_by_user_id INTEGER,
+                link_source TEXT DEFAULT 'manual',
+                sms_sent_at TEXT,
+                sms_sent_by_user_id INTEGER,
+                sms_sent_to TEXT,
+                email_sent_at TEXT,
+                email_sent_by_user_id INTEGER,
+                email_sent_to TEXT,
+                last_message_text TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(job_id) REFERENCES jobs(id),
+                FOREIGN KEY(hardship_provider_id) REFERENCES hardship_providers(id)
+            )
+        """)
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_jhr_job ON job_hardship_records(job_id)")
+        _seed_hardship_providers(_conn.cursor())
         _conn.commit()
         _conn.close()
         import logging as _log
@@ -1936,6 +2047,53 @@ def _migrate_update_builder():
         )
         WHERE status_changed_at IS NULL
     """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS hardship_providers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lender_name TEXT NOT NULL,
+        team_name TEXT,
+        phone_number TEXT,
+        email TEXT,
+        website TEXT,
+        category TEXT,
+        match_keywords TEXT,
+        sms_template TEXT,
+        email_subject_template TEXT,
+        email_body_template TEXT,
+        internal_notes TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        created_by_user_id INTEGER,
+        updated_at TEXT NOT NULL,
+        updated_by_user_id INTEGER
+    )
+    """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_hp_lender ON hardship_providers(lender_name)")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS job_hardship_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL UNIQUE,
+        hardship_provider_id INTEGER,
+        linked_at TEXT,
+        linked_by_user_id INTEGER,
+        link_source TEXT DEFAULT 'manual',
+        sms_sent_at TEXT,
+        sms_sent_by_user_id INTEGER,
+        sms_sent_to TEXT,
+        email_sent_at TEXT,
+        email_sent_by_user_id INTEGER,
+        email_sent_to TEXT,
+        last_message_text TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id),
+        FOREIGN KEY(hardship_provider_id) REFERENCES hardship_providers(id)
+    )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_jhr_job ON job_hardship_records(job_id)")
+    _seed_hardship_providers(cur)
 
     conn.commit()
     conn.close()
@@ -5887,6 +6045,51 @@ def job_detail(job_id: int):
         except Exception:
             previous_file_info = []
 
+    # ── Hardship Assistance ────────────────────────────────────────────────────
+    hardship_record      = None
+    hardship_provider    = None
+    hardship_candidates  = []
+    all_hardship_providers = []
+    try:
+        _hr = conn.execute("""
+            SELECT jhr.*, hp.lender_name, hp.team_name, hp.phone_number, hp.email,
+                   hp.website, hp.category, hp.sms_template, hp.email_subject_template,
+                   hp.email_body_template, hp.is_active AS provider_active,
+                   u.full_name AS linked_by_name
+            FROM job_hardship_records jhr
+            LEFT JOIN hardship_providers hp ON hp.id = jhr.hardship_provider_id
+            LEFT JOIN users u ON u.id = jhr.linked_by_user_id
+            WHERE jhr.job_id = ?
+        """, (job_id,)).fetchone()
+        if _hr:
+            hardship_record = dict(_hr)
+            if _hr["hardship_provider_id"]:
+                hardship_provider = dict(_hr)
+        else:
+            _match, _conf = _hardship_auto_match(conn, job)
+            if _conf == "single" and _match:
+                _ts_hp = now_ts()
+                conn.execute("""
+                    INSERT OR IGNORE INTO job_hardship_records
+                        (job_id, hardship_provider_id, linked_at, linked_by_user_id,
+                         link_source, created_at, updated_at)
+                    VALUES (?, ?, ?, NULL, 'auto', ?, ?)
+                """, (job_id, _match["id"], _ts_hp, _ts_hp, _ts_hp))
+                conn.commit()
+                hardship_record   = {"job_id": job_id, "hardship_provider_id": _match["id"],
+                                     "link_source": "auto", "linked_at": _ts_hp}
+                hardship_provider = dict(_match)
+                _hardship_append_description(conn, job_id, _match)
+                conn.commit()
+            elif _conf == "multiple":
+                hardship_candidates = [dict(p) for p in _match]
+        all_hardship_providers = [dict(r) for r in conn.execute(
+            "SELECT id, lender_name, team_name, phone_number, category "
+            "FROM hardship_providers WHERE is_active=1 ORDER BY lender_name"
+        ).fetchall()]
+    except Exception:
+        pass
+
     return render_template("job_detail.html", job=job, interactions=interactions,
                            job_items=job_items, item_types=item_types,
                            statuses=statuses, visit_types=visit_types, priorities=priorities,
@@ -5919,7 +6122,11 @@ def job_detail(job_id: int):
                            admin_users=admin_users,
                            previous_file_info=previous_file_info,
                            prev_file_notes_already_generated=prev_file_notes_already_generated,
-                           enable_reschedule_modal=ENABLE_RESCHEDULE_MODAL)
+                           enable_reschedule_modal=ENABLE_RESCHEDULE_MODAL,
+                           hardship_record=hardship_record,
+                           hardship_provider=hardship_provider,
+                           hardship_candidates=hardship_candidates,
+                           all_hardship_providers=all_hardship_providers)
 
 
 def _sync_job_customer_id(cur, job_id):
@@ -7559,6 +7766,82 @@ def _far_calc_delay(activity_occurred_at: str, created_at: str):
         return max(0, diff)
     except Exception:
         return None
+
+
+# ── Hardship Assistance — helpers ─────────────────────────────────────────────
+
+def _hardship_render_message(template_str, provider, agent_name):
+    """Substitute [lender], [number], [agent] placeholders in a hardship message template."""
+    if not template_str:
+        return ""
+    lender = (provider.get("lender_name") if isinstance(provider, dict) else provider["lender_name"]) or ""
+    number = (provider.get("phone_number") if isinstance(provider, dict) else provider["phone_number"]) or ""
+    return (template_str
+            .replace("[lender]", lender)
+            .replace("[number]", number)
+            .replace("[agent]",  agent_name or ""))
+
+
+def _hardship_auto_match(conn, job):
+    """Attempt to match a job to active hardship providers.
+
+    Returns:
+        (provider_row, 'single')   — exactly one match found
+        (list,         'multiple') — more than one match found
+        (None,         'none')     — no match
+
+    Corpus: lender_name + client_name + finance_company + description.
+    Keywords: match_keywords CSV field + lender_name itself as fallback.
+    """
+    try:
+        providers = conn.execute(
+            "SELECT * FROM hardship_providers WHERE is_active=1"
+        ).fetchall()
+    except Exception:
+        return None, "none"
+
+    parts = [
+        job.get("lender_name") or "",
+        job.get("client_name") or "",
+        job.get("description") or "",
+        job.get("finance_company") or "",
+    ]
+    corpus = " ".join(p.lower() for p in parts if p)
+    if not corpus.strip():
+        return None, "none"
+
+    matched = []
+    for p in providers:
+        kws = [k.strip().lower() for k in (p["match_keywords"] or "").split(",") if k.strip()]
+        if p["lender_name"]:
+            kws.append(p["lender_name"].lower())
+        for kw in kws:
+            if kw and kw in corpus:
+                matched.append(p)
+                break
+
+    if len(matched) == 1:
+        return matched[0], "single"
+    if len(matched) > 1:
+        return matched, "multiple"
+    return None, "none"
+
+
+def _hardship_append_description(conn, job_id, provider):
+    """Append standard hardship wording to job description if not already present."""
+    try:
+        _jrow = conn.execute("SELECT description FROM jobs WHERE id=?", (job_id,)).fetchone()
+        desc = (_jrow["description"] or "") if _jrow else ""
+        if "Hardship assistance contact:" in desc:
+            return
+        lender = (provider.get("lender_name") if isinstance(provider, dict) else provider["lender_name"]) or ""
+        phone  = (provider.get("phone_number") if isinstance(provider, dict) else provider["phone_number"]) or ""
+        wording = f"Hardship assistance contact:\nCustomer may contact {lender} hardship assistance team on {phone}."
+        new_desc = (desc.rstrip() + "\n\n" + wording).strip() if desc else wording
+        conn.execute("UPDATE jobs SET description=?, updated_at=? WHERE id=?", (new_desc, now_ts(), job_id))
+    except Exception:
+        pass
+
 
 # ── Group Calendar ─────────────────────────────────────────────────────────────
 _GC_ENTRY_COLORS = {
@@ -17451,6 +17734,339 @@ def purge_archived_scratch():
     return jsonify({"ok": True, "count": total})
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# HARDSHIP ASSISTANCE CONTACTS — admin management
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/admin/hardship-providers")
+@admin_required
+def hardship_providers_list():
+    role = session.get("role", "")
+    if role not in ("admin", "management", "both"):
+        abort(403)
+    conn = db()
+    providers = [dict(r) for r in conn.execute(
+        "SELECT * FROM hardship_providers ORDER BY lender_name"
+    ).fetchall()]
+    conn.close()
+    return render_template("hardship_admin.html", providers=providers)
+
+
+@app.post("/admin/hardship-providers/new")
+@admin_required
+def hardship_providers_new():
+    role = session.get("role", "")
+    if role not in ("admin", "management", "both"):
+        return jsonify({"ok": False, "error": "Insufficient permission"}), 403
+    data = request.get_json(silent=True) or {}
+    lender_name = (data.get("lender_name") or "").strip()
+    if not lender_name:
+        return jsonify({"ok": False, "error": "Lender name is required"}), 400
+    _ts = now_ts()
+    uid = session.get("user_id")
+    conn = db()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO hardship_providers
+                (lender_name, team_name, phone_number, email, website, category,
+                 match_keywords, sms_template, email_subject_template, email_body_template,
+                 internal_notes, is_active, created_at, created_by_user_id, updated_at, updated_by_user_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)
+        """, (
+            lender_name,
+            (data.get("team_name") or "").strip() or None,
+            (data.get("phone_number") or "").strip() or None,
+            (data.get("email") or "").strip() or None,
+            (data.get("website") or "").strip() or None,
+            (data.get("category") or "").strip() or None,
+            (data.get("match_keywords") or "").strip() or None,
+            (data.get("sms_template") or _HP_DEFAULT_SMS).strip(),
+            (data.get("email_subject_template") or _HP_DEFAULT_EMAIL_SUBJECT).strip(),
+            (data.get("email_body_template") or _HP_DEFAULT_EMAIL_BODY).strip(),
+            (data.get("internal_notes") or "").strip() or None,
+            _ts, uid, _ts, uid,
+        ))
+        conn.commit()
+        new_id = cur.lastrowid
+    except Exception as e:
+        conn.close()
+        return jsonify({"ok": False, "error": str(e)}), 500
+    conn.close()
+    audit("hardship", uid, "hardship_provider_create",
+          f"Created hardship provider: {lender_name}", {"id": new_id})
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.post("/admin/hardship-providers/<int:hp_id>/edit")
+@admin_required
+def hardship_providers_edit(hp_id):
+    role = session.get("role", "")
+    if role not in ("admin", "management", "both"):
+        return jsonify({"ok": False, "error": "Insufficient permission"}), 403
+    data = request.get_json(silent=True) or {}
+    lender_name = (data.get("lender_name") or "").strip()
+    if not lender_name:
+        return jsonify({"ok": False, "error": "Lender name is required"}), 400
+    conn = db()
+    if not conn.execute("SELECT id FROM hardship_providers WHERE id=?", (hp_id,)).fetchone():
+        conn.close()
+        return jsonify({"ok": False, "error": "Provider not found"}), 404
+    conn.execute("""
+        UPDATE hardship_providers
+        SET lender_name=?, team_name=?, phone_number=?, email=?, website=?,
+            category=?, match_keywords=?, sms_template=?, email_subject_template=?,
+            email_body_template=?, internal_notes=?, updated_at=?, updated_by_user_id=?
+        WHERE id=?
+    """, (
+        lender_name,
+        (data.get("team_name") or "").strip() or None,
+        (data.get("phone_number") or "").strip() or None,
+        (data.get("email") or "").strip() or None,
+        (data.get("website") or "").strip() or None,
+        (data.get("category") or "").strip() or None,
+        (data.get("match_keywords") or "").strip() or None,
+        (data.get("sms_template") or _HP_DEFAULT_SMS).strip(),
+        (data.get("email_subject_template") or _HP_DEFAULT_EMAIL_SUBJECT).strip(),
+        (data.get("email_body_template") or _HP_DEFAULT_EMAIL_BODY).strip(),
+        (data.get("internal_notes") or "").strip() or None,
+        now_ts(), session.get("user_id"), hp_id,
+    ))
+    conn.commit()
+    conn.close()
+    audit("hardship", session.get("user_id"), "hardship_provider_edit",
+          f"Updated hardship provider id={hp_id}: {lender_name}", {"id": hp_id})
+    return jsonify({"ok": True})
+
+
+@app.post("/admin/hardship-providers/<int:hp_id>/toggle")
+@admin_required
+def hardship_providers_toggle(hp_id):
+    role = session.get("role", "")
+    if role not in ("admin", "management", "both"):
+        return jsonify({"ok": False, "error": "Insufficient permission"}), 403
+    conn = db()
+    row = conn.execute("SELECT is_active FROM hardship_providers WHERE id=?", (hp_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Provider not found"}), 404
+    new_state = 0 if row["is_active"] else 1
+    conn.execute("UPDATE hardship_providers SET is_active=?, updated_at=?, updated_by_user_id=? WHERE id=?",
+                 (new_state, now_ts(), session.get("user_id"), hp_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "is_active": new_state})
+
+
+@app.post("/admin/hardship-providers/<int:hp_id>/delete")
+@admin_required
+def hardship_providers_delete(hp_id):
+    if session.get("role") not in ("admin", "both"):
+        return jsonify({"ok": False, "error": "Admin access required"}), 403
+    conn = db()
+    in_use = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM job_hardship_records WHERE hardship_provider_id=?", (hp_id,)
+    ).fetchone()
+    if in_use and in_use["cnt"] > 0:
+        conn.execute("UPDATE hardship_providers SET is_active=0, updated_at=?, updated_by_user_id=? WHERE id=?",
+                     (now_ts(), session.get("user_id"), hp_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "action": "deactivated",
+                        "message": f"Provider is linked to {in_use['cnt']} job(s) and has been deactivated instead of deleted."})
+    conn.execute("DELETE FROM hardship_providers WHERE id=?", (hp_id,))
+    conn.commit()
+    conn.close()
+    audit("hardship", session.get("user_id"), "hardship_provider_delete",
+          f"Deleted hardship provider id={hp_id}", {"id": hp_id})
+    return jsonify({"ok": True, "action": "deleted"})
+
+
+@app.get("/admin/api/hardship-providers")
+@login_required
+def hardship_providers_api_search():
+    q = (request.args.get("q") or "").strip().lower()
+    conn = db()
+    rows = conn.execute(
+        "SELECT id, lender_name, team_name, phone_number, category, match_keywords "
+        "FROM hardship_providers WHERE is_active=1 ORDER BY lender_name"
+    ).fetchall()
+    conn.close()
+    providers = [dict(r) for r in rows]
+    if q:
+        providers = [p for p in providers
+                     if q in (p.get("lender_name") or "").lower()
+                     or q in (p.get("category") or "").lower()
+                     or q in (p.get("match_keywords") or "").lower()]
+    return jsonify(providers)
+
+
+# ── Job hardship routes ────────────────────────────────────────────────────────
+
+@app.post("/jobs/<int:job_id>/hardship/link")
+@login_required
+def job_hardship_link(job_id):
+    if session.get("role") not in ("admin", "management", "both"):
+        return jsonify({"ok": False, "error": "Insufficient permission"}), 403
+    data = request.get_json(silent=True) or {}
+    provider_id = data.get("provider_id")
+    if not provider_id:
+        return jsonify({"ok": False, "error": "provider_id required"}), 400
+    conn = db()
+    provider = conn.execute(
+        "SELECT * FROM hardship_providers WHERE id=? AND is_active=1", (provider_id,)
+    ).fetchone()
+    if not provider:
+        conn.close()
+        return jsonify({"ok": False, "error": "Provider not found or inactive"}), 404
+    _ts = now_ts()
+    uid = session.get("user_id")
+    conn.execute("""
+        INSERT INTO job_hardship_records
+            (job_id, hardship_provider_id, linked_at, linked_by_user_id,
+             link_source, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(job_id) DO UPDATE SET
+            hardship_provider_id=excluded.hardship_provider_id,
+            linked_at=excluded.linked_at,
+            linked_by_user_id=excluded.linked_by_user_id,
+            link_source=excluded.link_source,
+            updated_at=excluded.updated_at
+    """, (job_id, provider_id, _ts, uid, "manual", _ts, _ts))
+    conn.commit()
+    _hardship_append_description(conn, job_id, provider)
+    conn.commit()
+    conn.close()
+    audit("hardship", uid, "hardship_link",
+          f"Linked hardship provider '{provider['lender_name']}' to job {job_id}",
+          {"job_id": job_id, "provider_id": provider_id})
+    return jsonify({"ok": True})
+
+
+@app.post("/jobs/<int:job_id>/hardship/unlink")
+@login_required
+def job_hardship_unlink(job_id):
+    if session.get("role") not in ("admin", "management", "both"):
+        return jsonify({"ok": False, "error": "Insufficient permission"}), 403
+    conn = db()
+    conn.execute("""
+        UPDATE job_hardship_records
+        SET hardship_provider_id=NULL, linked_at=NULL, linked_by_user_id=NULL,
+            link_source=NULL, updated_at=?
+        WHERE job_id=?
+    """, (now_ts(), job_id))
+    conn.commit()
+    conn.close()
+    audit("hardship", session.get("user_id"), "hardship_unlink",
+          f"Unlinked hardship provider from job {job_id}", {"job_id": job_id})
+    return jsonify({"ok": True})
+
+
+@app.post("/jobs/<int:job_id>/hardship/send-email")
+@login_required
+def job_hardship_send_email(job_id):
+    data = request.get_json(silent=True) or {}
+    to_email = (data.get("to_email") or "").strip()
+    if not to_email:
+        return jsonify({"ok": False, "error": "Recipient email required"}), 400
+    subject = (data.get("subject") or _HP_DEFAULT_EMAIL_SUBJECT).strip()
+    body    = (data.get("body") or "").strip()
+    if not body:
+        return jsonify({"ok": False, "error": "Message body required"}), 400
+    conn = db()
+    uid = session.get("user_id")
+    _ts = now_ts()
+    try:
+        send_email(to_email, subject, body)
+    except Exception as e:
+        conn.close()
+        return jsonify({"ok": False, "error": f"Email send failed: {e}"}), 500
+    conn.execute("""
+        UPDATE job_hardship_records
+        SET email_sent_at=?, email_sent_by_user_id=?, email_sent_to=?,
+            last_message_text=?, updated_at=?
+        WHERE job_id=?
+    """, (_ts, uid, to_email, body, _ts, job_id))
+    note_text = f"Hardship assistance email sent to {to_email}.\n\nSubject: {subject}\n\n{body}"
+    conn.execute("""
+        INSERT INTO job_field_notes
+            (job_id, note_category, note_text, review_status, created_by_user_id, created_at, updated_at)
+        VALUES (?, 'file_note', ?, 'pending', ?, ?, ?)
+    """, (job_id, note_text, uid, _ts, _ts))
+    conn.commit()
+    conn.close()
+    audit("hardship", uid, "hardship_email_sent",
+          f"Hardship assistance email sent to {to_email} for job {job_id}", {"job_id": job_id})
+    return jsonify({"ok": True})
+
+
+@app.post("/jobs/<int:job_id>/hardship/mark-sms-sent")
+@login_required
+def job_hardship_mark_sms_sent(job_id):
+    data = request.get_json(silent=True) or {}
+    to_phone = (data.get("to_phone") or "").strip()
+    msg_text  = (data.get("message") or "").strip()
+    conn = db()
+    uid = session.get("user_id")
+    _ts = now_ts()
+    conn.execute("""
+        UPDATE job_hardship_records
+        SET sms_sent_at=?, sms_sent_by_user_id=?, sms_sent_to=?,
+            last_message_text=?, updated_at=?
+        WHERE job_id=?
+    """, (_ts, uid, to_phone or None, msg_text or None, _ts, job_id))
+    if conn.execute("SELECT changes()").fetchone()[0] == 0:
+        conn.execute("""
+            INSERT OR IGNORE INTO job_hardship_records
+                (job_id, sms_sent_at, sms_sent_by_user_id, sms_sent_to,
+                 last_message_text, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?)
+        """, (job_id, _ts, uid, to_phone or None, msg_text or None, _ts, _ts))
+    note_parts = ["Hardship assistance SMS marked as sent."]
+    if to_phone:
+        note_parts.append(f"Sent to: {to_phone}")
+    if msg_text:
+        note_parts.append(f"\n{msg_text}")
+    conn.execute("""
+        INSERT INTO job_field_notes
+            (job_id, note_category, note_text, review_status, created_by_user_id, created_at, updated_at)
+        VALUES (?, 'file_note', ?, 'pending', ?, ?, ?)
+    """, (job_id, "\n".join(note_parts), uid, _ts, _ts))
+    conn.commit()
+    conn.close()
+    audit("hardship", uid, "hardship_sms_marked_sent",
+          f"Hardship SMS marked as sent for job {job_id}", {"job_id": job_id})
+    return jsonify({"ok": True})
+
+
+@app.get("/jobs/<int:job_id>/hardship/preview")
+@login_required
+def job_hardship_preview(job_id):
+    conn = db()
+    _hr = conn.execute("""
+        SELECT jhr.*, hp.lender_name, hp.phone_number,
+               hp.sms_template, hp.email_subject_template, hp.email_body_template
+        FROM job_hardship_records jhr
+        JOIN hardship_providers hp ON hp.id = jhr.hardship_provider_id
+        WHERE jhr.job_id=?
+    """, (job_id,)).fetchone()
+    uid = session.get("user_id")
+    _ur = conn.execute("SELECT full_name FROM users WHERE id=?", (uid,)).fetchone()
+    conn.close()
+    if not _hr:
+        return jsonify({"ok": False, "error": "No linked hardship provider"}), 404
+    agent_name = _ur["full_name"] if _ur else ""
+    provider   = dict(_hr)
+    return jsonify({
+        "ok":             True,
+        "sms":            _hardship_render_message(_hr["sms_template"],            provider, agent_name),
+        "email_subject":  _hardship_render_message(_hr["email_subject_template"],  provider, agent_name),
+        "email_body":     _hardship_render_message(_hr["email_body_template"],     provider, agent_name),
+        "phone_number":   _hr["phone_number"] or "",
+        "lender_name":    _hr["lender_name"]  or "",
+    })
+
+
 @app.get("/admin/orphaned-files")
 @admin_required
 def admin_orphaned_files():
@@ -22050,6 +22666,23 @@ def m_job_detail(job_id):
     job["total_due_now_cents"] = int(round(total_dollars * 100))
     job["mmp_included_in_total"] = include_mmp
 
+    # ── Hardship Assistance (mobile) ──────────────────────────────────────────
+    m_hardship_record   = None
+    m_hardship_provider = None
+    try:
+        _mhr = conn.execute("""
+            SELECT jhr.*, hp.lender_name, hp.team_name, hp.phone_number,
+                   hp.sms_template, hp.email_subject_template, hp.email_body_template
+            FROM job_hardship_records jhr
+            LEFT JOIN hardship_providers hp ON hp.id = jhr.hardship_provider_id
+            WHERE jhr.job_id = ?
+        """, (job_id,)).fetchone()
+        if _mhr and _mhr["hardship_provider_id"]:
+            m_hardship_record   = dict(_mhr)
+            m_hardship_provider = dict(_mhr)
+    except Exception:
+        pass
+
     conn.close()
 
     is_admin = role in ("admin", "both", "management")
@@ -22064,7 +22697,9 @@ def m_job_detail(job_id):
                            assets=assets, notes=notes, note_files_map=_note_files_map,
                            has_draft=has_draft, repo_lock_map=repo_lock_map,
                            assigned_agent_name=assigned_agent_name, is_admin=is_admin,
-                           mob_uid=mob_uid, mob_view_tok=mob_view_tok)
+                           mob_uid=mob_uid, mob_view_tok=mob_view_tok,
+                           hardship_record=m_hardship_record,
+                           hardship_provider=m_hardship_provider)
 
 
 @app.get("/m/job/<int:job_id>/note/new")

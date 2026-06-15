@@ -583,6 +583,7 @@
   <div id="ax-admin-popup" class="ax-popup-menu" role="menu">
     <a href="/admin"{% if request.path == '/admin' %} class="active"{% endif %}>Dashboard</a>
     <a href="/recovery-targets"{% if request.path.startswith('/recovery-targets') %} class="active"{% endif %}>Recovery Targets</a>
+    <a href="/admin/hardship-providers"{% if request.path.startswith('/admin/hardship') %} class="active"{% endif %}>Hardship Contacts</a>
     <div class="ax-popup-divider"></div>
     <a href="/clients"{% if request.path.startswith('/clients') %} class="active"{% endif %}>Clients</a>
     <a href="/customers"{% if request.path.startswith('/customers') %} class="active"{% endif %}>Customers</a>
