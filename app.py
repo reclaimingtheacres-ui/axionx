@@ -5900,13 +5900,13 @@ def _dcg_poc_data(conn, job_id: int):
 
         # ── Badge colour ────────────────────────────────────────────────────
         if poc_30d >= 10:
-            badge_label, badge_color = f"DCG {poc_30d}/10", "#ef4444"
+            badge_label, badge_color = f"POC {poc_30d}/10", "#ef4444"
         elif poc_7d >= 3:
-            badge_label, badge_color = "DCG 3/3", "#ef4444"
+            badge_label, badge_color = "POC 3/3", "#ef4444"
         elif poc_7d == 2:
-            badge_label, badge_color = "DCG 2/3", "#f59e0b"
+            badge_label, badge_color = "POC 2/3", "#f59e0b"
         else:
-            badge_label, badge_color = f"DCG {poc_7d}/3", "#22c55e"
+            badge_label, badge_color = f"POC {poc_7d}/3", "#22c55e"
 
         return {
             "poc_7d":        poc_7d,
