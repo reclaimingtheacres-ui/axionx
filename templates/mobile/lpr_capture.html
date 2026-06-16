@@ -8,6 +8,10 @@
 LPR Scan
 {% endblock %}
 
+{# Suppress bottom nav and LPR FAB on camera pages — iOS wrapper detects their absence and hides the status overlay #}
+{% block nav %}{% endblock %}
+{% block lpr_fab %}{% endblock %}
+
 {% block content %}
 
 {% if error %}
