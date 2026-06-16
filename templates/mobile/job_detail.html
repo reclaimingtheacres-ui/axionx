@@ -807,8 +807,8 @@ function showTab(name) {
                 style="width:100%;padding:11px 12px;border:1.5px solid #fcd34d;border-radius:10px;font-size:.88rem;font-family:inherit;outline:none;resize:none;background:#fffbeb;"></textarea>
     </div>
 
-    {# Action row: mic, camera, gallery #}
-    <div id="noteMediaRow" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;">
+    {# Action row: mic, camera, gallery, document #}
+    <div id="noteMediaRow" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:10px;">
 
       <button type="button" id="noteRecBtn" onclick="toggleNoteRecord()"
               style="padding:11px 6px;border:1.5px solid var(--line);border-radius:10px;
@@ -852,6 +852,36 @@ function showTab(name) {
                style="display:none;" onchange="onNotePhotoSelected(this)">
       </label>
 
+      <label style="padding:11px 6px;border:1.5px solid var(--line);border-radius:10px;
+                    background:#fff;cursor:pointer;display:flex;flex-direction:column;
+                    align-items:center;gap:5px;font-size:.72rem;font-weight:600;color:#374151;
+                    -webkit-tap-highlight-color:transparent;">
+        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        Document
+        <input type="file" accept="application/pdf" id="notePdfInput"
+               style="display:none;" onchange="onNotePdfSelected(this)">
+      </label>
+
+    </div>
+
+    {# PDF ready #}
+    <div id="notePdfReady" style="display:none;align-items:center;gap:8px;
+                                   padding:10px 12px;background:#fff7ed;border:1.5px solid #fed7aa;
+                                   border-radius:10px;margin-top:8px;">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <span id="notePdfReadyName" style="font-size:.82rem;font-weight:600;color:#ea580c;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;"></span>
+      <button type="button" onclick="clearNotePdf()"
+              style="background:none;border:none;color:var(--red);
+                     font-size:.78rem;font-weight:600;cursor:pointer;padding:0;flex-shrink:0;">Remove</button>
     </div>
 
     {# Save + Submit + Cancel #}
@@ -1875,6 +1905,7 @@ function showTab(name) {
 var _noteAudioBlob   = null;
 var _noteAudioChunks = [];
 var _notePhotoFile   = null;
+var _notePdfFile     = null;
 var _noteRecorder    = null;
 var _noteRecTimer    = null;
 var _noteRecSec      = 0;
@@ -1977,6 +2008,7 @@ window.closeNoteSheet = function() {
   if (submitBtnEl) submitBtnEl.style.display = '';
   if (smartPrompt) smartPrompt.style.display = 'none';
   if (saveBtns) saveBtns.style.display = '';
+  clearNotePdf();
   var ov    = document.getElementById('noteSheetOverlay');
   var panel = document.getElementById('noteSheetPanel');
   ov.style.background    = 'rgba(0,0,0,0)';
@@ -2093,6 +2125,32 @@ window.clearNotePhoto = function() {
   if (gal) gal.value = '';
 };
 
+window.onNotePdfSelected = function(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  if (file.type && file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    alert('Please select a PDF file.');
+    input.value = '';
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    alert('PDF must be 20 MB or smaller.');
+    input.value = '';
+    return;
+  }
+  _notePdfFile = file;
+  var nameEl = document.getElementById('notePdfReadyName');
+  if (nameEl) nameEl.textContent = file.name;
+  document.getElementById('notePdfReady').style.display = 'flex';
+};
+
+window.clearNotePdf = function() {
+  _notePdfFile = null;
+  document.getElementById('notePdfReady').style.display = 'none';
+  var pdfInput = document.getElementById('notePdfInput');
+  if (pdfInput) pdfInput.value = '';
+};
+
 // ── Smart detection patterns ─────────────────────────────
 var _fileUpdatePatterns = [
   /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/i,
@@ -2189,7 +2247,7 @@ window.saveQuickNote = function(submitForReview) {
   }
 
   /* ── Add mode ── */
-  if (!noteText && !_noteAudioBlob && !_notePhotoFile) {
+  if (!noteText && !_noteAudioBlob && !_notePhotoFile && !_notePdfFile) {
     document.getElementById('noteText').style.borderColor = 'var(--red)';
     document.getElementById('noteText').focus();
     setTimeout(function(){ document.getElementById('noteText').style.borderColor = 'var(--line)'; }, 2000);
@@ -2221,6 +2279,7 @@ window.saveQuickNote = function(submitForReview) {
     fd.append('audio_file', _noteAudioBlob, 'voice_note' + ext);
   }
   if (_notePhotoFile) fd.append('photo_file', _notePhotoFile);
+  if (_notePdfFile)   fd.append('pdf_file', _notePdfFile, _notePdfFile.name);
   if (submitForReview) fd.append('submit_for_review', '1');
   var _actOcc   = (document.getElementById('noteActivityOccurredAt') || {}).value || '';
   var _delayRsn = (document.getElementById('noteDelayReason') || {}).value || '';
@@ -2242,6 +2301,7 @@ window.saveQuickNote = function(submitForReview) {
       document.getElementById('noteText').value = '';
       clearNoteAudio();
       clearNotePhoto();
+      clearNotePdf();
       closeNoteSheet();
 
       prependNoteCard(data);
@@ -2279,6 +2339,10 @@ function typeIcon(ntype) {
     return '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:#f0fdf4;flex-shrink:0;">'
       + '<svg viewBox="0 0 24 24" width="14" height="14" stroke="var(--green)" fill="none" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>';
   }
+  if (ntype.indexOf('pdf') >= 0) {
+    return '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:#fff7ed;flex-shrink:0;">'
+      + '<svg viewBox="0 0 24 24" width="14" height="14" stroke="#ea580c" fill="none" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>';
+  }
   if (ntype.indexOf('photo') >= 0) {
     return '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:#eff6ff;flex-shrink:0;">'
       + '<svg viewBox="0 0 24 24" width="14" height="14" stroke="var(--accent)" fill="none" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg></span>';
@@ -2296,8 +2360,8 @@ function prependNoteCard(d) {
   if (empty) empty.remove();
 
   var ntype  = d.note_type || 'text';
-  var tBg    = ntype.indexOf('audio') >= 0 ? '#f0fdf4' : ntype.indexOf('photo') >= 0 ? '#eff6ff' : '#f9fafb';
-  var tColor = ntype.indexOf('audio') >= 0 ? 'var(--green)' : ntype.indexOf('photo') >= 0 ? 'var(--accent)' : 'var(--muted)';
+  var tBg    = ntype.indexOf('audio') >= 0 ? '#f0fdf4' : ntype.indexOf('pdf') >= 0 ? '#fff7ed' : ntype.indexOf('photo') >= 0 ? '#eff6ff' : '#f9fafb';
+  var tColor = ntype.indexOf('audio') >= 0 ? 'var(--green)' : ntype.indexOf('pdf') >= 0 ? '#ea580c' : ntype.indexOf('photo') >= 0 ? 'var(--accent)' : 'var(--muted)';
   var tLabel = ntype.replace(/_/g, '+');
 
   var photoHtml = d.photo_url
@@ -2308,6 +2372,13 @@ function prependNoteCard(d) {
     : '';
   var audioHtml = d.audio_url
     ? '<div style="margin-top:9px;"><audio controls preload="none" src="' + d.audio_url + '" style="width:100%;height:36px;border-radius:8px;outline:none;display:block;"></audio></div>'
+    : '';
+  var pdfHtml = d.pdf_file_id
+    ? '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding:9px 11px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;">'
+      + '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#ea580c" stroke-width="2" style="flex-shrink:0;"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+      + '<span style="font-size:.8rem;font-weight:600;color:#ea580c;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escHtml(d.pdf_filename || 'document.pdf') + '</span>'
+      + '<a href="/m/documents/' + d.pdf_file_id + '/preview" target="_blank" style="font-size:.75rem;font-weight:700;color:#ea580c;text-decoration:none;flex-shrink:0;">Open</a>'
+      + '</div>'
     : '';
 
   var nCat = d.note_category || 'field_note';
@@ -2335,7 +2406,7 @@ function prependNoteCard(d) {
     + '<div style="flex:1;min-width:0;"><div style="font-size:.73rem;font-weight:700;color:#111;line-height:1.2;">' + escHtml(d.agent_name) + '</div><div style="font-size:.66rem;color:var(--muted);">' + escHtml(d.created_at) + '</div></div>'
     + '<span style="font-size:.58rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:' + tBg + ';color:' + tColor + ';">' + tLabel + '</span>'
     + '</div>'
-    + photoHtml + textHtml + audioHtml
+    + photoHtml + textHtml + audioHtml + pdfHtml
     + '</div>';
 
   list.insertBefore(card, list.firstChild);

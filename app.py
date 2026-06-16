@@ -23356,6 +23356,7 @@ def m_update_builder(job_id):
 _PERSISTENT_DATA = _PERSISTENT_BASE
 _NOTE_AUDIO_DIR = os.path.join(UPLOAD_FOLDER, "notes", "audio")
 _NOTE_PHOTO_DIR = os.path.join(UPLOAD_FOLDER, "notes", "photos")
+_MAX_PDF_BYTES  = 20 * 1024 * 1024   # 20 MB — enforced on PDF uploads
 
 @app.post("/m/job/<int:job_id>/quick-note")
 @mobile_login_required
@@ -23371,7 +23372,23 @@ def m_quick_note_save(job_id):
     note_text  = (request.form.get("note_text") or "").strip() or None
     audio_file = request.files.get("audio_file")
     photo_file = request.files.get("photo_file")
+    pdf_file   = request.files.get("pdf_file")
     _log_oversized_image(photo_file, f"m_quick_note job_id={job_id}")
+
+    # ── PDF validation ──────────────────────────────────────────
+    pdf_raw_bytes = None
+    pdf_safe_name = None
+    if pdf_file and pdf_file.filename:
+        _pdf_ct = (pdf_file.content_type or "").lower()
+        _pdf_fn = (pdf_file.filename or "").lower()
+        if "pdf" not in _pdf_ct and not _pdf_fn.endswith(".pdf"):
+            conn.close()
+            return jsonify({"ok": False, "error": "Only PDF files are accepted."}), 400
+        pdf_raw_bytes = pdf_file.read()
+        if len(pdf_raw_bytes) > _MAX_PDF_BYTES:
+            conn.close()
+            return jsonify({"ok": False, "error": "PDF file must be 20 MB or smaller."}), 400
+        pdf_safe_name = secure_filename(pdf_file.filename or "document.pdf")
 
     audio_filename = None
     if audio_file and audio_file.filename:
@@ -23384,14 +23401,17 @@ def m_quick_note_save(job_id):
     has_text  = note_text is not None
     has_audio = bool(audio_filename)
     has_photo = bool(photo_file and photo_file.filename)
+    has_pdf   = pdf_raw_bytes is not None
 
     if has_audio and has_text:       note_type = "audio_text"
     elif has_audio:                  note_type = "audio"
+    elif has_pdf and has_text:       note_type = "pdf_text"
+    elif has_pdf:                    note_type = "pdf"
     elif has_photo and has_text:     note_type = "photo_text"
     elif has_photo:                  note_type = "photo"
     else:                            note_type = "text"
 
-    if not has_text and not has_audio and not has_photo:
+    if not has_text and not has_audio and not has_photo and not has_pdf:
         conn.close()
         return jsonify({"ok": False, "error": "Nothing to save"}), 400
 
@@ -23458,6 +23478,28 @@ def m_quick_note_save(job_id):
             (note_id, photo_name, photo_name, ts)
         )
         photo_file_id = cur.lastrowid
+
+    pdf_file_id = None
+    if has_pdf:
+        import logging as _log
+        pdf_blob_name = f"{job_id}_{note_id}_{uuid.uuid4().hex}_{pdf_safe_name}"
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        with open(os.path.join(UPLOAD_FOLDER, pdf_blob_name), "wb") as _fh:
+            _fh.write(pdf_raw_bytes)
+        if _uploads_container:
+            _log.info("[BG-AZURE] queued async PDF sync: %s (%d bytes)", pdf_blob_name, len(pdf_raw_bytes))
+            threading.Thread(
+                target=_bg_azure_upload,
+                args=(pdf_raw_bytes, pdf_blob_name, "application/pdf"),
+                daemon=True,
+            ).start()
+        else:
+            _log.info("[BG-AZURE] skipped — Azure not configured (pdf=%s)", pdf_blob_name)
+        cur.execute(
+            "INSERT INTO job_note_files (job_field_note_id, filename, filepath, uploaded_at) VALUES (?,?,?,?)",
+            (note_id, pdf_blob_name, pdf_blob_name, ts)
+        )
+        pdf_file_id = cur.lastrowid
 
     conn.commit()
 
@@ -23540,6 +23582,8 @@ def m_quick_note_save(job_id):
         "note_text":    note_text or "",
         "audio_url":    f"/m/note-audio/{note_id}" if audio_filename else None,
         "photo_url":    f"/m/documents/{photo_file_id}/preview" if photo_file_id else None,
+        "pdf_file_id":  pdf_file_id,
+        "pdf_filename": pdf_safe_name if pdf_file_id else None,
         "note_category": _note_cat,
         "review_status": _rev_stat,
     })
