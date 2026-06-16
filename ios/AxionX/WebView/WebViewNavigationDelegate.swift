@@ -81,7 +81,15 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
         if AllowedDomains.isTrusted(url),
            url.path.hasPrefix("/m/login") || url.path == "/login" {
             print("[NavDelegate]   → CANCEL (login redirect detected)")
+            // ── DIAG ────────────────────────────────────────────────────────────
+            print("[DIAG][LOGIN-REDIRECT] /login navigation detected: \(url.absoluteString)")
+            print("[DIAG][LOGIN-REDIRECT] isSuppressingAuthChallenges=\(DocumentPreviewHandler.shared.isSuppressingAuthChallenges)")
+            print("[DIAG][LOGIN-REDIRECT] isPresentingDocument=\(DocumentPreviewHandler.shared.isPresentingDocument)")
+            print("[DIAG][LOGIN-REDIRECT] isPreviewInFlight=\(DocumentPreviewHandler.shared.isPreviewInFlight)")
+            print("[DIAG][LOGIN-REDIRECT] → posting axionSessionExpired")
+            // ────────────────────────────────────────────────────────────────────
             DispatchQueue.main.async {
+                print("[DIAG][SESSION-EXPIRED-POST] NotificationCenter.post(.axionSessionExpired) — main queue")
                 NotificationCenter.default.post(name: .axionSessionExpired, object: nil)
             }
             decisionHandler(.cancel)

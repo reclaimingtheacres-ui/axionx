@@ -46,15 +46,25 @@ final class WebViewStore: ObservableObject {
     let openSettingsHandler: OpenSettingsHandler
 
     func loadInitial() {
+        // ── DIAG ──────────────────────────────────────────────────────────────
+        print("[DIAG][LOAD-INITIAL] loadInitial() called")
+        print("[DIAG][LOAD-INITIAL] isPreviewRestoreProtected=\(DocumentPreviewHandler.shared.isPreviewRestoreProtected)")
+        print("[DIAG][LOAD-INITIAL] isPresentingDocument=\(DocumentPreviewHandler.shared.isPresentingDocument)")
+        print("[DIAG][LOAD-INITIAL] isPreviewInFlight=\(DocumentPreviewHandler.shared.isPreviewInFlight)")
+        print("[DIAG][LOAD-INITIAL] current webView.url=\(webView.url?.absoluteString ?? "nil")")
+        // ──────────────────────────────────────────────────────────────────────
         if DocumentPreviewHandler.shared.isPreviewRestoreProtected {
             print("[AxionWebView] loadInitial skipped during document preview/restore")
+            print("[DIAG][LOAD-INITIAL] → SKIPPED (preview restore protected)")
             return
         }
         if let current = webView.url {
             print("[AxionWebView] loadInitial skipped because webView already has URL: \(current.absoluteString)")
+            print("[DIAG][LOAD-INITIAL] → SKIPPED (webView already has URL)")
             return
         }
         print("[AxionWebView] loadInitial loading entry URL: \(AppConfig.entryURL.absoluteString)")
+        print("[DIAG][LOAD-INITIAL] → LOADING \(AppConfig.entryURL.absoluteString)")
         webView.load(URLRequest(
             url: AppConfig.entryURL,
             cachePolicy: .useProtocolCachePolicy,

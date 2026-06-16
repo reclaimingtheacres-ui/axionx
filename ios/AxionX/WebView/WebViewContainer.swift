@@ -250,6 +250,11 @@ struct WebViewContainer: View {
             }
         }
         .onAppear {
+            // ── DIAG ──────────────────────────────────────────────────────────
+            print("[DIAG][WVC-ONAPPEAR] WebViewContainer.body.onAppear fired")
+            print("[DIAG][WVC-ONAPPEAR] store.webView.url=\(store.webView.url?.absoluteString ?? "nil")")
+            print("[DIAG][WVC-ONAPPEAR] isPreviewRestoreProtected=\(DocumentPreviewHandler.shared.isPreviewRestoreProtected)")
+            // ──────────────────────────────────────────────────────────────────
             wireDelegate()
             store.loadInitial()
         }

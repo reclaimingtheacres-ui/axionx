@@ -9,8 +9,8 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
     private override init() { super.init() }
 
     private weak var webView: WKWebView?
-    private var isPresentingDocument = false
-    private var isPreviewInFlight = false
+    var isPresentingDocument = false
+    var isPreviewInFlight = false
     private var returnURL: URL?
     private var returnURLFrozen = false
     private var restoreProtectionUntil: Date?

@@ -36,7 +36,10 @@ struct ContentView: View {
             case .authenticated:
                 WebViewContainer()
                     .transition(.opacity)
-                    .onAppear { print("[Startup] WebViewContainer visible") }
+                    .onAppear {
+                        print("[Startup] WebViewContainer visible")
+                        print("[DIAG][WVC-APPEAR] WebViewContainer.onAppear — new WKWebView will call loadInitial()")
+                    }
             }
         }
         .ignoresSafeArea()
@@ -50,15 +53,25 @@ struct ContentView: View {
             // redirect to /login if the Flask session expired; without this guard
             // the auth state would flip to .unauthenticated, destroying WebViewContainer
             // and its WKWebView, causing loadInitial() to reload /m/schedule/today.
+            // ── DIAG ────────────────────────────────────────────────────────────
+            print("[DIAG][SESSION-EXPIRED-RECV] axionSessionExpired received in ContentView")
+            print("[DIAG][SESSION-EXPIRED-RECV] current authState=\(authState)")
+            print("[DIAG][SESSION-EXPIRED-RECV] isSuppressingAuthChallenges=\(DocumentPreviewHandler.shared.isSuppressingAuthChallenges)")
+            print("[DIAG][SESSION-EXPIRED-RECV] isPresentingDocument=\(DocumentPreviewHandler.shared.isPresentingDocument)")
+            print("[DIAG][SESSION-EXPIRED-RECV] isPreviewInFlight=\(DocumentPreviewHandler.shared.isPreviewInFlight)")
+            // ────────────────────────────────────────────────────────────────────
             if DocumentPreviewHandler.shared.isSuppressingAuthChallenges {
                 print("[ContentView] axionSessionExpired suppressed — document preview active or restoring")
+                print("[DIAG][SESSION-EXPIRED-RECV] → SUPPRESSED — no authState change")
                 return
             }
             print("[ContentView] Session expired notification received")
+            print("[DIAG][SESSION-EXPIRED-RECV] → NOT suppressed — will set authState = .unauthenticated")
             LoginService.markSessionInactive()
             BiometricAuthService.clearSession()
             withAnimation(.easeInOut(duration: 0.35)) {
                 authState = .unauthenticated
+                print("[DIAG][AUTH-STATE] authState → .unauthenticated (session expired)")
             }
         }
     }
@@ -83,8 +96,17 @@ struct ContentView: View {
         // With the guard: isPresentingDocument is still true at the moment .task re-fires
         // (UIHostingController viewDidAppear precedes previewControllerDidDismiss), so
         // isSuppressingAuthChallenges returns true and we bail out immediately.
+        // ── DIAG ────────────────────────────────────────────────────────────────
+        print("[DIAG][RESOLVE-AUTH] resolveAuthState() called")
+        print("[DIAG][RESOLVE-AUTH] current authState=\(authState)")
+        print("[DIAG][RESOLVE-AUTH] isSuppressingAuthChallenges=\(DocumentPreviewHandler.shared.isSuppressingAuthChallenges)")
+        print("[DIAG][RESOLVE-AUTH] isPresentingDocument=\(DocumentPreviewHandler.shared.isPresentingDocument)")
+        print("[DIAG][RESOLVE-AUTH] isPreviewInFlight=\(DocumentPreviewHandler.shared.isPreviewInFlight)")
+        print("[DIAG][RESOLVE-AUTH] hasSavedToken=\(BiometricAuthService.hasSavedToken) isOptedIn=\(BiometricAuthService.isOptedIn)")
+        // ────────────────────────────────────────────────────────────────────────
         if DocumentPreviewHandler.shared.isSuppressingAuthChallenges {
             print("[ContentView] resolveAuthState suppressed — document preview active or restoring")
+            print("[DIAG][RESOLVE-AUTH] → SUPPRESSED — no authState change")
             return
         }
 
@@ -92,6 +114,7 @@ struct ContentView: View {
 
         if BiometricAuthService.hasSavedToken && BiometricAuthService.isOptedIn {
             print("[Startup] resolveAuthState: biometric token saved + opted in, will attempt biometric")
+            print("[DIAG][RESOLVE-AUTH] → triggering doBiometricAuth()")
             Task {
                 await doBiometricAuth()
             }
@@ -102,6 +125,7 @@ struct ContentView: View {
         print("[Startup] resolveAuthState: hasActiveSessionFlag=\(hasSession)")
         withAnimation(.easeInOut(duration: 0.25)) {
             authState = hasSession ? .authenticated : .unauthenticated
+            print("[DIAG][AUTH-STATE] authState → .\(hasSession ? "authenticated" : "unauthenticated") (resolveAuthState)")
         }
         print("[Startup] resolveAuthState: -> \(hasSession ? "authenticated" : "unauthenticated")")
     }
@@ -109,6 +133,7 @@ struct ContentView: View {
     @MainActor
     private func doBiometricAuth() async {
         print("[Startup] doBiometricAuth: attempting biometric authentication")
+        print("[DIAG][BIOMETRIC] doBiometricAuth() started — isSuppressingAuthChallenges=\(DocumentPreviewHandler.shared.isSuppressingAuthChallenges)")
         do {
             try await BiometricAuthService.authenticate(
                 reason: "Sign in to AxionX"
@@ -118,6 +143,7 @@ struct ContentView: View {
             if injected {
                 LoginService.markSessionActive()
                 print("[Startup] doBiometricAuth: session injected -> authenticated")
+                print("[DIAG][AUTH-STATE] authState → .authenticated (biometric succeeded)")
                 withAnimation(.easeInOut(duration: 0.35)) { authState = .authenticated }
                 return
             }
@@ -126,10 +152,13 @@ struct ContentView: View {
             BiometricAuthService.clearSession()
         } catch BiometricError.cancelled {
             print("[Startup] doBiometricAuth: biometric cancelled by user")
+            print("[DIAG][BIOMETRIC] biometric cancelled — authState stays unchanged")
         } catch {
             print("[Startup] doBiometricAuth: biometric failed: \(error)")
+            print("[DIAG][BIOMETRIC] biometric error — will set authState = .unauthenticated")
         }
 
+        print("[DIAG][AUTH-STATE] authState → .unauthenticated (biometric failed/cancelled)")
         withAnimation(.easeInOut(duration: 0.25)) { authState = .unauthenticated }
         print("[Startup] doBiometricAuth: -> unauthenticated")
     }
