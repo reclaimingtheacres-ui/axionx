@@ -85,7 +85,7 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         return true
     }
 
-    func noteNavigationFinished(_ url: URL) {
+    func noteNavigationFinished(_ url: URL, webView: WKWebView) {
         guard isReturnNavigationProtected,
               let returnURL = returnURL,
               Self.urlsEquivalent(url, returnURL) else {
@@ -94,6 +94,31 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         print("[DocPreview] restore target finished loading: \(url.absoluteString)")
         returnURLFrozen = false
         restoreProtectionUntil = nil
+
+        // The returnURL may contain a fragment (e.g. #tab-notes) that was set via
+        // history.replaceState on the source page.  WKWebView.load(URLRequest:) strips
+        // the fragment from the HTTP request so the loaded page receives no hash and
+        // location.hash is '' — Bootstrap tabs are never re-activated by activateHash().
+        // Inject JS after the page has finished loading to reactivate the correct tab.
+        guard let fragment = returnURL.fragment, !fragment.isEmpty else { return }
+        let safe = fragment
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        let js = """
+            (function() {
+              var frag = '\(safe)';
+              var btn = document.getElementById(frag + '-btn');
+              if (btn && window.bootstrap) {
+                bootstrap.Tab.getOrCreateInstance(btn).show();
+                console.log('[DocPreview] restored tab: ' + frag);
+              } else if (frag) {
+                window.location.hash = '#' + frag;
+                console.log('[DocPreview] restored hash: #' + frag);
+              }
+            })();
+            """
+        print("[DocPreview] injecting tab/hash restore JS for fragment=\(fragment)")
+        webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
     /// Returns true for /m/job/<id>  /m/jobs/<id>/notes  (with optional trailing slash or query)

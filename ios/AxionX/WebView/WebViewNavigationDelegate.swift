@@ -196,7 +196,7 @@ final class WebViewNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDeleg
             completionHandler: nil
         )
         if let url = webView.url {
-            DocumentPreviewHandler.shared.noteNavigationFinished(url)
+            DocumentPreviewHandler.shared.noteNavigationFinished(url, webView: webView)
             if DocumentPreviewHandler.shared.canTrackReturnURL,
                DocumentPreviewHandler.isRestorableReturnURL(url) {
                 DocumentPreviewHandler.shared.setReturnURL(url, reason: "successful page load")
