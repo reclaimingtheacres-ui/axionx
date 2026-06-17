@@ -127,11 +127,15 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         returnURLFrozen = false
         restoreProtectionUntil = nil
 
-        // The returnURL may contain a fragment (e.g. #tab-notes) that was set via
-        // history.replaceState on the source page.  WKWebView.load(URLRequest:) strips
-        // the fragment from the HTTP request so the loaded page receives no hash and
-        // location.hash is '' — Bootstrap tabs are never re-activated by activateHash().
-        // Inject JS after the page has finished loading to reactivate the correct tab.
+        // The returnURL may contain a fragment (e.g. #notes for mobile, #tab-notes for
+        // desktop) that was normalised by normalizedReturnURL().  WKWebView.load(URLRequest:)
+        // strips the fragment before sending the HTTP request so window.location.hash is
+        // empty when the page's own DOMContentLoaded fires — tabs/panels are never
+        // re-activated automatically.  Inject JS after didFinish to fix that.
+        //
+        // Mobile pages (/m/job/<id>) expose window.showTab(name) and a <div id="tabpanel-notes">.
+        // Desktop pages (/jobs/<id>) use Bootstrap tabs with a <button id="tab-notes-btn">.
+        // The JS tries mobile first, then falls back to Bootstrap, then bare hash.
         guard let fragment = returnURL.fragment, !fragment.isEmpty else { return }
         let safe = fragment
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -139,14 +143,25 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         let js = """
             (function() {
               var frag = '\(safe)';
+              if (!frag) return;
+              // ── Mobile: showTab() + scroll ──────────────────────────────────
+              if (typeof window.showTab === 'function') {
+                window.showTab(frag);
+                var panel = document.getElementById('tabpanel-' + frag);
+                if (panel) panel.scrollIntoView({ behavior: 'instant', block: 'start' });
+                console.log('[DocPreview] mobile showTab: ' + frag);
+                return;
+              }
+              // ── Desktop: Bootstrap tab button ───────────────────────────────
               var btn = document.getElementById(frag + '-btn');
               if (btn && window.bootstrap) {
                 bootstrap.Tab.getOrCreateInstance(btn).show();
-                console.log('[DocPreview] restored tab: ' + frag);
-              } else if (frag) {
-                window.location.hash = '#' + frag;
-                console.log('[DocPreview] restored hash: #' + frag);
+                console.log('[DocPreview] desktop bootstrap tab: ' + frag);
+                return;
               }
+              // ── Fallback: bare hash ─────────────────────────────────────────
+              window.location.hash = '#' + frag;
+              console.log('[DocPreview] hash fallback: #' + frag);
             })();
             """
         print("[DocPreview] injecting tab/hash restore JS for fragment=\(fragment)")
