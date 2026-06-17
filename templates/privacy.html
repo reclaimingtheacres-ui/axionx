@@ -1,0 +1,149 @@
+{% extends "layout_public.html" %}
+{% block title %}AxionX | Privacy Policy{% endblock %}
+
+{% block content %}
+<style>
+  .prv-shell {
+    min-height: 100vh;
+    background: #f8f9fb;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 16px 64px;
+  }
+  .prv-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 36px;
+  }
+  .prv-header img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+  }
+  .prv-header-text {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+  }
+  .prv-card {
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 2px 16px rgba(0,0,0,.07);
+    max-width: 680px;
+    width: 100%;
+    padding: 40px 44px;
+  }
+  @media (max-width: 600px) {
+    .prv-card { padding: 28px 20px; }
+  }
+  .prv-card h1 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 6px;
+  }
+  .prv-updated {
+    font-size: .8rem;
+    color: #94a3b8;
+    margin-bottom: 28px;
+    font-weight: 500;
+  }
+  .prv-card p {
+    font-size: .95rem;
+    color: #374151;
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+  .prv-card p:last-child { margin-bottom: 0; }
+  .prv-contact {
+    margin-top: 28px;
+    padding: 18px 22px;
+    background: #f1f5f9;
+    border-radius: 10px;
+    border-left: 4px solid #2563eb;
+  }
+  .prv-contact p {
+    margin-bottom: 4px;
+    font-size: .9rem;
+    color: #1e293b;
+  }
+  .prv-contact a {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .prv-contact a:hover { text-decoration: underline; }
+  .prv-footer {
+    margin-top: 28px;
+    text-align: center;
+    font-size: .8rem;
+    color: #94a3b8;
+  }
+  .prv-footer a {
+    color: #64748b;
+    text-decoration: none;
+  }
+  .prv-footer a:hover { text-decoration: underline; }
+  hr.prv-divider {
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 24px 0;
+  }
+</style>
+
+<div class="prv-shell">
+
+  <div class="prv-header">
+    <img src="{{ url_for('static', filename='images/axionx-icon.png') }}" alt="AxionX">
+    <span class="prv-header-text">AxionX</span>
+  </div>
+
+  <div class="prv-card">
+    <h1>Privacy Policy</h1>
+    <div class="prv-updated">Last Updated: 17 June 2026</div>
+
+    <p>
+      AxionX is a business application used by authorised field agents, administrators and clients
+      for operational workflow management, field activities, investigations, recovery services,
+      scheduling and related business functions.
+    </p>
+
+    <p>
+      Information entered into AxionX is used solely for the operation of the platform and the
+      services provided to authorised users and clients.
+    </p>
+
+    <p>
+      AxionX does not sell personal information to third parties.
+    </p>
+
+    <p>
+      Information is stored securely and access is restricted to authorised users with appropriate
+      permissions.
+    </p>
+
+    <p>
+      AxionX may collect and store information necessary for authentication, job management,
+      messaging, photographs, documents, location-related activities and operational reporting.
+    </p>
+
+    <hr class="prv-divider">
+
+    <div class="prv-contact">
+      <p><strong>Privacy Enquiries</strong></p>
+      <p><a href="mailto:support@axionx.com.au">support@axionx.com.au</a></p>
+      <p><a href="https://axionx.com.au" target="_blank" rel="noopener">https://axionx.com.au</a></p>
+    </div>
+  </div>
+
+  <div class="prv-footer">
+    <a href="/login">&larr; Sign In</a>
+    &nbsp;&middot;&nbsp;
+    &copy; 2026 AxionX. All rights reserved.
+  </div>
+
+</div>
+{% endblock %}

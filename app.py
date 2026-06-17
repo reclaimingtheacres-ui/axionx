@@ -3977,6 +3977,11 @@ def send_email(to_list, subject, body_txt, body_html=None, cc_list=None, attachm
     raise last_exc
 
 
+@app.get("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
 @app.get("/forgot-password")
 def forgot_password():
     return render_template("forgot_password.html")
