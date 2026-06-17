@@ -42,17 +42,26 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
         }
     }
 
-    /// If `url` is a bare desktop job page (`/jobs/<id>` with no fragment),
-    /// returns the same URL with `#tab-notes` appended.
+    /// If `url` is a bare job page with no fragment, appends the correct
+    /// notes-tab fragment so the Notes panel is re-activated after restore:
+    ///   /jobs/<id>   → /jobs/<id>#tab-notes   (desktop Bootstrap tab)
+    ///   /m/job/<id>  → /m/job/<id>#notes      (mobile showTab())
     /// All other URLs are returned unchanged.
     private static func normalizedReturnURL(_ url: URL) -> URL {
         guard (url.fragment == nil || url.fragment!.isEmpty),
-              url.path.range(of: #"^/jobs/\d+$"#, options: .regularExpression) != nil,
               var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return url
         }
-        comps.fragment = "tab-notes"
-        return comps.url ?? url
+        let path = url.path
+        if path.range(of: #"^/jobs/\d+$"#, options: .regularExpression) != nil {
+            comps.fragment = "tab-notes"
+            return comps.url ?? url
+        }
+        if path.range(of: #"^/m/job/\d+$"#, options: .regularExpression) != nil {
+            comps.fragment = "notes"
+            return comps.url ?? url
+        }
+        return url
     }
 
     func captureReturnURL(from url: URL?, reason: String) {
