@@ -2329,51 +2329,138 @@ _LPR_TMP = "/tmp/axionx_lpr"
 os.makedirs(_LPR_TMP, exist_ok=True)
 
 
-def extract_plate_from_image(image_path: str) -> str:
-    """Run OCR on an uploaded plate image and return the normalised plate text.
+# ── EasyOCR lazy singleton ────────────────────────────────────────────────────
+# EasyOCR uses deep-learning scene-text detection, which handles full car
+# photos far better than Tesseract (a document OCR engine).  Initialised once
+# on first LPR request; subsequent calls reuse the loaded model.
+_lpr_easyocr_reader = None
+_lpr_easyocr_lock = threading.Lock()
 
-    Uses --psm 11 (sparse text, any position) so Tesseract scans the full
-    scene rather than treating the whole image as a single text line (psm 7).
-    The incoming file is already JPEG-compressed by the native iOS camera, so
-    we do NOT re-save as JPEG to avoid a second lossy compression cycle.
+
+def _get_lpr_reader():
+    global _lpr_easyocr_reader
+    if _lpr_easyocr_reader is None:
+        with _lpr_easyocr_lock:
+            if _lpr_easyocr_reader is None:
+                try:
+                    import easyocr
+                    _lpr_easyocr_reader = easyocr.Reader(
+                        ['en'], gpu=False, verbose=False
+                    )
+                    app.logger.warning("[LPR-OCR-DIAG] EasyOCR reader initialised")
+                except Exception as exc:
+                    app.logger.warning(
+                        "[LPR-OCR-DIAG] EasyOCR init failed: %s", exc
+                    )
+    return _lpr_easyocr_reader
+
+
+def _is_plate_like(norm: str) -> bool:
+    """Return True for a string that could be an Australian registration."""
+    return (
+        4 <= len(norm) <= 8
+        and any(c.isdigit() for c in norm)
+        and any(c.isalpha() for c in norm)
+    )
+
+
+def extract_plate_from_image(image_path: str) -> str:
+    """Run scene-text OCR on an uploaded plate photo and return the best plate.
+
+    Uses EasyOCR (deep-learning, scene-text aware) rather than Tesseract.
+    Tesseract is a document OCR engine and returns nothing but noise on full
+    car photos because it cannot distinguish plate characters from grille
+    hexagons, concrete texture, or bumper trim.
+
+    Pipeline:
+      1. Crop to the bottom 55 % of portrait images — the plate is always in
+         the lower half; cropping removes sky, windscreen and most grille noise.
+      2. Run EasyOCR with bounding-box detail.
+      3. Log every observation with its raw text, normalised form, confidence,
+         and plate-like verdict.
+      4. Try adjacent-token merging: VIC plates have a decorative state emblem
+         between character groups (e.g. 1EN [emblem] 6MG) which causes Vision
+         and EasyOCR to split one plate into two short tokens.  Horizontally
+         adjacent tokens are concatenated and re-evaluated.
+      5. Return the highest-confidence plate-like candidate, or "" if none found.
     """
     try:
+        import numpy as np
+
         file_bytes = os.path.getsize(image_path)
-        img_raw = Image.open(image_path).convert("L")
-        raw_size = img_raw.size
+        img_pil = Image.open(image_path).convert("RGB")
+        w, h = img_pil.size
 
-        # Scale up 2× for OCR accuracy — in-memory only, no JPEG re-encode.
-        img = img_raw.resize((img_raw.width * 2, img_raw.height * 2), Image.LANCZOS)
-        img = ImageEnhance.Contrast(img).enhance(2.5)
-        img = img.filter(ImageFilter.SHARPEN)
-
-        # psm 11 = sparse text, finds text anywhere in the image.
-        # psm 7 (single text line) always returns empty on full-scene photos.
-        custom_config = r"--oem 3 --psm 11 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-        app.logger.warning(
-            "[LPR-OCR-DIAG] path=%s file_bytes=%d raw_wh=%s scaled_wh=%s psm=11",
-            image_path, file_bytes, raw_size, img.size
-        )
-
-        raw = pytesseract.image_to_string(img, config=custom_config)
-        raw_stripped = raw.strip()
-
-        # Extract all alphanumeric tokens and evaluate each as a plate candidate.
-        tokens = [normalise_registration(t) for t in raw_stripped.split() if t]
-        plate_tokens = [t for t in tokens if 4 <= len(t) <= 7]
-        result = plate_tokens[0] if plate_tokens else normalise_registration(raw_stripped)
+        # Crop bottom 55 % for portrait photos; skip crop for landscape/square.
+        if h > w:
+            crop_y = int(h * 0.45)
+        else:
+            crop_y = 0
+        img_crop = img_pil.crop((0, crop_y, w, h))
+        img_arr = np.array(img_crop)
 
         app.logger.warning(
-            "[LPR-OCR-DIAG] raw_output=%r tokens=%r plate_tokens=%r result=%r",
-            raw_stripped, tokens, plate_tokens, result
+            "[LPR-OCR-DIAG] path=%s file_bytes=%d original_wh=%s "
+            "crop_y=%d crop_wh=%s engine=easyocr",
+            image_path, file_bytes, (w, h), crop_y, img_crop.size
         )
 
-        if not result:
+        reader = _get_lpr_reader()
+        if reader is None:
+            app.logger.warning("[LPR-OCR-DIAG] EasyOCR unavailable — returning empty")
+            return ""
+
+        results = reader.readtext(img_arr, detail=1, paragraph=False)
+        app.logger.warning("[LPR-OCR-DIAG] easyocr observations=%d", len(results))
+
+        candidates = []
+        positioned = []   # [(left_x, right_x, norm, conf)] for merge pass
+
+        for bbox, text, conf in results:
+            norm = normalise_registration(text)
+            plate_like = _is_plate_like(norm)
             app.logger.warning(
-                "[LPR-OCR-DIAG] REJECTED — no alphanumeric candidates in OCR output"
+                "[LPR-OCR-DIAG] raw=%r norm=%r conf=%.3f len=%d plate_like=%s",
+                text, norm, conf, len(norm), plate_like
             )
-        return result
+            if plate_like:
+                candidates.append((norm, conf))
+            if norm and len(norm) >= 1:
+                left_x = min(pt[0] for pt in bbox)
+                right_x = max(pt[0] for pt in bbox)
+                positioned.append((left_x, right_x, norm, conf))
+
+        # Adjacent-token merge pass — catches split VIC plates (1EN + 6MG).
+        positioned.sort(key=lambda x: x[0])
+        crop_w = img_crop.width
+        for i in range(len(positioned) - 1):
+            lx1, rx1, n1, c1 = positioned[i]
+            lx2, rx2, n2, c2 = positioned[i + 1]
+            gap = lx2 - rx1
+            if gap < crop_w * 0.08:           # tokens within 8 % of crop width
+                merged = normalise_registration(n1 + n2)
+                if _is_plate_like(merged):
+                    avg_conf = (c1 + c2) / 2
+                    app.logger.warning(
+                        "[LPR-OCR-DIAG] MERGE %r+%r -> %r conf=%.3f",
+                        n1, n2, merged, avg_conf
+                    )
+                    candidates.append((merged, avg_conf))
+
+        if not candidates:
+            app.logger.warning(
+                "[LPR-OCR-DIAG] REJECTED — no plate candidates after merge pass"
+            )
+            return ""
+
+        candidates.sort(key=lambda x: -x[1])
+        best_plate, best_conf = candidates[0]
+        app.logger.warning(
+            "[LPR-OCR-DIAG] RESULT=%r conf=%.3f (from %d candidates)",
+            best_plate, best_conf, len(candidates)
+        )
+        return best_plate
+
     except Exception as exc:
         app.logger.warning("[LPR-OCR-DIAG] exception: %s", exc)
         return ""
