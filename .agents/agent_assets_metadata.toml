@@ -12,3 +12,9 @@ id = "qoeAc_x8lk5s3Iq2ktwIj"
 uri = "file://attachment_remediation_report.md"
 type = "text"
 title = "Attachment Remediation Report"
+
+[[outputs]]
+id = "ZJEQen152V-BIwY1tXp0b"
+uri = "file://DocumentPreviewHandler.zip"
+type = "unspecified"
+title = "DocumentPreviewHandler.swift — mobile Notes restore fix"

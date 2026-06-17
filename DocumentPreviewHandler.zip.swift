@@ -1,0 +1,961 @@
+import Foundation
+import WebKit
+import QuickLook
+import UIKit
+
+final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
+
+    static let shared = DocumentPreviewHandler()
+    private override init() { super.init() }
+
+    private weak var webView: WKWebView?
+    var isPresentingDocument = false
+    var isPreviewInFlight = false
+    private var returnURL: URL?
+    private var returnURLFrozen = false
+    private var restoreProtectionUntil: Date?
+
+    func setWebView(_ wv: WKWebView) {
+        self.webView = wv
+    }
+
+    func setReturnURL(_ url: URL, reason: String = "unspecified") {
+        if returnURLFrozen {
+            print("[DocPreview] returnURL overwrite blocked during preview (\(reason)): attempted=\(url.absoluteString), frozen=\(returnURL?.absoluteString ?? "nil")")
+            return
+        }
+        guard Self.isRestorableReturnURL(url) else {
+            print("[DocPreview] returnURL ignored (\(reason)): \(url.absoluteString)")
+            return
+        }
+        // Normalize bare /jobs/<id> URLs to #tab-notes so that after preview
+        // close the Notes tab is re-activated.  Note attachments and job
+        // documents are always accessed from within the Notes tab, so this is
+        // safe; if history.replaceState already wrote a different fragment
+        // (e.g. #tab-office) it will be preserved and used instead.
+        let normalized = Self.normalizedReturnURL(url)
+        returnURL = normalized
+        if normalized.absoluteString != url.absoluteString {
+            print("[DocPreview] returnURL normalized (\(reason)): \(url.absoluteString) → \(normalized.absoluteString)")
+        } else {
+            print("[DocPreview] source URL captured before native preview starts (\(reason)): \(url.absoluteString)")
+        }
+    }
+
+    /// If `url` is a bare job page with no fragment, appends the correct
+    /// notes-tab fragment so the Notes panel is re-activated after restore:
+    ///   /jobs/<id>   → /jobs/<id>#tab-notes   (desktop Bootstrap tab)
+    ///   /m/job/<id>  → /m/job/<id>#notes      (mobile showTab())
+    /// All other URLs are returned unchanged.
+    private static func normalizedReturnURL(_ url: URL) -> URL {
+        guard (url.fragment == nil || url.fragment!.isEmpty),
+              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        let path = url.path
+        if path.range(of: #"^/jobs/\d+$"#, options: .regularExpression) != nil {
+            comps.fragment = "tab-notes"
+            return comps.url ?? url
+        }
+        if path.range(of: #"^/m/job/\d+$"#, options: .regularExpression) != nil {
+            comps.fragment = "notes"
+            return comps.url ?? url
+        }
+        return url
+    }
+
+    func captureReturnURL(from url: URL?, reason: String) {
+        guard let url = url else {
+            print("[DocPreview] returnURL capture skipped (\(reason)): current URL nil")
+            return
+        }
+        setReturnURL(url, reason: reason)
+    }
+
+    var canTrackReturnURL: Bool {
+        !isReturnNavigationProtected
+    }
+
+    /// Legacy name — kept for call sites that already use it.
+    var isPreviewRestoreProtected: Bool {
+        isReturnNavigationProtected
+    }
+
+    /// True from the moment a preview is initiated until 8 seconds after
+    /// the QLPreviewController fully dismisses and the restore URL has loaded.
+    ///
+    /// Used to suppress:
+    ///   - ContentView.resolveAuthState() re-fires caused by UIHostingController
+    ///     viewDidAppear (SwiftUI .task re-trigger on QL dismiss)
+    ///   - axionSessionExpired transitions that arrive during the restore window
+    ///   - applicationDidBecomeActive foreground refresh during preview
+    var isSuppressingAuthChallenges: Bool {
+        isReturnNavigationProtected
+    }
+
+    private var isReturnNavigationProtected: Bool {
+        if returnURLFrozen || isPreviewInFlight || isPresentingDocument {
+            return true
+        }
+        if let until = restoreProtectionUntil, until > Date() {
+            return true
+        }
+        return false
+    }
+
+    func shouldBlockNavigation(to url: URL, reason: String, isMainFrame: Bool = true) -> Bool {
+        guard isReturnNavigationProtected else { return false }
+        if let returnURL = returnURL, Self.urlsEquivalent(url, returnURL) {
+            return false
+        }
+        if isMainFrame {
+            print("[DocPreview] BLOCKED post-preview redirect: \(url.absoluteString) reason=\(reason), frozen=\(returnURL?.absoluteString ?? "nil")")
+            return true
+        }
+        guard Self.isBlockedDuringPreviewLifecycle(url) else { return false }
+        print("[DocPreview] BLOCKED post-preview redirect: \(url.absoluteString) reason=\(reason), frozen=\(returnURL?.absoluteString ?? "nil")")
+        return true
+    }
+
+    func noteNavigationFinished(_ url: URL, webView: WKWebView) {
+        guard isReturnNavigationProtected,
+              let returnURL = returnURL,
+              Self.urlsEquivalent(url, returnURL) else {
+            return
+        }
+        print("[DocPreview] restore target finished loading: \(url.absoluteString)")
+        returnURLFrozen = false
+        restoreProtectionUntil = nil
+
+        // The returnURL may contain a fragment (e.g. #notes for mobile, #tab-notes for
+        // desktop) that was normalised by normalizedReturnURL().  WKWebView.load(URLRequest:)
+        // strips the fragment before sending the HTTP request so window.location.hash is
+        // empty when the page's own DOMContentLoaded fires — tabs/panels are never
+        // re-activated automatically.  Inject JS after didFinish to fix that.
+        //
+        // Mobile pages (/m/job/<id>) expose window.showTab(name) and a <div id="tabpanel-notes">.
+        // Desktop pages (/jobs/<id>) use Bootstrap tabs with a <button id="tab-notes-btn">.
+        // The JS tries mobile first, then falls back to Bootstrap, then bare hash.
+        guard let fragment = returnURL.fragment, !fragment.isEmpty else { return }
+        let safe = fragment
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        let js = """
+            (function() {
+              var frag = '\(safe)';
+              if (!frag) return;
+              // ── Mobile: showTab() + scroll ──────────────────────────────────
+              if (typeof window.showTab === 'function') {
+                window.showTab(frag);
+                var panel = document.getElementById('tabpanel-' + frag);
+                if (panel) panel.scrollIntoView({ behavior: 'instant', block: 'start' });
+                console.log('[DocPreview] mobile showTab: ' + frag);
+                return;
+              }
+              // ── Desktop: Bootstrap tab button ───────────────────────────────
+              var btn = document.getElementById(frag + '-btn');
+              if (btn && window.bootstrap) {
+                bootstrap.Tab.getOrCreateInstance(btn).show();
+                console.log('[DocPreview] desktop bootstrap tab: ' + frag);
+                return;
+              }
+              // ── Fallback: bare hash ─────────────────────────────────────────
+              window.location.hash = '#' + frag;
+              console.log('[DocPreview] hash fallback: #' + frag);
+            })();
+            """
+        print("[DocPreview] injecting tab/hash restore JS for fragment=\(fragment)")
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    /// Returns true for /m/job/<id>  /m/jobs/<id>/notes  (with optional trailing slash or query)
+    static func isJobNotesURL(_ url: URL) -> Bool {
+        let path = url.path
+        return path.range(of: "^/m/job(s)?/\\d+(/notes)?/?$", options: .regularExpression) != nil
+    }
+
+    static func isDocumentPreviewURL(_ url: URL) -> Bool {
+        guard url.isFileURL == false,
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return true
+        }
+        let path = url.path
+        return (path.hasPrefix("/m/documents/") && path.hasSuffix("/preview"))
+            || path.hasPrefix("/m/doc-stream/")
+            || path.hasPrefix("/m/doc-preview-render/")
+            || path.range(of: "^/jobs/\\d+/documents/\\d+/download/?$", options: .regularExpression) != nil
+    }
+
+    static func isRepoLockGeneratedFormURL(_ url: URL) -> Bool {
+        let path = url.path
+        return path.range(of: "^/jobs/\\d+/repo-lock/\\d+/(vir|transport-instructions|form-13)/?$", options: .regularExpression) != nil
+    }
+
+    static func isBlockedDuringPreviewLifecycle(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              AllowedDomains.isTrusted(url) else {
+            return false
+        }
+        let path = url.path
+        return path == "/m"
+            || path == "/m/"
+            || path.hasPrefix("/m/schedule")
+            || path == "/login"
+            || path.hasPrefix("/login")
+            || path == "/m/login"
+            || path.hasPrefix("/m/login")
+    }
+
+    static func urlsEquivalent(_ lhs: URL, _ rhs: URL) -> Bool {
+        guard lhs.scheme?.lowercased() == rhs.scheme?.lowercased(),
+              lhs.host?.lowercased() == rhs.host?.lowercased(),
+              lhs.path == rhs.path else {
+            return false
+        }
+        return (lhs.query ?? "") == (rhs.query ?? "")
+    }
+
+    static func isRestorableReturnURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              AllowedDomains.isTrusted(url) else {
+            return false
+        }
+        let path = url.path
+        if path == "/m" || path == "/m/" || path == "/m/schedule/today" {
+            return false
+        }
+        if path == "/login" || path.hasPrefix("/login") || path == "/m/login" || path.hasPrefix("/m/login") {
+            return false
+        }
+        if isDocumentPreviewURL(url) {
+            return false
+        }
+        return true
+    }
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        print("[DocPreview] ── JS message received ──")
+        print("[DocPreview] body type: \(type(of: message.body))")
+        guard let body = message.body as? [String: Any],
+              let urlString = body["url"] as? String,
+              let filename = body["filename"] as? String else {
+            print("[DocPreview] ABORT: could not parse body — body=\(message.body)")
+            return
+        }
+        print("[DocPreview] urlString='\(urlString)', filename='\(filename)'")
+        print("[DocPreview] webView nil=\(webView == nil), webView.url=\(webView?.url?.absoluteString ?? "nil")")
+        print("[DocPreview] source page before JS preview: \(webView?.url?.absoluteString ?? "nil")")
+
+        guard let docURL = resolveURL(urlString) else {
+            print("[DocPreview] ABORT: could not build docURL from '\(urlString)' baseURL=\(webView?.url?.absoluteString ?? "nil")")
+            return
+        }
+        print("[DocPreview] preview URL opened: \(docURL.absoluteString)")
+
+        let returnToURL = (body["returnTo"] as? String).flatMap { resolveURL($0) }
+        let visibleSourceURL = webView?.url
+        let isGeneratedRepoLockPreview = (returnToURL.map(Self.isRepoLockGeneratedFormURL) ?? false)
+            || (visibleSourceURL.map(Self.isRepoLockGeneratedFormURL) ?? false)
+        if isGeneratedRepoLockPreview {
+            guard let sourceURL = visibleSourceURL,
+                  Self.isRepoLockGeneratedFormURL(sourceURL),
+                  Self.isRestorableReturnURL(sourceURL) else {
+                print("[DocPreview] ABORT: invalid generated repo-lock preview source. webView.url=\(visibleSourceURL?.absoluteString ?? "nil"), returnTo=\(returnToURL?.absoluteString ?? "nil")")
+                showError("Could not open the document because the app could not confirm the originating form page. Please reopen the form and try again.")
+                return
+            }
+            setReturnURL(sourceURL, reason: "exact visible repo-lock source")
+            print("[DocPreview] captured previewSourceURL=\(sourceURL.absoluteString)")
+        } else if let sourceURL = visibleSourceURL, Self.isRestorableReturnURL(sourceURL) {
+            setReturnURL(sourceURL, reason: "exact visible source")
+            print("[DocPreview] captured previewSourceURL=\(sourceURL.absoluteString)")
+        } else if let returnToURL = returnToURL {
+            setReturnURL(returnToURL, reason: "JS returnTo fallback")
+            print("[DocPreview] return target captured from JS fallback: \(returnToURL.absoluteString)")
+        } else {
+            print("[DocPreview] ABORT: invalid preview source. webView.url=\(visibleSourceURL?.absoluteString ?? "nil")")
+            showError("Could not open the document because the app could not confirm the originating page. Please reopen the page and try again.")
+            return
+        }
+
+        jsDebug("DocumentPreviewHandler: called=YES, url=\(urlString), filename=\(filename)")
+        beginPreview(remoteURL: docURL, filename: filename, source: "JS message")
+    }
+
+    func previewFile(at url: URL, filename: String) {
+        print("[DocPreview] ── previewFile called ──")
+        print("[DocPreview] url=\(url.absoluteString), filename=\(filename)")
+
+        captureReturnURL(from: webView?.url, reason: "native navigation intercept")
+        beginPreview(remoteURL: url, filename: filename, source: "navigation intercept")
+    }
+
+    private func resolveURL(_ urlString: String) -> URL? {
+        if let absolute = URL(string: urlString), absolute.scheme != nil {
+            print("[DocPreview] urlString is absolute: \(absolute.absoluteString)")
+            return absolute
+        }
+        if let baseURL = webView?.url,
+           let resolved = URL(string: urlString, relativeTo: baseURL)?.absoluteURL {
+            print("[DocPreview] resolved relative URL against baseURL=\(baseURL.absoluteString)")
+            return resolved
+        }
+        return URL(string: urlString)
+    }
+
+    private func beginPreview(remoteURL: URL, filename: String, source: String) {
+        guard !isPreviewInFlight && !isPresentingDocument else {
+            print("[DocPreview] ABORT: preview already active/in-flight source=\(source) inFlight=\(isPreviewInFlight) presenting=\(isPresentingDocument)")
+            return
+        }
+        isPreviewInFlight = true
+        returnURLFrozen = true
+        // Log the current webView URL so we can verify it matches the eventual
+        // returnURL and that the Notes tab context will be correctly preserved.
+        let urlBeforePreview = webView?.url?.absoluteString ?? "nil"
+        print("[DocPreview] ── preview presented ─────────────────────────────────────")
+        print("[DocPreview] source=\(source) file=\(filename)")
+        print("[DocPreview] document URL: \(remoteURL.absoluteString)")
+        print("[DocPreview][Auth] isSuppressingAuthChallenges=true — auth challenges suppressed from this point")
+        print("[DocPreview][Restore] webView URL before preview: \(urlBeforePreview)")
+        print("[DocPreview][Restore] returnURL (frozen): \(returnURL?.absoluteString ?? "nil (not yet captured)")")
+        fetchCookiesAndDownload(remoteURL: remoteURL, filename: filename)
+    }
+
+    private func fetchCookiesAndDownload(remoteURL: URL, filename: String) {
+        guard let wv = webView else {
+            print("[DocPreview] WARNING: webView is nil — falling back to shared cookie storage")
+            let sharedCookies = HTTPCookieStorage.shared.cookies ?? []
+            print("[DocPreview] Shared cookie storage has \(sharedCookies.count) cookies")
+            downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: sharedCookies)
+            return
+        }
+
+        let getCookies = { [weak self] in
+            let cookieStore = wv.configuration.websiteDataStore.httpCookieStore
+            cookieStore.getAllCookies { allCookies in
+                let host = remoteURL.host ?? "nil"
+                print("[DocPreview] cookies before preview open: total=\(allCookies.count), target host='\(host)'")
+                let relevantCookies = allCookies.filter { host.hasSuffix($0.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))) || $0.domain == host }
+                print("[DocPreview] Relevant cookies for host: \(relevantCookies.count)")
+                for c in relevantCookies {
+                    print("[DocPreview]   cookie: name='\(c.name)' domain='\(c.domain)' path='\(c.path)' secure=\(c.isSecure)")
+                }
+                DispatchQueue.main.async {
+                    self?.downloadAndPreview(remoteURL: remoteURL, filename: filename, cookies: allCookies)
+                }
+            }
+        }
+
+        if Thread.isMainThread {
+            getCookies()
+        } else {
+            DispatchQueue.main.async { getCookies() }
+        }
+    }
+
+    private func jsDebug(_ msg: String) {
+        let escaped = msg.replacingOccurrences(of: "\\", with: "\\\\")
+                         .replacingOccurrences(of: "'", with: "\\'")
+                         .replacingOccurrences(of: "\n", with: "\\n")
+        let js = "if(window._axPdfDebugAppend) window._axPdfDebugAppend('\(escaped)');"
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    private static func extractFilename(from contentDisposition: String) -> String? {
+        let patterns = [
+            "filename\\*=(?:UTF-8''|utf-8'')(.+)",
+            "filename=\"([^\"]+)\"",
+            "filename=([^;\\s]+)"
+        ]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let match = regex.firstMatch(in: contentDisposition, range: NSRange(contentDisposition.startIndex..., in: contentDisposition)),
+               match.numberOfRanges > 1,
+               let range = Range(match.range(at: 1), in: contentDisposition) {
+                let raw = String(contentDisposition[range])
+                return raw.removingPercentEncoding ?? raw
+            }
+        }
+        return nil
+    }
+
+    private static func extensionForMIME(_ mime: String) -> String? {
+        let lower = mime.lowercased().trimmingCharacters(in: .whitespaces)
+        let map: [String: String] = [
+            "application/pdf": "pdf",
+            "application/msword": "doc",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+            "application/vnd.ms-excel": "xls",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+            "text/csv": "csv",
+            "image/jpeg": "jpg",
+            "image/png": "png"
+        ]
+        for (key, ext) in map {
+            if lower.hasPrefix(key) { return ext }
+        }
+        return nil
+    }
+
+    private lazy var noRedirectSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        let delegate = NoRedirectDelegate()
+        return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+    }()
+
+    private func downloadAndPreview(remoteURL: URL, filename: String, cookies: [HTTPCookie]) {
+        print("[DocPreview] ── download started ──")
+        print("[DocPreview] URL: \(remoteURL.absoluteString)")
+        print("[DocPreview] filename: \(filename)")
+        print("[DocPreview] cookies attached: \(cookies.count)")
+
+        var request = URLRequest(url: remoteURL)
+        let headers = HTTPCookie.requestHeaderFields(with: cookies)
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        jsDebug("download started, url=\(remoteURL.absoluteString)")
+        noRedirectSession.downloadTask(with: request) { [weak self] tempURL, response, error in
+            if let error = error {
+                let nsError = error as NSError
+                print("[DocPreview] DOWNLOAD FAILED: domain=\(nsError.domain) code=\(nsError.code) desc=\(nsError.localizedDescription)")
+                self?.jsDebug("DOWNLOAD FAILED: \(nsError.localizedDescription)")
+                DispatchQueue.main.async {
+                    self?.failPreview("Could not download the document. Error: \(nsError.localizedDescription)")
+                }
+                return
+            }
+
+            guard let tempURL = tempURL else {
+                print("[DocPreview] DOWNLOAD FAILED: tempURL is nil (no error reported)")
+                DispatchQueue.main.async {
+                    self?.failPreview("Download completed but no file was received.")
+                }
+                return
+            }
+
+            print("[DocPreview] tempURL: \(tempURL.path)")
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                print("[DocPreview] WARNING: response is not HTTPURLResponse — type: \(type(of: response))")
+                DispatchQueue.main.async {
+                    self?.failPreview("Unexpected server response type.")
+                }
+                return
+            }
+
+            let statusCode = httpResponse.statusCode
+            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown"
+            let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length") ?? "unknown"
+            let contentDisposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition") ?? "none"
+            let finalURL = httpResponse.url?.absoluteString ?? "nil"
+
+            print("[DocPreview] HTTP status: \(statusCode)")
+            print("[DocPreview] Content-Type: \(contentType)")
+            print("[DocPreview] Content-Length: \(contentLength)")
+            print("[DocPreview] Content-Disposition: \(contentDisposition)")
+            print("[DocPreview] Final URL: \(finalURL)")
+            print("[DocPreview] Request URL: \(remoteURL.absoluteString)")
+
+            if (300...399).contains(statusCode) {
+                let location = httpResponse.value(forHTTPHeaderField: "Location") ?? "unknown"
+                print("[DocPreview] REDIRECT detected → \(location)")
+                let isLoginRedirect = location.contains("/login") || location.contains("/m/login")
+                DispatchQueue.main.async {
+                    if isLoginRedirect {
+                        self?.failPreview("Your session has expired. Please close this screen, log in again, and retry opening the document.")
+                    } else {
+                        self?.failPreview("The server redirected the request to: \(location)")
+                    }
+                }
+                return
+            }
+
+            if !(200...299).contains(statusCode) {
+                let bodySnippet = (try? String(contentsOf: tempURL, encoding: .utf8))?.prefix(300) ?? "(unreadable)"
+                print("[DocPreview] SERVER ERROR: status=\(statusCode), body preview: \(bodySnippet)")
+                DispatchQueue.main.async {
+                    self?.failPreview("The server returned an error (\(statusCode)). The file may have been removed or is not accessible.")
+                }
+                return
+            }
+
+            let contentTypeLower = contentType.lowercased()
+            let expectedDocumentMime = contentTypeLower.contains("application/pdf")
+                || contentTypeLower.contains("application/msword")
+                || contentTypeLower.contains("officedocument")
+                || contentTypeLower.contains("application/octet-stream")
+                || contentTypeLower.contains("image/")
+            if contentTypeLower.contains("text/html") || contentTypeLower.contains("application/json") || contentTypeLower.contains("text/plain") || !expectedDocumentMime {
+                let snippet = (try? String(contentsOf: tempURL, encoding: .utf8))?.prefix(500) ?? ""
+                print("[DocPreview] WARNING: Server returned non-document response")
+                print("[DocPreview] Non-document body preview: \(snippet)")
+                DispatchQueue.main.async {
+                    self?.failPreview("The server did not return a valid document file. Your session may have expired or the file could not be created. Please refresh and try again.")
+                }
+                return
+            }
+
+            let fileSize: Int
+            do {
+                let attrs = try FileManager.default.attributesOfItem(atPath: tempURL.path)
+                fileSize = (attrs[.size] as? Int) ?? 0
+            } catch {
+                print("[DocPreview] Could not read file attributes: \(error)")
+                fileSize = 0
+            }
+
+            print("[DocPreview] Downloaded file size: \(fileSize) bytes")
+
+            if fileSize == 0 {
+                print("[DocPreview] ABORT: Downloaded file is empty (0 bytes)")
+                DispatchQueue.main.async {
+                    self?.failPreview("The downloaded document is empty (0 bytes). Please contact an admin to check this attachment.")
+                }
+                return
+            }
+
+            var resolvedFilename = filename
+            if let cdFilename = Self.extractFilename(from: contentDisposition), !cdFilename.isEmpty {
+                print("[DocPreview] Using filename from Content-Disposition: '\(cdFilename)'")
+                resolvedFilename = cdFilename
+            } else if URL(fileURLWithPath: filename).pathExtension.isEmpty {
+                let mimeExt = Self.extensionForMIME(contentType)
+                if let ext = mimeExt {
+                    resolvedFilename = filename + "." + ext
+                    print("[DocPreview] Appended extension from MIME: '\(resolvedFilename)'")
+                }
+            }
+
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("docpreview", isDirectory: true)
+            do {
+                try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            } catch {
+                print("[DocPreview] Failed to create temp directory: \(error)")
+            }
+
+            let destURL = tmpDir.appendingPathComponent(resolvedFilename)
+            print("[DocPreview] Destination path: \(destURL.path)")
+            print("[DocPreview] Destination extension: \(destURL.pathExtension)")
+
+            try? FileManager.default.removeItem(at: destURL)
+
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: destURL)
+            } catch {
+                print("[DocPreview] FAILED to move file: \(error)")
+                DispatchQueue.main.async {
+                    self?.failPreview("Could not prepare the document for viewing: \(error.localizedDescription)")
+                }
+                return
+            }
+
+            let fileExists = FileManager.default.fileExists(atPath: destURL.path)
+            let finalSize: Int
+            do {
+                let attrs = try FileManager.default.attributesOfItem(atPath: destURL.path)
+                finalSize = (attrs[.size] as? Int) ?? 0
+            } catch {
+                finalSize = 0
+            }
+
+            print("[DocPreview] ── pre-preview checks ──")
+            print("[DocPreview] File exists at dest: \(fileExists)")
+            print("[DocPreview] File size at dest: \(finalSize) bytes")
+            print("[DocPreview] File extension: \(destURL.pathExtension)")
+            print("[DocPreview] File URL: \(destURL.absoluteString)")
+
+            guard fileExists && finalSize > 0 else {
+                print("[DocPreview] ABORT: file missing or empty after move")
+                DispatchQueue.main.async {
+                    self?.failPreview("Document file is missing or empty after save.")
+                }
+                return
+            }
+
+            self?.jsDebug("file_downloaded=YES, size=\(finalSize)bytes, ext=\(destURL.pathExtension)")
+            DispatchQueue.main.async {
+                print("[DocPreview] ── presenting document ──")
+                self?.presentDocument(fileURL: destURL, filename: resolvedFilename)
+            }
+        }.resume()
+    }
+
+    private var previewCoordinator: QLPreviewCoordinator?
+
+    private func presentDocument(fileURL: URL, filename: String) {
+        guard !isPresentingDocument else {
+            print("[DocPreview] ABORT presentDocument: already presenting (guard)")
+            isPreviewInFlight = false
+            returnURLFrozen = false
+            return
+        }
+
+        guard let vc = topViewController() else {
+            print("[DocPreview] ABORT presentDocument: no topViewController found")
+            isPreviewInFlight = false
+            returnURLFrozen = false
+            return
+        }
+
+        print("[DocPreview] topViewController: \(type(of: vc))")
+        print("[DocPreview] presenting QLPreviewController directly for: \(fileURL.lastPathComponent)")
+
+        isPresentingDocument = true
+
+        let coord = QLPreviewCoordinator(fileURL: fileURL)
+        self.previewCoordinator = coord
+
+        let ql = QLPreviewController()
+        ql.dataSource = coord
+        ql.delegate = coord
+        // Present full-screen so the document viewer covers the entire display.
+        // The default .pageSheet presentation shows the job screen behind the viewer.
+        ql.modalPresentationStyle = .fullScreen
+        coord.onDismiss = { [weak self] in
+            // ── Belt-and-suspenders ordering ─────────────────────────────────────
+            // Set restoreProtectionUntil BEFORE clearing isPresentingDocument /
+            // isPreviewInFlight.  returnURLFrozen stays true throughout (it is only
+            // cleared in noteNavigationFinished or the 8.5 s timeout), so
+            // isSuppressingAuthChallenges already returns true at this moment.
+            // Moving the timestamp assignment here eliminates any theoretical
+            // window between the two flag clears and the timestamp write.
+            // ─────────────────────────────────────────────────────────────────────
+            self?.restoreProtectionUntil = Date().addingTimeInterval(8)
+
+            let urlBefore = self?.webView?.url?.absoluteString ?? "nil"
+            print("[DocPreview] QLPreviewController dismissed")
+            print("[DocPreview][Restore] webView URL at dismiss: \(urlBefore)")
+            print("[DocPreview][Auth] isSuppressingAuthChallenges=\(self?.isSuppressingAuthChallenges ?? false) — auth challenges are blocked during restore")
+
+            self?.isPresentingDocument = false
+            self?.isPreviewInFlight = false
+            self?.previewCoordinator = nil
+            self?.logCookiesAfterPreview()
+
+            if let url = self?.returnURL {
+                print("[DocPreview][Restore] restoring webView to returnURL: \(url.absoluteString)")
+                DispatchQueue.main.async {
+                    print("[DocPreview][Restore] calling webView.load(\(url.absoluteString))")
+                    self?.webView?.load(URLRequest(url: url))
+                    print("[DocPreview][Restore] webView.load called — no Schedule redirect should occur")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        let urlAfter = self?.webView?.url?.absoluteString ?? "nil"
+                        print("[DocPreview][Restore] webView URL 2 s after restore: \(urlAfter)")
+                        if let current = self?.webView?.url, Self.urlsEquivalent(current, url) {
+                            print("[DocPreview][Restore] restore confirmed — clearing return protection")
+                            self?.returnURLFrozen = false
+                            self?.restoreProtectionUntil = nil
+                            self?.returnURL = nil
+                            print("[DocPreview][Auth] isSuppressingAuthChallenges now \(self?.isSuppressingAuthChallenges ?? false)")
+                        } else {
+                            print("[DocPreview][Restore] restore target not yet confirmed (got \(urlAfter)); keeping protection active")
+                        }
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8.5) {
+                        if self?.returnURLFrozen == true {
+                            print("[DocPreview][Restore] restore protection 8.5 s timeout — force-clearing")
+                            self?.returnURLFrozen = false
+                            self?.restoreProtectionUntil = nil
+                            self?.returnURL = nil
+                            print("[DocPreview][Auth] isSuppressingAuthChallenges now \(self?.isSuppressingAuthChallenges ?? false)")
+                        }
+                    }
+                }
+            } else {
+                print("[DocPreview][Restore] no returnURL captured — webView stays at current page (no reload)")
+                print("[DocPreview][Auth] WARNING: no returnURL means Notes tab context may not be preserved")
+                self?.returnURLFrozen = false
+            }
+        }
+
+        vc.present(ql, animated: true) {
+            print("[DocPreview] QLPreviewController presented successfully")
+            print("[DocPreview] QL visible=\(ql.view.window != nil)")
+            print("[DocPreview] QL navigationItem.leftBarButtonItems=\(ql.navigationItem.leftBarButtonItems?.count ?? 0)")
+            print("[DocPreview] QL navigationItem.rightBarButtonItems=\(ql.navigationItem.rightBarButtonItems?.count ?? 0)")
+            print("[DocPreview] QL navigationController=\(ql.navigationController != nil)")
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self = self else { return }
+            if self.isPresentingDocument, vc.presentedViewController == nil {
+                print("[DocPreview] WARNING: presentation appears to have failed — resetting isPresentingDocument")
+                self.isPresentingDocument = false
+                self.isPreviewInFlight = false
+                self.returnURLFrozen = false
+                self.previewCoordinator = nil
+            }
+        }
+    }
+
+    private func failPreview(_ message: String) {
+        isPreviewInFlight = false
+        isPresentingDocument = false
+        returnURLFrozen = false
+        showError(message)
+    }
+
+    private func logCookiesAfterPreview() {
+        guard let wv = webView else {
+            print("[DocPreview] cookies after preview close: webView nil")
+            return
+        }
+        wv.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+            print("[DocPreview] cookies after preview close: total=\(cookies.count)")
+        }
+    }
+
+    private func showError(_ message: String) {
+        print("[DocPreview] SHOWING ERROR ALERT: \(message)")
+        guard let vc = topViewController() else {
+            print("[DocPreview] Cannot show error — no topViewController")
+            return
+        }
+        let alert = UIAlertController(title: "Document Error", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        vc.present(alert, animated: true)
+    }
+
+    private func topViewController() -> UIViewController? {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.keyWindow else { return nil }
+        var vc = window.rootViewController
+        while let presented = vc?.presentedViewController { vc = presented }
+        return vc
+    }
+}
+
+private final class DocumentContainerController: UIViewController {
+    private let fileURL: URL
+    private let filename: String
+    private var qlController: QLPreviewController?
+    private var coordinator: QLPreviewCoordinator?
+    private let onDismiss: () -> Void
+
+    init(fileURL: URL, filename: String, onDismiss: @escaping () -> Void) {
+        self.fileURL = fileURL
+        self.filename = filename
+        self.onDismiss = onDismiss
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: fileURL)
+        onDismiss()
+        print("[DocPreview] DocumentContainerController deinit — cleaned up \(fileURL.lastPathComponent)")
+    }
+
+    private var toolbarView: UIView?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+
+        print("[DocPreview][Layout] viewDidLoad START")
+        print("[DocPreview][Layout] fileURL=\(fileURL.path)")
+        print("[DocPreview][Layout] file exists=\(FileManager.default.fileExists(atPath: fileURL.path))")
+
+        let coord = QLPreviewCoordinator(fileURL: fileURL)
+        self.coordinator = coord
+
+        let ql = QLPreviewController()
+        ql.dataSource = coord
+        ql.delegate = coord
+        self.qlController = ql
+
+        addChild(ql)
+        ql.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(ql.view)
+        ql.didMove(toParent: self)
+
+        // DEBUG: bright red bar, 80pt tall content area, oversized buttons
+        let bar = UIView()
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.backgroundColor = UIColor.red
+        bar.layer.zPosition = 9999
+        bar.clipsToBounds = false
+        bar.isUserInteractionEnabled = true
+        self.toolbarView = bar
+
+        let displayName: String
+        if filename.count > 35 {
+            let start = filename.prefix(18)
+            let ext = (filename as NSString).pathExtension
+            displayName = start + "…." + ext
+        } else {
+            displayName = filename
+        }
+
+        let doneBtn = UIButton(type: .system)
+        doneBtn.translatesAutoresizingMaskIntoConstraints = false
+        doneBtn.setTitle("DONE", for: .normal)
+        doneBtn.titleLabel?.font = .systemFont(ofSize: 22, weight: .bold)
+        doneBtn.setTitleColor(.white, for: .normal)
+        doneBtn.backgroundColor = UIColor.blue
+        doneBtn.layer.cornerRadius = 8
+        doneBtn.addTarget(self, action: #selector(doneTapped), for: .touchUpInside)
+
+        let titleLabel = UILabel()
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.text = displayName
+        titleLabel.font = .systemFont(ofSize: 16, weight: .bold)
+        titleLabel.textColor = .white
+        titleLabel.lineBreakMode = .byTruncatingMiddle
+        titleLabel.textAlignment = .center
+
+        let shareBtn = UIButton(type: .system)
+        shareBtn.translatesAutoresizingMaskIntoConstraints = false
+        shareBtn.setTitle("SHARE", for: .normal)
+        shareBtn.titleLabel?.font = .systemFont(ofSize: 22, weight: .bold)
+        shareBtn.setTitleColor(.white, for: .normal)
+        shareBtn.backgroundColor = UIColor(red: 0, green: 0.6, blue: 0, alpha: 1)
+        shareBtn.layer.cornerRadius = 8
+        shareBtn.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
+
+        bar.addSubview(doneBtn)
+        bar.addSubview(titleLabel)
+        bar.addSubview(shareBtn)
+        view.addSubview(bar)
+        view.bringSubviewToFront(bar)
+
+        let barHeight: CGFloat = 80
+
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bar.heightAnchor.constraint(equalToConstant: barHeight),
+
+            doneBtn.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 12),
+            doneBtn.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            doneBtn.widthAnchor.constraint(equalToConstant: 80),
+            doneBtn.heightAnchor.constraint(equalToConstant: 44),
+
+            shareBtn.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -12),
+            shareBtn.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            shareBtn.widthAnchor.constraint(equalToConstant: 90),
+            shareBtn.heightAnchor.constraint(equalToConstant: 44),
+
+            titleLabel.leadingAnchor.constraint(equalTo: doneBtn.trailingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(equalTo: shareBtn.leadingAnchor, constant: -8),
+            titleLabel.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+
+            ql.view.topAnchor.constraint(equalTo: bar.bottomAnchor),
+            ql.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            ql.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ql.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        print("[DocPreview][Layout] viewDidLoad COMPLETE")
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if let bar = toolbarView {
+            view.bringSubviewToFront(bar)
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if let bar = toolbarView {
+            view.bringSubviewToFront(bar)
+            print("[DocPreview][Layout] viewDidAppear — bar frame=\(bar.frame)")
+            print("[DocPreview][Layout] bar.isHidden=\(bar.isHidden) alpha=\(bar.alpha)")
+            print("[DocPreview][Layout] bar.window=\(bar.window != nil)")
+            print("[DocPreview][Layout] bar subviews=\(bar.subviews.count)")
+            for (i, sv) in bar.subviews.enumerated() {
+                print("[DocPreview][Layout]   [\(i)] \(type(of: sv)) frame=\(sv.frame) hidden=\(sv.isHidden) alpha=\(sv.alpha)")
+            }
+            print("[DocPreview][Layout] view.subviews order:")
+            for (i, sv) in view.subviews.enumerated() {
+                print("[DocPreview][Layout]   [\(i)] \(type(of: sv)) frame=\(sv.frame) zPos=\(sv.layer.zPosition)")
+            }
+        }
+        if let ql = qlController {
+            print("[DocPreview][Layout] QL visible=\(ql.isViewLoaded && ql.view.window != nil)")
+            print("[DocPreview][Layout] QL frame=\(ql.view.frame)")
+        }
+        print("[DocPreview][Layout] self.view frame=\(view.frame)")
+        print("[DocPreview][Layout] self isTopmost=\(presentedViewController == nil)")
+        print("[DocPreview][Layout] presentingVC=\(String(describing: presentingViewController))")
+    }
+
+    @objc private func doneTapped() {
+        dismiss(animated: true) { [weak self] in
+            guard let self = self else { return }
+            try? FileManager.default.removeItem(at: self.fileURL)
+            self.onDismiss()
+        }
+    }
+
+    @objc private func shareTapped() {
+        let activityVC = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: 30, y: 60, width: 1, height: 1)
+        }
+        present(activityVC, animated: true)
+    }
+}
+
+private final class QLPreviewCoordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
+    let fileURL: URL
+    var onDismiss: (() -> Void)?
+
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        super.init()
+    }
+
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+        print("[DocPreview] QLPreview numberOfPreviewItems called → 1")
+        return 1
+    }
+
+    func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+        print("[DocPreview] QLPreview previewItemAt \(index) → \(fileURL.path)")
+        print("[DocPreview] File exists: \(FileManager.default.fileExists(atPath: fileURL.path))")
+        return fileURL as QLPreviewItem
+    }
+
+    func previewController(_ controller: QLPreviewController, didUpdateContentsOf previewItem: QLPreviewItem) {
+        print("[DocPreview] QLPreview didUpdateContents")
+    }
+
+    func previewControllerDidDismiss(_ controller: QLPreviewController) {
+        print("[DocPreview] QLPreview dismissed by system")
+        try? FileManager.default.removeItem(at: fileURL)
+        onDismiss?()
+    }
+}
+
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        let location = response.value(forHTTPHeaderField: "Location") ?? "unknown"
+        print("[DocPreview] NoRedirect: blocked redirect to \(location)")
+        completionHandler(nil)
+    }
+}
