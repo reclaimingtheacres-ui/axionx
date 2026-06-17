@@ -385,20 +385,29 @@ function _startNativePatrol() {
   };
 
   window._nativePatrolPlateDetected = function(plate) {
-    if (!plate || plate.length < MIN_PLATE_LEN) return;
+    console.log('[DIAG][PatrolJS] _nativePatrolPlateDetected plate=' + plate + ' len=' + (plate ? plate.length : 0) + ' MIN_PLATE_LEN=' + MIN_PLATE_LEN);
+    if (!plate || plate.length < MIN_PLATE_LEN) {
+      console.log('[DIAG][PatrolJS] REJECTED — below MIN_PLATE_LEN');
+      return;
+    }
     _scanCount++;
     document.getElementById('pmScanNum').textContent = _scanCount;
 
     addToFeed(plate, null);
 
     _fetchInFlight = true;
+    console.log('[DIAG][PatrolJS] POST /m/api/lpr/patrol-scan plate=' + plate);
     fetch('/m/api/lpr/patrol-scan', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({plate: plate})
     })
-    .then(function(r){ return r.json(); })
+    .then(function(r){
+      console.log('[DIAG][PatrolJS] patrol-scan HTTP status=' + r.status + ' ok=' + r.ok);
+      return r.json();
+    })
     .then(function(data){
+      console.log('[DIAG][PatrolJS] patrol-scan response:', JSON.stringify(data).substring(0, 300));
       if (!data.ok || !data.plate) return;
       var result = data.result;
       var rtype  = result && result.result_type;
@@ -413,7 +422,7 @@ function _startNativePatrol() {
         showAlert(plate, result);
       }
     })
-    .catch(function(){})
+    .catch(function(err){ console.log('[DIAG][PatrolJS] patrol-scan fetch error: ' + err); })
     .finally(function(){ _fetchInFlight = false; });
   };
 

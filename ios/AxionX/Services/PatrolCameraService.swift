@@ -312,17 +312,26 @@ extension PatrolCameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
+        let frameW = CVPixelBufferGetWidth(pixelBuffer)
+        let frameH = CVPixelBufferGetHeight(pixelBuffer)
+        print("[DIAG][PatrolCamera] frame \(frameW)×\(frameH) recognitionLevel=fast minTextHeight=0.04 requiredConsecutive=\(requiredConsecutive)")
+
         let request = VNRecognizeTextRequest { [weak self] req, error in
             guard let self = self else { return }
-            if error != nil { return }
+            if let error = error {
+                print("[DIAG][PatrolCamera] VNRecognizeTextRequest error: \(error)")
+                return
+            }
 
             let observations = req.results as? [VNRecognizedTextObservation] ?? []
+            print("[DIAG][PatrolCamera] observations=\(observations.count)")
 
             let centred = observations.filter { obs in
                 let midX = (obs.boundingBox.minX + obs.boundingBox.maxX) / 2
                 return midX >= 0.15 && midX <= 0.85
             }
             let source = centred.isEmpty ? observations : centred
+            print("[DIAG][PatrolCamera] centred=\(centred.count) source=\(source.count)")
 
             guard let plate = PlateCandidateExtractor.bestCandidate(from: source) else {
                 self.stateLock.lock()
@@ -342,6 +351,7 @@ extension PatrolCameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             let count = self._consecutiveCount
             self.stateLock.unlock()
 
+            print("[DIAG][PatrolCamera] candidate='\(plate)' consecutive=\(count)/\(self.requiredConsecutive)")
             guard count >= self.requiredConsecutive else { return }
 
             self.stateLock.lock()
@@ -349,12 +359,14 @@ extension PatrolCameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             self._consecutiveCount = 0
             let cooldownEnd = self._cooldownPlates[plate]
             if let end = cooldownEnd, now < end {
+                print("[DIAG][PatrolCamera] '\(plate)' in cooldown — skipping")
                 self.stateLock.unlock()
                 return
             }
             self._cooldownPlates[plate] = now.addingTimeInterval(self.cooldownSeconds)
             self.stateLock.unlock()
 
+            print("[DIAG][PatrolCamera] CONFIRMED plate='\(plate)' — calling sendPlate")
             self.sendPlate(plate)
         }
         request.recognitionLevel = .fast

@@ -2332,14 +2332,26 @@ os.makedirs(_LPR_TMP, exist_ok=True)
 def extract_plate_from_image(image_path: str) -> str:
     """Run OCR on an uploaded plate image and return the normalised plate text."""
     try:
-        img = Image.open(image_path).convert("L")
-        img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
+        img_raw = Image.open(image_path).convert("L")
+        raw_size = img_raw.size
+        file_bytes = os.path.getsize(image_path)
+        img = img_raw.resize((img_raw.width * 2, img_raw.height * 2), Image.LANCZOS)
         img = ImageEnhance.Contrast(img).enhance(2.5)
         img = img.filter(ImageFilter.SHARPEN)
         custom_config = r"--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        app.logger.warning(
+            "[LPR-OCR-DIAG] path=%s file_bytes=%d raw_wh=%s scaled_wh=%s psm=7",
+            image_path, file_bytes, raw_size, img.size
+        )
         raw = pytesseract.image_to_string(img, config=custom_config)
-        return normalise_registration(raw.strip())
-    except Exception:
+        result = normalise_registration(raw.strip())
+        app.logger.warning(
+            "[LPR-OCR-DIAG] raw_output=%r normalised=%r",
+            raw.strip(), result
+        )
+        return result
+    except Exception as exc:
+        app.logger.warning("[LPR-OCR-DIAG] exception: %s", exc)
         return ""
 
 

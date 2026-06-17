@@ -22,18 +22,27 @@ enum PlateCandidateExtractor {
                               minimumConfidence: Float = 0.55) -> String? {
         var candidates: [(text: String, confidence: Float)] = []
 
+        print("[DIAG][PlateCandidateExtractor] observations=\(observations.count) threshold=\(minimumConfidence)")
         for obs in observations {
             guard let top = obs.topCandidates(3).first else { continue }
             let norm = normalisePlate(top.string)
-            guard isLikelyPlate(norm) else { continue }
+            let passes = isLikelyPlate(norm)
+            print("[DIAG][PlateCandidateExtractor] raw='\(top.string)' norm='\(norm)' conf=\(String(format: "%.3f", top.confidence)) chars=\(norm.count) isLikelyPlate=\(passes)")
+            guard passes else { continue }
             candidates.append((norm, top.confidence))
         }
 
         // Sort by confidence descending, then pick the top
         candidates.sort { $0.confidence > $1.confidence }
-        guard let best = candidates.first, best.confidence >= minimumConfidence else {
+        guard let best = candidates.first else {
+            print("[DIAG][PlateCandidateExtractor] RESULT=nil (no candidates passed isLikelyPlate filter)")
             return nil
         }
+        if best.confidence < minimumConfidence {
+            print("[DIAG][PlateCandidateExtractor] RESULT=nil (best '\(best.text)' conf=\(String(format: "%.3f", best.confidence)) < threshold=\(minimumConfidence))")
+            return nil
+        }
+        print("[DIAG][PlateCandidateExtractor] RESULT='\(best.text)' conf=\(String(format: "%.3f", best.confidence))")
         return best.text
     }
 }
