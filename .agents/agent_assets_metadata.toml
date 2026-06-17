@@ -30,3 +30,9 @@ id = "40mzrtklKyrQECIRaWTaP"
 uri = "file://AxionX_PatrolFix.zip"
 type = "unspecified"
 title = "PatrolCameraService.swift + WebViewContainer.swift — LPR Patrol fix (both files)"
+
+[[outputs]]
+id = "eIskJC-kctl4oiwXIC3Lk"
+uri = "file://AxionX_LPR_Fix.zip"
+type = "unspecified"
+title = "AxionX LPR Fix — 3 changed files"
