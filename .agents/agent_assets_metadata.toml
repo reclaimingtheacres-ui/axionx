@@ -24,3 +24,9 @@ id = "5vmo6djcK31zj90qBiGAh"
 uri = "file://WebViewContainer_LPRPatrolFix.zip"
 type = "unspecified"
 title = "WebViewContainer.swift — LPR Patrol black preview fix"
+
+[[outputs]]
+id = "40mzrtklKyrQECIRaWTaP"
+uri = "file://AxionX_PatrolFix.zip"
+type = "unspecified"
+title = "PatrolCameraService.swift + WebViewContainer.swift — LPR Patrol fix (both files)"
