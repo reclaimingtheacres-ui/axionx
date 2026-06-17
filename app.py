@@ -2330,25 +2330,49 @@ os.makedirs(_LPR_TMP, exist_ok=True)
 
 
 def extract_plate_from_image(image_path: str) -> str:
-    """Run OCR on an uploaded plate image and return the normalised plate text."""
+    """Run OCR on an uploaded plate image and return the normalised plate text.
+
+    Uses --psm 11 (sparse text, any position) so Tesseract scans the full
+    scene rather than treating the whole image as a single text line (psm 7).
+    The incoming file is already JPEG-compressed by the native iOS camera, so
+    we do NOT re-save as JPEG to avoid a second lossy compression cycle.
+    """
     try:
+        file_bytes = os.path.getsize(image_path)
         img_raw = Image.open(image_path).convert("L")
         raw_size = img_raw.size
-        file_bytes = os.path.getsize(image_path)
+
+        # Scale up 2× for OCR accuracy — in-memory only, no JPEG re-encode.
         img = img_raw.resize((img_raw.width * 2, img_raw.height * 2), Image.LANCZOS)
         img = ImageEnhance.Contrast(img).enhance(2.5)
         img = img.filter(ImageFilter.SHARPEN)
-        custom_config = r"--oem 3 --psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+        # psm 11 = sparse text, finds text anywhere in the image.
+        # psm 7 (single text line) always returns empty on full-scene photos.
+        custom_config = r"--oem 3 --psm 11 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
         app.logger.warning(
-            "[LPR-OCR-DIAG] path=%s file_bytes=%d raw_wh=%s scaled_wh=%s psm=7",
+            "[LPR-OCR-DIAG] path=%s file_bytes=%d raw_wh=%s scaled_wh=%s psm=11",
             image_path, file_bytes, raw_size, img.size
         )
+
         raw = pytesseract.image_to_string(img, config=custom_config)
-        result = normalise_registration(raw.strip())
+        raw_stripped = raw.strip()
+
+        # Extract all alphanumeric tokens and evaluate each as a plate candidate.
+        tokens = [normalise_registration(t) for t in raw_stripped.split() if t]
+        plate_tokens = [t for t in tokens if 4 <= len(t) <= 7]
+        result = plate_tokens[0] if plate_tokens else normalise_registration(raw_stripped)
+
         app.logger.warning(
-            "[LPR-OCR-DIAG] raw_output=%r normalised=%r",
-            raw.strip(), result
+            "[LPR-OCR-DIAG] raw_output=%r tokens=%r plate_tokens=%r result=%r",
+            raw_stripped, tokens, plate_tokens, result
         )
+
+        if not result:
+            app.logger.warning(
+                "[LPR-OCR-DIAG] REJECTED — no alphanumeric candidates in OCR output"
+            )
         return result
     except Exception as exc:
         app.logger.warning("[LPR-OCR-DIAG] exception: %s", exc)

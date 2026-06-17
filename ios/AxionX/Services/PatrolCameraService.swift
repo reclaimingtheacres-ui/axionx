@@ -18,7 +18,7 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
     private var _lastFrameTime = Date.distantPast
     private var _lastCandidate = ""
     private var _consecutiveCount = 0
-    private let requiredConsecutive = 2
+    private let requiredConsecutive = 1
     private var _cooldownPlates: [String: Date] = [:]
     private let cooldownSeconds: TimeInterval = 30.0
     private let frameInterval: TimeInterval = 0.6
@@ -314,7 +314,7 @@ extension PatrolCameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         let frameW = CVPixelBufferGetWidth(pixelBuffer)
         let frameH = CVPixelBufferGetHeight(pixelBuffer)
-        print("[DIAG][PatrolCamera] frame \(frameW)×\(frameH) recognitionLevel=fast minTextHeight=0.04 requiredConsecutive=\(requiredConsecutive)")
+        print("[DIAG][PatrolCamera] frame \(frameW)×\(frameH) recognitionLevel=accurate minTextHeight=0.015 requiredConsecutive=\(requiredConsecutive)")
 
         let request = VNRecognizeTextRequest { [weak self] req, error in
             guard let self = self else { return }
@@ -369,9 +369,9 @@ extension PatrolCameraService: AVCaptureVideoDataOutputSampleBufferDelegate {
             print("[DIAG][PatrolCamera] CONFIRMED plate='\(plate)' — calling sendPlate")
             self.sendPlate(plate)
         }
-        request.recognitionLevel = .fast
+        request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
-        request.minimumTextHeight = 0.04
+        request.minimumTextHeight = 0.015
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right)
         do {
