@@ -42,13 +42,8 @@ struct WebViewContainer: View {
     }
 
     private var isActiveLPRCameraView: Bool {
-        // Native camera scanner (fullScreenCover) — covers the whole screen, but
-        // we also zero out shouldShowLPROverlays so there is no flicker on dismiss.
         if showLPRScanner { return true }
         guard let path = currentURL?.path else { return false }
-        // /m/lpr/capture  — photo-capture web route (web camera active in WKWebView)
-        // /m/lpr/patrol   — patrol mode; PatrolCameraService runs AVCaptureSession
-        //                   in the background while the web page renders its camera UI.
         return path == "/m/lpr/capture" || path.hasPrefix("/m/lpr/patrol")
     }
 
@@ -144,12 +139,6 @@ struct WebViewContainer: View {
                 .animation(.easeInOut(duration: 0.2), value: isOnLPRPage)
             }
 
-            // Field Status Control (FieldStatusView) is suppressed across all /m/lpr*
-            // routes — live scan, patrol, patrol intel, and every other LPR screen.
-            // It was previously gated by shouldShowLPROverlays (isOnLPRPage && !camera),
-            // meaning it only ever rendered on LPR pages. Requirement updated: no field
-            // status pill above any LPR screen. Outside LPR it continues as-is (not shown).
-
             // Dispatch banner — shown on LPR pages when a follow-up is assigned and not yet accepted
             if shouldShowLPROverlays && dispatchManager.activeDispatch == nil
                 && syncManager.assignedFollowupCount > 0 {
@@ -158,7 +147,6 @@ struct WebViewContainer: View {
                     HStack(spacing: 0) {
                         Spacer()
                         Button(action: {
-                            // Open the most recent assigned follow-up
                             if let item = syncManager.lastAssignedFollowup {
                                 pendingDispatchId = item.id
                                 Task {
@@ -188,7 +176,7 @@ struct WebViewContainer: View {
                         }
                         Spacer()
                     }
-                    .padding(.bottom, 82)  // above FieldStatusView
+                    .padding(.bottom, 82)
                 }
                 .ignoresSafeArea(edges: .bottom)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -269,11 +257,9 @@ struct WebViewContainer: View {
             }
         }
         .onAppear {
-            // ── DIAG ──────────────────────────────────────────────────────────
             print("[DIAG][WVC-ONAPPEAR] WebViewContainer.body.onAppear fired")
             print("[DIAG][WVC-ONAPPEAR] store.webView.url=\(store.webView.url?.absoluteString ?? "nil")")
             print("[DIAG][WVC-ONAPPEAR] isPreviewRestoreProtected=\(DocumentPreviewHandler.shared.isPreviewRestoreProtected)")
-            // ──────────────────────────────────────────────────────────────────
             wireDelegate()
             store.loadInitial()
         }
@@ -326,9 +312,6 @@ struct WebViewContainer: View {
                 showSyncStatus = false
             }
         }
-        // Keep FieldStatusView hidden across all LPR routes and the native scanner.
-        // FieldStatusView observes isLPRContextActive and returns EmptyView() when set,
-        // so this suppresses it regardless of which view in the hierarchy renders it.
         .onChange(of: currentURL) { _ in
             fieldStatusManager.isLPRContextActive = isOnLPRPage || showLPRScanner
         }
@@ -401,8 +384,6 @@ struct WebViewContainer: View {
         )
 
         // ── Patrol preview layer callbacks ─────────────────────────────────────
-        // PatrolCameraService calls onPatrolActive (main queue) once the
-        // AVCaptureSession is running and the AVCaptureVideoPreviewLayer is ready.
         //
         // THREE properties must be cleared for the WKWebView to be truly
         // transparent, allowing PatrolPreviewView (behind it in the ZStack) to
@@ -411,13 +392,10 @@ struct WebViewContainer: View {
         //   2. wv.backgroundColor = .clear    — set here
         //   3. wv.scrollView.backgroundColor = .clear  ← THE CRITICAL ONE
         //
-        // WKScrollView is a UIScrollView subclass that sits *inside* the WKWebView
-        // as a separate UIView with its own backgroundColor.  Setting wv.backgroundColor
-        // does NOT affect it.  Its default is .systemBackground (opaque white),
-        // which blocks everything behind the WKWebView — including PatrolPreviewView.
-        // Without clearing the scrollView background, the camera preview is
-        // completely hidden behind an opaque white layer, and the HTML body
-        // (background:#000) paints over it, giving the user a black screen.
+        // WKScrollView is a UIScrollView subclass inside WKWebView with its own
+        // backgroundColor.  Its default is .systemBackground (opaque white),
+        // which blocks the PatrolPreviewView entirely — causing the black screen.
+        // Setting wv.backgroundColor alone does NOT affect scrollView.backgroundColor.
         PatrolCameraService.shared.onPatrolActive = { layer in
             print("[WVC] onPatrolActive — clearing WKWebView + scrollView backgrounds, inserting preview layer")
             store.webView.isOpaque = false
@@ -426,19 +404,17 @@ struct WebViewContainer: View {
             store.webView.scrollView.backgroundColor = .clear
             patrolPreviewLayer = layer
         }
-        // When patrol stops (navigated away or Stop tapped), restore the WKWebView
-        // and its scrollView to their normal opaque state, and remove the preview
-        // layer from the SwiftUI ZStack.
+        // Restore WKWebView and scrollView to their normal opaque state when
+        // patrol stops (navigated away or Stop tapped).
         PatrolCameraService.shared.onPatrolStopped = {
             print("[WVC] onPatrolStopped — restoring WKWebView + scrollView backgrounds, removing preview layer")
             patrolPreviewLayer = nil
-            store.webView.isOpaque = false         // keep false to prevent black flash
+            store.webView.isOpaque = false         // keep false to prevent black flash on navigation
             store.webView.backgroundColor = .white
             store.webView.scrollView.isOpaque = true
             store.webView.scrollView.backgroundColor = .systemBackground
         }
 
-        // Give the sync manager access to the shared webView session
         SyncManager.shared.setWebView(store.webView)
         PatrolCameraService.shared.setWebView(store.webView)
         DocumentPreviewHandler.shared.setWebView(store.webView)
@@ -459,7 +435,6 @@ struct WebViewContainer: View {
             if let result = result {
                 lprNativeResult = result
             } else {
-                // API unreachable or unauthenticated — fall back to URL-param submission
                 submitPlateViaURL(plate: plate)
             }
         }
