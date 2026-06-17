@@ -18,3 +18,9 @@ id = "ZJEQen152V-BIwY1tXp0b"
 uri = "file://DocumentPreviewHandler.zip"
 type = "unspecified"
 title = "DocumentPreviewHandler.swift — mobile Notes restore fix"
+
+[[outputs]]
+id = "5vmo6djcK31zj90qBiGAh"
+uri = "file://WebViewContainer_LPRPatrolFix.zip"
+type = "unspecified"
+title = "WebViewContainer.swift — LPR Patrol black preview fix"
