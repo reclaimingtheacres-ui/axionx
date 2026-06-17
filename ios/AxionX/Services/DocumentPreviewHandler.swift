@@ -28,8 +28,31 @@ final class DocumentPreviewHandler: NSObject, WKScriptMessageHandler {
             print("[DocPreview] returnURL ignored (\(reason)): \(url.absoluteString)")
             return
         }
-        returnURL = url
-        print("[DocPreview] source URL captured before native preview starts (\(reason)): \(url.absoluteString)")
+        // Normalize bare /jobs/<id> URLs to #tab-notes so that after preview
+        // close the Notes tab is re-activated.  Note attachments and job
+        // documents are always accessed from within the Notes tab, so this is
+        // safe; if history.replaceState already wrote a different fragment
+        // (e.g. #tab-office) it will be preserved and used instead.
+        let normalized = Self.normalizedReturnURL(url)
+        returnURL = normalized
+        if normalized.absoluteString != url.absoluteString {
+            print("[DocPreview] returnURL normalized (\(reason)): \(url.absoluteString) → \(normalized.absoluteString)")
+        } else {
+            print("[DocPreview] source URL captured before native preview starts (\(reason)): \(url.absoluteString)")
+        }
+    }
+
+    /// If `url` is a bare desktop job page (`/jobs/<id>` with no fragment),
+    /// returns the same URL with `#tab-notes` appended.
+    /// All other URLs are returned unchanged.
+    private static func normalizedReturnURL(_ url: URL) -> URL {
+        guard (url.fragment == nil || url.fragment!.isEmpty),
+              url.path.range(of: #"^/jobs/\d+$"#, options: .regularExpression) != nil,
+              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        comps.fragment = "tab-notes"
+        return comps.url ?? url
     }
 
     func captureReturnURL(from url: URL?, reason: String) {
