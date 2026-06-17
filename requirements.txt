@@ -1,8 +1,10 @@
 azure-storage-blob==12.22.0
 cryptography
+easyocr
 flask==3.0.3
 gunicorn==21.2.0
 httpx[http2]
+numpy
 olefile
 openai
 Pillow
@@ -15,4 +17,3 @@ python-docx
 pytz
 reportlab
 werkzeug
-pillow-avif-plugin
