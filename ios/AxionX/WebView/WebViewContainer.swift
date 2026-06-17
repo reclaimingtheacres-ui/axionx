@@ -403,19 +403,39 @@ struct WebViewContainer: View {
         // ── Patrol preview layer callbacks ─────────────────────────────────────
         // PatrolCameraService calls onPatrolActive (main queue) once the
         // AVCaptureSession is running and the AVCaptureVideoPreviewLayer is ready.
-        // We make the WKWebView background transparent so the preview layer
-        // rendered behind it (PatrolPreviewView) is visible through the page.
+        //
+        // THREE properties must be cleared for the WKWebView to be truly
+        // transparent, allowing PatrolPreviewView (behind it in the ZStack) to
+        // show through:
+        //   1. wv.isOpaque = false            — already set in WebViewStore.init()
+        //   2. wv.backgroundColor = .clear    — set here
+        //   3. wv.scrollView.backgroundColor = .clear  ← THE CRITICAL ONE
+        //
+        // WKScrollView is a UIScrollView subclass that sits *inside* the WKWebView
+        // as a separate UIView with its own backgroundColor.  Setting wv.backgroundColor
+        // does NOT affect it.  Its default is .systemBackground (opaque white),
+        // which blocks everything behind the WKWebView — including PatrolPreviewView.
+        // Without clearing the scrollView background, the camera preview is
+        // completely hidden behind an opaque white layer, and the HTML body
+        // (background:#000) paints over it, giving the user a black screen.
         PatrolCameraService.shared.onPatrolActive = { layer in
-            print("[WVC] onPatrolActive — inserting preview layer, setting WKWebView background clear")
+            print("[WVC] onPatrolActive — clearing WKWebView + scrollView backgrounds, inserting preview layer")
+            store.webView.isOpaque = false
             store.webView.backgroundColor = .clear
+            store.webView.scrollView.isOpaque = false
+            store.webView.scrollView.backgroundColor = .clear
             patrolPreviewLayer = layer
         }
-        // When patrol stops (navigated away or Stop tapped), restore the white
-        // WKWebView background and remove the PatrolPreviewView from the ZStack.
+        // When patrol stops (navigated away or Stop tapped), restore the WKWebView
+        // and its scrollView to their normal opaque state, and remove the preview
+        // layer from the SwiftUI ZStack.
         PatrolCameraService.shared.onPatrolStopped = {
-            print("[WVC] onPatrolStopped — removing preview layer, restoring WKWebView background")
+            print("[WVC] onPatrolStopped — restoring WKWebView + scrollView backgrounds, removing preview layer")
             patrolPreviewLayer = nil
+            store.webView.isOpaque = false         // keep false to prevent black flash
             store.webView.backgroundColor = .white
+            store.webView.scrollView.isOpaque = true
+            store.webView.scrollView.backgroundColor = .systemBackground
         }
 
         // Give the sync manager access to the shared webView session
