@@ -1,11 +1,19 @@
 import SwiftUI
 import WebKit
+import AVFoundation
 
 /// The main container that hosts the WKWebView.
 /// For live scans, intercepts the confirmed plate, calls the lookup API
 /// natively, and presents LPRResultSheet so the agent never leaves the app
 /// to see a result.  All other LPR entry paths (manual, photo OCR) continue
 /// through the web layer unchanged.
+///
+/// Patrol mode: PatrolCameraService creates an AVCaptureVideoPreviewLayer and
+/// signals this container via onPatrolActive.  The container inserts the layer
+/// via PatrolPreviewView — a UIViewRepresentable placed at the bottom of the
+/// ZStack, behind the WKWebView.  The WKWebView background is set to .clear
+/// and CSS is injected to make the HTML body transparent, so the camera frames
+/// are visible through the web page overlays (status bar, plate feed, controls).
 struct WebViewContainer: View {
     @StateObject private var store = WebViewStore()
     @EnvironmentObject private var syncManager: SyncManager
@@ -19,6 +27,9 @@ struct WebViewContainer: View {
     @State private var showSyncStatus     = false
     @State private var showDispatchSheet  = false
     @State private var pendingDispatchId: Int? = nil
+    /// Set when PatrolCameraService has an active preview layer ready to render.
+    /// Nil at all other times — SwiftUI removes the PatrolPreviewView automatically.
+    @State private var patrolPreviewLayer: AVCaptureVideoPreviewLayer? = nil
 
     private var isOnLPRPage: Bool {
         guard let url = currentURL else { return false }
@@ -38,8 +49,6 @@ struct WebViewContainer: View {
         // /m/lpr/capture  — photo-capture web route (web camera active in WKWebView)
         // /m/lpr/patrol   — patrol mode; PatrolCameraService runs AVCaptureSession
         //                   in the background while the web page renders its camera UI.
-        //                   NOTE: was incorrectly "/m/lpr/patrol-mode" — fixed to match
-        //                   the actual route produced by navigateToPatrol().
         return path == "/m/lpr/capture" || path.hasPrefix("/m/lpr/patrol")
     }
 
@@ -49,6 +58,16 @@ struct WebViewContainer: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
+
+            // ── Patrol camera preview ─────────────────────────────────────────
+            // Rendered BELOW the WKWebView.  The WKWebView background is set to
+            // .clear and the HTML body is made transparent via CSS injection so
+            // the camera frames show through the web page UI overlays.
+            if let layer = patrolPreviewLayer {
+                PatrolPreviewView(previewLayer: layer)
+                    .ignoresSafeArea()
+            }
+
             AxionWebView(store: store)
                 .ignoresSafeArea()
                 .opacity(isOffline ? 0 : 1)
@@ -380,6 +399,25 @@ struct WebViewContainer: View {
             options: [.new],
             context: nil
         )
+
+        // ── Patrol preview layer callbacks ─────────────────────────────────────
+        // PatrolCameraService calls onPatrolActive (main queue) once the
+        // AVCaptureSession is running and the AVCaptureVideoPreviewLayer is ready.
+        // We make the WKWebView background transparent so the preview layer
+        // rendered behind it (PatrolPreviewView) is visible through the page.
+        PatrolCameraService.shared.onPatrolActive = { layer in
+            print("[WVC] onPatrolActive — inserting preview layer, setting WKWebView background clear")
+            store.webView.backgroundColor = .clear
+            patrolPreviewLayer = layer
+        }
+        // When patrol stops (navigated away or Stop tapped), restore the white
+        // WKWebView background and remove the PatrolPreviewView from the ZStack.
+        PatrolCameraService.shared.onPatrolStopped = {
+            print("[WVC] onPatrolStopped — removing preview layer, restoring WKWebView background")
+            patrolPreviewLayer = nil
+            store.webView.backgroundColor = .white
+        }
+
         // Give the sync manager access to the shared webView session
         SyncManager.shared.setWebView(store.webView)
         PatrolCameraService.shared.setWebView(store.webView)
@@ -430,6 +468,47 @@ struct WebViewContainer: View {
         comps.path   = "/m/lpr/patrol"
         guard let url = comps.url else { return }
         store.webView.load(URLRequest(url: url))
+    }
+}
+
+// MARK: - Patrol camera preview view
+
+/// UIView subclass that hosts an AVCaptureVideoPreviewLayer and keeps its
+/// frame in sync with the view's bounds via layoutSubviews.
+private final class PatrolPreviewHostView: UIView {
+    let previewLayer: AVCaptureVideoPreviewLayer
+
+    init(previewLayer: AVCaptureVideoPreviewLayer) {
+        self.previewLayer = previewLayer
+        super.init(frame: .zero)
+        backgroundColor = .black
+        previewLayer.videoGravity = .resizeAspectFill
+        layer.addSublayer(previewLayer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0)
+        previewLayer.frame = bounds
+        CATransaction.commit()
+    }
+}
+
+/// SwiftUI wrapper for PatrolPreviewHostView.
+/// Placed at the bottom of the WebViewContainer ZStack so the camera
+/// preview renders behind the (now-transparent) WKWebView.
+private struct PatrolPreviewView: UIViewRepresentable {
+    let previewLayer: AVCaptureVideoPreviewLayer
+
+    func makeUIView(context: Context) -> PatrolPreviewHostView {
+        PatrolPreviewHostView(previewLayer: previewLayer)
+    }
+
+    func updateUIView(_ uiView: PatrolPreviewHostView, context: Context) {
+        // Layout is driven by layoutSubviews in PatrolPreviewHostView
     }
 }
 

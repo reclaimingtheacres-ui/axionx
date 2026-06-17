@@ -23,6 +23,20 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
     private let cooldownSeconds: TimeInterval = 30.0
     private let frameInterval: TimeInterval = 0.6
 
+    // ── Live preview layer ─────────────────────────────────────────────────────
+    /// Set when patrol is running; nil otherwise.
+    /// WebViewContainer observes onPatrolActive / onPatrolStopped to insert /
+    /// remove this layer from the view hierarchy behind the WKWebView.
+    private(set) var previewLayer: AVCaptureVideoPreviewLayer?
+
+    /// Called on the main queue when the session starts and the preview layer
+    /// is ready to be inserted into the native view hierarchy.
+    var onPatrolActive: ((AVCaptureVideoPreviewLayer) -> Void)?
+
+    /// Called on the main queue when patrol stops and the preview layer should
+    /// be removed from the view hierarchy.
+    var onPatrolStopped: (() -> Void)?
+
     func setWebView(_ wv: WKWebView) {
         self.webView = wv
     }
@@ -163,6 +177,18 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         captureSession.addOutput(output)
         captureSession.commitConfiguration()
 
+        // ── Create the preview layer so camera frames are visible ─────────────
+        // The layer is inserted behind the WKWebView by WebViewContainer via
+        // the onPatrolActive callback.  The HTML background is made transparent
+        // (injectBackground) so the preview shows through the web page overlay.
+        let pl = AVCaptureVideoPreviewLayer(session: captureSession)
+        pl.videoGravity = .resizeAspectFill
+        if let conn = pl.connection, conn.isVideoOrientationSupported {
+            conn.videoOrientation = .portrait
+        }
+        self.previewLayer = pl
+        print("[PatrolCamera] Preview layer created: \(pl)")
+
         self.session = captureSession
         isRunning = true
 
@@ -173,10 +199,24 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         _lastFrameTime = Date.distantPast
         stateLock.unlock()
 
+        // Start the capture session on a background queue
         outputQueue.async { [weak self] in
             print("[PatrolCamera] Starting capture session on outputQueue")
             self?.session?.startRunning()
-            print("[PatrolCamera] Capture session running")
+            print("[PatrolCamera] Capture session running: \(self?.session?.isRunning == true)")
+        }
+
+        // Make the web page background transparent so the preview layer below
+        // the WKWebView is visible through the HTML content
+        injectBackground(transparent: true)
+
+        // Signal WebViewContainer — it will insert the preview layer into the
+        // native view hierarchy behind the WKWebView
+        let capturedLayer = pl
+        DispatchQueue.main.async { [weak self] in
+            guard self != nil else { return }
+            print("[PatrolCamera] Calling onPatrolActive callback")
+            self?.onPatrolActive?(capturedLayer)
         }
 
         sendStatus("active")
@@ -187,15 +227,25 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
         guard isRunning else { return }
         print("[PatrolCamera] Stopping patrol")
         isRunning = false
+
         outputQueue.async { [weak self] in
             self?.session?.stopRunning()
         }
         session = nil
+        previewLayer = nil
 
         stateLock.lock()
         _lastCandidate = ""
         _consecutiveCount = 0
         stateLock.unlock()
+
+        // Restore opaque black background (patrol page CSS default)
+        injectBackground(transparent: false)
+
+        // Signal WebViewContainer to remove the preview layer
+        DispatchQueue.main.async { [weak self] in
+            self?.onPatrolStopped?()
+        }
     }
 
     private func setTorch(_ on: Bool) {
@@ -217,6 +267,24 @@ final class PatrolCameraService: NSObject, WKScriptMessageHandler {
     private func sendPlate(_ plate: String) {
         let safe = plate.replacingOccurrences(of: "'", with: "\\'")
         let js = "if(window._nativePatrolPlateDetected) window._nativePatrolPlateDetected('\(safe)');"
+        DispatchQueue.main.async { [weak self] in
+            self?.webView?.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    /// Injects CSS to make the patrol page body transparent (preview visible)
+    /// or restores the default black background (patrol stopped / navigated away).
+    private func injectBackground(transparent: Bool) {
+        let bg = transparent ? "transparent" : "#000"
+        let js = """
+            (function() {
+                var bg = '\(bg)';
+                document.documentElement.style.setProperty('background', bg, 'important');
+                document.body.style.setProperty('background', bg, 'important');
+                var mc = document.querySelector('.m-content');
+                if (mc) mc.style.setProperty('background', bg, 'important');
+            })();
+        """
         DispatchQueue.main.async { [weak self] in
             self?.webView?.evaluateJavaScript(js, completionHandler: nil)
         }
