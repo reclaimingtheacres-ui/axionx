@@ -2329,34 +2329,47 @@ _LPR_TMP = "/tmp/axionx_lpr"
 os.makedirs(_LPR_TMP, exist_ok=True)
 
 
-# ── EasyOCR lazy singleton ────────────────────────────────────────────────────
-# EasyOCR uses deep-learning scene-text detection, which handles full car
-# photos far better than Tesseract (a document OCR engine).  Initialised once
-# on first LPR request; subsequent calls reuse the loaded model.
+# ── LPR OCR — EasyOCR optional singleton ─────────────────────────────────────
+# EasyOCR (deep-learning scene-text) is the preferred engine.  It is NOT in
+# requirements.txt — it must be manually installed in environments that need
+# full scene-photo detection (dev/Replit).  Azure production falls back to
+# Tesseract automatically.  Installing easyocr adds ~400 MB RAM (PyTorch) so
+# it is intentionally kept out of the standard Azure deployment.
 _lpr_easyocr_reader = None
 _lpr_easyocr_lock = threading.Lock()
+_LPR_EASYOCR_AVAILABLE = None   # None = untested, True/False after first attempt
 
 
 def _get_lpr_reader():
-    global _lpr_easyocr_reader
-    if _lpr_easyocr_reader is None:
-        with _lpr_easyocr_lock:
-            if _lpr_easyocr_reader is None:
-                try:
-                    import easyocr
-                    _lpr_easyocr_reader = easyocr.Reader(
-                        ['en'], gpu=False, verbose=False
-                    )
-                    app.logger.warning("[LPR-OCR-DIAG] EasyOCR reader initialised")
-                except Exception as exc:
-                    app.logger.warning(
-                        "[LPR-OCR-DIAG] EasyOCR init failed: %s", exc
-                    )
+    """Return cached EasyOCR reader, or None if easyocr is not installed."""
+    global _lpr_easyocr_reader, _LPR_EASYOCR_AVAILABLE
+    if _LPR_EASYOCR_AVAILABLE is False:
+        return None
+    if _lpr_easyocr_reader is not None:
+        return _lpr_easyocr_reader
+    with _lpr_easyocr_lock:
+        if _lpr_easyocr_reader is None:
+            try:
+                import easyocr  # optional dep — not in requirements.txt
+                _lpr_easyocr_reader = easyocr.Reader(
+                    ['en'], gpu=False, verbose=False
+                )
+                _LPR_EASYOCR_AVAILABLE = True
+                app.logger.warning("[LPR-OCR-DIAG] EasyOCR reader initialised (primary path)")
+            except ImportError:
+                _LPR_EASYOCR_AVAILABLE = False
+                app.logger.warning(
+                    "[LPR-OCR-DIAG] EasyOCR not installed — Tesseract fallback active. "
+                    "Install easyocr for full scene-photo detection."
+                )
+            except Exception as exc:
+                _LPR_EASYOCR_AVAILABLE = False
+                app.logger.warning("[LPR-OCR-DIAG] EasyOCR init error: %s", exc)
     return _lpr_easyocr_reader
 
 
 def _is_plate_like(norm: str) -> bool:
-    """Return True for a string that could be an Australian registration."""
+    """Return True for a normalised string that could be an Australian plate."""
     return (
         4 <= len(norm) <= 8
         and any(c.isdigit() for c in norm)
@@ -2364,102 +2377,218 @@ def _is_plate_like(norm: str) -> bool:
     )
 
 
-def extract_plate_from_image(image_path: str) -> str:
-    """Run scene-text OCR on an uploaded plate photo and return the best plate.
-
-    Uses EasyOCR (deep-learning, scene-text aware) rather than Tesseract.
-    Tesseract is a document OCR engine and returns nothing but noise on full
-    car photos because it cannot distinguish plate characters from grille
-    hexagons, concrete texture, or bumper trim.
-
-    Pipeline:
-      1. Crop to the bottom 55 % of portrait images — the plate is always in
-         the lower half; cropping removes sky, windscreen and most grille noise.
-      2. Run EasyOCR with bounding-box detail.
-      3. Log every observation with its raw text, normalised form, confidence,
-         and plate-like verdict.
-      4. Try adjacent-token merging: VIC plates have a decorative state emblem
-         between character groups (e.g. 1EN [emblem] 6MG) which causes Vision
-         and EasyOCR to split one plate into two short tokens.  Horizontally
-         adjacent tokens are concatenated and re-evaluated.
-      5. Return the highest-confidence plate-like candidate, or "" if none found.
-    """
+def _lpr_easyocr_path(img_pil):
+    """EasyOCR scene-text path.  Returns best plate string or ''."""
     try:
         import numpy as np
-
-        file_bytes = os.path.getsize(image_path)
-        img_pil = Image.open(image_path).convert("RGB")
-        w, h = img_pil.size
-
-        # Crop bottom 55 % for portrait photos; skip crop for landscape/square.
-        if h > w:
-            crop_y = int(h * 0.45)
-        else:
-            crop_y = 0
-        img_crop = img_pil.crop((0, crop_y, w, h))
-        img_arr = np.array(img_crop)
-
-        app.logger.warning(
-            "[LPR-OCR-DIAG] path=%s file_bytes=%d original_wh=%s "
-            "crop_y=%d crop_wh=%s engine=easyocr",
-            image_path, file_bytes, (w, h), crop_y, img_crop.size
-        )
-
         reader = _get_lpr_reader()
         if reader is None:
-            app.logger.warning("[LPR-OCR-DIAG] EasyOCR unavailable — returning empty")
             return ""
 
-        results = reader.readtext(img_arr, detail=1, paragraph=False)
-        app.logger.warning("[LPR-OCR-DIAG] easyocr observations=%d", len(results))
+        w, h = img_pil.size
+        # Portrait: crop to bottom 55% — removes sky, windscreen, most grille.
+        # Landscape/square: use full image (dashcam, in-car mount).
+        crop_y = int(h * 0.45) if h > w else 0
+        img_crop = img_pil.crop((0, crop_y, w, h))
+
+        app.logger.warning(
+            "[LPR-OCR-DIAG][easyocr] crop_y=%d crop_wh=%s", crop_y, img_crop.size
+        )
+
+        results = reader.readtext(np.array(img_crop), detail=1, paragraph=False)
+        app.logger.warning("[LPR-OCR-DIAG][easyocr] observations=%d", len(results))
 
         candidates = []
-        positioned = []   # [(left_x, right_x, norm, conf)] for merge pass
+        positioned = []
 
         for bbox, text, conf in results:
             norm = normalise_registration(text)
-            plate_like = _is_plate_like(norm)
+            pl = _is_plate_like(norm)
             app.logger.warning(
-                "[LPR-OCR-DIAG] raw=%r norm=%r conf=%.3f len=%d plate_like=%s",
-                text, norm, conf, len(norm), plate_like
+                "[LPR-OCR-DIAG][easyocr] raw=%r norm=%r conf=%.3f len=%d plate_like=%s",
+                text, norm, conf, len(norm), pl
             )
-            if plate_like:
+            if pl:
                 candidates.append((norm, conf))
-            if norm and len(norm) >= 1:
-                left_x = min(pt[0] for pt in bbox)
-                right_x = max(pt[0] for pt in bbox)
-                positioned.append((left_x, right_x, norm, conf))
+            if norm:
+                lx = min(pt[0] for pt in bbox)
+                rx = max(pt[0] for pt in bbox)
+                positioned.append((lx, rx, norm, conf))
 
-        # Adjacent-token merge pass — catches split VIC plates (1EN + 6MG).
+        # Adjacent-merge pass — VIC plates split around decorative state emblem
+        # e.g. "1EN" + "6MG" must be joined to form the full plate "1EN6MG".
         positioned.sort(key=lambda x: x[0])
-        crop_w = img_crop.width
+        cw = img_crop.width
         for i in range(len(positioned) - 1):
             lx1, rx1, n1, c1 = positioned[i]
             lx2, rx2, n2, c2 = positioned[i + 1]
-            gap = lx2 - rx1
-            if gap < crop_w * 0.08:           # tokens within 8 % of crop width
+            if lx2 - rx1 < cw * 0.08:
                 merged = normalise_registration(n1 + n2)
                 if _is_plate_like(merged):
-                    avg_conf = (c1 + c2) / 2
+                    avg = (c1 + c2) / 2
                     app.logger.warning(
-                        "[LPR-OCR-DIAG] MERGE %r+%r -> %r conf=%.3f",
-                        n1, n2, merged, avg_conf
+                        "[LPR-OCR-DIAG][easyocr] MERGE %r+%r -> %r conf=%.3f",
+                        n1, n2, merged, avg
                     )
-                    candidates.append((merged, avg_conf))
+                    candidates.append((merged, avg))
 
         if not candidates:
             app.logger.warning(
-                "[LPR-OCR-DIAG] REJECTED — no plate candidates after merge pass"
+                "[LPR-OCR-DIAG][easyocr] REJECTED — no plate candidates found"
             )
             return ""
 
         candidates.sort(key=lambda x: -x[1])
-        best_plate, best_conf = candidates[0]
+        best, conf = candidates[0]
         app.logger.warning(
-            "[LPR-OCR-DIAG] RESULT=%r conf=%.3f (from %d candidates)",
-            best_plate, best_conf, len(candidates)
+            "[LPR-OCR-DIAG][easyocr] RESULT=%r conf=%.3f (%d candidates)",
+            best, conf, len(candidates)
         )
-        return best_plate
+        return best
+
+    except Exception as exc:
+        app.logger.warning("[LPR-OCR-DIAG][easyocr] exception: %s", exc)
+        return ""
+
+
+def _lpr_tesseract_path(img_pil):
+    """Tesseract multi-crop fallback.
+
+    Tesseract is a document OCR engine — it cannot read full-scene car photos
+    reliably.  This path works best when the plate fills the frame (close-up
+    shots, cropped dashcam feeds).  Multiple crops and PSM modes are tried in
+    order from most-specific to broadest; the first plate-like token wins.
+
+    Crops attempted (portrait images only add plate-zone crops):
+      1. Tight plate zone  — y 75–92 %, x 25–75 %  (most specific)
+      2. Lower third       — y 67–100 %, full width
+      3. Lower half        — y 50–100 %, full width
+      4. Full image        — last resort
+
+    Each crop is tried with:
+      - Normal preprocessing (contrast + sharpen)
+      - Inverted  (dark-background plates like VIC blue)
+
+    PSM modes per crop size:
+      - Small crop  (w < 600 px): PSM 8 (single word), PSM 7 (single line)
+      - Medium crop (w < 1000 px): PSM 7, PSM 8, PSM 11
+      - Large crop / full image:   PSM 11 (sparse text)
+    """
+    from PIL import ImageOps
+
+    w, h = img_pil.size
+    gray = img_pil.convert("L")
+
+    def _make_crops():
+        crops = []
+        if h > w:  # portrait — phone photo
+            crops.append(("tight_plate_zone",
+                           gray.crop((int(w * .25), int(h * .75),
+                                      int(w * .75), int(h * .92)))))
+            crops.append(("lower_third",
+                           gray.crop((0, int(h * .67), w, h))))
+            crops.append(("lower_half",
+                           gray.crop((0, h // 2, w, h))))
+        crops.append(("full", gray))
+        return crops
+
+    def _psm_list(crop_w):
+        if crop_w < 600:
+            return (8, 7)
+        if crop_w < 1000:
+            return (7, 8, 11)
+        return (11,)
+
+    def _preprocess(crop):
+        cw = crop.width
+        # Only upscale genuinely small crops — avoid Tesseract timeout on large images
+        if cw < 500:
+            crop = crop.resize((cw * 2, crop.height * 2), Image.LANCZOS)
+        crop = ImageEnhance.Contrast(crop).enhance(2.5)
+        crop = crop.filter(ImageFilter.SHARPEN)
+        return crop
+
+    def _run_psms(label, crop):
+        """Return first plate token found across PSM modes, or ''."""
+        processed = _preprocess(crop)
+        inverted  = ImageOps.invert(_preprocess(crop))
+        psms = _psm_list(crop.width)
+        wl = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        for variant, img in (("normal", processed), ("inverted", inverted)):
+            for psm in psms:
+                cfg = f"--oem 3 --psm {psm} {wl}"
+                raw = pytesseract.image_to_string(img, config=cfg).strip()
+                tokens = [normalise_registration(t) for t in raw.split() if t]
+                plate_tokens = [t for t in tokens if _is_plate_like(t)]
+                app.logger.warning(
+                    "[LPR-OCR-DIAG][tesseract] crop=%s variant=%s psm=%d "
+                    "raw=%r plate_tokens=%r",
+                    label, variant, psm, raw[:80], plate_tokens
+                )
+                if plate_tokens:
+                    best = plate_tokens[0]
+                    app.logger.warning(
+                        "[LPR-OCR-DIAG][tesseract] RESULT=%r "
+                        "(crop=%s variant=%s psm=%d)",
+                        best, label, variant, psm
+                    )
+                    return best
+        return ""
+
+    for label, crop in _make_crops():
+        result = _run_psms(label, crop)
+        if result:
+            return result
+
+    app.logger.warning(
+        "[LPR-OCR-DIAG][tesseract] REJECTED — no plate found across all crops"
+    )
+    return ""
+
+
+def extract_plate_from_image(image_path: str) -> str:
+    """Run OCR on an uploaded plate photo and return the normalised plate text.
+
+    Engine selection:
+      1. EasyOCR  — used when installed (not in requirements.txt; manually
+                    deployed to envs that need full scene-photo detection).
+                    Handles full car photos, grille backgrounds, VIC emblems.
+      2. Tesseract — automatic fallback when EasyOCR is absent.  Works best
+                     for close-up plate photos; limited on full-scene images.
+
+    This design keeps Azure production stable (no PyTorch overhead) while
+    providing best-quality detection in dev/field environments where EasyOCR
+    has been manually installed.
+    """
+    try:
+        file_bytes = os.path.getsize(image_path)
+        img_pil = Image.open(image_path).convert("RGB")
+        w, h = img_pil.size
+
+        app.logger.warning(
+            "[LPR-OCR-DIAG] START path=%s file_bytes=%d wh=%s",
+            image_path, file_bytes, (w, h)
+        )
+
+        # ── Primary: EasyOCR (if installed) ──────────────────────────────────
+        result = _lpr_easyocr_path(img_pil)
+        if result:
+            return result
+
+        # ── Fallback: Tesseract multi-crop ───────────────────────────────────
+        if _LPR_EASYOCR_AVAILABLE:
+            # EasyOCR was available but found nothing — Tesseract unlikely to
+            # do better, but try anyway as a last resort.
+            app.logger.warning(
+                "[LPR-OCR-DIAG] EasyOCR returned empty — trying Tesseract fallback"
+            )
+        result = _lpr_tesseract_path(img_pil)
+
+        if not result:
+            app.logger.warning(
+                "[LPR-OCR-DIAG] FINAL='' — both engines found no plate candidates"
+            )
+        return result
 
     except Exception as exc:
         app.logger.warning("[LPR-OCR-DIAG] exception: %s", exc)
