@@ -255,13 +255,9 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
     c.setFillColor(white)
     c.rect(27, 612, 250, 27, fill=1, stroke=0)
     c.setFillColor(DARK)
-    c.setFont(FONT_B, 8)
-    c.drawString(28, 630, 'Customer Confirmed Address:')
-    _put(148, 630, _v(data, 'repo_address'), fs=8, max_ch=32)
-
-    c.setFont(FONT_B, 8)
-    c.drawString(28, 617, 'Repossession Address:')
-    _put(123, 617, _v(data, 'repossession_address') or _v(data, 'repo_address'), fs=8, max_ch=36)
+    c.setFont(FONT_B, FS)
+    c.drawString(28, 621, 'Repossession Address:')
+    _put(160, 621, _v(data, 'repossession_address') or _v(data, 'repo_address'), max_ch=40)
 
     _put(32, 587, _v(data, 'year'), max_ch=6)
     _put(105, 587, _v(data, 'make'), max_ch=12)
@@ -398,12 +394,6 @@ def _generate_vir_pdf_fallback(data, agent_sig=None, customer_sig=None):
     c.drawString(PAGE_W - MR - 130, y, 'Account No:')
     c.setFont('Helvetica', 8)
     c.drawString(PAGE_W - MR - 68, y, _trunc(_v(data, 'account_number'), 16))
-    y -= 12
-
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(ML, y, 'Customer Confirmed Address:')
-    c.setFont('Helvetica', 8)
-    c.drawString(ML + 150, y, _trunc(_v(data, 'repo_address'), 42))
     y -= 12
 
     c.setFont('Helvetica-Bold', 8)
