@@ -8351,6 +8351,29 @@ _MY_TODAY_NOTICE_TYPES = frozenset([
 _GC_PERSONAL_TYPES = frozenset([
     "Proposed Leave", "Approved Leave", "Agent Unavailable",
 ])
+# Leave/day-off types that Agents may view (read-only) when the entry belongs
+# to an Admin or Management user — lets field agents know when office staff
+# are unavailable, without exposing other agents' personal leave requests.
+_GC_STAFF_VISIBLE_TYPES = frozenset([
+    "Approved Leave", "Agent Unavailable",
+])
+_GC_STAFF_ROLES = ("admin", "both", "management")
+
+
+def _gc_staff_visibility_sql(pt_list):
+    """Build the extra OR clause + params letting Agents view approved
+    Admin/Management leave entries. `pt_list` must be the same ordered
+    list used for the NOT IN (...) personal-types placeholder elsewhere,
+    so callers can share bind param ordering."""
+    _sv = sorted(_GC_STAFF_VISIBLE_TYPES)
+    _sv_ph = ",".join("?" * len(_sv))
+    _role_ph = ",".join("?" * len(_GC_STAFF_ROLES))
+    clause = (
+        f"(gce.status = 'approved' AND gce.entry_type IN ({_sv_ph})"
+        f" AND EXISTS (SELECT 1 FROM users su WHERE su.id = gce.user_id"
+        f" AND su.role IN ({_role_ph})))"
+    )
+    return clause, list(_sv) + list(_GC_STAFF_ROLES)
 
 
 def _client_update_request_eligibility(conn, job_id: int) -> dict:
@@ -21278,11 +21301,12 @@ def my_today():
     else:
         _pt       = sorted(_GC_PERSONAL_TYPES)
         _pt_ph    = ",".join("?" * len(_pt))
+        _staff_clause, _staff_params = _gc_staff_visibility_sql(_pt)
         _vis_cond = (
             "AND gce.visibility = 'everyone' "
-            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}))"
+            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}) OR {_staff_clause})"
         )
-        _vis_params = [session.get("user_id")] + _pt
+        _vis_params = [session.get("user_id")] + _pt + _staff_params
     try:
         _gc_raw = conn.execute(f"""
             SELECT gce.*, u.full_name AS user_name
@@ -22987,11 +23011,12 @@ def m_today():
     else:
         _pt       = sorted(_GC_PERSONAL_TYPES)
         _pt_ph    = ",".join("?" * len(_pt))
+        _staff_clause, _staff_params = _gc_staff_visibility_sql(_pt)
         _vis_cond = (
             "AND gce.visibility = 'everyone' "
-            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}))"
+            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}) OR {_staff_clause})"
         )
-        _vis_params = [uid] + _pt
+        _vis_params = [uid] + _pt + _staff_params
     try:
         _gc_raw = conn.execute(f"""
             SELECT gce.*, u.full_name AS user_name
@@ -31764,17 +31789,21 @@ def group_calendar_api_entries():
     params  = [end_str, start_str]
 
     if not is_admin:
-        # Agents see their own entries OR general (non-personal) entries visible to everyone.
-        # Personal types (leave/unavailable) are only visible to the entry's own user.
+        # Agents see their own entries OR general (non-personal) entries visible to everyone
+        # OR approved Admin/Management leave (read-only visibility of staff day-off events).
+        # Personal types (leave/unavailable) belonging to other AGENTS remain hidden.
         _pt = sorted(_GC_PERSONAL_TYPES)  # stable order for placeholders
         _pt_ph = ",".join("?" * len(_pt))
+        _staff_clause, _staff_params = _gc_staff_visibility_sql(_pt)
         wheres.append(
             f"(gce.user_id = ? OR (gce.visibility = 'everyone'"
             f" AND gce.entry_type NOT IN ({_pt_ph})"
-            f" AND (gce.entry_type != 'Other' OR gce.user_id IS NULL)))"
+            f" AND (gce.entry_type != 'Other' OR gce.user_id IS NULL))"
+            f" OR {_staff_clause})"
         )
         params.append(uid)
         params.extend(_pt)
+        params.extend(_staff_params)
         wheres.append("gce.status != 'rejected'")
     else:
         if filter_stat not in ("all", ""):
@@ -31806,7 +31835,12 @@ def group_calendar_api_entries():
         ORDER BY gce.start_date, gce.entry_type
     """, params).fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    result = [dict(r) for r in rows]
+    if not is_admin:
+        for _e in result:
+            if _e.get("entry_type") in _GC_STAFF_VISIBLE_TYPES and _e.get("user_id") != uid:
+                _e["notes"] = None
+    return jsonify(result)
 
 
 @app.post("/group-calendar/entries")
@@ -32101,6 +32135,7 @@ def m_group_calendar():
         else:
             _pt = sorted(_GC_PERSONAL_TYPES)
             _pt_ph = ",".join("?" * len(_pt))
+            _staff_clause, _staff_params = _gc_staff_visibility_sql(_pt)
             entries = conn.execute(f"""
                 SELECT gce.*, u.full_name AS user_name
                 FROM group_calendar_entries gce
@@ -32113,11 +32148,16 @@ def m_group_calendar():
                       AND gce.entry_type NOT IN ({_pt_ph})
                       AND (gce.entry_type != 'Other' OR gce.user_id IS NULL)
                     )
+                    OR {_staff_clause}
                   )
                   AND gce.status != 'rejected'
                 ORDER BY gce.start_date, gce.entry_type
-            """, (today_str, end_str, uid, *_pt)).fetchall()
+            """, (today_str, end_str, uid, *_pt, *_staff_params)).fetchall()
         entry_list = [dict(r) for r in entries]
+        if not is_admin:
+            for _e in entry_list:
+                if _e.get("entry_type") in _GC_STAFF_VISIBLE_TYPES and _e.get("user_id") != uid:
+                    _e["notes"] = None
     except Exception:
         entry_list = []
     conn.close()
