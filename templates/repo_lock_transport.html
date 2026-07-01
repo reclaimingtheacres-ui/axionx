@@ -47,7 +47,10 @@
       {{ fi('repo_date',       'Date',            rec.repo_date) }}
       {{ fi('customer_name',   'Customer Name',   rec.customer_name) }}
     </div>
-    <div style="margin-top:12px;">{{ fi('repo_address', 'Repossession Address', rec.repo_address) }}</div>
+    <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
+      {{ fi('repo_address', 'Customer Confirmed Address', rec.repo_address) }}
+      {{ fi('repossession_address', 'Repossession Address', rec.repossession_address) }}
+    </div>
     </div>
 
     {# ── Security Details ── #}

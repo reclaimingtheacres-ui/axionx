@@ -773,6 +773,7 @@ CREATE TABLE repo_lock_records (
         customer_name             TEXT,
         account_number            TEXT,
         repo_address              TEXT,
+        repossession_address      TEXT,
         contact_number            TEXT,
         description               TEXT,
         registration              TEXT,

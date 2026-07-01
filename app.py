@@ -639,6 +639,8 @@ def _schema_is_current():
             rl_cols = [r[1] for r in conn.execute("PRAGMA table_info(repo_lock_records)").fetchall()]
             if "auction_yard_id" not in rl_cols:
                 return False
+            if "repossession_address" not in rl_cols:
+                return False
             gc_tbl = conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='group_calendar_entries'"
             ).fetchone()
@@ -1862,6 +1864,7 @@ def _migrate_update_builder():
         customer_name             TEXT,
         account_number            TEXT,
         repo_address              TEXT,
+        repossession_address      TEXT,
         contact_number            TEXT,
         description               TEXT,
         registration              TEXT,
@@ -1925,6 +1928,7 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "repo_lock_records", "tow_signed_at",    "TEXT")
     add_column_if_missing(cur, "repo_lock_records", "notice_delivery",  "TEXT")
     add_column_if_missing(cur, "repo_lock_records", "tow_phone",        "TEXT")
+    add_column_if_missing(cur, "repo_lock_records", "repossession_address", "TEXT")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS repo_lock_queue (
@@ -11156,6 +11160,8 @@ def _repo_lock_note(d):
     if d.get("contact_number"):
         lines.append(f"Mobile:     {d['contact_number']}")
     lines.append(f"Customer Confirmed Address:  {_v('repo_address')}")
+    _repo_poss_addr = d.get('repossession_address') or d.get('repo_address') or ""
+    lines.append(f"Repossession Address:        {_repo_poss_addr or '—'}")
 
     lines.append("")
     lines.append("RECOVERY:")
@@ -11347,6 +11353,9 @@ def repo_lock_get(job_id: int, item_id: int):
         "agent_user_id":    session.get("user_id") or "",
         # Surrendered/Repossessed Address: falls back to job address if no customer address
         "repo_address":     job.get("job_address") or "",
+        # Repossession Address: physical location the asset was actually recovered from.
+        # Defaults to job address, independently editable from Customer Confirmed Address.
+        "repossession_address": job.get("job_address") or "",
     }
     if customer:
         name_parts = []
@@ -11404,7 +11413,7 @@ def repo_lock_save(job_id: int, item_id: int):
         fields = [
             "client_name", "client_reference", "swpi_ref", "finance_company",
             "repo_date", "start_time", "end_time",
-            "customer_name", "account_number", "repo_address", "contact_number",
+            "customer_name", "account_number", "repo_address", "repossession_address", "contact_number",
             "description", "registration", "rego_expiry", "registered", "insured", "insured_with",
             "vin", "engine_number", "speedometer",
             "person_present", "keys_obtained", "how_many_keys", "vol_surrender",
@@ -11425,6 +11434,7 @@ def repo_lock_save(job_id: int, item_id: int):
         add_column_if_missing(conn, "repo_lock_records", "tow_operator",       "TEXT")
         add_column_if_missing(conn, "repo_lock_records", "tow_contact_number", "TEXT")
         add_column_if_missing(conn, "repo_lock_records", "auction_yard_id",    "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "repossession_address", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in fields}
         ts = now_ts()
         uid = session.get("user_id")
@@ -11465,7 +11475,7 @@ def repo_lock_save(job_id: int, item_id: int):
 _RL_FIELDS = [
     "client_name", "client_reference", "swpi_ref", "finance_company",
     "repo_date", "start_time", "end_time",
-    "customer_name", "account_number", "repo_address", "contact_number",
+    "customer_name", "account_number", "repo_address", "repossession_address", "contact_number",
     "description", "registration", "rego_expiry", "registered", "insured", "insured_with",
     "vin", "engine_number", "speedometer",
     "person_present", "keys_obtained", "how_many_keys", "vol_surrender",
@@ -11497,6 +11507,7 @@ def repo_lock_submit(job_id: int, item_id: int):
         add_column_if_missing(conn, "repo_lock_records", "tow_phone",          "TEXT")
         add_column_if_missing(conn, "repo_lock_records", "tow_operator",       "TEXT")
         add_column_if_missing(conn, "repo_lock_records", "tow_contact_number", "TEXT")
+        add_column_if_missing(conn, "repo_lock_records", "repossession_address", "TEXT")
         values = {fld: (f.get(fld) or "").strip() or None for fld in _RL_FIELDS}
         ts  = now_ts()
         uid = session.get("user_id")
@@ -11822,6 +11833,7 @@ def _rl_pdf_context(conn, rec, job_id):
         "customer_name":        cust_name,
         "account_number":       rec.get("account_number") or job.get("account_number") or "",
         "repo_address":         rec.get("repo_address") or customer.get("address") or job.get("job_address") or "",
+        "repossession_address": rec.get("repossession_address") or job.get("job_address") or "",
         "deliver_to":           rec.get("deliver_to") or job.get("deliver_to") or "",
         "agent_name":           agent_name,
         "tow_company_name":     rec.get("tow_company_name") or tow_op.get("company_name") or "",
@@ -11890,7 +11902,7 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
     ts = now_ts()
 
     for col in ("station_officer", "personal_effects_removed", "personal_effects_list",
-                "colour", "make", "model", "year"):
+                "colour", "make", "model", "year", "repossession_address"):
         add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
 
     def _f(name):
@@ -11898,7 +11910,7 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
 
     conn.execute("""UPDATE repo_lock_records
                     SET swpi_ref=?, finance_company=?, repo_date=?, account_number=?,
-                        customer_name=?, repo_address=?,
+                        customer_name=?, repo_address=?, repossession_address=?,
                         registration=?, rego_expiry=?, vin=?, engine_number=?, speedometer=?,
                         colour=?, make=?, model=?, year=?,
                         person_present=?, keys_obtained=?, how_many_keys=?, vol_surrender=?,
@@ -11909,7 +11921,7 @@ def repo_lock_vir_pdf(job_id: int, rec_id: int):
                         agent_name=?, updated_at=?
                     WHERE id=?""",
                  (_f("swpi_ref"), _f("finance_company"), _f("repo_date"), _f("account_number"),
-                  _f("customer_name"), _f("repo_address"),
+                  _f("customer_name"), _f("repo_address"), _f("repossession_address"),
                   _f("registration"), _f("rego_expiry"), _f("vin"), _f("engine_number"), _f("speedometer"),
                   _f("colour"), _f("make"), _f("model"), _f("year"),
                   _f("person_present"), _f("keys_obtained"), _f("how_many_keys"), _f("vol_surrender"),
@@ -12002,7 +12014,7 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
             return jsonify({"ok": False, "error": "validation_error", "message": "Agent signature is required."}), 400
         return redirect(url_for("repo_lock_transport", job_id=job_id, rec_id=rec_id))
 
-    for col in ("make", "model", "tow_phone", "ti_invoice_to", "ti_reference"):
+    for col in ("make", "model", "tow_phone", "ti_invoice_to", "ti_reference", "repossession_address"):
         add_column_if_missing(conn, "repo_lock_records", col, "TEXT")
 
     def _f(name):
@@ -12012,7 +12024,7 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
 
     conn.execute("""UPDATE repo_lock_records
                     SET swpi_ref=?, finance_company=?, repo_date=?,
-                        customer_name=?, repo_address=?,
+                        customer_name=?, repo_address=?, repossession_address=?,
                         make=?, model=?, registration=?, vin=?,
                         tow_company_name=?, tow_phone=?, tow_costs=?,
                         deliver_to=?, delivery_address=?,
@@ -12020,7 +12032,7 @@ def repo_lock_transport_pdf(job_id: int, rec_id: int):
                         updated_at=?
                     WHERE id=?""",
                  (_f("swpi_ref"), _f("finance_company"), _f("repo_date"),
-                  _f("customer_name"), _f("repo_address"),
+                  _f("customer_name"), _f("repo_address"), _f("repossession_address"),
                   _f("make"), _f("model"), _f("registration"), _f("vin"),
                   _f("tow_company_name"), _f("tow_phone"), _f("tow_costs"),
                   _f("deliver_to"), _f("delivery_address"),

@@ -1276,6 +1276,7 @@ function axCopyJobAddress(addr) {
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Account Number</label><input type="text" name="account_number" id="rlm_account_number" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Confirmed Contact Number</label><input type="tel" name="contact_number" id="rlm_contact_number" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
           <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Customer Confirmed Address</label><input type="text" name="repo_address" id="rlm_repo_address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
+          <div style="margin-bottom:10px;"><label style="display:block;font-size:.72rem;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Repossession Address</label><input type="text" name="repossession_address" id="rlm_repossession_address" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;box-sizing:border-box;"></div>
         </div>
       </details>
 
@@ -1432,6 +1433,7 @@ function axCopyJobAddress(addr) {
   var _rlmFields = [
     "client_name","client_reference","swpi_ref","finance_company","repo_date",
     "start_time","end_time","customer_name","account_number","repo_address",
+    "repossession_address",
     "contact_number","description","registration","rego_expiry","registered",
     "insured","insured_with","vin","engine_number","speedometer","person_present",
     "keys_obtained","how_many_keys","vol_surrender","form_13","form_13_signed_by",
