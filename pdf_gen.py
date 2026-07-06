@@ -1710,6 +1710,159 @@ def generate_previous_file_notes_pdf(job_data: dict, notes: list) -> bytes:
 
 
 # =============================================================================
+# 8a-2. Progress Report — case details + formal notes (file/field), date order
+# =============================================================================
+
+def generate_progress_report_pdf(job_data: dict, notes: list) -> bytes:
+    """
+    Generate a Progress Report PDF: case details block followed by all formal
+    file/field notes and client updates in date order (oldest first).
+
+    Scratch notes, internal-only notes, admin scratchpad entries and
+    hidden/deleted notes must already be excluded by the caller — this
+    function renders exactly what it is given.
+
+    job_data keys: job_number, client_job_number, client_name, customer_name,
+                   customer_address, job_address, lender_name, account_number,
+                   security_details, current_status, generated_date
+    notes: list of dicts with keys: created_at, author_name, note_type, note_text
+           sorted oldest-first
+    Returns: PDF bytes
+    """
+    from datetime import datetime as _dt
+
+    BOTTOM   = 58
+    HDR_H    = 14
+    LINE_H   = 11
+    LABEL_W  = 130
+
+    buf = io.BytesIO()
+    c   = rl_canvas.Canvas(buf, pagesize=A4)
+    c.setTitle('Progress Report')
+
+    y = [PAGE_H - MT]
+
+    def _new_page():
+        c.showPage()
+        y[0] = PAGE_H - MT
+        job_no = job_data.get('job_number', '')
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(MUTED)
+        c.drawString(ML, y[0], f'PROGRESS REPORT \u2014 {job_no} (continued)')
+        y[0] -= 8
+        _hr(c, y[0])
+        y[0] -= 14
+
+    def _det(label, val):
+        if not val:
+            return
+        lines = simpleSplit(str(val), 'Helvetica', 8.5, CW - LABEL_W)
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(MUTED)
+        c.drawString(ML, y[0], label)
+        c.setFont('Helvetica', 8.5)
+        c.setFillColor(DARK)
+        for ln in lines:
+            c.drawString(ML + LABEL_W, y[0], ln)
+            y[0] -= 13
+
+    # ── Page 1 letterhead + title ──────────────────────────────────────────
+    y[0] = _swpi_letterhead(c)
+    y[0] -= 8
+
+    c.setFont('Helvetica-Bold', 13)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y[0], 'PROGRESS REPORT')
+    y[0] -= 6
+    _hr(c, y[0], strong=True)
+    y[0] -= 16
+
+    # ── Case details block ──────────────────────────────────────────────────
+    _det('Job No.:',              job_data.get('job_number'))
+    _det('Client Job No.:',       job_data.get('client_job_number'))
+    _det('Client:',               job_data.get('client_name'))
+    _det('Customer Name:',        job_data.get('customer_name'))
+    _det('Customer Address:',     job_data.get('customer_address'))
+    _det('Job Location:',         job_data.get('job_address'))
+    _det('Lender:',               job_data.get('lender_name'))
+    _det('Account Number:',       job_data.get('account_number'))
+    _det('Security Details:',     job_data.get('security_details'))
+    _det('Current Status:',       job_data.get('current_status'))
+    _det('PDF Generated:',        job_data.get('generated_date'))
+
+    y[0] -= 4
+    _hr(c, y[0])
+    y[0] -= 16
+
+    # ── No notes case ──────────────────────────────────────────────────────
+    if not notes:
+        c.setFont('Helvetica', 9)
+        c.setFillColor(MUTED)
+        c.drawCentredString(PAGE_W / 2, y[0], 'No formal notes recorded.')
+        c.save()
+        buf.seek(0)
+        return buf.read()
+
+    # ── Note count line ────────────────────────────────────────────────────
+    n = len(notes)
+    c.setFont('Helvetica-Bold', 8.5)
+    c.setFillColor(MUTED)
+    c.drawString(ML, y[0], f'{n} note{"s" if n != 1 else ""} — oldest to newest')
+    y[0] -= 16
+
+    # ── Notes ──────────────────────────────────────────────────────────────
+    for note in notes:
+        raw_ts = note.get('created_at', '')
+        try:
+            parsed  = _dt.strptime(str(raw_ts)[:19], '%Y-%m-%d %H:%M:%S')
+            date_str = parsed.strftime('%d/%m/%Y %H:%M')
+        except Exception:
+            date_str = str(raw_ts)[:16]
+
+        author     = (note.get('author_name') or 'System').strip()
+        note_type  = (note.get('note_type')   or '').strip()
+        note_text  = (note.get('note_text')   or '').strip()
+
+        header_line = f'{date_str}  \u2014  {author}'
+        if note_type:
+            header_line += f'  [{note_type}]'
+
+        body_lines = []
+        for para in note_text.split('\n'):
+            stripped = para.strip()
+            if stripped:
+                body_lines.extend(simpleSplit(stripped, 'Helvetica', 8.5, CW - 12))
+            else:
+                body_lines.append('')
+
+        needed_h = HDR_H + 4 + len(body_lines) * LINE_H + 10
+        if y[0] - needed_h < BOTTOM:
+            _new_page()
+
+        c.setFillColor(HexColor('#f3f4f6'))
+        c.rect(ML, y[0] - HDR_H + 2, CW, HDR_H, fill=1, stroke=0)
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(DARK)
+        c.drawString(ML + 4, y[0] - HDR_H + 5, header_line)
+        y[0] -= HDR_H + 4
+
+        c.setFont('Helvetica', 8.5)
+        c.setFillColor(DARK)
+        for line in body_lines:
+            if y[0] < BOTTOM:
+                _new_page()
+            if line:
+                c.drawString(ML + 8, y[0], line)
+            y[0] -= LINE_H
+
+        y[0] -= 8
+
+    c.save()
+    buf.seek(0)
+    return buf.read()
+
+
+# =============================================================================
 # 8b. Multi-job Previous File Notes — grouped by previous file reference
 # =============================================================================
 

@@ -2072,6 +2072,15 @@ table.fpa-table td { border: 1px solid #ccc; padding: 4px 8px; }
       </div>
     </div>
 
+    <!-- PROGRESS REPORT -->
+    <div class="col-6 col-md-4 col-lg-3">
+      <div class="form-card">
+        <div class="form-card-title">Progress Report</div>
+        <div class="form-card-sub">Case details &amp; formal notes in date order</div>
+        <a class="btn btn-primary btn-sm mt-1" href="/jobs/{{ job.id }}/progress-report">Open</a>
+      </div>
+    </div>
+
     <!-- CUSTOM TEMPLATES -->
     {% for tmpl in form_templates %}
     <div class="col-6 col-md-4 col-lg-3" id="ftcard-{{ tmpl.id }}">
@@ -5270,6 +5279,11 @@ function axCopyVin(btn) {
   if (rlEl) rlEl.addEventListener('show.bs.modal', function () { setIfEl('rl-date', todayStr()); setIfEl('rl-time', nowTimeStr()); });
   var tnEl = document.getElementById('formTermination');
   if (tnEl) tnEl.addEventListener('show.bs.modal', function () { setIfEl('tn-date', todayStr()); });
+
+  ['formBuilder', 'customFormModal'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentNode !== document.body) document.body.appendChild(el);
+  });
 
   (function() {
     var params = new URLSearchParams(window.location.search);

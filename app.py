@@ -12812,6 +12812,114 @@ def _forms_job_context(conn, job_id):
     return j
 
 
+def _progress_report_context(conn, job_id):
+    """Build case details + formal notes for the Progress Report PDF.
+
+    Only review_status='published' notes (file_note / field_note categories)
+    are included, in date order (oldest first). Scratch notes
+    (review_status='private_scratch'), notes pending review
+    ('submitted_for_review'), archived notes, and job_office_notes
+    (internal-only/admin scratchpad) are intentionally excluded entirely.
+    """
+    job = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        return None, None
+    job = dict(job)
+
+    client = {}
+    if job.get("client_id"):
+        r = conn.execute("SELECT * FROM clients WHERE id=?", (job["client_id"],)).fetchone()
+        if r:
+            client = dict(r)
+
+    customer = {}
+    if job.get("customer_id"):
+        r = conn.execute("SELECT * FROM customers WHERE id=?", (job["customer_id"],)).fetchone()
+        if r:
+            customer = dict(r)
+
+    customer_name = " ".join(filter(None, [customer.get("first_name"), customer.get("last_name")])).strip()
+    if not customer_name:
+        customer_name = customer.get("company") or ""
+
+    item_rows = conn.execute("SELECT * FROM job_items WHERE job_id=? ORDER BY id", (job_id,)).fetchall()
+    items = [dict(r) for r in item_rows]
+    sec_parts = []
+    for it in items:
+        bits = [it.get("year"), it.get("make"), it.get("model")]
+        desc = " ".join(b for b in bits if b) or it.get("description") or it.get("item_type") or "Item"
+        ident = it.get("reg") or it.get("vin") or it.get("serial_number") or it.get("identifier")
+        if ident:
+            desc += f" ({ident})"
+        sec_parts.append(desc)
+    security_details = "; ".join(sec_parts)
+
+    job_data = {
+        "job_number":        job.get("internal_job_number") or job.get("display_ref") or str(job_id),
+        "client_job_number": job.get("client_job_number") or "",
+        "client_name":       client.get("name") or "",
+        "customer_name":     customer_name,
+        "customer_address":  customer.get("address") or "",
+        "job_address":       job.get("job_address") or "",
+        "lender_name":       job.get("lender_name") or client.get("name") or "",
+        "account_number":    job.get("account_number") or "",
+        "security_details":  security_details,
+        "current_status":    job.get("status") or "",
+        "generated_date":    datetime.now().strftime("%d/%m/%Y %H:%M"),
+    }
+
+    note_rows = conn.execute("""
+        SELECT fn.*, u.full_name AS author_name
+        FROM job_field_notes fn
+        LEFT JOIN users u ON u.id = fn.created_by_user_id
+        WHERE fn.job_id = ? AND fn.review_status = 'published'
+          AND fn.note_category IN ('file_note', 'field_note')
+        ORDER BY fn.created_at ASC
+    """, (job_id,)).fetchall()
+
+    notes = []
+    for n in note_rows:
+        n = dict(n)
+        cat = n.get("note_category") or "file_note"
+        note_type = "Field Note" if cat == "field_note" else "File Note"
+        notes.append({
+            "created_at":  n.get("created_at"),
+            "author_name": n.get("author_name") or "System",
+            "note_type":   note_type,
+            "note_text":   n.get("note_text") or "",
+        })
+
+    return job_data, notes
+
+
+@app.get("/jobs/<int:job_id>/progress-report")
+@login_required
+def progress_report_pdf(job_id: int):
+    from flask import send_file
+    import pdf_gen as _pg
+
+    conn = db()
+    job_data, notes = _progress_report_context(conn, job_id)
+    if job_data is None:
+        conn.close()
+        return "Not found", 404
+
+    pdf_bytes = _pg.generate_progress_report_pdf(job_data, notes)
+
+    job_num = (job_data.get("job_number") or str(job_id)).replace("/", "-")
+    date_str = datetime.now().strftime("%d-%m-%Y")
+    orig_filename = f"{job_num} - Progress Report - {date_str}.pdf"
+
+    ts = now_ts()
+    _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
+                       orig_filename, "Progress Report", ts)
+    conn.commit()
+    conn.close()
+
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=orig_filename)
+
+
 @app.get("/forms")
 @login_required
 def forms_dashboard():
