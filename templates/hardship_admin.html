@@ -308,6 +308,14 @@
       });
   };
 
+  // Move modals to document.body to escape .ax-shell stacking context
+  // (ax-shell has position:relative; z-index:1 which puts it below the
+  //  Bootstrap backdrop at z-index:1040, making modals non-interactive)
+  ['hpNewModal', 'hpEditModal'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentElement !== document.body) document.body.appendChild(el);
+  });
+
   // Pre-populate new modal SMS template default
   var newModal = document.getElementById('hpNewModal');
   if (newModal) {
