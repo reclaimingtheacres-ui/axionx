@@ -12457,14 +12457,22 @@ def repo_lock_voluntary_surrender_pdf(job_id: int, rec_id: int):
 
 
 @app.get("/jobs/<int:job_id>/field-worksheet")
-@login_required
+@admin_required
 def field_worksheet(job_id: int):
     conn = db()
     job_row = conn.execute("""
         SELECT j.*,
                c.name AS client_name, c.nickname AS client_nickname,
-               (cu.first_name || ' ' || cu.last_name) AS customer_name,
-               u.full_name AS assigned_name
+               c.phone AS client_phone, c.email AS client_email,
+               (cu.first_name || ' ' || cu.last_name) AS customer_full_name,
+               cu.first_name AS customer_first_name,
+               cu.last_name  AS customer_last_name,
+               cu.company    AS customer_company,
+               cu.email      AS customer_email,
+               cu.dob        AS customer_dob,
+               cu.address    AS customer_address,
+               cu.notes      AS customer_notes,
+               u.full_name   AS assigned_name
         FROM jobs j
         LEFT JOIN clients c ON c.id = j.client_id
         LEFT JOIN customers cu ON cu.id = j.customer_id
@@ -12476,10 +12484,11 @@ def field_worksheet(job_id: int):
         return ("Not found", 404)
     job = dict(job_row)
 
-    item_row = conn.execute(
-        "SELECT * FROM job_items WHERE job_id = ? ORDER BY id LIMIT 1", (job_id,)
-    ).fetchone()
-    item = dict(item_row) if item_row else {}
+    item_rows = conn.execute(
+        "SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    items = [dict(r) for r in item_rows]
+    item = items[0] if items else {}
 
     rl_row = conn.execute(
         "SELECT * FROM repo_lock_records WHERE job_id = ? ORDER BY updated_at DESC LIMIT 1",
@@ -12487,78 +12496,174 @@ def field_worksheet(job_id: int):
     ).fetchone()
     rl = dict(rl_row) if rl_row else {}
 
+    # Multi-customer support
+    multi_cu_rows = conn.execute("""
+        SELECT (cu.first_name || ' ' || cu.last_name) AS name,
+               cu.email, cu.dob, cu.address, cu.company, jcu.role
+        FROM job_customers jcu
+        JOIN customers cu ON cu.id = jcu.customer_id
+        WHERE jcu.job_id = ?
+        ORDER BY jcu.id
+    """, (job_id,)).fetchall()
+    multi_customers = [dict(r) for r in multi_cu_rows]
+
     conn.close()
 
     agent_name = session.get("full_name") or job.get("assigned_name") or ""
 
     def _fmt_cents(v):
-        return f"${int(v) / 100:.2f}" if v else ""
+        try:
+            return f"${int(v) / 100:.2f}" if v else ""
+        except Exception:
+            return ""
+
+    # Build a combined security description from all items
+    security_lines = []
+    for it in items:
+        parts = []
+        ymm = " ".join(filter(None, [it.get("year"), it.get("make"), it.get("model")]))
+        if ymm:
+            parts.append(ymm)
+        if it.get("colour"):
+            parts.append(it["colour"])
+        if it.get("reg"):
+            parts.append(f"Rego: {it['reg']}")
+        if it.get("vin"):
+            parts.append(f"VIN: {it['vin']}")
+        if parts:
+            security_lines.append(" — ".join(parts))
+    security_summary = "\n".join(security_lines)
+
+    # Repossession address: prefer item property_address, fallback job_address
+    repo_address = (item.get("property_address") or job.get("job_address") or "").strip()
+
+    customer_name = (job.get("customer_full_name") or "").strip() or (
+        job.get("customer_first_name", "") + " " + job.get("customer_last_name", "")).strip()
 
     d = {
-        "swpi_ref":        job.get("display_ref") or job.get("internal_job_number") or "",
-        "agent_name":      agent_name,
-        "job_type":        job.get("job_type") or "",
-        "client_name":     job.get("client_name") or job.get("client_nickname") or "",
-        "finance_company": job.get("lender_name") or "",
-        "customer_name":   job.get("customer_name") or "",
-        "account_number":  item.get("account_number") or job.get("account_number") or "",
-        "contract_number": job.get("client_reference") or "",
-        "regulation_type": item.get("regulation_type") or job.get("regulation_type") or "",
-        "address_attended": job.get("job_address") or "",
-        "make":        item.get("make") or rl.get("make") or "",
-        "model":       item.get("model") or rl.get("model") or "",
-        "year":        item.get("year") or rl.get("year") or "",
-        "colour":      item.get("colour") or rl.get("colour") or "",
-        "registration": item.get("reg") or rl.get("registration") or "",
-        "vin":         item.get("vin") or rl.get("vin") or "",
-        "arrears":     _fmt_cents(item.get("arrears_cents") or job.get("arrears_cents")),
-        "costs":       _fmt_cents(item.get("costs_cents") or job.get("costs_cents")),
-        "mmp":         _fmt_cents(job.get("mmp_cents")),
+        # Job header
+        "swpi_ref":          job.get("display_ref") or job.get("internal_job_number") or "",
+        "job_number":        job.get("internal_job_number") or "",
+        "agent_name":        agent_name,
+        "job_type":          job.get("job_type") or "",
+        # Client
+        "client_name":       job.get("client_name") or job.get("client_nickname") or "",
+        "finance_company":   job.get("lender_name") or "",
+        "client_phone":      job.get("client_phone") or "",
+        "client_email":      job.get("client_email") or "",
+        "tp_referral":       job.get("tp_referral") or "",
+        "tp_job_number":     job.get("tp_job_number") or "",
+        # Customer
+        "customer_name":     customer_name,
+        "customer_dob":      job.get("customer_dob") or "",
+        "customer_company":  job.get("customer_company") or "",
+        "customer_email":    job.get("customer_email") or "",
+        "customer_address":  job.get("customer_address") or "",
+        # Contract
+        "account_number":    item.get("account_number") or job.get("account_number") or "",
+        "contract_number":   job.get("client_reference") or "",
+        "regulation_type":   item.get("regulation_type") or job.get("regulation_type") or "",
+        # Security (first item + summary)
+        "make":              item.get("make") or rl.get("make") or "",
+        "model":             item.get("model") or rl.get("model") or "",
+        "year":              item.get("year") or rl.get("year") or "",
+        "colour":            item.get("colour") or rl.get("colour") or "",
+        "registration":      item.get("reg") or rl.get("registration") or "",
+        "vin":               item.get("vin") or rl.get("vin") or "",
+        "engine_number":     item.get("engine_number") or "",
+        "security_description": item.get("description") or "",
+        "security_summary":  security_summary,
+        # Financial
+        "arrears":           _fmt_cents(item.get("arrears_cents") or job.get("arrears_cents")),
+        "costs":             _fmt_cents(item.get("costs_cents") or job.get("costs_cents")),
+        "mmp":               _fmt_cents(job.get("mmp_cents")),
+        # Addresses
+        "address_attended":  job.get("job_address") or "",
+        "repossession_address": repo_address,
+        # Instructions
+        "client_instructions": job.get("description") or "",
+        "special_instructions": job.get("geoop_source_description") or "",
     }
 
     from datetime import date as _date
     today = _date.today().isoformat()
     return render_template("field_worksheet.html",
-                           job=job, job_id=job_id, d=d, today=today)
+                           job=job, job_id=job_id, d=d, today=today,
+                           multi_customers=multi_customers)
 
 
 @app.post("/jobs/<int:job_id>/field-worksheet")
-@login_required
+@admin_required
 def field_worksheet_post(job_id: int):
     import pdf_gen as _pg
     import logging as _log
+    import re as _re
 
     def _f(name):
         return (request.form.get(name) or "").strip()
 
     data = {
-        "swpi_ref":              _f("swpi_ref"),
-        "date":                  _f("worksheet_date"),
-        "worksheet_date":        _f("worksheet_date"),
-        "agent_name":            _f("agent_name"),
-        "job_type":              _f("job_type"),
-        "client_name":           _f("client_name"),
-        "finance_company":       _f("finance_company"),
-        "customer_name":         _f("customer_name"),
-        "account_number":        _f("account_number"),
-        "contract_number":       _f("contract_number"),
-        "regulation_type":       _f("regulation_type"),
-        "address_attended":      _f("address_attended"),
-        "make":                  _f("make"),
-        "model":                 _f("model"),
-        "year":                  _f("year"),
-        "colour":                _f("colour"),
-        "registration":          _f("registration"),
-        "vin":                   _f("vin"),
-        "arrears":               _f("arrears"),
-        "costs":                 _f("costs"),
-        "mmp":                   _f("mmp"),
-        "time_in":               _f("time_in"),
-        "time_out":              _f("time_out"),
-        "nature_of_enquiry":     _f("nature_of_enquiry"),
-        "outcome":               _f("outcome"),
-        "notes":                 _f("notes"),
-        "instructions_received": _f("instructions_received"),
+        "swpi_ref":               _f("swpi_ref"),
+        "job_number":             _f("job_number"),
+        "date":                   _f("worksheet_date"),
+        "worksheet_date":         _f("worksheet_date"),
+        "agent_name":             _f("agent_name"),
+        "job_type":               _f("job_type"),
+        # Client
+        "client_name":            _f("client_name"),
+        "finance_company":        _f("finance_company"),
+        "client_phone":           _f("client_phone"),
+        "client_email":           _f("client_email"),
+        "tp_referral":            _f("tp_referral"),
+        "tp_job_number":          _f("tp_job_number"),
+        # Customer
+        "customer_name":          _f("customer_name"),
+        "customer_dob":           _f("customer_dob"),
+        "customer_company":       _f("customer_company"),
+        "customer_email":         _f("customer_email"),
+        "customer_address":       _f("customer_address"),
+        # Contract
+        "account_number":         _f("account_number"),
+        "contract_number":        _f("contract_number"),
+        "regulation_type":        _f("regulation_type"),
+        # Security
+        "make":                   _f("make"),
+        "model":                  _f("model"),
+        "year":                   _f("year"),
+        "colour":                 _f("colour"),
+        "registration":           _f("registration"),
+        "vin":                    _f("vin"),
+        "engine_number":          _f("engine_number"),
+        "security_description":   _f("security_description"),
+        # Financial
+        "arrears":                _f("arrears"),
+        "costs":                  _f("costs"),
+        "mmp":                    _f("mmp"),
+        "payout_amount":          _f("payout_amount"),
+        # Addresses
+        "address_attended":       _f("address_attended"),
+        "repossession_address":   _f("repossession_address"),
+        "employment_address":     _f("employment_address"),
+        "additional_addresses":   _f("additional_addresses"),
+        # Contacts
+        "phone_numbers":          _f("phone_numbers"),
+        "email_addresses":        _f("email_addresses"),
+        # Employment
+        "employer_details":       _f("employer_details"),
+        # References
+        "reference_contacts":     _f("reference_contacts"),
+        # Instructions
+        "client_instructions":    _f("client_instructions"),
+        "special_instructions":   _f("special_instructions"),
+        "warnings":               _f("warnings"),
+        "documents_supplied":     _f("documents_supplied"),
+        # Field attendance
+        "time_in":                _f("time_in"),
+        "time_out":               _f("time_out"),
+        "nature_of_enquiry":      _f("nature_of_enquiry"),
+        "outcome":                _f("outcome"),
+        "notes":                  _f("notes"),
+        "instructions_received":  _f("instructions_received"),
     }
 
     wants_json = (
@@ -12575,10 +12680,15 @@ def field_worksheet_post(job_id: int):
         flash("PDF generation failed: " + str(exc), "error")
         return redirect(url_for("field_worksheet", job_id=job_id))
 
-    ref = (data.get("swpi_ref") or str(job_id)).replace("/", "-")
-    raw_date = (data.get("worksheet_date") or "").replace("-", "")[:8]
-    date_s = raw_date if raw_date else now_ts()[:10].replace("-", "")
-    orig_filename = f"{ref} - Field Worksheet - {date_s}.pdf"
+    # Build sanitised filename: SWPI_Field_Worksheet_<job>_<customer>_<date>.pdf
+    def _slug(s):
+        return _re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_")
+
+    job_slug  = _slug(data.get("job_number") or data.get("swpi_ref") or str(job_id))
+    cust_slug = _slug(data.get("customer_name") or "Unknown")
+    raw_date  = (data.get("worksheet_date") or "").replace("-", "")[:8]
+    date_s    = raw_date if raw_date else now_ts()[:10].replace("-", "")
+    orig_filename = f"SWPI_Field_Worksheet_{job_slug}_{cust_slug}_{date_s}.pdf"
     form_label = "AxionX Field Worksheet" if DEMO_MODE else "SWPI Field Worksheet"
     action = _f("action")
 
@@ -12588,6 +12698,16 @@ def field_worksheet_post(job_id: int):
         try:
             attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"),
                                         pdf_bytes, orig_filename, form_label, ts)
+            # Job note
+            actor = session.get("full_name") or session.get("username") or "user"
+            note_text = (
+                f"SWPI Field Worksheet generated and attached by {actor} on {ts[:10]}."
+            )
+            conn.execute(
+                "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at)"
+                " VALUES (?,?,?,?)",
+                (job_id, session.get("user_id"), note_text, ts)
+            )
             conn.commit()
         except Exception as exc:
             conn.close()
@@ -12597,10 +12717,17 @@ def field_worksheet_post(job_id: int):
             flash("Attach failed: " + str(exc), "error")
             return redirect(url_for("field_worksheet", job_id=job_id))
         conn.close()
+        # Audit record (uses its own connection)
+        try:
+            audit("job", job_id, "field_worksheet_generated",
+                  f"SWPI Field Worksheet attached by {actor}",
+                  meta={"filename": orig_filename})
+        except Exception:
+            pass
         if wants_json:
             return jsonify({"ok": True, "document_id": attach["document_id"],
                             "redirect": url_for("job_detail", job_id=job_id)})
-        flash("Field Worksheet generated and attached to file.", "success")
+        flash("SWPI Field Worksheet generated and attached to file.", "success")
         return redirect(url_for("job_detail", job_id=job_id))
 
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",

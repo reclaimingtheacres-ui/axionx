@@ -2373,21 +2373,12 @@ def generate_termination_notice_pdf(data):
 # =============================================================================
 
 def generate_field_worksheet_pdf(data):
-    """SWPI Field Worksheet — records field attendance, instructions and outcome."""
+    """SWPI Field Worksheet — comprehensive field instruction sheet."""
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
     c.setTitle('SWPI Field Worksheet')
 
-    y = _swpi_letterhead(c)
-    y -= 10
-
-    c.setFont('Helvetica-Bold', 12)
-    c.setFillColor(DARK)
-    c.drawCentredString(PAGE_W / 2, y, 'FIELD WORKSHEET')
-    y -= 4
-    _hr(c, y, strong=True)
-    y -= 16
-
+    # ── helpers ──────────────────────────────────────────────
     def _fmtdate(val):
         if not val:
             return ''
@@ -2399,8 +2390,26 @@ def generate_field_worksheet_pdf(data):
             return s
 
     HALF = (PAGE_W - ML - MR) / 2
+    PG_MARGIN = 110          # new page when y falls below this
+
+    def _ensure_space(y, needed=20):
+        if y < needed + PG_MARGIN:
+            _page_footer(c)
+            c.showPage()
+            y = _swpi_letterhead(c)
+            y -= 8
+        return y
+
+    def _page_footer(canvas):
+        canvas.setFont('Helvetica', 7)
+        canvas.setFillColor(MUTED)
+        ref_str = _v(data, 'swpi_ref') or _v(data, 'job_number')
+        canvas.drawString(ML, 20,
+                          f'SWPI Field Worksheet — {ref_str}' if ref_str else 'SWPI Field Worksheet')
+        canvas.drawRightString(PAGE_W - MR, 20, 'CONFIDENTIAL')
 
     def _f2(y, lbl1, val1, lbl2='', val2='', lw=104):
+        y = _ensure_space(y, 14)
         c.setFont('Helvetica-Bold', 8)
         c.setFillColor(DARK)
         c.drawString(ML, y, lbl1 + ':')
@@ -2415,6 +2424,7 @@ def generate_field_worksheet_pdf(data):
         return y - 13
 
     def _f1(y, lbl, val, lw=130):
+        y = _ensure_space(y, 14)
         c.setFont('Helvetica-Bold', 8)
         c.setFillColor(DARK)
         c.drawString(ML, y, lbl + ':')
@@ -2423,6 +2433,7 @@ def generate_field_worksheet_pdf(data):
         return y - 13
 
     def _sec(y, title):
+        y = _ensure_space(y, 30)
         c.setFillColor(HexColor('#1d4ed8'))
         c.rect(ML, y - 13, CW, 13, fill=1, stroke=0)
         c.setFont('Helvetica-Bold', 7.5)
@@ -2430,85 +2441,206 @@ def generate_field_worksheet_pdf(data):
         c.drawString(ML + 5, y - 10, title.upper())
         return y - 20
 
+    def _text_block(y, text, lbl=None, line_h=12, max_lines=40):
+        """Render a labelled multi-line text block with page-break support."""
+        text = str(text or '').strip()
+        if not text:
+            return y
+        if lbl:
+            y = _ensure_space(y, 14)
+            c.setFont('Helvetica-Bold', 8)
+            c.setFillColor(DARK)
+            c.drawString(ML, y, lbl + ':')
+            y -= line_h
+        lines = simpleSplit(text, 'Helvetica', 8, CW - 10)
+        c.setFont('Helvetica', 8)
+        c.setFillColor(DARK)
+        for i, line in enumerate(lines[:max_lines]):
+            y = _ensure_space(y, line_h + 4)
+            c.drawString(ML + 5, y, line)
+            y -= line_h
+        return y - 2
+
     def _blank_lines(y, count=3):
         for _ in range(count):
             _hr(c, y)
             y -= 13
         return y
 
-    # ── Reference block ──
+    # ─── Page 1: letterhead + title ───────────────────────────
+    y = _swpi_letterhead(c)
+    y -= 8
+
+    c.setFont('Helvetica-Bold', 12)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, 'SWPI FIELD WORKSHEET')
+    y -= 4
+    _hr(c, y, strong=True)
+    y -= 14
+
+    # ── Reference block ──────────────────────────────────────
     y = _f2(y, 'SWPI REFERENCE', _v(data, 'swpi_ref'),
             'DATE', _fmtdate(_v(data, 'date', 'worksheet_date')))
-    y = _f2(y, 'AGENT', _v(data, 'agent_name'), 'JOB TYPE', _v(data, 'job_type'))
+    y = _f2(y, 'ALLOCATED AGENT', _v(data, 'agent_name'),
+            'JOB TYPE', _v(data, 'job_type'))
     _hr(c, y)
-    y -= 12
+    y -= 10
 
-    # ── Client & Customer ──
-    y = _sec(y, 'Client & Customer Details')
+    # ── Client Details ───────────────────────────────────────
+    y = _sec(y, 'Client Details')
     y = _f2(y, 'CLIENT', _v(data, 'client_name'),
-            'FINANCE CO. / LENDER', _v(data, 'finance_company'))
-    y = _f2(y, 'CUSTOMER', _v(data, 'customer_name'),
-            'ACCOUNT NUMBER', _v(data, 'account_number'))
-    y = _f2(y, 'CONTRACT NUMBER', _v(data, 'contract_number'),
-            'REGULATION', _v(data, 'regulation_type'))
-    y = _f1(y, 'ADDRESS ATTENDED', _v(data, 'address_attended'))
+            'FINANCE COMPANY / LENDER', _v(data, 'finance_company'))
+    y = _f2(y, 'ACCOUNT NUMBER', _v(data, 'account_number'),
+            'CONTRACT NUMBER', _v(data, 'contract_number'))
+    y = _f2(y, 'REGULATION', _v(data, 'regulation_type'),
+            'TP REFERRAL', _v(data, 'tp_referral'))
+    if _v(data, 'tp_job_number'):
+        y = _f1(y, 'TP JOB NUMBER', _v(data, 'tp_job_number'))
     _hr(c, y)
-    y -= 12
+    y -= 10
 
-    # ── Security ──
+    # ── Customer Details ─────────────────────────────────────
+    y = _sec(y, 'Customer Details')
+    y = _f2(y, 'CUSTOMER NAME', _v(data, 'customer_name'),
+            'DATE OF BIRTH', _fmtdate(_v(data, 'customer_dob')))
+    coy = _v(data, 'customer_company')
+    if coy:
+        y = _f1(y, 'BUSINESS / COMPANY', coy)
+    cust_email = _v(data, 'customer_email', 'email_addresses')
+    if cust_email:
+        y = _f1(y, 'EMAIL', cust_email)
+    cust_addr = _v(data, 'customer_address')
+    if cust_addr:
+        addr_lines = simpleSplit(cust_addr, 'Helvetica', 8, CW - 134)
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, 'ADDRESS:')
+        c.setFont('Helvetica', 8)
+        for i, al in enumerate(addr_lines[:3]):
+            c.drawString(ML + 130, y - (i * 12), al)
+        y -= (min(len(addr_lines), 3) * 12) + 4
+    _hr(c, y)
+    y -= 10
+
+    # ── Security Details ─────────────────────────────────────
     y = _sec(y, 'Security Details')
     y = _f2(y, 'MAKE', _v(data, 'make'), 'MODEL', _v(data, 'model'))
     y = _f2(y, 'YEAR', _v(data, 'year'), 'COLOUR', _v(data, 'colour'))
     y = _f2(y, 'REGISTRATION', _v(data, 'registration'), 'VIN / CHASSIS', _v(data, 'vin'))
+    eng = _v(data, 'engine_number')
+    if eng:
+        y = _f1(y, 'ENGINE NUMBER', eng)
+    sec_desc = _v(data, 'security_description')
+    if sec_desc:
+        y = _text_block(y, sec_desc, lbl='DESCRIPTION')
     _hr(c, y)
-    y -= 12
+    y -= 10
 
-    # ── Financial ──
-    y = _sec(y, 'Financial Summary')
-    y = _f2(y, 'AMOUNT OWING', _v(data, 'arrears'), 'COSTS', _v(data, 'costs'))
-    y = _f2(y, 'INSTALLMENT (MMP)', _v(data, 'mmp'), 'TOTAL DUE', _v(data, 'total_due'))
+    # ── Financial ───────────────────────────────────────────
+    y = _sec(y, 'Financial Details')
+    y = _f2(y, 'AMOUNT OWING / ARREARS', _v(data, 'arrears'),
+            'COSTS', _v(data, 'costs'))
+    y = _f2(y, 'INSTALMENT (MMP)', _v(data, 'mmp'),
+            'PAYOUT AMOUNT', _v(data, 'payout_amount'))
     _hr(c, y)
-    y -= 12
+    y -= 10
 
-    # ── Attendance ──
-    y = _sec(y, 'Field Attendance')
+    # ── Addresses ───────────────────────────────────────────
+    y = _sec(y, 'Addresses to Attend')
+    addr_attended = _v(data, 'address_attended')
+    if addr_attended:
+        y = _text_block(y, addr_attended, lbl='ADDRESS ATTENDED / JOB LOCATION')
+    repo_addr = _v(data, 'repossession_address')
+    if repo_addr:
+        y = _text_block(y, repo_addr, lbl='REPOSSESSION ADDRESS')
+    empl_addr = _v(data, 'employment_address')
+    if empl_addr:
+        y = _text_block(y, empl_addr, lbl='EMPLOYMENT ADDRESS')
+    addl = _v(data, 'additional_addresses')
+    if addl:
+        y = _text_block(y, addl, lbl='ADDITIONAL ADDRESSES')
+    if not any([addr_attended, repo_addr, empl_addr, addl]):
+        y = _blank_lines(y, 3)
+    _hr(c, y)
+    y -= 10
+
+    # ── Phones & Emails ─────────────────────────────────────
+    phones = _v(data, 'phone_numbers')
+    emails = _v(data, 'email_addresses')
+    if phones or emails:
+        y = _sec(y, 'Phone & Email Details')
+        if phones:
+            y = _text_block(y, phones, lbl='PHONE NUMBERS')
+        if emails:
+            y = _text_block(y, emails, lbl='EMAIL ADDRESSES')
+        _hr(c, y)
+        y -= 10
+
+    # ── Employment ──────────────────────────────────────────
+    employer = _v(data, 'employer_details')
+    if employer:
+        y = _sec(y, 'Employment Information')
+        y = _text_block(y, employer)
+        _hr(c, y)
+        y -= 10
+
+    # ── References ──────────────────────────────────────────
+    refs = _v(data, 'reference_contacts')
+    if refs:
+        y = _sec(y, 'Reference Contacts')
+        y = _text_block(y, refs)
+        _hr(c, y)
+        y -= 10
+
+    # ── Client Instructions ─────────────────────────────────
+    cli = _v(data, 'client_instructions')
+    if cli:
+        y = _sec(y, 'Client Instructions')
+        y = _text_block(y, cli)
+        _hr(c, y)
+        y -= 10
+
+    # ── Warnings & Special Instructions ─────────────────────
+    spec = _v(data, 'special_instructions')
+    warn = _v(data, 'warnings')
+    if spec or warn:
+        y = _sec(y, 'Warnings & Special Instructions')
+        if spec:
+            y = _text_block(y, spec, lbl='SPECIAL INSTRUCTIONS')
+        if warn:
+            y = _text_block(y, warn, lbl='WARNINGS / SAFETY NOTES')
+        _hr(c, y)
+        y -= 10
+
+    # ── Documents Supplied ──────────────────────────────────
+    docs = _v(data, 'documents_supplied')
+    if docs:
+        y = _sec(y, 'Documents Supplied')
+        y = _text_block(y, docs)
+        _hr(c, y)
+        y -= 10
+
+    # ── Field Attendance ────────────────────────────────────
+    y = _sec(y, 'Field Attendance Record')
     y = _f2(y, 'TIME IN', _v(data, 'time_in'), 'TIME OUT', _v(data, 'time_out'))
     y = _f1(y, 'NATURE OF ENQUIRY', _v(data, 'nature_of_enquiry'))
     y = _f1(y, 'OUTCOME / RESULT', _v(data, 'outcome'))
     _hr(c, y)
-    y -= 12
+    y -= 10
 
-    # ── Observations ──
-    y = _sec(y, 'Observations / Instructions')
+    # ── Observations / Notes ────────────────────────────────
+    y = _sec(y, 'Observations & Notes')
     notes_text = str(data.get('notes') or '').strip()
     if notes_text:
-        lines = simpleSplit(notes_text, 'Helvetica', 8, CW - 10)
-        c.setFont('Helvetica', 8)
-        c.setFillColor(DARK)
-        for line in lines[:10]:
-            if y < 110:
-                break
-            c.drawString(ML + 5, y - 10, line)
-            y -= 12
-        y -= 4
+        y = _text_block(y, notes_text)
     else:
-        y = _blank_lines(y, 4)
+        y = _blank_lines(y, 5)
 
     instr = str(data.get('instructions_received') or '').strip()
     if instr:
-        c.setFont('Helvetica-Bold', 8)
-        c.setFillColor(DARK)
-        c.drawString(ML, y, 'INSTRUCTIONS RECEIVED:')
-        y -= 12
-        lines = simpleSplit(instr, 'Helvetica', 8, CW - 10)
-        c.setFont('Helvetica', 8)
-        for line in lines[:5]:
-            if y < 90:
-                break
-            c.drawString(ML + 5, y - 10, line)
-            y -= 12
-        y -= 4
+        y = _text_block(y, instr, lbl='INSTRUCTIONS RECEIVED')
     else:
+        y = _ensure_space(y, 14)
         c.setFont('Helvetica-Bold', 8)
         c.setFillColor(DARK)
         c.drawString(ML, y, 'INSTRUCTIONS RECEIVED:')
@@ -2516,19 +2648,14 @@ def generate_field_worksheet_pdf(data):
         y = _blank_lines(y, 3)
 
     _hr(c, y, strong=True)
-    y -= 20
+    y -= 18
 
-    if y > 80:
-        _sig_box(c, ML, y, 200, 60, 'Agent Signature',
-                 date_str=_fmtdate(_v(data, 'date', 'worksheet_date')))
+    # ── Signature ───────────────────────────────────────────
+    y = _ensure_space(y, 80)
+    _sig_box(c, ML, y, 200, 65, 'Agent Signature',
+             date_str=_fmtdate(_v(data, 'date', 'worksheet_date')))
 
-    c.setFont('Helvetica', 7)
-    c.setFillColor(MUTED)
-    ref_str = _v(data, 'swpi_ref')
-    c.drawString(ML, 20,
-                 f'SWPI Field Worksheet — {ref_str}' if ref_str else 'SWPI Field Worksheet')
-    c.drawRightString(PAGE_W - MR, 20, 'CONFIDENTIAL')
-
+    _page_footer(c)
     c.save()
     buf.seek(0)
     return buf.read()
