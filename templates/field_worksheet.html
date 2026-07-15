@@ -1,0 +1,130 @@
+{% extends "layout.html" %}
+{% block title %}Field Worksheet — {{ job.display_ref or job.internal_job_number }}{% endblock %}
+
+{% block content %}
+<div style="max-width:900px;margin:0 auto;padding:20px 16px 60px;">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
+      <h2 style="margin:4px 0 0;font-size:1.15rem;font-weight:700;color:#111;">Field Worksheet</h2>
+      <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">{{ job.display_ref or job.internal_job_number }} &mdash; edit fields below, then download or attach PDF</div>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for cat, msg in messages %}
+    <div style="padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:.84rem;
+                background:{% if cat in ('error','danger') %}#fef2f2;color:#b91c1c;border:1px solid #fecaca{% else %}#f0fdf4;color:#166534;border:1px solid #bbf7d0{% endif %}">{{ msg }}</div>
+  {% endfor %}{% endif %}
+  {% endwith %}
+
+  <form id="worksheetForm" method="POST" action="/jobs/{{ job_id }}/field-worksheet">
+    <input type="hidden" name="action" id="wsAction" value="download">
+
+    {% macro fi(name, label, value, type='text') %}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <label style="font-size:.75rem;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.02em;">{{ label }}</label>
+      <input type="{{ type }}" name="{{ name }}" value="{{ value or '' }}"
+             style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:.85rem;color:#111;background:#fff;width:100%;box-sizing:border-box;">
+    </div>
+    {% endmacro %}
+
+    {% macro ta(name, label, value, rows=3) %}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <label style="font-size:.75rem;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.02em;">{{ label }}</label>
+      <textarea name="{{ name }}" rows="{{ rows }}"
+                style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:.85rem;color:#111;background:#fff;width:100%;box-sizing:border-box;resize:vertical;">{{ value or '' }}</textarea>
+    </div>
+    {% endmacro %}
+
+    {% macro section(title) %}
+    <div style="background:#1d4ed8;color:#fff;padding:8px 14px;font-weight:700;font-size:.8rem;letter-spacing:.04em;border-radius:6px 6px 0 0;margin-top:20px;">{{ title }}</div>
+    <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:16px;background:#fff;">
+    {% endmacro %}
+
+    {# ── Job Details ── #}
+    {{ section('JOB DETAILS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;">
+      {{ fi('swpi_ref', 'SWPI Reference', d.swpi_ref) }}
+      {{ fi('worksheet_date', 'Date', today, 'date') }}
+      {{ fi('agent_name', 'Agent Name', d.agent_name) }}
+      {{ fi('job_type', 'Job Type', d.job_type) }}
+    </div>
+    </div>
+
+    {# ── Client & Customer ── #}
+    {{ section('CLIENT & CUSTOMER DETAILS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;">
+      {{ fi('client_name', 'Client', d.client_name) }}
+      {{ fi('finance_company', 'Finance Company / Lender', d.finance_company) }}
+      {{ fi('customer_name', 'Customer Name', d.customer_name) }}
+      {{ fi('account_number', 'Account Number', d.account_number) }}
+      {{ fi('contract_number', 'Contract Number', d.contract_number) }}
+      {{ fi('regulation_type', 'Regulation', d.regulation_type) }}
+    </div>
+    <div style="margin-top:12px;">
+      {{ fi('address_attended', 'Address Attended', d.address_attended) }}
+    </div>
+    </div>
+
+    {# ── Security Details ── #}
+    {{ section('SECURITY DETAILS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;">
+      {{ fi('make', 'Make', d.make) }}
+      {{ fi('model', 'Model', d.model) }}
+      {{ fi('year', 'Year', d.year) }}
+      {{ fi('colour', 'Colour', d.colour) }}
+      {{ fi('registration', 'Registration', d.registration) }}
+      {{ fi('vin', 'VIN / Chassis', d.vin) }}
+    </div>
+    </div>
+
+    {# ── Financial Summary ── #}
+    {{ section('FINANCIAL SUMMARY') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;">
+      {{ fi('arrears', 'Amount Owing', d.arrears) }}
+      {{ fi('costs', 'Costs', d.costs) }}
+      {{ fi('mmp', 'Installment (MMP)', d.mmp) }}
+    </div>
+    </div>
+
+    {# ── Field Attendance ── #}
+    {{ section('FIELD ATTENDANCE') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;">
+      {{ fi('time_in', 'Time In', '', 'time') }}
+      {{ fi('time_out', 'Time Out', '', 'time') }}
+      {{ fi('nature_of_enquiry', 'Nature of Enquiry', '') }}
+      {{ fi('outcome', 'Outcome / Result', '') }}
+    </div>
+    </div>
+
+    {# ── Observations / Instructions ── #}
+    {{ section('OBSERVATIONS / INSTRUCTIONS') }}
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      {{ ta('notes', 'Observations / Notes', '', 4) }}
+      {{ ta('instructions_received', 'Instructions Received', '', 3) }}
+    </div>
+    </div>
+
+    {# ── Actions ── #}
+    <div style="display:flex;gap:12px;margin-top:28px;flex-wrap:wrap;align-items:center;">
+      <button type="submit"
+              onclick="document.getElementById('wsAction').value='download'"
+              style="padding:10px 20px;border:1.5px solid #2563eb;background:#fff;color:#2563eb;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;">
+        &#x2193;&nbsp; Download PDF
+      </button>
+      <button type="submit"
+              onclick="document.getElementById('wsAction').value='attach'"
+              style="padding:10px 20px;border:none;background:#2563eb;color:#fff;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;">
+        &#x2713;&nbsp; Generate &amp; Attach to File
+      </button>
+      <a href="/jobs/{{ job_id }}"
+         style="margin-left:auto;padding:10px 18px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-size:.88rem;text-decoration:none;">
+        Cancel
+      </a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}

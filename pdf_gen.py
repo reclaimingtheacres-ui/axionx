@@ -2218,6 +2218,322 @@ def cash_receipt_pdf(data: dict) -> bytes:
     return _demo_watermark_pdf(buf.read())
 
 
+# =============================================================================
+# Termination Notice
+# =============================================================================
+
+def generate_termination_notice_pdf(data):
+    """Notice of Termination of Credit Contract."""
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=A4)
+    c.setTitle('Notice of Termination of Credit Contract')
+
+    y = _swpi_letterhead(c)
+    y -= 10
+
+    c.setFont('Helvetica-Bold', 11)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, 'NOTICE OF TERMINATION OF CREDIT CONTRACT')
+    y -= 4
+    _hr(c, y, strong=True)
+    y -= 16
+
+    def _fmtdate(val):
+        if not val:
+            return ''
+        s = str(val).strip()
+        try:
+            from datetime import datetime as _dtm
+            return _dtm.strptime(s[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except Exception:
+            return s
+
+    def _kv(y, lbl, val, lw=130):
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, lbl + ':')
+        c.setFont('Helvetica', 8.5)
+        c.drawString(ML + lw, y, _trunc(str(val or ''), 56))
+        return y - 13
+
+    def _sec(y, title):
+        c.setFillColor(HexColor('#1e3a8a'))
+        c.rect(ML, y - 13, CW, 13, fill=1, stroke=0)
+        c.setFont('Helvetica-Bold', 7.5)
+        c.setFillColor(white)
+        c.drawString(ML + 5, y - 10, title.upper())
+        return y - 20
+
+    # ── Dates ──
+    y = _kv(y, 'DATE OF NOTICE', _fmtdate(_v(data, 'date_of_notice')))
+    y = _kv(y, 'EFFECTIVE DATE OF TERMINATION', _fmtdate(_v(data, 'effective_date')))
+    _hr(c, y)
+    y -= 12
+
+    # ── Customer / Recipient ──
+    y = _sec(y, 'Addressee')
+    y = _kv(y, 'TO (CUSTOMER NAME)', _v(data, 'customer_name'))
+    # Address may span multiple lines
+    addr = str(data.get('customer_address') or '').strip()
+    if addr:
+        addr_lines = simpleSplit(addr, 'Helvetica', 8.5, CW - 134)
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, 'ADDRESS:')
+        c.setFont('Helvetica', 8.5)
+        for i, al in enumerate(addr_lines[:3]):
+            c.drawString(ML + 130, y - (i * 12), al)
+        y -= (min(len(addr_lines), 3) * 12) + 4
+    _hr(c, y)
+    y -= 12
+
+    # ── Lender / Contract ──
+    y = _sec(y, 'Credit Contract Details')
+    y = _kv(y, 'LENDER / CREDIT PROVIDER', _v(data, 'finance_company', 'lender_name'))
+    y = _kv(y, 'ACCOUNT NUMBER', _v(data, 'account_number'))
+    y = _kv(y, 'CONTRACT NUMBER', _v(data, 'contract_number'))
+    y = _kv(y, 'REGULATION', _v(data, 'regulation_type'))
+    if _v(data, 'tp_referral'):
+        y = _kv(y, 'THIRD PARTY REFERRAL', _v(data, 'tp_referral'))
+    _hr(c, y)
+    y -= 12
+
+    # ── Goods subject to termination ──
+    items_text = str(data.get('items_description') or '').strip()
+    if items_text:
+        y = _sec(y, 'Goods / Security Subject to Termination')
+        lines = simpleSplit(items_text, 'Helvetica', 8.5, CW - 10)
+        c.setFont('Helvetica', 8.5)
+        c.setFillColor(DARK)
+        for line in lines[:8]:
+            if y < 120:
+                break
+            c.drawString(ML + 5, y - 10, line)
+            y -= 13
+        _hr(c, y)
+        y -= 12
+
+    # ── Body text ──
+    body = (
+        "TAKE NOTICE that the above credit contract is TERMINATED effective "
+        f"{_fmtdate(_v(data, 'effective_date'))}. "
+        "Following termination you are required to return possession of the above "
+        "goods immediately and contact the credit provider regarding any outstanding "
+        "amounts. This notice is issued pursuant to the National Consumer Credit "
+        "Protection Act 2009."
+    )
+    body_lines = simpleSplit(body, 'Helvetica', 8.5, CW)
+    c.setFont('Helvetica', 8.5)
+    c.setFillColor(DARK)
+    for line in body_lines:
+        if y < 130:
+            break
+        c.drawString(ML, y, line)
+        y -= 13
+    y -= 6
+    _hr(c, y)
+    y -= 12
+
+    # ── Reason / Notes ──
+    reason = str(data.get('termination_reason') or '').strip()
+    if reason:
+        c.setFont('Helvetica-Bold', 8.5)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, 'REASON FOR TERMINATION:')
+        y -= 13
+        r_lines = simpleSplit(reason, 'Helvetica', 8.5, CW - 10)
+        c.setFont('Helvetica', 8.5)
+        for line in r_lines[:6]:
+            if y < 110:
+                break
+            c.drawString(ML + 5, y, line)
+            y -= 13
+        y -= 4
+        _hr(c, y, strong=True)
+        y -= 16
+
+    # ── Signature ──
+    if y > 80:
+        auth_name = str(data.get('authorised_by') or '').strip()
+        _sig_box(c, ML, y, 220, 65, 'Authorised Signatory' + (f' — {auth_name}' if auth_name else ''),
+                 date_str=_fmtdate(_v(data, 'date_of_notice')))
+
+    c.setFont('Helvetica', 7)
+    c.setFillColor(MUTED)
+    c.drawString(ML, 20, 'Notice of Termination of Credit Contract — Issued pursuant to NCCP Act 2009')
+    c.drawRightString(PAGE_W - MR, 20, 'CONFIDENTIAL')
+
+    c.save()
+    buf.seek(0)
+    return buf.read()
+
+
+# =============================================================================
+# SWPI Field Worksheet
+# =============================================================================
+
+def generate_field_worksheet_pdf(data):
+    """SWPI Field Worksheet — records field attendance, instructions and outcome."""
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=A4)
+    c.setTitle('SWPI Field Worksheet')
+
+    y = _swpi_letterhead(c)
+    y -= 10
+
+    c.setFont('Helvetica-Bold', 12)
+    c.setFillColor(DARK)
+    c.drawCentredString(PAGE_W / 2, y, 'FIELD WORKSHEET')
+    y -= 4
+    _hr(c, y, strong=True)
+    y -= 16
+
+    def _fmtdate(val):
+        if not val:
+            return ''
+        s = str(val).strip()
+        try:
+            from datetime import datetime as _dtm
+            return _dtm.strptime(s[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except Exception:
+            return s
+
+    HALF = (PAGE_W - ML - MR) / 2
+
+    def _f2(y, lbl1, val1, lbl2='', val2='', lw=104):
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, lbl1 + ':')
+        c.setFont('Helvetica', 8)
+        c.drawString(ML + lw, y, _trunc(str(val1 or ''), 30))
+        if lbl2:
+            x2 = ML + HALF + 4
+            c.setFont('Helvetica-Bold', 8)
+            c.drawString(x2, y, lbl2 + ':')
+            c.setFont('Helvetica', 8)
+            c.drawString(x2 + lw, y, _trunc(str(val2 or ''), 28))
+        return y - 13
+
+    def _f1(y, lbl, val, lw=130):
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, lbl + ':')
+        c.setFont('Helvetica', 8)
+        c.drawString(ML + lw, y, _trunc(str(val or ''), 60))
+        return y - 13
+
+    def _sec(y, title):
+        c.setFillColor(HexColor('#1d4ed8'))
+        c.rect(ML, y - 13, CW, 13, fill=1, stroke=0)
+        c.setFont('Helvetica-Bold', 7.5)
+        c.setFillColor(white)
+        c.drawString(ML + 5, y - 10, title.upper())
+        return y - 20
+
+    def _blank_lines(y, count=3):
+        for _ in range(count):
+            _hr(c, y)
+            y -= 13
+        return y
+
+    # ── Reference block ──
+    y = _f2(y, 'SWPI REFERENCE', _v(data, 'swpi_ref'),
+            'DATE', _fmtdate(_v(data, 'date', 'worksheet_date')))
+    y = _f2(y, 'AGENT', _v(data, 'agent_name'), 'JOB TYPE', _v(data, 'job_type'))
+    _hr(c, y)
+    y -= 12
+
+    # ── Client & Customer ──
+    y = _sec(y, 'Client & Customer Details')
+    y = _f2(y, 'CLIENT', _v(data, 'client_name'),
+            'FINANCE CO. / LENDER', _v(data, 'finance_company'))
+    y = _f2(y, 'CUSTOMER', _v(data, 'customer_name'),
+            'ACCOUNT NUMBER', _v(data, 'account_number'))
+    y = _f2(y, 'CONTRACT NUMBER', _v(data, 'contract_number'),
+            'REGULATION', _v(data, 'regulation_type'))
+    y = _f1(y, 'ADDRESS ATTENDED', _v(data, 'address_attended'))
+    _hr(c, y)
+    y -= 12
+
+    # ── Security ──
+    y = _sec(y, 'Security Details')
+    y = _f2(y, 'MAKE', _v(data, 'make'), 'MODEL', _v(data, 'model'))
+    y = _f2(y, 'YEAR', _v(data, 'year'), 'COLOUR', _v(data, 'colour'))
+    y = _f2(y, 'REGISTRATION', _v(data, 'registration'), 'VIN / CHASSIS', _v(data, 'vin'))
+    _hr(c, y)
+    y -= 12
+
+    # ── Financial ──
+    y = _sec(y, 'Financial Summary')
+    y = _f2(y, 'AMOUNT OWING', _v(data, 'arrears'), 'COSTS', _v(data, 'costs'))
+    y = _f2(y, 'INSTALLMENT (MMP)', _v(data, 'mmp'), 'TOTAL DUE', _v(data, 'total_due'))
+    _hr(c, y)
+    y -= 12
+
+    # ── Attendance ──
+    y = _sec(y, 'Field Attendance')
+    y = _f2(y, 'TIME IN', _v(data, 'time_in'), 'TIME OUT', _v(data, 'time_out'))
+    y = _f1(y, 'NATURE OF ENQUIRY', _v(data, 'nature_of_enquiry'))
+    y = _f1(y, 'OUTCOME / RESULT', _v(data, 'outcome'))
+    _hr(c, y)
+    y -= 12
+
+    # ── Observations ──
+    y = _sec(y, 'Observations / Instructions')
+    notes_text = str(data.get('notes') or '').strip()
+    if notes_text:
+        lines = simpleSplit(notes_text, 'Helvetica', 8, CW - 10)
+        c.setFont('Helvetica', 8)
+        c.setFillColor(DARK)
+        for line in lines[:10]:
+            if y < 110:
+                break
+            c.drawString(ML + 5, y - 10, line)
+            y -= 12
+        y -= 4
+    else:
+        y = _blank_lines(y, 4)
+
+    instr = str(data.get('instructions_received') or '').strip()
+    if instr:
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, 'INSTRUCTIONS RECEIVED:')
+        y -= 12
+        lines = simpleSplit(instr, 'Helvetica', 8, CW - 10)
+        c.setFont('Helvetica', 8)
+        for line in lines[:5]:
+            if y < 90:
+                break
+            c.drawString(ML + 5, y - 10, line)
+            y -= 12
+        y -= 4
+    else:
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(DARK)
+        c.drawString(ML, y, 'INSTRUCTIONS RECEIVED:')
+        y -= 4
+        y = _blank_lines(y, 3)
+
+    _hr(c, y, strong=True)
+    y -= 20
+
+    if y > 80:
+        _sig_box(c, ML, y, 200, 60, 'Agent Signature',
+                 date_str=_fmtdate(_v(data, 'date', 'worksheet_date')))
+
+    c.setFont('Helvetica', 7)
+    c.setFillColor(MUTED)
+    ref_str = _v(data, 'swpi_ref')
+    c.drawString(ML, 20,
+                 f'SWPI Field Worksheet — {ref_str}' if ref_str else 'SWPI Field Worksheet')
+    c.drawRightString(PAGE_W - MR, 20, 'CONFIDENTIAL')
+
+    c.save()
+    buf.seek(0)
+    return buf.read()
+
+
 # ── Demo watermark wrappers ────────────────────────────────────────────────────
 # In demo mode (AXIONX_DEMO_MODE=true) wrap every public document generator so
 # its output is stamped "DEMO DOCUMENT — NOT FOR OPERATIONAL USE" on every page.
@@ -2242,3 +2558,5 @@ if _DEMO_MODE:
     generate_multi_job_previous_notes_pdf = _wrap_pdf(generate_multi_job_previous_notes_pdf)
     generate_repo_pack_pdf                = _wrap_pdf(generate_repo_pack_pdf)
     cash_receipt_pdf                      = _wrap_pdf(cash_receipt_pdf)
+    generate_field_worksheet_pdf          = _wrap_pdf(generate_field_worksheet_pdf)
+    generate_termination_notice_pdf       = _wrap_pdf(generate_termination_notice_pdf)

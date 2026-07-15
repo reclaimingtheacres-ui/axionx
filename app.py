@@ -12453,6 +12453,294 @@ def repo_lock_voluntary_surrender_pdf(job_id: int, rec_id: int):
                      as_attachment=True, download_name=orig_filename)
 
 
+# ─────────────────────────── Field Worksheet ─────────────────────────
+
+
+@app.get("/jobs/<int:job_id>/field-worksheet")
+@login_required
+def field_worksheet(job_id: int):
+    conn = db()
+    job_row = conn.execute("""
+        SELECT j.*,
+               c.name AS client_name, c.nickname AS client_nickname,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               u.full_name AS assigned_name
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN users u ON u.id = j.assigned_user_id
+        WHERE j.id = ?
+    """, (job_id,)).fetchone()
+    if not job_row:
+        conn.close()
+        return ("Not found", 404)
+    job = dict(job_row)
+
+    item_row = conn.execute(
+        "SELECT * FROM job_items WHERE job_id = ? ORDER BY id LIMIT 1", (job_id,)
+    ).fetchone()
+    item = dict(item_row) if item_row else {}
+
+    rl_row = conn.execute(
+        "SELECT * FROM repo_lock_records WHERE job_id = ? ORDER BY updated_at DESC LIMIT 1",
+        (job_id,)
+    ).fetchone()
+    rl = dict(rl_row) if rl_row else {}
+
+    conn.close()
+
+    agent_name = session.get("full_name") or job.get("assigned_name") or ""
+
+    def _fmt_cents(v):
+        return f"${int(v) / 100:.2f}" if v else ""
+
+    d = {
+        "swpi_ref":        job.get("display_ref") or job.get("internal_job_number") or "",
+        "agent_name":      agent_name,
+        "job_type":        job.get("job_type") or "",
+        "client_name":     job.get("client_name") or job.get("client_nickname") or "",
+        "finance_company": job.get("lender_name") or "",
+        "customer_name":   job.get("customer_name") or "",
+        "account_number":  item.get("account_number") or job.get("account_number") or "",
+        "contract_number": job.get("client_reference") or "",
+        "regulation_type": item.get("regulation_type") or job.get("regulation_type") or "",
+        "address_attended": job.get("job_address") or "",
+        "make":        item.get("make") or rl.get("make") or "",
+        "model":       item.get("model") or rl.get("model") or "",
+        "year":        item.get("year") or rl.get("year") or "",
+        "colour":      item.get("colour") or rl.get("colour") or "",
+        "registration": item.get("reg") or rl.get("registration") or "",
+        "vin":         item.get("vin") or rl.get("vin") or "",
+        "arrears":     _fmt_cents(item.get("arrears_cents") or job.get("arrears_cents")),
+        "costs":       _fmt_cents(item.get("costs_cents") or job.get("costs_cents")),
+        "mmp":         _fmt_cents(job.get("mmp_cents")),
+    }
+
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    return render_template("field_worksheet.html",
+                           job=job, job_id=job_id, d=d, today=today)
+
+
+@app.post("/jobs/<int:job_id>/field-worksheet")
+@login_required
+def field_worksheet_post(job_id: int):
+    import pdf_gen as _pg
+    import logging as _log
+
+    def _f(name):
+        return (request.form.get(name) or "").strip()
+
+    data = {
+        "swpi_ref":              _f("swpi_ref"),
+        "date":                  _f("worksheet_date"),
+        "worksheet_date":        _f("worksheet_date"),
+        "agent_name":            _f("agent_name"),
+        "job_type":              _f("job_type"),
+        "client_name":           _f("client_name"),
+        "finance_company":       _f("finance_company"),
+        "customer_name":         _f("customer_name"),
+        "account_number":        _f("account_number"),
+        "contract_number":       _f("contract_number"),
+        "regulation_type":       _f("regulation_type"),
+        "address_attended":      _f("address_attended"),
+        "make":                  _f("make"),
+        "model":                 _f("model"),
+        "year":                  _f("year"),
+        "colour":                _f("colour"),
+        "registration":          _f("registration"),
+        "vin":                   _f("vin"),
+        "arrears":               _f("arrears"),
+        "costs":                 _f("costs"),
+        "mmp":                   _f("mmp"),
+        "time_in":               _f("time_in"),
+        "time_out":              _f("time_out"),
+        "nature_of_enquiry":     _f("nature_of_enquiry"),
+        "outcome":               _f("outcome"),
+        "notes":                 _f("notes"),
+        "instructions_received": _f("instructions_received"),
+    }
+
+    wants_json = (
+        "application/json" in (request.headers.get("Accept") or "")
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+
+    try:
+        pdf_bytes = _pg.generate_field_worksheet_pdf(data)
+    except Exception as exc:
+        _log.error("[field_worksheet_post] PDF error job_id=%s: %s", job_id, exc, exc_info=True)
+        if wants_json:
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        flash("PDF generation failed: " + str(exc), "error")
+        return redirect(url_for("field_worksheet", job_id=job_id))
+
+    ref = (data.get("swpi_ref") or str(job_id)).replace("/", "-")
+    raw_date = (data.get("worksheet_date") or "").replace("-", "")[:8]
+    date_s = raw_date if raw_date else now_ts()[:10].replace("-", "")
+    orig_filename = f"{ref} - Field Worksheet - {date_s}.pdf"
+    form_label = "AxionX Field Worksheet" if DEMO_MODE else "SWPI Field Worksheet"
+    action = _f("action")
+
+    if action == "attach":
+        conn = db()
+        ts = now_ts()
+        try:
+            attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"),
+                                        pdf_bytes, orig_filename, form_label, ts)
+            conn.commit()
+        except Exception as exc:
+            conn.close()
+            _log.error("[field_worksheet_post] attach error: %s", exc, exc_info=True)
+            if wants_json:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+            flash("Attach failed: " + str(exc), "error")
+            return redirect(url_for("field_worksheet", job_id=job_id))
+        conn.close()
+        if wants_json:
+            return jsonify({"ok": True, "document_id": attach["document_id"],
+                            "redirect": url_for("job_detail", job_id=job_id)})
+        flash("Field Worksheet generated and attached to file.", "success")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=orig_filename)
+
+
+# ─────────────────────────── Termination Notice ──────────────────────
+
+
+@app.get("/jobs/<int:job_id>/termination-notice")
+@login_required
+def termination_notice(job_id: int):
+    conn = db()
+    job_row = conn.execute("""
+        SELECT j.*,
+               c.name AS client_name, c.nickname AS client_nickname,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               cu.address AS customer_address
+        FROM jobs j
+        LEFT JOIN clients c ON c.id = j.client_id
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        WHERE j.id = ?
+    """, (job_id,)).fetchone()
+    if not job_row:
+        conn.close()
+        return ("Not found", 404)
+    job = dict(job_row)
+
+    item_rows = conn.execute(
+        "SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,)
+    ).fetchall()
+    items = [dict(r) for r in item_rows]
+    conn.close()
+
+    # Build a readable items description for pre-population
+    items_lines = []
+    for it in items:
+        parts = []
+        ymm = " ".join(filter(None, [it.get("year"), it.get("make"), it.get("model")]))
+        if ymm:
+            parts.append(ymm)
+        if it.get("description"):
+            parts.append(it["description"])
+        if it.get("reg"):
+            parts.append(f"Rego: {it['reg']}")
+        if it.get("vin"):
+            parts.append(f"VIN: {it['vin']}")
+        if parts:
+            items_lines.append(" | ".join(parts))
+    items_description = "\n".join(items_lines)
+
+    item0 = items[0] if items else {}
+    d = {
+        "customer_name":    job.get("customer_name") or "",
+        "customer_address": job.get("customer_address") or job.get("job_address") or "",
+        "finance_company":  job.get("lender_name") or "",
+        "account_number":   item0.get("account_number") or job.get("account_number") or "",
+        "contract_number":  job.get("client_reference") or "",
+        "regulation_type":  item0.get("regulation_type") or job.get("regulation_type") or "",
+        "tp_referral":      job.get("tp_referral") or "",
+        "items_description": items_description,
+    }
+
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    return render_template("termination_notice.html",
+                           job=job, job_id=job_id, d=d, today=today)
+
+
+@app.post("/jobs/<int:job_id>/termination-notice")
+@login_required
+def termination_notice_post(job_id: int):
+    import pdf_gen as _pg
+    import logging as _log
+
+    def _f(name):
+        return (request.form.get(name) or "").strip()
+
+    data = {
+        "date_of_notice":     _f("date_of_notice"),
+        "effective_date":     _f("effective_date"),
+        "customer_name":      _f("customer_name"),
+        "customer_address":   _f("customer_address"),
+        "finance_company":    _f("finance_company"),
+        "lender_name":        _f("finance_company"),
+        "account_number":     _f("account_number"),
+        "contract_number":    _f("contract_number"),
+        "regulation_type":    _f("regulation_type"),
+        "tp_referral":        _f("tp_referral"),
+        "items_description":  _f("items_description"),
+        "termination_reason": _f("termination_reason"),
+        "authorised_by":      _f("authorised_by"),
+    }
+
+    wants_json = (
+        "application/json" in (request.headers.get("Accept") or "")
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+
+    try:
+        pdf_bytes = _pg.generate_termination_notice_pdf(data)
+    except Exception as exc:
+        _log.error("[termination_notice_post] PDF error job_id=%s: %s", job_id, exc, exc_info=True)
+        if wants_json:
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        flash("PDF generation failed: " + str(exc), "error")
+        return redirect(url_for("termination_notice", job_id=job_id))
+
+    ref = (data.get("contract_number") or str(job_id)).replace("/", "-")
+    raw_date = (data.get("date_of_notice") or "").replace("-", "")[:8]
+    date_s = raw_date if raw_date else now_ts()[:10].replace("-", "")
+    orig_filename = f"{ref} - Termination Notice - {date_s}.pdf"
+    form_label = "Termination Notice"
+    action = _f("action")
+
+    if action == "attach":
+        conn = db()
+        ts = now_ts()
+        try:
+            attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"),
+                                        pdf_bytes, orig_filename, form_label, ts)
+            conn.commit()
+        except Exception as exc:
+            conn.close()
+            _log.error("[termination_notice_post] attach error: %s", exc, exc_info=True)
+            if wants_json:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+            flash("Attach failed: " + str(exc), "error")
+            return redirect(url_for("termination_notice", job_id=job_id))
+        conn.close()
+        if wants_json:
+            return jsonify({"ok": True, "document_id": attach["document_id"],
+                            "redirect": url_for("job_detail", job_id=job_id)})
+        flash("Termination Notice generated and attached to file.", "success")
+        return redirect(url_for("job_detail", job_id=job_id))
+
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=orig_filename)
+
+
 # ─────────────────────────── Complete Repo Pack ──────────────────────
 
 @app.get("/jobs/<int:job_id>/repo-lock/<int:rec_id>/repo-pack")
@@ -12747,6 +13035,52 @@ _FORMS_CATALOGUE = [
 ]
 
 _FORMS_META = {f["id"]: f for f in _FORMS_CATALOGUE}
+
+_STANDALONE_MOBILE_FORMS = [
+    {
+        "id":          "transport",
+        "name":        "Transport Instructions",
+        "description": "Tow operator & delivery receipt",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+    },
+    {
+        "id":          "vir",
+        "name":        "Vehicle Inspection Report",
+        "description": "SWPI repossession receipt",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+    },
+    {
+        "id":          "form_13",
+        "name":        "Form 13",
+        "description": "Notice to Occupier (NCCP Act)",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+    },
+    {
+        "id":          "auction_letter",
+        "name":        "Auction Manager Letter",
+        "description": "Letter to auction facility",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    },
+    {
+        "id":          "tow_letter",
+        "name":        "Towing Contractor Letter",
+        "description": "Letter to tow company",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+    },
+    {
+        "id":          "wise_auction",
+        "name":        "Wise Auction Letter",
+        "description": "Wise Group — auction form",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    },
+    {
+        "id":          "wise_tow",
+        "name":        "Wise Tow Instructions",
+        "description": "Wise Group — tow form",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+    },
+]
+_STANDALONE_MOBILE_META = {f["id"]: f for f in _STANDALONE_MOBILE_FORMS}
 
 
 def _forms_job_context(conn, job_id):
@@ -13085,7 +13419,8 @@ def m_forms():
         if not (f.get("requires_job") and not job_id)
     ]
     return render_template("mobile/forms.html",
-                           forms=forms_mobile, job=job, job_id=job_id)
+                           forms=forms_mobile, job=job, job_id=job_id,
+                           standalone_forms=_STANDALONE_MOBILE_FORMS)
 
 
 @app.get("/m/forms/generate")
@@ -13105,6 +13440,10 @@ def m_forms_generate():
                                    message="Please open this form from within a job.",
                                    back_url=url_for("m_forms")), 400
         return redirect(url_for("m_cash_receipt_new", job_id=job_id))
+
+    # Standalone forms — no job context required
+    if not job_id and form_type in _STANDALONE_MOBILE_META:
+        return redirect(url_for("m_standalone_form", form_type=form_type))
 
     _MOBILE_FORM_MAP = {
         "vir":                 "m_repo_lock_vir",
@@ -13146,6 +13485,85 @@ def m_forms_generate():
     if job_id:  params["job_id"]  = job_id
     if item_id: params["item_id"] = item_id
     return redirect(url_for("forms_generate", **params))
+
+
+@app.route("/m/forms/standalone/<form_type>", methods=["GET", "POST"])
+@login_required
+def m_standalone_form(form_type: str):
+    import pdf_gen as _pg
+    import logging as _log
+
+    meta = _STANDALONE_MOBILE_META.get(form_type)
+    if not meta:
+        return redirect(url_for("m_forms"))
+
+    if request.method == "GET":
+        from datetime import date as _date
+        return render_template("mobile/standalone_form.html",
+                               form_type=form_type,
+                               form_name=meta["name"],
+                               today=_date.today().isoformat())
+
+    # POST — collect form fields and generate PDF
+    def _f(name):
+        return (request.form.get(name) or "").strip()
+
+    data = {k: _f(k) for k in [
+        "swpi_ref", "finance_company", "lender", "customer_name", "repo_address",
+        "repossession_address", "repo_date", "account_number", "client_name",
+        "client_email", "make", "model", "year", "colour", "registration",
+        "vin", "engine_number", "speedometer",
+        "tow_company_name", "tow_phone", "tow_costs",
+        "deliver_to", "delivery_address",
+        "agent_name", "wise_case_number",
+        "person_present", "keys_obtained", "vol_surrender", "form_13",
+        "security_drivable", "any_damage", "damage_list",
+        "tyres", "body", "duco", "interior", "engine_condition",
+        "transmission", "fuel_level",
+    ]}
+
+    _GEN_MAP = {
+        "transport":      lambda d: _pg.generate_transport_pdf(d),
+        "vir":            lambda d: _pg.generate_vir_pdf(d),
+        "form_13":        lambda d: _pg.generate_form_13_pdf(d),
+        "auction_letter": lambda d: _pg.generate_auction_letter_pdf(d),
+        "tow_letter":     lambda d: _pg.generate_tow_letter_pdf(d),
+        "wise_auction":   lambda d: _pg.generate_wise_auction_pdf(d),
+        "wise_tow":       lambda d: _pg.generate_wise_tow_pdf(d),
+    }
+
+    gen_fn = _GEN_MAP.get(form_type)
+    if not gen_fn:
+        return redirect(url_for("m_forms"))
+
+    try:
+        pdf_bytes = gen_fn(data)
+    except Exception as exc:
+        _log.error("[m_standalone_form] PDF error type=%s: %s", form_type, exc, exc_info=True)
+        from datetime import date as _date
+        return render_template("mobile/standalone_form.html",
+                               form_type=form_type,
+                               form_name=meta["name"],
+                               error=str(exc),
+                               today=_f("repo_date") or _date.today().isoformat()), 500
+
+    ref = (_f("swpi_ref") or _f("wise_case_number") or _f("registration") or "SWPI").replace("/", "-")
+    from datetime import date as _date
+    date_s = _date.today().strftime("%d%m%Y")
+    suffix_map = {
+        "transport":      "TowInst",
+        "vir":            "VIR",
+        "form_13":        "Form13",
+        "auction_letter": "AuctionLtr",
+        "tow_letter":     "TowLtr",
+        "wise_auction":   "WiseAuction",
+        "wise_tow":       "WiseTow",
+    }
+    suffix = suffix_map.get(form_type, form_type.upper())
+    orig_filename = f"{ref} - {suffix} - {date_s}.pdf"
+
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                     as_attachment=True, download_name=orig_filename)
 
 
 def _m_form_back(job_id: int) -> dict:

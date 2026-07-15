@@ -6,7 +6,36 @@
 
   <div style="margin-bottom:16px;">
     <h1 style="font-size:1.05rem;font-weight:700;color:#111;margin:0 0 4px;">Operational Forms</h1>
-    <p style="font-size:.78rem;color:#6b7280;margin:0;">Generate SWPI field documents from job and Repo Lock data.</p>
+    <p style="font-size:.78rem;color:#6b7280;margin:0;">Generate SWPI field documents.</p>
+  </div>
+
+  {# ── Standalone Documents (no job required) ── #}
+  {% if standalone_forms %}
+  <div style="margin-bottom:20px;">
+    <div style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">
+      Standalone Documents
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      {% for sf in standalone_forms %}
+      <a href="/m/forms/standalone/{{ sf.id }}"
+         style="display:flex;align-items:center;gap:12px;background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:12px 14px;text-decoration:none;">
+        <div style="width:36px;height:36px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          {{ sf.icon | safe }}
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:.88rem;color:#111;">{{ sf.name }}</div>
+          <div style="font-size:.74rem;color:#6b7280;margin-top:1px;">{{ sf.description }}</div>
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Job-Linked Forms ── #}
+  <div style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">
+    Job-Linked Forms
   </div>
 
   {% if job %}

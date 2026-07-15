@@ -1,0 +1,120 @@
+{% extends "layout.html" %}
+{% block title %}Termination Notice — {{ job.display_ref or job.internal_job_number }}{% endblock %}
+
+{% block content %}
+<div style="max-width:860px;margin:0 auto;padding:20px 16px 60px;">
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+    <div>
+      <a href="/jobs/{{ job_id }}" style="color:#6b7280;font-size:.82rem;text-decoration:none;">&#x2190; Back to Job</a>
+      <h2 style="margin:4px 0 0;font-size:1.15rem;font-weight:700;color:#111;">Termination Notice</h2>
+      <div style="font-size:.8rem;color:#6b7280;margin-top:2px;">{{ job.display_ref or job.internal_job_number }} &mdash; Notice of Termination of Credit Contract</div>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for cat, msg in messages %}
+    <div style="padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:.84rem;
+                background:{% if cat in ('error','danger') %}#fef2f2;color:#b91c1c;border:1px solid #fecaca{% else %}#f0fdf4;color:#166534;border:1px solid #bbf7d0{% endif %}">{{ msg }}</div>
+  {% endfor %}{% endif %}
+  {% endwith %}
+
+  <form id="terminationForm" method="POST" action="/jobs/{{ job_id }}/termination-notice">
+    <input type="hidden" name="action" id="tnAction" value="download">
+
+    {% macro fi(name, label, value, type='text') %}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <label style="font-size:.75rem;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.02em;">{{ label }}</label>
+      <input type="{{ type }}" name="{{ name }}" value="{{ value or '' }}"
+             style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:.85rem;color:#111;background:#fff;width:100%;box-sizing:border-box;">
+    </div>
+    {% endmacro %}
+
+    {% macro ta(name, label, value, rows=3) %}
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <label style="font-size:.75rem;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.02em;">{{ label }}</label>
+      <textarea name="{{ name }}" rows="{{ rows }}"
+                style="border:1px solid #d1d5db;border-radius:6px;padding:7px 10px;font-size:.85rem;color:#111;background:#fff;width:100%;box-sizing:border-box;resize:vertical;">{{ value or '' }}</textarea>
+    </div>
+    {% endmacro %}
+
+    {% macro section(title, subtitle='') %}
+    <div style="background:#1e3a8a;color:#fff;padding:8px 14px;font-weight:700;font-size:.8rem;letter-spacing:.04em;border-radius:6px 6px 0 0;margin-top:20px;">
+      {{ title }}{% if subtitle %}<span style="font-weight:400;font-size:.75rem;opacity:.8;margin-left:8px;">{{ subtitle }}</span>{% endif %}
+    </div>
+    <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;padding:16px;background:#fff;">
+    {% endmacro %}
+
+    {# ── Notice Dates ── #}
+    {{ section('NOTICE DATES') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+      {{ fi('date_of_notice', 'Date of Notice', today, 'date') }}
+      {{ fi('effective_date', 'Effective Date of Termination', today, 'date') }}
+    </div>
+    </div>
+
+    {# ── Addressee ── #}
+    {{ section('ADDRESSEE (CUSTOMER)') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+      {{ fi('customer_name', 'Customer Name', d.customer_name) }}
+    </div>
+    <div style="margin-top:12px;">
+      {{ ta('customer_address', 'Customer Address', d.customer_address, 2) }}
+    </div>
+    </div>
+
+    {# ── Credit Contract Details ── #}
+    {{ section('CREDIT CONTRACT DETAILS') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+      {{ fi('finance_company', 'Lender / Credit Provider', d.finance_company) }}
+      {{ fi('account_number', 'Account Number', d.account_number) }}
+      {{ fi('contract_number', 'Contract Number', d.contract_number) }}
+      {{ fi('regulation_type', 'Regulation', d.regulation_type) }}
+      {% if d.tp_referral %}
+      {{ fi('tp_referral', 'Third Party Referral', d.tp_referral) }}
+      {% endif %}
+    </div>
+    </div>
+
+    {# ── Goods / Security ── #}
+    {{ section('GOODS / SECURITY SUBJECT TO TERMINATION', 'one item per line') }}
+    {{ ta('items_description', 'Description of Goods', d.items_description, 4) }}
+    </div>
+
+    {# ── Termination Reason ── #}
+    {{ section('REASON FOR TERMINATION') }}
+    {{ ta('termination_reason', 'Reason / Notes', '', 4) }}
+    </div>
+
+    {# ── Authorised By ── #}
+    {{ section('AUTHORISATION') }}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+      {{ fi('authorised_by', 'Authorised By (Name)', '') }}
+    </div>
+    <p style="margin:12px 0 0;font-size:.78rem;color:#6b7280;line-height:1.5;">
+      This notice is issued pursuant to the National Consumer Credit Protection Act 2009.
+      By generating this document you confirm the details above are accurate.
+    </p>
+    </div>
+
+    {# ── Actions ── #}
+    <div style="display:flex;gap:12px;margin-top:28px;flex-wrap:wrap;align-items:center;">
+      <button type="submit"
+              onclick="document.getElementById('tnAction').value='download'"
+              style="padding:10px 20px;border:1.5px solid #1e3a8a;background:#fff;color:#1e3a8a;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;">
+        &#x2193;&nbsp; Download PDF
+      </button>
+      <button type="submit"
+              onclick="document.getElementById('tnAction').value='attach'"
+              style="padding:10px 20px;border:none;background:#1e3a8a;color:#fff;border-radius:8px;font-size:.88rem;font-weight:600;cursor:pointer;">
+        &#x2713;&nbsp; Generate &amp; Attach to File
+      </button>
+      <a href="/jobs/{{ job_id }}"
+         style="margin-left:auto;padding:10px 18px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:8px;font-size:.88rem;text-decoration:none;">
+        Cancel
+      </a>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
