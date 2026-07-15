@@ -19316,7 +19316,7 @@ def hardship_providers_delete(hp_id):
 
 
 @app.get("/admin/api/hardship-providers")
-@login_required
+@admin_required
 def hardship_providers_api_search():
     q = (request.args.get("q") or "").strip().lower()
     conn = db()
