@@ -12281,20 +12281,32 @@ def repo_lock_wise_tow_pdf(job_id: int, rec_id: int):
         if len(parts) >= 3:
             d["model"] = parts[2]
 
-    pdf_bytes = _pg.generate_wise_tow_pdf(d)
-    form_label = "Wise Tow Instructions"
-    orig_filename = _gen_pdf_filename(
+    # Wise Tow package — Wise Tow Instructions + Auction Manager letter merged
+    pdf_bytes   = _pg.generate_wise_tow_pdf(d)
+    auction_pdf = _pg.generate_auction_letter_pdf(d)
+    merged      = _pg.generate_repo_pack_pdf([pdf_bytes, auction_pdf])
+
+    from datetime import datetime as _dt
+    ts       = now_ts()
+    job_num  = (d.get("wise_case_number") or d.get("swpi_ref") or str(job_id)).replace("/", "-")
+    date_str = _dt.now().strftime("%d-%m-%Y")
+
+    tow_filename     = _gen_pdf_filename(
         d.get("wise_case_number") or d.get("client_reference") or str(job_id),
         d.get("registration"),
         "Tow"
     )
-    ts = now_ts()
+    auction_filename = f"{job_num} - Auction Manager Letter - {date_str}.pdf"
+    pack_filename    = f"{job_num} - Wise Tow Package - {date_str}.pdf"
+
     _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
-                       orig_filename, form_label, ts)
+                       tow_filename, "Wise Tow Instructions", ts)
+    _attach_pdf_to_job(conn, job_id, session.get("user_id"), auction_pdf,
+                       auction_filename, "Auction Manager Letter", ts)
     conn.commit()
     conn.close()
-    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
-                     as_attachment=True, download_name=orig_filename)
+    return send_file(io.BytesIO(merged), mimetype="application/pdf",
+                     as_attachment=True, download_name=pack_filename)
 
 
 # ─────────────────────────── Form 13 ──────────────────────────────────

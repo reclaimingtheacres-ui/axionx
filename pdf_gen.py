@@ -710,12 +710,10 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     invoice_line  = ti_invoice_to or client_name
     c.setFont('Helvetica', 8.5)
     c.drawString(ML, y, _trunc(invoice_line, 50))
-    if client_email and not ti_invoice_to:
+    if client_email:
         y -= 14
-        c.setFont('Helvetica-Bold', 8)
-        c.drawString(ML, y, 'EMAIL:')
         c.setFont('Helvetica', 8.5)
-        c.drawString(ML + 38, y, _trunc(client_email, 50))
+        c.drawString(ML, y, _trunc(client_email, 50))
     y -= 10
     _hr(c, y)
     y -= 14
@@ -1499,6 +1497,15 @@ def generate_tow_letter_pdf(data):
         c.drawString(ML + lw + 6, y, value)
         y -= 14
     y -= 8
+
+    lender = _v(data, 'finance_company')
+    if lender:
+        c.setFont('Helvetica-Bold', 9.5)
+        lw = c.stringWidth('Lender:', 'Helvetica-Bold', 9.5)
+        c.drawString(ML, y, 'Lender:')
+        c.setFont('Helvetica', 9.5)
+        c.drawString(ML + lw + 6, y, lender)
+        y -= 14
 
     c.setFont('Helvetica', 9.5)
     c.drawString(ML, y, 'Please quote the following reference number and matter name;')
