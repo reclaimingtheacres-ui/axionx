@@ -4,13 +4,56 @@
 <a href="{{ url_for('m_recovery_targets_search') }}" style="color:var(--muted);margin-right:8px;">‹</a>
 Recovery Target
 {% endblock %}
+
 {% block content %}
+
+{# ── Identity banner ── #}
 <div style="background:#fff7ed;border:2px solid #fb923c;border-radius:12px;padding:13px 16px;margin-bottom:14px;">
-  <div style="font-size:.72rem;font-weight:800;color:#c2410c;text-transform:uppercase;letter-spacing:.08em;">Recovery Target · Not a Job</div>
+  <div style="font-size:.72rem;font-weight:800;color:#c2410c;text-transform:uppercase;letter-spacing:.08em;">
+    Recovery Target · RT-{{ "%05d"|format(target.id) }}
+  </div>
   <div style="font-size:1.05rem;font-weight:800;margin-top:4px;">{{ label }}</div>
-  <div style="font-size:.85rem;color:#9a3412;margin-top:2px;">{{ target.status }} · Repossession {{ "active" if target.repossession_active else "inactive" }}</div>
+  <div style="font-size:.85rem;color:#9a3412;margin-top:2px;">
+    {{ target.status }} · Repossession {{ "active" if target.repossession_active else "inactive" }}
+  </div>
 </div>
 
+{# ── Linked AxionX file ── #}
+{% if linked_job_id %}
+<a href="{{ url_for('m_job_detail', job_id=linked_job_id) }}"
+   style="display:block;text-decoration:none;background:#eff6ff;border:1.5px solid #bfdbfe;
+          border-radius:12px;padding:12px 16px;margin-bottom:14px;">
+  <div style="font-size:.7rem;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px;">Linked AxionX File</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:1rem;font-weight:800;color:#1e40af;">{{ linked_job_ref or linked_job_id }}</div>
+    <svg viewBox="0 0 24 24" width="16" height="16" stroke="#3b82f6" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+  </div>
+</a>
+{% else %}
+<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:.82rem;color:#92400e;">
+  No linked AxionX file. VIR and Transport Instructions can still be generated.
+</div>
+{% endif %}
+
+{# ── VIR and Transport buttons ── #}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+  <a href="{{ vir_url }}"
+     style="display:block;text-decoration:none;background:#fff;border:1.5px solid #d1d5db;
+            border-radius:12px;padding:14px 12px;text-align:center;">
+    <svg viewBox="0 0 24 24" width="22" height="22" stroke="#2563eb" fill="none" stroke-width="1.5" style="display:block;margin:0 auto 6px;"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    <div style="font-size:.82rem;font-weight:700;color:#1e40af;">VIR</div>
+    <div style="font-size:.72rem;color:var(--muted);margin-top:2px;">Vehicle Inspection Report</div>
+  </a>
+  <a href="{{ transport_url }}"
+     style="display:block;text-decoration:none;background:#fff;border:1.5px solid #d1d5db;
+            border-radius:12px;padding:14px 12px;text-align:center;">
+    <svg viewBox="0 0 24 24" width="22" height="22" stroke="#16a34a" fill="none" stroke-width="1.5" style="display:block;margin:0 auto 6px;"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+    <div style="font-size:.82rem;font-weight:700;color:#065f46;">Transport</div>
+    <div style="font-size:.72rem;color:var(--muted);margin-top:2px;">Transport Instructions</div>
+  </a>
+</div>
+
+{# ── Risk notes ── #}
 {% for p in people %}
 {% if p.risk_notes %}
 <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:12px;padding:13px 16px;margin-bottom:14px;">
@@ -18,6 +61,10 @@ Recovery Target
   <div style="font-size:.9rem;color:#7f1d1d;white-space:pre-wrap;">{{ p.risk_notes }}</div>
 </div>
 {% endif %}
+{% endfor %}
+
+{# ── Customer ── #}
+{% for p in people %}
 <div class="m-card">
   <div class="m-card-header">Customer</div>
   <div class="m-card-body">
@@ -31,6 +78,7 @@ Recovery Target
 </div>
 {% endfor %}
 
+{# ── Assets ── #}
 <div class="m-card">
   <div class="m-card-header">Assets</div>
   <div class="m-card-body">
@@ -39,7 +87,9 @@ Recovery Target
     <div style="border-bottom:1px solid var(--line);padding:0 0 12px;margin-bottom:12px;">
       <div style="font-size:1.45rem;font-weight:800;letter-spacing:.1em;">{{ a.registration_number or "NO REG" }}</div>
       <div style="font-weight:700;margin-top:4px;">{{ [a.year, a.colour, a.make, a.model] | select | join(' ') or a.asset_type or "Asset" }}</div>
-      {% if a.vin %}<div style="font-size:.84rem;color:var(--muted);margin-top:4px;">VIN {{ a.vin }}</div>{% endif %}
+      {% if a.vin %}
+      <div style="font-size:.84rem;color:var(--muted);font-family:monospace;margin-top:4px;background:#f9fafb;border-radius:5px;padding:3px 7px;display:inline-block;">VIN {{ a.vin }}</div>
+      {% endif %}
       {% if item.reg_history %}<div style="font-size:.84rem;color:var(--muted);margin-top:4px;">Previous reg: {{ item.reg_history | map(attribute='registration_number') | join(', ') }}</div>{% endif %}
       {% if a.current_security_status %}<div style="font-size:.86rem;margin-top:6px;"><strong>Security:</strong> {{ a.current_security_status }}</div>{% endif %}
       {% if a.operational_notes %}<div style="font-size:.86rem;margin-top:6px;white-space:pre-wrap;"><strong>Operational:</strong> {{ a.operational_notes }}</div>{% endif %}
@@ -50,6 +100,7 @@ Recovery Target
   </div>
 </div>
 
+{# ── Instructing Parties ── #}
 <div class="m-card">
   <div class="m-card-header">Instructing Parties</div>
   <div class="m-card-body">
@@ -65,8 +116,9 @@ Recovery Target
   </div>
 </div>
 
+{# ── Phones & Addresses ── #}
 <div class="m-card">
-  <div class="m-card-header">Phones & Addresses</div>
+  <div class="m-card-header">Phones &amp; Addresses</div>
   <div class="m-card-body">
     {% for p in phones %}
     <div style="margin-bottom:8px;"><strong>{{ p.phone_number }}</strong> <span style="color:var(--muted);font-size:.84rem;">{{ p.label }}{% if p.is_primary %} · Primary{% endif %}</span></div>
@@ -78,16 +130,23 @@ Recovery Target
       {% if a.notes %}<div style="font-size:.84rem;margin-top:3px;">{{ a.notes }}</div>{% endif %}
     </div>
     {% endfor %}
+    {% if not phones and not addresses %}<div style="color:var(--muted);">No contact details recorded.</div>{% endif %}
   </div>
 </div>
 
+{# ── Documents ── #}
 <div class="m-card">
   <div class="m-card-header">Documents</div>
   <div class="m-card-body">
     {% for d in documents %}
-    <a href="{{ url_for('recovery_target_download_document', target_id=target.id, doc_id=d.id) }}" style="display:block;padding:10px 0;border-bottom:1px solid var(--line);">
-      <div style="font-weight:700;">{{ d.original_filename }}</div>
-      <div style="font-size:.8rem;color:var(--muted);">{{ d.category or "General" }} · {{ d.uploaded_at }}</div>
+    <a href="{{ url_for('recovery_target_download_document', target_id=target.id, doc_id=d.id) }}"
+       style="display:flex;align-items:center;justify-content:space-between;gap:8px;
+              padding:10px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit;">
+      <div>
+        <div style="font-weight:700;font-size:.88rem;">{{ d.original_filename }}</div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:2px;">{{ d.category or "General" }} · {{ d.uploaded_at }}</div>
+      </div>
+      <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--accent)" fill="none" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     </a>
     {% else %}
     <div style="color:var(--muted);">No documents uploaded.</div>
@@ -95,12 +154,13 @@ Recovery Target
   </div>
 </div>
 
+{# ── Operational Notes (existing) ── #}
 <div class="m-card">
   <div class="m-card-header">Operational Notes</div>
   <div class="m-card-body">
     {% for n in notes %}
     <div style="border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px;">
-      <div style="font-size:.78rem;color:var(--muted);">{{ n.created_at | mel_dt }} · {{ n.note_type or "Note" }}</div>
+      <div style="font-size:.78rem;color:var(--muted);">{{ n.created_at | mel_dt }} · {{ n.note_type or "Note" }}{% if n.created_by_name %} · {{ n.created_by_name }}{% endif %}</div>
       <div style="font-size:.9rem;white-space:pre-wrap;margin-top:4px;">{{ n.note_text }}</div>
     </div>
     {% else %}
@@ -108,4 +168,79 @@ Recovery Target
     {% endfor %}
   </div>
 </div>
+
+{# ── Notes & Completion ── #}
+{% if target.status != 'Repossessed' %}
+<div class="m-card" style="border:1.5px solid #d1d5db;">
+  <div class="m-card-header" style="background:#374151;color:#fff;">Notes &amp; Completion</div>
+  <div class="m-card-body">
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in msgs %}
+    <div style="padding:10px 12px;border-radius:8px;margin-bottom:12px;font-size:.84rem;
+                {% if cat == 'success' %}background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;
+                {% elif cat == 'danger' %}background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;
+                {% else %}background:#fffbeb;color:#92400e;border:1px solid #fde68a;{% endif %}">
+      {{ msg }}
+    </div>
+    {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('m_recovery_target_action', target_id=target.id) }}">
+
+      <div style="margin-bottom:12px;">
+        <label class="m-label">Operational Notes</label>
+        <textarea name="op_notes" rows="4" class="m-textarea"
+                  placeholder="Enter operational notes…"
+                  style="resize:vertical;"></textarea>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:.9rem;">
+          <input type="checkbox" name="add_to_job_notes" value="1"
+                 style="margin-top:2px;{% if not linked_job_id %}opacity:.45;{% endif %}"
+                 {% if not linked_job_id %}disabled{% endif %}>
+          <span>Add to Repossession Notes{% if linked_job_id %} on <strong>{{ linked_job_ref }}</strong>{% endif %}</span>
+        </label>
+        {% if not linked_job_id %}
+        <div style="font-size:.75rem;color:var(--muted);margin-top:4px;padding-left:24px;">No linked AxionX file — notes will save to this Recovery Target only.</div>
+        {% endif %}
+      </div>
+
+      {% if can_complete %}
+      <div id="repoCheckWrap" style="margin-bottom:12px;">
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:.9rem;color:#b91c1c;font-weight:600;">
+          <input type="checkbox" name="mark_repossessed" value="1" id="mRepoCheck" style="margin-top:2px;">
+          <span>Mark File as Repossessed{% if linked_job_id %} — move <strong>{{ linked_job_ref }}</strong> to Completed{% endif %}</span>
+        </label>
+        <div id="mRepoWarn" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:9px 12px;margin-top:8px;font-size:.82rem;color:#b91c1c;">
+          &#x26A0; This will move the linked AxionX file to Completed. This action cannot be undone.
+        </div>
+      </div>
+      {% endif %}
+
+      <button type="submit" class="m-btn m-btn-primary" style="width:100%;">Save Notes</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<div style="background:#f1f5f9;border-radius:12px;padding:12px 16px;text-align:center;font-size:.88rem;color:#475569;margin-bottom:14px;">
+  This Recovery Target is marked Repossessed.
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var cb = document.getElementById('mRepoCheck');
+  var warn = document.getElementById('mRepoWarn');
+  if (cb && warn) {
+    cb.addEventListener('change', function(){
+      warn.style.display = this.checked ? 'block' : 'none';
+    });
+  }
+})();
+</script>
 {% endblock %}

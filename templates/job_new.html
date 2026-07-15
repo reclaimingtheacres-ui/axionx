@@ -99,7 +99,6 @@
 <form method="post" id="newJobForm">
 {% if autofill_id %}<input type="hidden" name="autofill_id" value="{{ autofill_id }}">{% endif %}
 <input type="hidden" name="add_another" id="add_another_input" value="">
-<input type="hidden" name="cloned_notes" id="cloned_notes_input" value="">
 
 <div class="nj-two-col">
 
@@ -127,7 +126,7 @@
               <input class="form-control form-control-sm" name="client_reference" id="client_reference" placeholder="e.g. AMO218972" value="{{ prefill_client_reference }}" oninput="this.value=this.value.replace(/\s/g,'').replace(/[a-z]/g,c=>c.toUpperCase()); syncCJN(); syncContractToAccount();" autocomplete="off">
               <div id="ref_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
             </div>
-            <div class="form-text" style="color:var(--muted);font-size:.7rem;">Type to search &amp; clone</div>
+            <div class="form-text" style="color:var(--muted);font-size:.7rem;">Contract reference</div>
           </div>
           <div style="flex:1;min-width:140px;">
             <label class="nj-lbl d-flex align-items-center gap-2">
@@ -391,8 +390,12 @@
           </div>
           <div style="flex:1;min-width:120px;">
             <label class="nj-lbl">Account # {{ conf_badge('account_number') }}</label>
-            <input class="form-control form-control-sm" name="account_number" id="account_number" placeholder="1234567"
-                   value="{{ prefill_account_number or '' }}">
+            <div class="position-relative">
+              <input class="form-control form-control-sm" name="account_number" id="account_number" placeholder="1234567"
+                     value="{{ prefill_account_number or '' }}" autocomplete="off">
+              <div id="acc_results" style="display:none;position:absolute;z-index:9999;width:100%;top:calc(100% + 4px);background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:260px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.12);"></div>
+            </div>
+            <div class="form-text" style="color:var(--muted);font-size:.7rem;">Type to search &amp; clone</div>
           </div>
         </div>
         <div class="nj-row">
@@ -1066,54 +1069,54 @@ function toggleParsed(btn) {
     }
   }
 
-  /* ── Reference search typeahead ───────────────────────────────────── */
-  var refResults = document.getElementById('ref_results');
+  /* ── Account number clone search typeahead ─────────────────────── */
+  var accResults = document.getElementById('acc_results');
+  var accField   = document.getElementById('account_number');
   var _cloneData = null;
   var _cloneBs   = null;
 
-  if (crField && refResults) {
-    crField.addEventListener('input', function () {
-      var q = crField.value.trim();
-      if (q.length < 2) { refResults.style.display = 'none'; return; }
-      fetch('/jobs/search-reference?q=' + encodeURIComponent(q))
+  if (accField && accResults) {
+    accField.addEventListener('input', function () {
+      var q = accField.value.trim();
+      if (q.length < 2) { accResults.style.display = 'none'; return; }
+      fetch('/jobs/search-by-account?q=' + encodeURIComponent(q))
         .then(function (r) { return r.json(); })
         .then(function (items) {
-          refResults.innerHTML = '';
+          accResults.innerHTML = '';
           if (!items.length) {
-            refResults.innerHTML = '<div style="padding:10px 14px;color:var(--muted);font-size:.85rem;">No matching jobs.</div>';
-            refResults.style.display = '';
+            accResults.innerHTML = '<div style="padding:10px 14px;color:var(--muted);font-size:.85rem;">No matching jobs.</div>';
+            accResults.style.display = '';
             return;
           }
           items.forEach(function (job) {
             var d = document.createElement('div');
             d.style.cssText = 'padding:9px 14px;cursor:pointer;border-bottom:1px solid rgba(0,0,0,.06);font-size:.85rem;';
-            var ref = job.client_reference || job.client_job_number || '';
             d.innerHTML = '<span style="font-weight:600;">' + escHtml(job.display_ref) + '</span>'
               + ' &mdash; ' + escHtml(job.customer_name || 'No customer')
               + '<br><span style="color:var(--muted);font-size:.78rem;">'
-              + escHtml(job.client_name || '') + (ref ? ' | Ref: ' + escHtml(ref) : '')
+              + escHtml(job.client_name || '')
+              + ' | Acct: ' + escHtml(job.account_number || '')
               + ' | ' + escHtml(job.status)
               + '</span>';
             d.addEventListener('mouseenter', function () { d.style.background = 'rgba(96,165,250,.1)'; });
             d.addEventListener('mouseleave', function () { d.style.background = ''; });
             d.addEventListener('mousedown', function (e) {
               e.preventDefault();
-              refResults.style.display = 'none';
-              crField.value = ref || job.display_ref;
-              syncCJN();
+              accResults.style.display = 'none';
+              accField.value = job.account_number || '';
               loadCloneModal(job.id);
             });
-            refResults.appendChild(d);
+            accResults.appendChild(d);
           });
-          refResults.style.display = '';
+          accResults.style.display = '';
         });
     });
 
-    crField.addEventListener('blur', function () {
-      setTimeout(function () { refResults.style.display = 'none'; }, 200);
+    accField.addEventListener('blur', function () {
+      setTimeout(function () { accResults.style.display = 'none'; }, 200);
     });
-    crField.addEventListener('focus', function () {
-      if (crField.value.trim().length >= 2) crField.dispatchEvent(new Event('input'));
+    accField.addEventListener('focus', function () {
+      if (accField.value.trim().length >= 2) accField.dispatchEvent(new Event('input'));
     });
   }
 
@@ -1185,18 +1188,14 @@ function toggleParsed(btn) {
         html += '</div>';
       });
     }
-    if (d.file_notes && d.file_notes.length) {
-      html += '<hr><div style="font-weight:600;font-size:.82rem;color:var(--muted);margin-bottom:6px;">FILE NOTES (' + d.file_notes.length + ' will be copied)</div>';
-      d.file_notes.forEach(function (n) {
-        var preview = (n.text || '').slice(0, 120);
-        if ((n.text || '').length > 120) preview += '\u2026';
-        html += '<div style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:5px;font-size:.82rem;white-space:pre-wrap;color:var(--text);">' + escHtml(preview) + '</div>';
-      });
-    }
     return html;
   }
 
   document.addEventListener('DOMContentLoaded', function() {
+    var _cloneModalEl = document.getElementById('cloneModal');
+    if (_cloneModalEl && _cloneModalEl.parentNode !== document.body) {
+      document.body.appendChild(_cloneModalEl);
+    }
     var cloneBtn = document.getElementById('cloneConfirmBtn');
     if (cloneBtn) {
       cloneBtn.addEventListener('click', function () {
@@ -1341,11 +1340,6 @@ function toggleParsed(btn) {
         });
         if (typeof window.axionSyncAssets === 'function') window.axionSyncAssets();
       }
-    }
-
-    var cnInput = document.getElementById('cloned_notes_input');
-    if (cnInput) {
-      cnInput.value = (d.file_notes && d.file_notes.length) ? JSON.stringify(d.file_notes) : '';
     }
 
     document.getElementById('newJobForm').scrollIntoView({ behavior: 'smooth', block: 'start' });

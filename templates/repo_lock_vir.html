@@ -161,8 +161,48 @@
       </div>
     </div>
 
+    {% if is_recovery_target %}
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:18px;">
+      <div style="background:#374151;color:#fff;padding:8px 14px;font-weight:700;font-size:.82rem;">NOTES &amp; COMPLETION</div>
+      <div style="padding:14px;">
+        {% if linked_job_id %}
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:.82rem;color:#1d4ed8;">
+          <strong>Linked AxionX File:</strong> {{ linked_job_ref or linked_job_id }}
+        </div>
+        {% else %}
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:.82rem;color:#92400e;">
+          No AxionX file is currently linked to this Recovery Target. Notes will be saved to the Recovery Target record only.
+        </div>
+        {% endif %}
+        <div style="margin-bottom:12px;">
+          <label style="font-size:.75rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Operational Notes</label>
+          <textarea name="op_notes" id="opNotes" rows="4"
+                    placeholder="Enter operational notes…"
+                    style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:.84rem;color:#111;background:#fff;width:100%;box-sizing:border-box;resize:vertical;">{{ op_notes or '' }}</textarea>
+          <div id="opNotesError" style="display:none;font-size:.75rem;color:#dc2626;margin-top:3px;">Please enter notes before selecting &ldquo;Add to Repossession Notes&rdquo;.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:.84rem;color:#111;">
+            <input type="checkbox" name="add_to_job_notes" id="addToJobNotes" value="1" style="margin-top:2px;{% if not linked_job_id %}opacity:.45;{% endif %}">
+            <span>Add to Repossession Notes{% if linked_job_id %} on <strong>{{ linked_job_ref or 'linked job' }}</strong>{% endif %}</span>
+          </label>
+          {% if can_complete %}
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:.84rem;color:#b91c1c;font-weight:600;">
+            <input type="checkbox" name="mark_repossessed" id="markRepossessed" value="1" style="margin-top:2px;">
+            <span>Mark File as Repossessed{% if linked_job_id %} — move <strong>{{ linked_job_ref or 'linked job' }}</strong> to Completed{% endif %}</span>
+          </label>
+          {% endif %}
+        </div>
+        <div id="repoWarningVir" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;margin-top:10px;font-size:.82rem;color:#b91c1c;">
+          &#x26A0; This will move the linked AxionX file to Completed and queue it for invoicing. This action cannot be undone.
+        </div>
+        <div id="rtNoticeVir" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:8px 12px;margin-top:10px;font-size:.82rem;color:#166534;"></div>
+      </div>
+    </div>
+    {% endif %}
+
     <div style="display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px;">
-      <a href="/jobs/{{ job_id }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
+      <a href="{{ back_url or ('/jobs/' ~ job_id) }}" style="padding:11px 20px;border:1.5px solid #d1d5db;border-radius:8px;color:#374151;text-decoration:none;font-size:.88rem;font-weight:600;">Cancel</a>
       <button type="submit" id="genVirBtn"
               style="padding:11px 26px;background:#2563eb;color:#fff;border:0;border-radius:8px;font-size:.88rem;font-weight:700;cursor:pointer;">
         <span id="genVirTxt">Save &amp; Generate PDF</span>
@@ -263,40 +303,94 @@
   })();
   {% endif %}
 
+  var _markRepoElVir = document.getElementById('markRepossessed');
+  if (_markRepoElVir) {
+    _markRepoElVir.addEventListener('change', function() {
+      var warn = document.getElementById('repoWarningVir');
+      if (warn) warn.style.display = this.checked ? 'block' : 'none';
+    });
+  }
+
   document.getElementById('virForm').addEventListener('submit', async function(e) {
     e.preventDefault();
-    if (document.getElementById('agentSigned').value !== '1') {
+    var agentCanvas = document.getElementById('agentCanvas');
+    var agentSigData = document.getElementById('agentSigData');
+    var agentSigned = document.getElementById('agentSigned');
+    if (agentSigned.value === '1' && agentCanvas && agentSigData) {
+      agentSigData.value = agentCanvas.toDataURL('image/png');
+    }
+    if (agentSigned.value !== '1') {
       document.getElementById('agentSigPrompt').style.display = 'block';
-      document.getElementById('agentCanvas').style.borderColor = '#dc2626';
-      document.getElementById('agentCanvas').scrollIntoView({ behavior:'smooth', block:'center' });
+      agentCanvas.style.borderColor = '#dc2626';
+      agentCanvas.scrollIntoView({ behavior:'smooth', block:'center' });
       return;
     }
     document.getElementById('agentSigPrompt').style.display = 'none';
+    var addToNotesEl = document.getElementById('addToJobNotes');
+    var opNotesEl    = document.getElementById('opNotes');
+    var errEl        = document.getElementById('opNotesError');
+    if (addToNotesEl && addToNotesEl.checked && opNotesEl && !opNotesEl.value.trim()) {
+      if (errEl) errEl.style.display = 'block';
+      opNotesEl.style.borderColor = '#dc2626';
+      opNotesEl.scrollIntoView({ behavior:'smooth', block:'center' });
+      return;
+    }
+    if (errEl) errEl.style.display = 'none';
+    if (opNotesEl) opNotesEl.style.borderColor = '';
     var btn = document.getElementById('genVirBtn');
     btn.disabled = true;
     document.getElementById('genVirTxt').textContent = 'Generating PDF\u2026';
     try {
-      var res = await fetch(this.action, {
+      var response = await fetch(this.action, {
         method: 'POST',
         body: new FormData(this),
-        headers: {'Accept': 'application/json'}
+        headers: {'Accept': 'application/pdf'}
       });
-      var ct = (res.headers.get('Content-Type') || '').toLowerCase();
-      if (ct.indexOf('application/json') === -1) {
-        showVirError('Unable to generate the document. The server returned an unexpected response.');
+      if (!response.ok) {
+        var errMsg = 'Unable to generate the document. HTTP ' + response.status + '.';
+        try {
+          var errCt = (response.headers.get('content-type') || '');
+          if (errCt.indexOf('application/json') !== -1) {
+            var errData = await response.json();
+            errMsg = errData.error || errData.message || errMsg;
+          }
+        } catch(_e) {}
+        showVirError(errMsg);
         return;
       }
-      var data = await res.json();
-      if (!res.ok || !data.ok) {
-        showVirError(data.message || data.error || 'Unable to generate the document.');
-        return;
+      var pdfBlob = await response.blob();
+      var pdfUrl = URL.createObjectURL(pdfBlob);
+      var disposition = response.headers.get('content-disposition') || '';
+      var filename = 'VIR.pdf';
+      var fnMatch = disposition.match(/filename="?([^"]+)"?/i);
+      if (fnMatch && fnMatch[1]) { filename = fnMatch[1]; }
+      var notice = response.headers.get('X-Axion-Notice');
+      var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+      if (hasNative) {
+        try {
+          window.__AXION_PREVIEW_ACTIVE = true;
+          window.__AXION_PREVIEW_SOURCE_URL = window.location.href;
+          window.webkit.messageHandlers.documentPreview.postMessage({url: pdfUrl, filename: filename, returnTo: window.location.href});
+          if (notice) {
+            var nd = document.getElementById('rtNoticeVir');
+            if (nd) { nd.textContent = notice; nd.style.display = 'block'; nd.scrollIntoView({ behavior:'smooth', block:'center' }); }
+          }
+          return;
+        } catch(_e) {
+          console.warn('Native document preview handoff failed', _e);
+        }
       }
-      var url = data.preview_url || data.download_url;
-      if (!url) {
-        showVirError('The document was generated but no preview URL was returned.');
-        return;
+      var a = document.createElement('a');
+      a.href = pdfUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function() { URL.revokeObjectURL(pdfUrl); }, 60000);
+      if (notice) {
+        var nd = document.getElementById('rtNoticeVir');
+        if (nd) { nd.textContent = notice; nd.style.display = 'block'; nd.scrollIntoView({ behavior:'smooth', block:'center' }); }
       }
-      openGeneratedDocument(url, data.filename);
     } catch (ex) {
       showVirError('Unable to generate the document. Please check your connection and try again.');
     } finally {

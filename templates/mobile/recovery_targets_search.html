@@ -1,39 +1,132 @@
 {% extends "mobile/base.html" %}
 {% block title %}Recovery Targets — AxionX{% endblock %}
 {% block header_title %}Recovery Targets{% endblock %}
+
+{% block header_right %}
+<a href="{{ url_for('m_lpr_vin_search') }}"
+   style="font-size:.72rem;font-weight:600;color:#0f766e;padding:5px 10px;
+          background:#ecfdf5;border:1px solid #99f6e4;border-radius:10px;
+          white-space:nowrap;text-decoration:none;">
+  VIN Search
+</a>
+{% endblock %}
+
 {% block content %}
-<div class="m-card">
-  <div class="m-card-header">Direct Search</div>
-  <div class="m-card-body">
-    <form method="get" action="{{ url_for('m_recovery_targets_search') }}">
-      <div class="m-form-group">
-        <label class="m-label">Search</label>
-        <input name="q" value="{{ q }}" class="m-input" placeholder="Name, reg, VIN, phone, address, licence, reference">
-      </div>
-      <button class="m-btn m-btn-primary">Search Recovery Targets</button>
-    </form>
+<form method="get" action="{{ url_for('m_recovery_targets_search') }}" style="margin-bottom:14px;">
+  <div style="display:flex;gap:8px;align-items:stretch;">
+    <input name="q" value="{{ q }}" class="m-input" placeholder="Name, reg, VIN, reference, finance co…"
+           style="flex:1;margin:0;" autocorrect="off" autocapitalize="none">
+    <button type="submit" class="m-btn m-btn-primary" style="padding:10px 14px;white-space:nowrap;flex-shrink:0;">
+      <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
   </div>
-</div>
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+</form>
 
 {% if q %}
-  {% for r in rows %}
-  <a href="{{ url_for('m_recovery_target_detail', target_id=r.id) }}" class="m-card" style="display:block;color:inherit;text-decoration:none;">
+<div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:0 4px;margin-bottom:8px;">
+  Results for &ldquo;{{ q }}&rdquo;
+</div>
+{% else %}
+<div style="font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:0 4px;margin-bottom:8px;">
+  Recent Recovery Targets
+</div>
+{% endif %}
+
+{% for r in rows %}
+<a href="{{ url_for('m_recovery_target_detail', target_id=r.id) }}"
+   style="display:block;text-decoration:none;color:inherit;margin-bottom:12px;">
+  <div class="m-card" style="margin-bottom:0;">
     <div class="m-card-body">
-      <div style="display:flex;justify-content:space-between;gap:10px;">
-        <div>
-          <div style="font-size:.72rem;font-weight:800;color:#ea580c;text-transform:uppercase;letter-spacing:.08em;">Recovery Target</div>
-          <div style="font-size:1rem;font-weight:800;margin-top:3px;">{{ r.person_name or "Unknown customer" }}</div>
-          <div style="font-size:.86rem;color:var(--muted);margin-top:3px;">{{ r.internal_reference or r.agency_reference or r.lender_reference or ("RT-%05d"|format(r.id)) }}</div>
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.68rem;font-weight:800;color:#ea580c;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px;">
+            RT-{{ "%05d"|format(r.id) }}{% if r.linked_job_ref %} · {{ r.linked_job_ref }}{% endif %}
+          </div>
+          <div style="font-size:1rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            {{ r.person_name or "Unknown customer" }}
+          </div>
+          {% if r.finance_company %}
+          <div style="font-size:.82rem;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.finance_company }}</div>
+          {% endif %}
         </div>
-        <div style="text-align:right;">
+        <div style="text-align:right;flex-shrink:0;">
           <div style="font-size:1.05rem;font-weight:800;letter-spacing:.08em;">{{ r.primary_reg or "—" }}</div>
-          <div style="font-size:.78rem;color:var(--muted);">{{ r.status }}</div>
+          <div style="font-size:.72rem;padding:2px 7px;border-radius:6px;margin-top:3px;font-weight:700;
+                      {% if r.status == 'Active' %}background:#dcfce7;color:#166534;
+                      {% elif r.status == 'Repossessed' %}background:#f1f5f9;color:#475569;
+                      {% elif r.status == 'On Hold' %}background:#fef9c3;color:#713f12;
+                      {% else %}background:#f3f4f6;color:#6b7280;{% endif %}">
+            {{ r.status }}
+          </div>
         </div>
       </div>
+
+      {% if r.primary_vin %}
+      <div style="font-size:.78rem;color:var(--muted);font-family:monospace;letter-spacing:.03em;background:#f9fafb;border-radius:5px;padding:3px 7px;margin-bottom:6px;display:inline-block;">
+        VIN {{ r.primary_vin }}
+      </div>
+      {% endif %}
+
+      {% if r.primary_address %}
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" fill="none" stroke-width="2" style="vertical-align:middle;margin-right:3px;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>{{ r.primary_address }}
+      </div>
+      {% endif %}
+
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+        {% if r.vir_generated %}
+        <span style="font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#dbeafe;color:#1e40af;">VIR ✓</span>
+        {% else %}
+        <span style="font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#f3f4f6;color:#9ca3af;">VIR</span>
+        {% endif %}
+        {% if r.transport_generated %}
+        <span style="font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#d1fae5;color:#065f46;">Transport ✓</span>
+        {% else %}
+        <span style="font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#f3f4f6;color:#9ca3af;">Transport</span>
+        {% endif %}
+        {% if r.repossession_active %}
+        <span style="font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:5px;background:#fff7ed;color:#c2410c;">Repo Active</span>
+        {% endif %}
+      </div>
+
+      <div style="margin-top:8px;display:flex;align-items:center;justify-content:flex-end;">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="var(--muted)" fill="none" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
     </div>
-  </a>
-  {% else %}
-  <div class="m-card"><div class="m-card-body" style="color:var(--muted);">No Recovery Targets found.</div></div>
-  {% endfor %}
+  </div>
+</a>
+
+{% else %}
+
+{% if q or true %}
+<div class="m-card">
+  <div class="m-card-body" style="text-align:center;padding:24px 16px;">
+    <svg viewBox="0 0 24 24" width="36" height="36" stroke="var(--muted)" fill="none" stroke-width="1.5" style="display:block;margin:0 auto 10px;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    <div style="font-weight:700;color:var(--muted);">No Recovery Targets found</div>
+    {% if q %}<div style="font-size:.84rem;color:var(--muted);margin-top:4px;">No results for &ldquo;{{ q }}&rdquo;.</div>{% endif %}
+  </div>
+</div>
 {% endif %}
+
+{% endfor %}
+
+{% if has_prev or has_more %}
+<div style="display:flex;gap:10px;justify-content:center;margin-top:16px;">
+  {% if has_prev %}
+  <a href="{{ url_for('m_recovery_targets_search', q=q, page=prev_page) }}"
+     class="m-btn" style="flex:1;text-align:center;text-decoration:none;">
+    ← Previous
+  </a>
+  {% endif %}
+  {% if has_more %}
+  <a href="{{ url_for('m_recovery_targets_search', q=q, page=next_page) }}"
+     class="m-btn m-btn-primary" style="flex:1;text-align:center;text-decoration:none;">
+    Next →
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+
 {% endblock %}

@@ -180,12 +180,16 @@ def throttle_fail(conn, key, username=None, ip=None):
         )
 
 
-def throttle_success(conn, key, username=None, ip=None):
+def throttle_success(conn, key, username=None, ip=None, write_audit=True):
     """Record a successful login and clear the failed-attempt counter.
 
     If an active lockout is in place the counter is NOT cleared — management
     must manually release the lock.  This prevents a locked account from being
     unblocked simply by knowing the correct password.
+
+    write_audit: set False when calling for the ip: key to avoid writing a
+    duplicate audit row (the user: key call carries the meaningful username
+    context and is sufficient for the Login Security log).
     """
     cur = conn.cursor()
     _ensure_throttle_table(cur)
@@ -195,9 +199,10 @@ def throttle_success(conn, key, username=None, ip=None):
     username_val = (username or "").lower().strip()
     ip_address = key[3:] if key.startswith("ip:") else (ip or "")
 
-    _write_audit(cur, "successful_login", key,
-                 ip_address=ip_address, username=username_val,
-                 fail_count=0, is_locked=False)
+    if write_audit:
+        _write_audit(cur, "successful_login", key,
+                     ip_address=ip_address, username=username_val,
+                     fail_count=0, is_locked=False)
 
     if row and row["locked_until"]:
         # Active lock — leave in place; only management can release.

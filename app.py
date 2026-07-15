@@ -2329,6 +2329,16 @@ def normalise_registration(reg_text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", reg_text).upper()
 
 
+def _normalise_vin(s: str) -> str:
+    """Normalise a VIN / chassis number — strip spaces, hyphens and common separators, uppercase."""
+    if not s:
+        return ""
+    return re.sub(r"[^A-Za-z0-9]", "", s).upper()
+
+
+_VIN_MIN_SEARCH_LEN = 6
+
+
 _LPR_TMP = "/tmp/axionx_lpr"
 os.makedirs(_LPR_TMP, exist_ok=True)
 
@@ -4423,7 +4433,7 @@ def login_post():
         flash("Invalid email or password.", "danger")
         return redirect(url_for("login"))
 
-    throttle_success(conn, ip_key,   username=email, ip=ip)
+    throttle_success(conn, ip_key,   username=email, ip=ip, write_audit=False)
     throttle_success(conn, user_key, username=email, ip=ip)
     conn.commit()
     conn.close()
@@ -5250,6 +5260,29 @@ def jobs_search_reference():
     return jsonify([dict(r) for r in rows])
 
 
+@app.get("/jobs/search-by-account")
+@admin_required
+def jobs_search_by_account():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify([])
+    like = f"%{q}%"
+    conn = db()
+    rows = conn.execute("""
+        SELECT j.id, j.display_ref, j.account_number, j.status, j.job_type,
+               (cu.first_name || ' ' || cu.last_name) AS customer_name,
+               COALESCE(c.nickname, c.name) AS client_name
+        FROM jobs j
+        LEFT JOIN customers cu ON cu.id = j.customer_id
+        LEFT JOIN clients c ON c.id = j.client_id
+        WHERE j.account_number LIKE ?
+        ORDER BY j.created_at DESC
+        LIMIT 10
+    """, (like,)).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
 @app.get("/jobs/<int:job_id>/clone-data")
 @admin_required
 def job_clone_data(job_id: int):
@@ -5268,12 +5301,6 @@ def job_clone_data(job_id: int):
         "SELECT * FROM job_items WHERE job_id = ? ORDER BY id", (job_id,)
     ).fetchall()
     _ak = [r[1] for r in conn.execute("PRAGMA table_info(job_items)").fetchall()]
-    file_notes = conn.execute(
-        """SELECT id, note_text FROM job_field_notes
-           WHERE job_id=? AND note_category='file_note' AND review_status='published'
-           ORDER BY id""",
-        (job_id,)
-    ).fetchall()
     conn.close()
 
     def cents_to_str(c):
@@ -5316,10 +5343,6 @@ def job_clone_data(job_id: int):
                 "notes":            a["notes"] or "",
             }
             for a in assets
-        ],
-        "file_notes": [
-            {"id": n["id"], "text": n["note_text"]}
-            for n in file_notes
         ],
     })
 
@@ -5943,24 +5966,6 @@ def _job_create_inner():
                     pass
             cur.execute("DELETE FROM pending_uploads WHERE id = ?", (pu_row["id"],))
             cur.execute("DELETE FROM document_extractions WHERE id = ?", (int(autofill_id),))
-
-    cloned_notes_raw = request.form.get("cloned_notes", "").strip()
-    if cloned_notes_raw:
-        try:
-            cloned_notes = json.loads(cloned_notes_raw)
-            uid = session.get("user_id")
-            for cn in cloned_notes:
-                txt = (cn.get("text") or "").strip()
-                if txt:
-                    cur.execute(
-                        """INSERT INTO job_field_notes
-                           (job_id, created_by_user_id, note_text, created_at,
-                            note_category, review_status, published_at, source_field_note_id)
-                           VALUES (?, ?, ?, ?, 'file_note', 'published', ?, ?)""",
-                        (job_id, uid, txt, now, now, cn.get("id"))
-                    )
-        except Exception:
-            pass
 
     conn.commit()
 
@@ -7007,75 +7012,9 @@ def job_clone(job_id: int):
             (new_id, f"Job cloned from {src['internal_job_number']}.", now, now)
         )
 
-        # ── Previous File Notes PDF ─────────────────────────────────────
-        pdf_warning = None
-        try:
-            notes_rows = conn.execute("""
-                SELECT jfn.note_text, jfn.created_at, jfn.note_type,
-                       COALESCE(u.full_name, 'System') AS author_name
-                FROM   job_field_notes jfn
-                LEFT JOIN users u ON u.id = jfn.created_by_user_id
-                WHERE  jfn.job_id = ?
-                ORDER  BY jfn.created_at ASC, jfn.id ASC
-            """, (job_id,)).fetchall()
-            notes = [dict(n) for n in notes_rows]
-
-            client   = (conn.execute("SELECT name FROM clients WHERE id = ?",
-                                     (src["client_id"],)).fetchone()
-                        if src.get("client_id") else None)
-            customer = (conn.execute(
-                            "SELECT first_name, last_name FROM customers WHERE id = ?",
-                            (src["customer_id"],)).fetchone()
-                        if src.get("customer_id") else None)
-
-            items_raw = conn.execute(
-                "SELECT * FROM job_items WHERE job_id = ?", (job_id,)).fetchall()
-            asset_parts = []
-            for it in items_raw:
-                it = dict(it)
-                ymm  = " ".join(filter(None, [it.get("year"), it.get("make"),
-                                              it.get("model")]))
-                line = ymm or it.get("description") or it.get("item_type", "")
-                if it.get("reg"):  line += f" REG: {it['reg']}"
-                if it.get("vin"):  line += f" VIN: {it['vin']}"
-                if line.strip():   asset_parts.append(line.strip())
-
-            from datetime import datetime as _dt
-            job_data_pdf = {
-                "job_number":    src.get("internal_job_number", ""),
-                "client_name":   (client["name"] if client
-                                  else src.get("lender_name") or ""),
-                "customer_name": (f"{customer['first_name']} "
-                                  f"{customer['last_name']}".strip()
-                                  if customer else ""),
-                "lender_name":   src.get("lender_name", ""),
-                "job_address":   src.get("job_address", ""),
-                "asset_details": "; ".join(asset_parts),
-                "generated_date": _dt.now(_melbourne).strftime("%d/%m/%Y %H:%M"),
-            }
-
-            import pdf_gen as _pg
-            pdf_bytes = _pg.generate_previous_file_notes_pdf(job_data_pdf, notes)
-
-            _attach_pdf_to_job(
-                conn, new_id, caller_id, pdf_bytes,
-                "Previous File Notes.pdf",
-                "Previous File Notes"
-            )
-
-        except Exception as _pdf_err:
-            app.logger.error(
-                "Clone PDF failed job %s → %s: %s\n%s",
-                job_id, new_id, _pdf_err, _tb.format_exc()
-            )
-            pdf_warning = ("Job cloned successfully, but the Previous File Notes PDF "
-                           "could not be generated. Please check the server logs.")
-
         conn.commit()
         conn.close()
 
-        if pdf_warning:
-            flash(pdf_warning, "warning")
         flash(f"Job cloned as {internal}.", "success")
         return redirect(url_for("job_detail", job_id=new_id))
 
@@ -8000,7 +7939,7 @@ def job_internal_message(job_id: int):
             labeled.append(label)
         recipients_str = ", ".join(labeled) if labeled else "unknown"
 
-        note_text = f"Internal message sent to {recipients_str}" + (f": {prompt}." if prompt else ".")
+        note_text = f"Internal message sent to {recipients_str}" + (f" [{prompt}]" if prompt else "") + f": {body}"
         system_uid = _get_system_user_id(conn)
         cur.execute(
             "INSERT INTO job_field_notes (job_id, created_by_user_id, note_text, created_at) VALUES (?,?,?,?)",
@@ -22908,7 +22847,7 @@ def m_login_post():
         return render_template("mobile/login.html", error="Invalid email or password.",
                                prefill_email=email, next=next_path)
 
-    throttle_success(conn, ip_key,   username=email, ip=ip)
+    throttle_success(conn, ip_key,   username=email, ip=ip, write_audit=False)
     throttle_success(conn, user_key, username=email, ip=ip)
     conn.commit()
     conn.close()
@@ -22997,6 +22936,23 @@ def m_api_auth_token_login():
         conn.close()
         return jsonify({"success": False, "error": "Account disabled"}), 401
 
+    _tl_ip  = _client_ip()
+    _tl_email = conn.execute(
+        "SELECT email FROM users WHERE id=?", (row["user_id"],)
+    ).fetchone()
+    _tl_email = (_tl_email["email"] if _tl_email else "").lower().strip()
+    try:
+        from security import _ensure_audit_table as _eat_tl, _write_audit as _wa_tl
+        _tl_cur = conn.cursor()
+        _eat_tl(_tl_cur)
+        _wa_tl(_tl_cur, "successful_login",
+               key=f"user:{_tl_email}",
+               ip_address=_tl_ip,
+               username=_tl_email,
+               notes="Token login [mobile app]")
+        conn.commit()
+    except Exception:
+        pass
     conn.close()
     session.permanent = True
     session["user_id"] = row["user_id"]
@@ -24499,12 +24455,85 @@ def _recovery_targets_ensure(conn):
         ("created_by", "INTEGER"),
     ]:
         add_column_if_missing(cur, "recovery_target_notes", col, coltype)
+    for col, coltype in [
+        ("linked_job_id",             "INTEGER"),
+        ("pending_op_notes",          "TEXT"),
+        ("pending_add_to_job_notes",  "INTEGER DEFAULT 0"),
+        ("pending_mark_repossessed",  "INTEGER DEFAULT 0"),
+    ]:
+        add_column_if_missing(cur, "recovery_targets", col, coltype)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_targets_status ON recovery_targets(status, repossession_active)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_assets_reg ON recovery_target_assets(registration_number)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_assets_vin ON recovery_target_assets(vin)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_reg_history_reg ON recovery_target_asset_reg_history(registration_number)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_recovery_people_name ON recovery_target_people(full_legal_name)")
     conn.commit()
+
+
+def _complete_job_repossessed(cur, job_id: int, uid, op_notes: str = None):
+    """Mark a job Completed via the Recovery Target repossession workflow.
+    Must be called inside an open DB transaction (caller commits).
+    Mirrors the completion logic in job_status_update without a Flask redirect."""
+    ts = now_ts()
+    old = cur.execute(
+        "SELECT status, assigned_user_id FROM jobs WHERE id=?", (job_id,)
+    ).fetchone()
+    if not old:
+        raise ValueError(f"Job {job_id} not found")
+    old_agent = old["assigned_user_id"]
+    cur.execute("""
+        UPDATE jobs
+        SET status='Completed', updated_at=?, status_changed_at=?,
+            assigned_user_id=NULL,
+            last_assigned_user_id=COALESCE(last_assigned_user_id, ?)
+        WHERE id=?
+    """, (ts, ts, old_agent, job_id))
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, 'Status Update', ?, ?, ?)
+    """, (job_id,
+          "Status changed to 'Completed' via Recovery Target repossession workflow.",
+          ts, ts))
+    pending = cur.execute("""
+        SELECT id, scheduled_for, status FROM schedules
+        WHERE job_id=? AND status NOT IN ('Completed','Cancelled','Suspended')
+    """, (job_id,)).fetchall()
+    cur.execute("""
+        UPDATE schedules SET status='Cancelled'
+        WHERE job_id=? AND status NOT IN ('Completed','Cancelled','Suspended')
+    """, (job_id,))
+    for ps in pending:
+        _write_schedule_history(
+            cur, ps["id"], job_id, "cancelled",
+            old_scheduled_for=ps["scheduled_for"],
+            new_scheduled_for=ps["scheduled_for"],
+            old_status=ps["status"], new_status="Cancelled",
+            changed_by_user_id=uid,
+            notes="Auto-cancelled — job marked 'Completed' via Recovery Target."
+        )
+    _unhide_suspended_bookings_on_complete(cur, job_id)
+    cur.execute("""
+        INSERT INTO interactions (job_id, event_type, narrative, occurred_at, created_at)
+        VALUES (?, 'System',
+                'Agent unassigned and pending schedules cancelled — job marked ''Completed''.',
+                ?, ?)
+    """, (job_id, ts, ts))
+    cur.execute("""
+        UPDATE cue_items SET status='Completed', completed_at=?, updated_at=?
+        WHERE job_id=? AND status IN ('Pending','In Progress')
+    """, (ts, ts, job_id))
+    cur.execute("""
+        UPDATE job_updates SET status='discarded', updated_at=?
+        WHERE job_id=? AND status='draft'
+    """, (ts, job_id))
+    if op_notes:
+        cur.execute("""
+            INSERT INTO job_field_notes
+                (job_id, created_by_user_id, note_text, created_at,
+                 note_type, note_category, review_status,
+                 activity_occurred_at, reporting_delay_minutes)
+            VALUES (?,?,?,?,'Repossession Note','field_note','submitted_for_review',?,?)
+        """, (job_id, uid, op_notes, ts, ts, 0))
 
 
 def _recovery_can_manage():
@@ -24565,43 +24594,94 @@ def _recovery_target_detail(conn, target_id: int):
     return detail
 
 
+_SEARCH_RT_COMMON_SELECT = """
+    SELECT rt.*,
+           (SELECT p.full_legal_name FROM recovery_target_people p WHERE p.target_id=rt.id ORDER BY id LIMIT 1)                   AS person_name,
+           (SELECT a.registration_number FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS primary_reg,
+           (SELECT a.vin FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1)         AS primary_vin,
+           (SELECT a.make || ' ' || COALESCE(a.model,'') FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS asset_label,
+           (SELECT par.organisation_name FROM recovery_target_parties par WHERE par.target_id=rt.id ORDER BY id LIMIT 1)            AS finance_company,
+           (SELECT ad.full_address FROM recovery_target_addresses ad WHERE ad.target_id=rt.id ORDER BY is_primary DESC, id LIMIT 1) AS primary_address,
+           (SELECT 1 FROM recovery_target_documents d WHERE d.target_id=rt.id AND d.category='VIR' LIMIT 1)                        AS vir_generated,
+           (SELECT 1 FROM recovery_target_documents d WHERE d.target_id=rt.id AND d.category='Transport' LIMIT 1)                  AS transport_generated,
+           (SELECT j.display_ref FROM jobs j WHERE j.id = rt.linked_job_id LIMIT 1)                                                AS linked_job_ref
+"""
+
+
 def _recovery_search(conn, q: str, limit: int = 100):
     _recovery_targets_ensure(conn)
     q = (q or "").strip()
-    like = f"%{q}%"
     if not q:
-        return conn.execute("""
-            SELECT rt.*,
-                   (SELECT p.full_legal_name FROM recovery_target_people p WHERE p.target_id=rt.id ORDER BY id LIMIT 1) AS person_name,
-                   (SELECT a.registration_number FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS primary_reg,
-                   (SELECT a.make || ' ' || a.model FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS asset_label
+        return conn.execute(
+            _SEARCH_RT_COMMON_SELECT + """
             FROM recovery_targets rt
-            ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END, rt.updated_at DESC, rt.id DESC
+            ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END,
+                     rt.updated_at DESC, rt.id DESC
             LIMIT ?
         """, (limit,)).fetchall()
-    return conn.execute("""
-        SELECT DISTINCT rt.*,
-               (SELECT p.full_legal_name FROM recovery_target_people p WHERE p.target_id=rt.id ORDER BY id LIMIT 1) AS person_name,
-               (SELECT a.registration_number FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS primary_reg,
-               (SELECT a.make || ' ' || a.model FROM recovery_target_assets a WHERE a.target_id=rt.id ORDER BY is_primary_asset DESC, id LIMIT 1) AS asset_label
+
+    like     = f"%{q}%"
+    vin_norm = _normalise_vin(q)
+
+    id_val = None
+    q_stripped = q.upper().lstrip("RT-").lstrip("0")
+    if q_stripped.isdigit():
+        try:
+            id_val = int(q_stripped)
+        except ValueError:
+            pass
+
+    id_params = [
+        like, like, like, like,
+        like,
+        like, like, like, like,
+        like, like,
+        like,
+        like, like, like,
+        like, vin_norm, like, vin_norm,
+        like,
+        like,
+        limit,
+    ]
+    id_rows = conn.execute("""
+        SELECT DISTINCT rt.id
         FROM recovery_targets rt
-        LEFT JOIN recovery_target_people p ON p.target_id=rt.id
-        LEFT JOIN recovery_target_parties par ON par.target_id=rt.id
-        LEFT JOIN recovery_target_phones ph ON ph.target_id=rt.id
-        LEFT JOIN recovery_target_addresses ad ON ad.target_id=rt.id
-        LEFT JOIN recovery_target_assets a ON a.target_id=rt.id
-        LEFT JOIN recovery_target_asset_reg_history rh ON rh.asset_id=a.id
-        WHERE rt.internal_reference LIKE ? OR rt.agency_reference LIKE ? OR rt.lender_reference LIKE ? OR rt.liquidator_reference LIKE ?
-           OR rt.assigned_agency LIKE ?
-           OR p.full_legal_name LIKE ? OR p.aliases LIKE ? OR p.date_of_birth LIKE ? OR p.driver_licence_number LIKE ?
-           OR par.organisation_name LIKE ? OR par.reference_number LIKE ?
-           OR ph.phone_number LIKE ?
-           OR ad.full_address LIKE ? OR ad.suburb LIKE ? OR ad.postcode LIKE ?
-           OR a.registration_number LIKE ? OR a.vin LIKE ? OR a.contract_number LIKE ?
-           OR rh.registration_number LIKE ?
-        ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END, rt.updated_at DESC, rt.id DESC
+        LEFT JOIN recovery_target_people p     ON p.target_id   = rt.id
+        LEFT JOIN recovery_target_parties par  ON par.target_id = rt.id
+        LEFT JOIN recovery_target_phones ph    ON ph.target_id  = rt.id
+        LEFT JOIN recovery_target_addresses ad ON ad.target_id  = rt.id
+        LEFT JOIN recovery_target_assets a     ON a.target_id   = rt.id
+        LEFT JOIN recovery_target_asset_reg_history rh ON rh.asset_id = a.id
+        LEFT JOIN jobs j ON j.id = rt.linked_job_id
+        WHERE  rt.internal_reference    LIKE ? OR rt.agency_reference LIKE ?
+            OR rt.lender_reference      LIKE ? OR rt.liquidator_reference LIKE ?
+            OR rt.assigned_agency       LIKE ?
+            OR p.full_legal_name        LIKE ? OR p.aliases LIKE ?
+            OR p.date_of_birth          LIKE ? OR p.driver_licence_number LIKE ?
+            OR par.organisation_name    LIKE ? OR par.reference_number   LIKE ?
+            OR ph.phone_number          LIKE ?
+            OR ad.full_address          LIKE ? OR ad.suburb LIKE ? OR ad.postcode LIKE ?
+            OR a.registration_number    LIKE ?
+            OR UPPER(REPLACE(REPLACE(COALESCE(a.vin,''),' ',''),'-','')) = ?
+            OR a.vin                    LIKE ?
+            OR UPPER(REPLACE(REPLACE(COALESCE(rh.registration_number,''),' ',''),'-','')) = ?
+            OR rh.registration_number   LIKE ?
+            OR j.display_ref            LIKE ?
+        ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END,
+                 rt.updated_at DESC, rt.id DESC
         LIMIT ?
-    """, (like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, like, limit)).fetchall()
+    """, id_params).fetchall()
+    if not id_rows:
+        return []
+    ids = tuple(r["id"] for r in id_rows)
+    ph  = ",".join("?" * len(ids))
+    return conn.execute(
+        _SEARCH_RT_COMMON_SELECT + f"""
+        FROM recovery_targets rt
+        WHERE rt.id IN ({ph})
+        ORDER BY CASE rt.status WHEN 'Active' THEN 1 WHEN 'On Hold' THEN 2 WHEN 'Repossessed' THEN 3 ELSE 4 END,
+                 rt.updated_at DESC, rt.id DESC
+    """, ids).fetchall()
 
 
 def _search_recovery_targets(conn, q: str) -> list:
@@ -25792,14 +25872,29 @@ def recovery_target_vir(target_id: int):
         return redirect(url_for("recovery_target_detail", target_id=target_id))
     conn = db()
     detail = _recovery_target_detail(conn, target_id)
-    conn.close()
     if not detail:
+        conn.close()
         return "Not found", 404
-    rec = _rt_build_rec(detail["target"], detail["assets"], detail["parties"],
+    target_row = detail["target"]
+    linked_job_id = _row_value(target_row, "linked_job_id")
+    linked_job_ref = None
+    if linked_job_id:
+        try:
+            j = conn.execute("SELECT display_ref FROM jobs WHERE id=?", (linked_job_id,)).fetchone()
+            linked_job_ref = j["display_ref"] if j else str(linked_job_id)
+        except Exception:
+            linked_job_ref = str(linked_job_id)
+    conn.close()
+    rec = _rt_build_rec(target_row, detail["assets"], detail["parties"],
                         detail["people"], detail["addresses"])
     back = url_for("recovery_target_detail", target_id=target_id)
     return render_template("repo_lock_vir.html",
                            rec=rec, job_id=None,
+                           is_recovery_target=True,
+                           target_id=target_id,
+                           linked_job_id=linked_job_id,
+                           linked_job_ref=linked_job_ref,
+                           can_complete=_recovery_can_manage(),
                            back_url=back, back_label="Back to Recovery Target",
                            form_action=url_for("recovery_target_vir_pdf", target_id=target_id),
                            transport_url=url_for("recovery_target_transport", target_id=target_id),
@@ -25811,20 +25906,24 @@ def recovery_target_vir(target_id: int):
 @app.post("/recovery-targets/<int:target_id>/vir")
 @login_required
 def recovery_target_vir_pdf(target_id: int):
-    import pdf_gen as _pg_vir
+    import pdf_gen as _pg_vir, re as _re_vsig
     if not _recovery_can_manage():
-        flash("Recovery Target management is restricted.", "danger")
-        return redirect(url_for("recovery_target_detail", target_id=target_id))
-    import re as _re_vsig
+        return jsonify({"error": "Recovery Target management is restricted."}), 403
     agent_sig    = (request.form.get("agent_sig", "") or "").strip() or None
     customer_sig = (request.form.get("customer_sig", "") or "").strip() or None
     if not agent_sig or not _re_vsig.match(
             r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$', agent_sig):
-        flash("Agent signature is required.", "error")
-        return redirect(url_for("recovery_target_vir", target_id=target_id))
+        return jsonify({"error": "Agent signature is required."}), 400
     if customer_sig and not _re_vsig.match(
             r'^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+$', customer_sig):
         customer_sig = None
+    op_notes         = (request.form.get("op_notes") or "").strip()
+    add_to_job_notes = request.form.get("add_to_job_notes") == "1"
+    mark_repossessed = request.form.get("mark_repossessed") == "1"
+    if add_to_job_notes and not op_notes:
+        return jsonify({"error": "Please enter notes before selecting 'Add to Repossession Notes'."}), 400
+    if mark_repossessed and not _recovery_can_manage():
+        return jsonify({"error": "Only Admin or Management users can mark a file as Repossessed."}), 403
     def _fv(name):
         return (request.form.get(name) or "").strip()
     d = {k: _fv(k) for k in (
@@ -25846,26 +25945,76 @@ def recovery_target_vir_pdf(target_id: int):
     filename = f"{ref} VIR {date_str}.pdf"
     conn = db()
     _recovery_targets_ensure(conn)
-    ts = now_ts()
+    ts  = now_ts()
+    uid = session.get("user_id")
+    notice = None
     try:
-        import pathlib as _plvir
-        doc_dir  = f"recovery_target_docs/{target_id}"
-        _plvir.Path(doc_dir).mkdir(parents=True, exist_ok=True)
-        doc_path = f"{doc_dir}/VIR_{ts.replace(':', '-')}.pdf"
-        with open(doc_path, "wb") as _fh:
-            _fh.write(pdf_bytes)
-        conn.execute("""
-            INSERT INTO recovery_target_documents
-                (target_id, category, document_type, original_filename, file_path, uploaded_at, uploaded_by)
-            VALUES (?,?,?,?,?,?,?)
-        """, (target_id, "VIR", "Vehicle Condition Report / Repossession Receipt",
-              filename, doc_path, ts, session.get("user_id")))
+        try:
+            import pathlib as _plvir
+            doc_dir  = f"recovery_target_docs/{target_id}"
+            _plvir.Path(doc_dir).mkdir(parents=True, exist_ok=True)
+            doc_path = f"{doc_dir}/VIR_{ts.replace(':', '-')}.pdf"
+            with open(doc_path, "wb") as _fh:
+                _fh.write(pdf_bytes)
+            conn.execute("""
+                INSERT INTO recovery_target_documents
+                    (target_id, category, document_type, original_filename, file_path, uploaded_at, uploaded_by)
+                VALUES (?,?,?,?,?,?,?)
+            """, (target_id, "VIR", "Vehicle Condition Report / Repossession Receipt",
+                  filename, doc_path, ts, uid))
+        except Exception as _doc_err:
+            app.logger.warning("recovery_target_vir_pdf: doc save failed: %s", _doc_err)
+        target_row  = conn.execute("SELECT linked_job_id FROM recovery_targets WHERE id=?", (target_id,)).fetchone()
+        linked_job_id = _row_value(target_row, "linked_job_id") if target_row else None
+        if op_notes:
+            conn.execute("""
+                INSERT INTO recovery_target_notes (target_id, note_type, note_text, created_at, created_by)
+                VALUES (?,?,?,?,?)
+            """, (target_id, "VIR Operational Note", op_notes, ts, uid))
+        if linked_job_id:
+            cur = conn.cursor()
+            if add_to_job_notes and op_notes:
+                cur.execute("""
+                    INSERT INTO job_field_notes
+                        (job_id, created_by_user_id, note_text, created_at,
+                         note_type, note_category, review_status,
+                         activity_occurred_at, reporting_delay_minutes)
+                    VALUES (?,?,?,?,'Repossession Note','field_note','submitted_for_review',?,?)
+                """, (linked_job_id, uid, op_notes, ts, ts, 0))
+            if mark_repossessed:
+                _complete_job_repossessed(cur, linked_job_id, uid,
+                                          op_notes if op_notes else None)
+                cur.execute("""
+                    UPDATE recovery_targets
+                    SET status='Repossessed', repossession_active=0,
+                        repossession_completed_at=?, updated_at=?, updated_by=?
+                    WHERE id=?
+                """, (ts, ts, uid, target_id))
+        elif mark_repossessed:
+            conn.execute("""
+                UPDATE recovery_targets
+                SET pending_op_notes=?, pending_add_to_job_notes=?,
+                    pending_mark_repossessed=1, updated_at=?, updated_by=?
+                WHERE id=?
+            """, (op_notes or "", 1 if add_to_job_notes else 0, ts, uid, target_id))
+            notice = ("PDF generated successfully. No linked AxionX file was found - "
+                      "the file has not been moved to Completed. "
+                      "The completion request has been preserved and can be applied once a job is linked.")
         conn.commit()
-    except Exception:
-        pass
+    except Exception as _e:
+        app.logger.exception("recovery_target_vir_pdf workflow failed target_id=%s: %s", target_id, _e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+        return jsonify({"error": f"PDF generated but workflow update failed: {_e}"}), 500
     conn.close()
-    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+    resp = send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
                      as_attachment=True, download_name=filename)
+    if notice:
+        resp.headers["X-Axion-Notice"] = notice
+    return resp
 
 
 @app.get("/recovery-targets/<int:target_id>/transport")
@@ -25876,14 +26025,29 @@ def recovery_target_transport(target_id: int):
         return redirect(url_for("recovery_target_detail", target_id=target_id))
     conn = db()
     detail = _recovery_target_detail(conn, target_id)
-    conn.close()
     if not detail:
+        conn.close()
         return "Not found", 404
-    rec = _rt_build_rec(detail["target"], detail["assets"], detail["parties"],
+    target_row = detail["target"]
+    linked_job_id = _row_value(target_row, "linked_job_id")
+    linked_job_ref = None
+    if linked_job_id:
+        try:
+            j = conn.execute("SELECT display_ref FROM jobs WHERE id=?", (linked_job_id,)).fetchone()
+            linked_job_ref = j["display_ref"] if j else str(linked_job_id)
+        except Exception:
+            linked_job_ref = str(linked_job_id)
+    conn.close()
+    rec = _rt_build_rec(target_row, detail["assets"], detail["parties"],
                         detail["people"], detail["addresses"])
     back = url_for("recovery_target_detail", target_id=target_id)
     return render_template("repo_lock_transport.html",
                            rec=rec, job_id=None,
+                           is_recovery_target=True,
+                           target_id=target_id,
+                           linked_job_id=linked_job_id,
+                           linked_job_ref=linked_job_ref,
+                           can_complete=_recovery_can_manage(),
                            back_url=back, back_label="Back to Recovery Target",
                            form_action=url_for("recovery_target_transport_pdf", target_id=target_id),
                            vir_url=url_for("recovery_target_vir", target_id=target_id),
@@ -25899,13 +26063,18 @@ def recovery_target_transport(target_id: int):
 def recovery_target_transport_pdf(target_id: int):
     import pdf_gen as _pg_trn
     if not _recovery_can_manage():
-        flash("Recovery Target management is restricted.", "danger")
-        return redirect(url_for("recovery_target_detail", target_id=target_id))
+        return jsonify({"error": "Recovery Target management is restricted."}), 403
     agent_sig = (request.form.get("agent_sig") or "").strip() or None
     tow_sig   = (request.form.get("tow_sig")   or "").strip() or None
     if not agent_sig:
-        flash("Agent signature is required.", "error")
-        return redirect(url_for("recovery_target_transport", target_id=target_id))
+        return jsonify({"error": "Agent signature is required."}), 400
+    op_notes         = (request.form.get("op_notes") or "").strip()
+    add_to_job_notes = request.form.get("add_to_job_notes") == "1"
+    mark_repossessed = request.form.get("mark_repossessed") == "1"
+    if add_to_job_notes and not op_notes:
+        return jsonify({"error": "Please enter notes before selecting 'Add to Repossession Notes'."}), 400
+    if mark_repossessed and not _recovery_can_manage():
+        return jsonify({"error": "Only Admin or Management users can mark a file as Repossessed."}), 403
     def _ft(name):
         return (request.form.get(name) or "").strip()
     d = {k: _ft(k) for k in (
@@ -25922,26 +26091,76 @@ def recovery_target_transport_pdf(target_id: int):
     filename = f"{ref} - Transport Instructions - {date_str}.pdf"
     conn = db()
     _recovery_targets_ensure(conn)
-    ts = now_ts()
+    ts  = now_ts()
+    uid = session.get("user_id")
+    notice = None
     try:
-        import pathlib as _pltrn
-        doc_dir  = f"recovery_target_docs/{target_id}"
-        _pltrn.Path(doc_dir).mkdir(parents=True, exist_ok=True)
-        doc_path = f"{doc_dir}/Transport_{ts.replace(':', '-')}.pdf"
-        with open(doc_path, "wb") as _fh:
-            _fh.write(pdf_bytes)
-        conn.execute("""
-            INSERT INTO recovery_target_documents
-                (target_id, category, document_type, original_filename, file_path, uploaded_at, uploaded_by)
-            VALUES (?,?,?,?,?,?,?)
-        """, (target_id, "Transport", "Transport Instructions / Tow Receipt",
-              filename, doc_path, ts, session.get("user_id")))
+        try:
+            import pathlib as _pltrn
+            doc_dir  = f"recovery_target_docs/{target_id}"
+            _pltrn.Path(doc_dir).mkdir(parents=True, exist_ok=True)
+            doc_path = f"{doc_dir}/Transport_{ts.replace(':', '-')}.pdf"
+            with open(doc_path, "wb") as _fh:
+                _fh.write(pdf_bytes)
+            conn.execute("""
+                INSERT INTO recovery_target_documents
+                    (target_id, category, document_type, original_filename, file_path, uploaded_at, uploaded_by)
+                VALUES (?,?,?,?,?,?,?)
+            """, (target_id, "Transport", "Transport Instructions / Tow Receipt",
+                  filename, doc_path, ts, uid))
+        except Exception as _doc_err:
+            app.logger.warning("recovery_target_transport_pdf: doc save failed: %s", _doc_err)
+        target_row    = conn.execute("SELECT linked_job_id FROM recovery_targets WHERE id=?", (target_id,)).fetchone()
+        linked_job_id = _row_value(target_row, "linked_job_id") if target_row else None
+        if op_notes:
+            conn.execute("""
+                INSERT INTO recovery_target_notes (target_id, note_type, note_text, created_at, created_by)
+                VALUES (?,?,?,?,?)
+            """, (target_id, "Transport Operational Note", op_notes, ts, uid))
+        if linked_job_id:
+            cur = conn.cursor()
+            if add_to_job_notes and op_notes:
+                cur.execute("""
+                    INSERT INTO job_field_notes
+                        (job_id, created_by_user_id, note_text, created_at,
+                         note_type, note_category, review_status,
+                         activity_occurred_at, reporting_delay_minutes)
+                    VALUES (?,?,?,?,'Repossession Note','field_note','submitted_for_review',?,?)
+                """, (linked_job_id, uid, op_notes, ts, ts, 0))
+            if mark_repossessed:
+                _complete_job_repossessed(cur, linked_job_id, uid,
+                                          op_notes if op_notes else None)
+                cur.execute("""
+                    UPDATE recovery_targets
+                    SET status='Repossessed', repossession_active=0,
+                        repossession_completed_at=?, updated_at=?, updated_by=?
+                    WHERE id=?
+                """, (ts, ts, uid, target_id))
+        elif mark_repossessed:
+            conn.execute("""
+                UPDATE recovery_targets
+                SET pending_op_notes=?, pending_add_to_job_notes=?,
+                    pending_mark_repossessed=1, updated_at=?, updated_by=?
+                WHERE id=?
+            """, (op_notes or "", 1 if add_to_job_notes else 0, ts, uid, target_id))
+            notice = ("PDF generated successfully. No linked AxionX file was found - "
+                      "the file has not been moved to Completed. "
+                      "The completion request has been preserved and can be applied once a job is linked.")
         conn.commit()
-    except Exception:
-        pass
+    except Exception as _e:
+        app.logger.exception("recovery_target_transport_pdf workflow failed target_id=%s: %s", target_id, _e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        conn.close()
+        return jsonify({"error": f"PDF generated but workflow update failed: {_e}"}), 500
     conn.close()
-    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+    resp = send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
                      as_attachment=True, download_name=filename)
+    if notice:
+        resp.headers["X-Axion-Notice"] = notice
+    return resp
 
 
 @app.post("/recovery-targets/<int:target_id>/revert")
@@ -25972,16 +26191,23 @@ def recovery_target_revert(target_id: int):
     return redirect(url_for("recovery_target_detail", target_id=target_id))
 
 
+_M_RT_PAGE_SIZE = 20
+
+
 @app.get("/m/recovery-targets")
 @mobile_login_required
 def m_recovery_targets_search():
-    q = request.args.get("q", "")
-    rows = []
-    if q.strip():
-        conn = db()
-        rows = _recovery_search(conn, q, 50)
-        conn.close()
-    return render_template("mobile/recovery_targets_search.html", q=q, rows=rows)
+    q    = request.args.get("q", "").strip()
+    page = max(1, int(request.args.get("page", 1) or 1))
+    conn = db()
+    all_rows = _recovery_search(conn, q, _M_RT_PAGE_SIZE * page + 1) if q else _recovery_search(conn, "", _M_RT_PAGE_SIZE * page + 1)
+    conn.close()
+    has_more  = len(all_rows) > _M_RT_PAGE_SIZE * page
+    rows      = all_rows[_M_RT_PAGE_SIZE * (page - 1): _M_RT_PAGE_SIZE * page]
+    return render_template("mobile/recovery_targets_search.html",
+                           q=q, rows=rows, page=page,
+                           has_more=has_more, has_prev=page > 1,
+                           prev_page=page - 1, next_page=page + 1)
 
 
 @app.get("/m/recovery-targets/<int:target_id>")
@@ -25989,11 +26215,219 @@ def m_recovery_targets_search():
 def m_recovery_target_detail(target_id: int):
     conn = db()
     detail = _recovery_target_detail(conn, target_id)
-    conn.close()
     if not detail:
+        conn.close()
         flash("Recovery Target not found.", "warning")
         return redirect(url_for("m_recovery_targets_search"))
-    return render_template("mobile/recovery_target_detail.html", **detail, label=_recovery_target_label(detail["target"]))
+    target_row    = detail["target"]
+    linked_job_id = _row_value(target_row, "linked_job_id")
+    linked_job_ref = None
+    if linked_job_id:
+        try:
+            j = conn.execute("SELECT display_ref FROM jobs WHERE id=?", (linked_job_id,)).fetchone()
+            linked_job_ref = j["display_ref"] if j else str(linked_job_id)
+        except Exception:
+            linked_job_ref = str(linked_job_id)
+    conn.close()
+    can_complete = _recovery_can_manage()
+    return render_template(
+        "mobile/recovery_target_detail.html",
+        **detail,
+        label=_recovery_target_label(target_row),
+        linked_job_id=linked_job_id,
+        linked_job_ref=linked_job_ref,
+        can_complete=can_complete,
+        vir_url=url_for("recovery_target_vir", target_id=target_id),
+        transport_url=url_for("recovery_target_transport", target_id=target_id),
+    )
+
+
+@app.post("/m/recovery-targets/<int:target_id>/action")
+@mobile_login_required
+def m_recovery_target_action(target_id: int):
+    """Mobile-only endpoint: save operational notes and/or mark file as Repossessed."""
+    op_notes         = (request.form.get("op_notes") or "").strip()
+    add_to_job_notes = request.form.get("add_to_job_notes") == "1"
+    mark_repossessed = request.form.get("mark_repossessed") == "1"
+    if mark_repossessed and not _recovery_can_manage():
+        flash("Only Admin or Management users can mark a file as Repossessed.", "danger")
+        return redirect(url_for("m_recovery_target_detail", target_id=target_id))
+    if add_to_job_notes and not op_notes:
+        flash("Please enter notes before selecting 'Add to Repossession Notes'.", "danger")
+        return redirect(url_for("m_recovery_target_detail", target_id=target_id))
+    conn = db()
+    _recovery_targets_ensure(conn)
+    ts  = now_ts()
+    uid = session.get("user_id")
+    try:
+        target_row    = conn.execute("SELECT linked_job_id FROM recovery_targets WHERE id=?", (target_id,)).fetchone()
+        linked_job_id = _row_value(target_row, "linked_job_id") if target_row else None
+        if op_notes:
+            conn.execute("""
+                INSERT INTO recovery_target_notes (target_id, note_type, note_text, created_at, created_by)
+                VALUES (?,?,?,?,?)
+            """, (target_id, "Mobile Operational Note", op_notes, ts, uid))
+        if linked_job_id:
+            cur = conn.cursor()
+            if add_to_job_notes and op_notes:
+                cur.execute("""
+                    INSERT INTO job_field_notes
+                        (job_id, created_by_user_id, note_text, created_at,
+                         note_type, note_category, review_status,
+                         activity_occurred_at, reporting_delay_minutes)
+                    VALUES (?,?,?,?,'Repossession Note','field_note','submitted_for_review',?,?)
+                """, (linked_job_id, uid, op_notes, ts, ts, 0))
+            if mark_repossessed:
+                _complete_job_repossessed(cur, linked_job_id, uid, op_notes if op_notes else None)
+                cur.execute("""
+                    UPDATE recovery_targets
+                    SET status='Repossessed', repossession_active=0,
+                        repossession_completed_at=?, updated_at=?, updated_by=?
+                    WHERE id=?
+                """, (ts, ts, uid, target_id))
+        elif mark_repossessed:
+            conn.execute("""
+                UPDATE recovery_targets
+                SET pending_op_notes=?, pending_add_to_job_notes=?,
+                    pending_mark_repossessed=1, updated_at=?, updated_by=?
+                WHERE id=?
+            """, (op_notes or "", 1 if add_to_job_notes else 0, ts, uid, target_id))
+            flash("Notes saved. No linked AxionX file — completion request preserved for when a job is linked.", "warning")
+            conn.commit()
+            conn.close()
+            return redirect(url_for("m_recovery_target_detail", target_id=target_id))
+        conn.commit()
+        if mark_repossessed:
+            flash("File marked as Repossessed and moved to Completed.", "success")
+        elif op_notes:
+            flash("Note saved successfully.", "success")
+    except Exception as _e:
+        app.logger.exception("m_recovery_target_action failed target_id=%s: %s", target_id, _e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash(f"Failed to save: {_e}", "danger")
+    finally:
+        conn.close()
+    return redirect(url_for("m_recovery_target_detail", target_id=target_id))
+
+
+@app.get("/m/lpr/vin")
+@mobile_login_required
+def m_lpr_vin_search():
+    """Mobile VIN / chassis number search page."""
+    return render_template("mobile/lpr_vin_search.html", q="", results=[], searched=False, error=None)
+
+
+@app.post("/m/lpr/vin")
+@mobile_login_required
+def m_lpr_vin_search_post():
+    """Process a mobile VIN / chassis number search and return combined results."""
+    raw = (request.form.get("vin") or "").strip()
+    vin_norm = _normalise_vin(raw)
+    if len(vin_norm) < _VIN_MIN_SEARCH_LEN:
+        return render_template("mobile/lpr_vin_search.html",
+                               q=raw, results=[], searched=True,
+                               error=f"Please enter at least {_VIN_MIN_SEARCH_LEN} characters.")
+    uid  = session.get("user_id")
+    role = session.get("role", "agent")
+    like = f"%{vin_norm}%"
+    conn = db()
+    results = []
+    seen_rt = set()
+
+    try:
+        _recovery_targets_ensure(conn)
+        rt_rows = conn.execute("""
+            SELECT DISTINCT rt.id, rt.status, rt.internal_reference, rt.agency_reference,
+                   rt.lender_reference, rt.assigned_agency, rt.linked_job_id,
+                   a.registration_number, a.vin, a.make, a.model, a.year, a.colour,
+                   p.full_legal_name AS person_name,
+                   par.organisation_name AS finance_company,
+                   ad.full_address AS primary_address,
+                   j.display_ref AS linked_job_ref
+            FROM recovery_targets rt
+            JOIN recovery_target_assets a ON a.target_id = rt.id
+            LEFT JOIN recovery_target_people p  ON p.target_id  = rt.id
+            LEFT JOIN recovery_target_parties par ON par.target_id = rt.id
+            LEFT JOIN recovery_target_addresses ad ON ad.target_id = rt.id AND ad.is_primary = 1
+            LEFT JOIN jobs j ON j.id = rt.linked_job_id
+            WHERE UPPER(REPLACE(REPLACE(COALESCE(a.vin,''),' ',''),'-','')) LIKE ?
+               OR (LENGTH(?) >= 17 AND UPPER(REPLACE(REPLACE(COALESCE(a.vin,''),' ',''),'-','')) = ?)
+            ORDER BY CASE rt.status WHEN 'Active' THEN 1 ELSE 2 END, rt.id DESC
+            LIMIT 20
+        """, (like, vin_norm, vin_norm)).fetchall()
+
+        for r in rt_rows:
+            rt_id = r["id"]
+            if rt_id in seen_rt:
+                continue
+            seen_rt.add(rt_id)
+            label = (r["internal_reference"] or r["agency_reference"]
+                     or r["lender_reference"] or f"RT-{rt_id:05d}")
+            results.append({
+                "type":          "recovery_target",
+                "rt_id":         rt_id,
+                "label":         label,
+                "person_name":   r["person_name"] or "Unknown customer",
+                "finance":       r["finance_company"] or r["assigned_agency"] or "",
+                "registration":  r["registration_number"] or "",
+                "vin":           r["vin"] or "",
+                "make_model":    " ".join(x for x in [r["year"], r["make"], r["model"]] if x),
+                "status":        r["status"],
+                "address":       r["primary_address"] or "",
+                "linked_job_ref": r["linked_job_ref"] or "",
+                "url":           url_for("m_recovery_target_detail", target_id=rt_id),
+            })
+
+        is_admin = role in ("admin", "both", "management")
+        job_rows = conn.execute("""
+            SELECT DISTINCT ji.job_id, ji.reg, ji.vin, ji.make, ji.model,
+                   j.display_ref, j.status, j.assigned_user_id,
+                   c.full_name AS customer_name,
+                   cl.name AS client_name,
+                   ji.address_street
+            FROM job_items ji
+            JOIN jobs j ON j.id = ji.job_id
+            LEFT JOIN customers c ON c.id = j.customer_id
+            LEFT JOIN clients cl ON cl.id = j.client_id
+            WHERE UPPER(REPLACE(REPLACE(COALESCE(ji.vin,''),' ',''),'-','')) LIKE ?
+               OR (LENGTH(?) >= 17 AND UPPER(REPLACE(REPLACE(COALESCE(ji.vin,''),' ',''),'-','')) = ?)
+            ORDER BY CASE j.status WHEN 'Active' THEN 1 WHEN 'In Progress' THEN 2 ELSE 3 END,
+                     j.id DESC
+            LIMIT 20
+        """, (like, vin_norm, vin_norm)).fetchall()
+
+        seen_jobs = set()
+        for r in job_rows:
+            job_id = r["job_id"]
+            if job_id in seen_jobs:
+                continue
+            if not is_admin and r["assigned_user_id"] != uid:
+                continue
+            seen_jobs.add(job_id)
+            results.append({
+                "type":         "job",
+                "job_id":       job_id,
+                "label":        r["display_ref"] or f"Job #{job_id}",
+                "person_name":  r["customer_name"] or "",
+                "finance":      r["client_name"] or "",
+                "registration": r["reg"] or "",
+                "vin":          r["vin"] or "",
+                "make_model":   " ".join(x for x in [r["make"], r["model"]] if x),
+                "status":       r["status"],
+                "address":      r["address_street"] or "",
+                "url":          url_for("m_job_detail", job_id=job_id),
+            })
+
+    except Exception as _e:
+        app.logger.exception("m_lpr_vin_search_post failed: %s", _e)
+    finally:
+        conn.close()
+
+    return render_template("mobile/lpr_vin_search.html",
+                           q=raw, results=results, searched=True, error=None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

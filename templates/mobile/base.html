@@ -455,6 +455,34 @@ a { color: var(--accent); text-decoration: none; }
           <span class="lpr-action-sub" style="color:rgba(165,180,252,.8);">Auto continuous scan</span>
         </button>
 
+        {# Recovery Targets — navigates #}
+        <a href="{{ url_for('m_recovery_targets_search') }}" class="lpr-action-btn" onclick="lprStoreReturn()">
+          <div class="lpr-action-icon" style="background:#fff7ed;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ea580c" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M11 8v3l2 2"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </div>
+          <span class="lpr-action-label">Recovery Targets</span>
+          <span class="lpr-action-sub">Search RT records</span>
+        </a>
+
+        {# VIN Search #}
+        <a href="{{ url_for('m_lpr_vin_search') }}" class="lpr-action-btn" onclick="lprStoreReturn()">
+          <div class="lpr-action-icon" style="background:#ecfdf5;">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#0f766e" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 7 4 4 20 4 20 7"/>
+              <line x1="9" y1="20" x2="15" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+          </div>
+          <span class="lpr-action-label">VIN Search</span>
+          <span class="lpr-action-sub">Chassis number lookup</span>
+        </a>
+
       </div>
       <button type="button" class="lpr-cancel-btn" onclick="lprSheetClose()">Cancel</button>
     </div>

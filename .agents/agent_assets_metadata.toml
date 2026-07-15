@@ -1,5 +1,16 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "r5-V4Z6oqHYIN15zBhw31"
+uri = "file://swpi-site/assets/hero-bg.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "6kr2UtjWNr1wvYk8hhfvM"
+uri = "file://swpi-site/assets/logo-icon.png"
+type = "image"
+title = "generated_image"
 
 [[outputs]]
 id = "nOtPxFChMyBUu9XRysY1e"
@@ -36,3 +47,9 @@ id = "eIskJC-kctl4oiwXIC3Lk"
 uri = "file://AxionX_LPR_Fix.zip"
 type = "unspecified"
 title = "AxionX LPR Fix — 5 changed files"
+
+[[outputs]]
+id = "WZRILRCY1v8cyPMx2k314"
+uri = "file://.local/deliverables/swpi-site.zip"
+type = "unspecified"
+title = "SWPI Marketing Website (swpi.com.au) — updated logo & map"
