@@ -818,7 +818,7 @@ window.pmSaveSighting = function() {
     .catch(function(){
       _savingInFlight = false;
       if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
-      alert('Network error — try again.');
+      alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');
     });
   }
 

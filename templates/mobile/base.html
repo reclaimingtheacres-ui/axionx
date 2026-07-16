@@ -822,7 +822,7 @@ function _doSaveSighting(payload, btn) {
   })
   .catch(function(){
     if (btn) { btn.disabled = false; btn.textContent = 'Save Sighting'; }
-    alert('Network error. Please try again.');
+    alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');
   });
 }
 

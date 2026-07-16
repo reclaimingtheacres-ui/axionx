@@ -391,7 +391,7 @@ function copyLink(elId, btn) {
           showError(d.message);
         }
       })
-      .catch(function () { showError('Network error — could not reach server.'); });
+      .catch(function () { showError(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
   }
 
   function bindConfirmBtn() {

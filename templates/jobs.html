@@ -645,7 +645,7 @@
       delete btn.dataset.processing;
       btn.disabled = false;
       btn.textContent = origText;
-      showToast('Network error \u2014 please try again.', 'err');
+      showToast(navigator.onLine ? 'Request failed \u2014 please try again.' : 'No internet connection.', 'err');
     });
   };
 })();

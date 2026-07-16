@@ -134,7 +134,7 @@ function ksExecute() {
   .catch(function() {
     var el = document.getElementById('ksResult');
     el.className = 'ks-result error';
-    el.textContent = 'Network error. Please try again.';
+    el.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
   })
   .finally(function() {
     ksBtn.disabled = false;
@@ -168,7 +168,7 @@ function ksPurge() {
   .catch(function() {
     var el = document.getElementById('ksPurgeResult');
     el.className = 'ks-result error';
-    el.textContent = 'Network error.';
+    el.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
   });
 }
 </script>

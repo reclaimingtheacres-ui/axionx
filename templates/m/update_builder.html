@@ -492,7 +492,7 @@ Update Builder
       $$('narrative_section').style.display = 'block';
       $$('narrative_section').scrollIntoView({behavior:'smooth'});
     })
-    .catch(function(){ btn.textContent = 'Generate AI Update'; btn.disabled = false; alert('Network error. Please try again.'); });
+    .catch(function(){ btn.textContent = 'Generate AI Update'; btn.disabled = false; alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
   }
 
   function _doDiscard(cb) {

@@ -3099,7 +3099,7 @@ function saveSidebarCRef(){
     if(data.ok){ window._axSaveReload = true; location.reload(); }
     else { alert(data.error || 'Error saving.'); }
   })
-  .catch(function(){ alert('Network error.'); });
+  .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
 }
 (function(){ var el = document.getElementById('sidebar-cref-input'); if(!el) return;
 el.addEventListener('keydown', function(e){
@@ -3147,7 +3147,7 @@ function saveSidebarIJN(){
     if(data.ok){ window._axSaveReload = true; location.reload(); }
     else { alert(data.error || 'Error saving.'); }
   })
-  .catch(function(){ alert('Network error.'); });
+  .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
 }
 var ijnInput = document.getElementById('sidebar-ijn-input');
 if(ijnInput){
@@ -3186,7 +3186,7 @@ function saveSidebarJobType(){
       alert(data.error || 'Error updating job type.');
     }
   })
-  .catch(function(){ alert('Network error.'); });
+  .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
 }
 </script>
 
@@ -3367,7 +3367,7 @@ function axPublishFieldNote(jobId, noteId, noteText) {
     })
     .then(function(r){ return r.json(); })
     .then(function(d){ if (d.ok) { window._axSaveReload = true; location.reload(); } else { alert(d.error || 'Publish failed.'); } })
-    .catch(function(){ alert('Network error — please try again.'); });
+    .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
     return;
   }
   var modal = document.getElementById('axRescheduleModal');
@@ -3453,7 +3453,7 @@ function axRescheduleSave() {
   .catch(function(){
     saveBtn.disabled    = false;
     saveBtn.textContent = 'Save & Publish File Note';
-    errEl.textContent   = 'Network error — please try again.';
+    errEl.textContent   = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
     errEl.style.display = 'block';
   });
 }
@@ -3507,7 +3507,7 @@ function axReschedulePublishOnly() {
     publishBtn.disabled    = false;
     publishBtn.textContent = 'Publish Only (no reschedule)';
     saveBtn.disabled       = false;
-    errEl.textContent      = 'Network error — please try again.';
+    errEl.textContent      = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
     errEl.style.display    = 'block';
   });
 }
@@ -3523,7 +3523,7 @@ function axMarkReviewed(jobId, noteId) {
     if (data.ok) { window._axSaveReload = true; location.reload(); }
     else { alert(data.error || 'Failed to mark reviewed.'); }
   })
-  .catch(function(){ alert('Network error — try again.'); });
+  .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
 }
 
 /* ── Edit Note modal logic ───────────────────────────── */
@@ -3578,7 +3578,7 @@ document.addEventListener('DOMContentLoaded', function(){
         alert(data.error || 'Save failed — please try again.');
       }
     })
-    .catch(function(){ alert('Network error — try again.'); })
+    .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); })
     .finally(function(){
       if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
     });
@@ -4733,7 +4733,7 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
         }
         renderFiles(data.files || []);
       })
-      .catch(function() { alert('Network error loading note.'); enModal.hide(); });
+      .catch(function() { alert(navigator.onLine ? 'Could not load note — please try again.' : 'No internet connection.'); enModal.hide(); });
   };
 
   window.axNoteSaveEdit = function() {
@@ -4791,7 +4791,7 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
         alert(data.error || 'Save failed.');
       }
     })
-    .catch(function() { alert('Network error — try again.'); })
+    .catch(function() { alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); })
     .finally(function() { btn.disabled = false; btn.textContent = 'Save'; });
   };
 
@@ -4811,7 +4811,7 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
         alert(data.error || 'Remove failed.');
       }
     })
-    .catch(function() { alert('Network error.'); });
+    .catch(function() { alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
   };
 
   function uploadFiles(files) {
@@ -4846,7 +4846,7 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
     })
     .catch(function() {
       statusEl.style.display = 'none';
-      errorEl.textContent = 'Network error during upload.';
+      errorEl.textContent = navigator.onLine ? 'Upload failed — please try again.' : 'No internet connection.';
       errorEl.style.display = '';
     });
     });
@@ -5387,7 +5387,7 @@ function axCopyVin(btn) {
           + '</div></div>';
         grid.insertBefore(col, createCardCol);
       })
-      .catch(function(){ document.getElementById('fb-save-btn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+      .catch(function(){ document.getElementById('fb-save-btn').disabled = false; errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; errEl.style.display = ''; });
   };
 
   window.deleteFormTemplate = function (id) {
@@ -5911,7 +5911,7 @@ function doSendMsg() {
         _msgShowError(data.error || 'Failed to send internal message.');
       }
     })
-    .catch(function(err) { btn.disabled = false; _msgShowError('Network error — ' + err.message + '. Please try again.'); });
+    .catch(function() { btn.disabled = false; _msgShowError(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
     return;
   }
 
@@ -5942,7 +5942,7 @@ function doSendMsg() {
       if (_msgType === 'email') { window._axSaveReload = true; window.location.reload(); }
     }, 1800);
   })
-  .catch(function(err) { btn.disabled = false; _msgShowError('Network error \u2014 ' + err.message + '. Please try again.'); });
+  .catch(function() { btn.disabled = false; _msgShowError(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
 }
 
 window.openEmailCustomer = openEmailCustomer;
@@ -6125,7 +6125,7 @@ function offNoteCancel(id) {
     })
     .catch(function() {
       abkDisable(false);
-      errEl.textContent = 'Network error. Please try again.';
+      errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
       errEl.style.display = '';
     });
   };
@@ -6393,7 +6393,7 @@ function offNoteCancel(id) {
       btn.disabled = false;
       btn.textContent = 'Save & Link';
       alertBox.className = 'alert alert-danger';
-      alertBox.textContent = 'Network error — please try again.';
+      alertBox.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
       alertBox.style.display = '';
     });
   };
@@ -6542,7 +6542,7 @@ function offNoteCancel(id) {
         pushRecent(data.id);
         dropEl.style.display = 'none';
       })
-      .catch(function() { alert('Network error creating booking type.'); });
+      .catch(function() { alert(navigator.onLine ? 'Could not create booking type — please try again.' : 'No internet connection.'); });
   }
 
   var btSearch = document.getElementById('bt_search');
@@ -6696,7 +6696,7 @@ function offNoteCancel(id) {
     })
     .catch(function() {
       sel.disabled = false;
-      alert('Network error. Please try again.');
+      alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');
       sel.value = '';
     });
   };
@@ -6724,8 +6724,8 @@ function offNoteCancel(id) {
         if (msg) { msg.textContent = 'Saved.'; msg.style.display = ''; msg.style.color = '#16a34a'; }
         setTimeout(function(){ closeSchedEdit(sid); refreshScheduleTable(); }, 600);
       })
-      .catch(function(e){
-        if (msg) { msg.textContent = 'Network error: ' + (e.message || 'Please try again.'); msg.style.display = ''; msg.style.color = '#dc2626'; }
+      .catch(function(){
+        if (msg) { msg.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; msg.style.display = ''; msg.style.color = '#dc2626'; }
       });
   }
 
@@ -6790,7 +6790,7 @@ function offNoteCancel(id) {
         alert(data.error || 'Failed to delete booking.');
       }
     })
-    .catch(function() { alert('Network error. Please try again.'); });
+    .catch(function() { alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
   };
 })();
 </script>
@@ -6890,7 +6890,7 @@ function offNoteCancel(id) {
           alert(data.error || 'Error assigning agent.');
         }
       })
-      .catch(function(e){ alert('Network error: ' + (e.message || '')); });
+      .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
   };
 })();
 </script>
@@ -7457,9 +7457,9 @@ function submitClientUpdateRequest() {
       btn.textContent = 'Send Request';
     }
   })
-  .catch(function(e) {
+  .catch(function() {
     alert.className = 'alert alert-danger mb-3';
-    alert.textContent = 'Network error: ' + e;
+    alert.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
     btn.disabled = false;
     btn.textContent = 'Send Request';
   });
@@ -7523,9 +7523,9 @@ function submitClientResponse() {
       btn.textContent = 'Confirm \u2014 Client Responded';
     }
   })
-  .catch(function(e) {
+  .catch(function() {
     alertBox.className = 'alert alert-danger';
-    alertBox.textContent = 'Network error: ' + e;
+    alertBox.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
     btn.disabled = false;
     btn.textContent = 'Confirm \u2014 Client Responded';
   });
@@ -7613,9 +7613,9 @@ function attachPrevFileNotes() {
       btn.textContent = 'Generate \u0026 Attach Previous File Notes PDF';
     }
   })
-  .catch(function(e) {
+  .catch(function() {
     alertBox.className = 'alert alert-danger';
-    alertBox.textContent = 'Network error: ' + e;
+    alertBox.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
     btn.disabled = false;
     btn.textContent = 'Generate \u0026 Attach Previous File Notes PDF';
   });
@@ -7663,7 +7663,7 @@ function crVoidConfirm() {
   .catch(function(){
     btn.disabled    = false;
     btn.textContent = 'Void Receipt';
-    errEl.textContent = 'Network error. Please try again.';
+    errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
     errEl.style.display = 'block';
   });
 }
@@ -7776,9 +7776,9 @@ function saveDeliverTo(){
       alert(data.error || 'Error saving delivery location.');
     }
   })
-  .catch(function(e){
+  .catch(function(){
     if(btn){ btn.disabled = false; btn.textContent = 'Save'; }
-    alert('Network error. Please try again.');
+    alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');
   });
 }
 </script>

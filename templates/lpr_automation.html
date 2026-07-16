@@ -451,7 +451,7 @@
       }
     })
     .catch(function(){
-      fb.innerHTML = '<span class="text-danger">Network error.</span>';
+      fb.innerHTML = '<span class="text-danger">' + (navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.') + '</span>';
       btn.disabled = false; btn.textContent = 'Save settings';
     });
   };
@@ -484,7 +484,7 @@
       }
     })
     .catch(function(){
-      if (fb) fb.innerHTML = '<span class="text-danger">Network error.</span>';
+      if (fb) fb.innerHTML = '<span class="text-danger">' + (navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.') + '</span>';
     });
   };
 
@@ -506,7 +506,7 @@
         btn.disabled = false; btn.textContent = 'Resolve';
       }
     })
-    .catch(function(){ alert('Network error.'); btn.disabled = false; btn.textContent = 'Resolve'; });
+    .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); btn.disabled = false; btn.textContent = 'Resolve'; });
   };
 
   window.resumeScope = function(scope_key, btn) {
@@ -527,7 +527,7 @@
         btn.disabled = false; btn.textContent = 'Resume';
       }
     })
-    .catch(function(){ alert('Network error.'); btn.disabled = false; btn.textContent = 'Resume'; });
+    .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); btn.disabled = false; btn.textContent = 'Resume'; });
   };
 
   window.rollbackAction = function(action_id, btn) {
@@ -550,7 +550,7 @@
       }
     })
     .catch(function(){
-      alert('Network error.');
+      alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');
       btn.disabled = false; btn.textContent = 'Rollback';
     });
   };

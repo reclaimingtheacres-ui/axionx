@@ -225,7 +225,7 @@ function mGcSave() {
         saveBtn.textContent = M_IS_ADMIN ? 'Save Entry' : 'Submit';
       }
     }).catch(function() {
-      errEl.textContent = 'Network error.';
+      errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
       errEl.style.display = '';
       saveBtn.disabled = false;
       saveBtn.textContent = M_IS_ADMIN ? 'Save Entry' : 'Submit';
@@ -242,7 +242,7 @@ function mGcSetStatus(id, status) {
     body: JSON.stringify({status: status})
   }).then(function(r){return r.json();})
     .then(function(d){ if (d.ok) window.location.reload(); else alert(d.error||'Error'); })
-    .catch(function(){ alert('Network error.'); });
+    .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
 }
 
 function escH(s) {

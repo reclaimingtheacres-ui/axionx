@@ -1911,7 +1911,7 @@ function axCopyJobAddress(addr) {
         rlmToggleAddYard(null, true);
       })
       .catch(function() {
-        errEl.textContent = "Network error — please try again.";
+        errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
         errEl.style.display = "";
       });
   };
@@ -2288,7 +2288,7 @@ window.saveQuickNote = function(submitForReview) {
         document.getElementById('noteText').value = '';
         closeNoteSheet();
       })
-      .catch(function(){ alert('Network error. Please try again.'); })
+      .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); })
       .finally(function(){
         btn.disabled    = false;
         btn.textContent = 'Save Edit';
@@ -2372,7 +2372,7 @@ window.saveQuickNote = function(submitForReview) {
         badge.textContent = cnt;
       }
     })
-    .catch(function(){ alert('Network error. Please try again.'); })
+    .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); })
     .finally(function(){
       btn.disabled    = false;
       btn.textContent = _noteDefaultSaveLabel;

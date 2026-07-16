@@ -241,7 +241,7 @@
       submitted = false;
       btn.disabled = false;
       btn.textContent = 'Save Receipt & Generate PDF';
-      showErr('Network error. Please check your connection and try again.');
+      showErr(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');
     });
   });
 })();

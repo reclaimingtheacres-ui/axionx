@@ -444,7 +444,7 @@
       }
     })
     .catch(function(){
-      btn.textContent = 'Network error';
+      btn.textContent = navigator.onLine ? 'Request failed' : 'No connection';
       btn.disabled = false;
     });
   };
@@ -466,7 +466,7 @@
         btn.disabled = false;
       }
     })
-    .catch(function(){ alert('Network error.'); btn.disabled = false; });
+    .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); btn.disabled = false; });
   };
 
 })();

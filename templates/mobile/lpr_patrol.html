@@ -305,7 +305,7 @@ function submitResult(idx, reg) {
   })
   .catch(function() {
     fb.style.color = '#dc2626';
-    fb.textContent = 'Network error — try again.';
+    fb.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
     sbtn.disabled = false;
     sbtn.textContent = 'Submit result';
   });

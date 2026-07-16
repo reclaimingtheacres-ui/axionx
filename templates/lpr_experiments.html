@@ -620,7 +620,7 @@
       }
     })
     .catch(function(){
-      alert('Network error.');
+      alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');
       btn.disabled = false;
     });
   }

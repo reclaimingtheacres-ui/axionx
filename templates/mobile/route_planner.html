@@ -520,7 +520,7 @@ async function mrpSaveRoute() {
       if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Route'; }
     }
   } catch(e) {
-    alert('Network error saving route.');
+    alert(navigator.onLine ? 'Could not save route — please try again.' : 'No internet connection.');
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Route'; }
   }
 }

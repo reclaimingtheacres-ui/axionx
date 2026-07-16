@@ -671,7 +671,7 @@ function schDragDoSave(){
     })
     .catch(function(){
       btn.disabled=false;btn.textContent='Confirm Change';
-      alert('Network error — booking was NOT moved.');
+      alert(navigator.onLine ? 'Request failed — booking was NOT moved. Please try again.' : 'No internet connection — booking was NOT moved.');
     });
 }
 
@@ -774,7 +774,7 @@ function schSaveChange(){
       if(!data.ok){alert(data.error||'Error saving.');return}
       schClosePopup();schLoad();
     })
-    .catch(function(){btn.disabled=false;btn.textContent='Save Changes';alert('Network error.')});
+    .catch(function(){btn.disabled=false;btn.textContent='Save Changes';alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');});
 }
 
 function schShowHistory(){
@@ -807,7 +807,7 @@ function schShowHistory(){
       });
       content.innerHTML=h;
     })
-    .catch(function(){content.innerHTML='<div style="color:var(--danger);font-size:.82rem">Network error loading history.</div>'});
+    .catch(function(){content.innerHTML='<div style="color:var(--danger);font-size:.82rem">' + (navigator.onLine ? 'Could not load history — please try again.' : 'No internet connection.') + '</div>';});
 }
 
 function schQuickAction(action){
@@ -820,7 +820,7 @@ function schQuickAction(action){
       if(!data.ok){alert(data.error||'Error');return}
       schClosePopup();schLoad();
     })
-    .catch(function(){alert('Network error.')});
+    .catch(function(){alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.');});
 }
 
 (function(){

@@ -15271,6 +15271,48 @@ def debug_test_pdf():
     return resp
 
 
+def _fetch_blob_with_retry(container, stored_name, doc_id, label="Document"):
+    """Fetch an Azure blob with up to 3 retries (2-second gaps) on transient/not-found errors.
+
+    Returns (blob_data, is_not_found):
+      - blob_data: bytes on success, None on failure
+      - is_not_found: True when all retries ended with BlobNotFound/ResourceNotFound
+    """
+    import time as _t_retry
+    import logging as _log_retry
+    _MAX = 3
+    _DELAY = 2.0
+    last_is_nf = False
+    for attempt in range(1, _MAX + 1):
+        try:
+            return container.get_blob_client(stored_name).download_blob().readall(), False
+        except Exception as _e:
+            err_s = str(_e)
+            last_is_nf = (
+                "BlobNotFound" in err_s or "ResourceNotFound" in err_s
+                or getattr(getattr(_e, "error", None), "code", None)
+                in ("BlobNotFound", "ResourceNotFound")
+            )
+            if attempt < _MAX:
+                _log_retry.warning(
+                    "[BLOB-RETRY] %s %s not yet available. Retry %d of %d.",
+                    label, doc_id, attempt, _MAX
+                )
+                _t_retry.sleep(_DELAY)
+            else:
+                if last_is_nf:
+                    _log_retry.warning(
+                        "[BLOB-RETRY] %s %s unavailable after %d attempts.",
+                        label, doc_id, _MAX
+                    )
+                else:
+                    _log_retry.warning(
+                        "[BLOB-RETRY] %s %s failed after %d attempts. error=%s",
+                        label, doc_id, _MAX, _e
+                    )
+    return None, last_is_nf
+
+
 @app.get("/m/documents/<int:file_id>/preview")
 def m_documents_preview(file_id: int):
     """Single mobile document preview route.  Returns RAW FILE BYTES only.
@@ -15356,8 +15398,8 @@ def m_documents_preview(file_id: int):
         return resp
 
     if _uploads_container:
-        try:
-            blob_data = _uploads_container.get_blob_client(stored).download_blob().readall()
+        blob_data, is_not_found = _fetch_blob_with_retry(_uploads_container, stored, file_id, "Document")
+        if blob_data is not None:
             content_len = len(blob_data)
             resp = make_response(blob_data)
             resp.headers["Content-Length"] = str(content_len)
@@ -15365,8 +15407,9 @@ def m_documents_preview(file_id: int):
             _log.info("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=blob  status=200  content_type=%s  content_disposition=inline  content_length=%s  raw_bytes=yes  redirect=no",
                       file_id, stored, ext, mime, content_len)
             return resp
-        except Exception as e:
-            _log.warning("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=blob  RESULT=blob_error  error=%s", file_id, stored, ext, e)
+        if is_not_found:
+            return jsonify({"ok": False, "error": "Document is still being prepared. Please wait a few seconds and try again.", "retry": True}), 503
+        _log.warning("[DOC-PREVIEW] id=%s  filename=%s  ext=%s  source=blob  RESULT=blob_error — falling back to local", file_id, stored, ext)
 
     local_path = _find_upload_file(stored)
     if local_path:
@@ -15473,15 +15516,16 @@ def m_doc_stream_job_doc(doc_id: int):
     mime = row["mime_type"] or mimetypes.guess_type(stored)[0] or "application/octet-stream"
 
     if _uploads_container:
-        try:
-            blob_data = _uploads_container.get_blob_client(stored).download_blob().readall()
+        blob_data, is_not_found = _fetch_blob_with_retry(_uploads_container, stored, doc_id, "Document")
+        if blob_data is not None:
             resp = make_response(blob_data)
             resp.headers["Content-Type"] = mime
             resp.headers["Content-Disposition"] = f'inline; filename="{original}"'
             resp.headers["Cache-Control"] = "private, max-age=300"
             return resp
-        except Exception as e:
-            _log.warning("Blob fetch failed for job-doc stream %r: %s", stored, e)
+        if is_not_found:
+            return jsonify({"ok": False, "error": "Document is still being prepared. Please wait a few seconds and try again.", "retry": True}), 503
+        _log.warning("[DOC-JOB-STREAM] id=%s stored=%r blob failed — falling back to local", doc_id, stored)
 
     local_path = _find_upload_file(stored)
     if local_path:

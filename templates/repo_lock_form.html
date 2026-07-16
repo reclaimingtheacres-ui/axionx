@@ -1006,7 +1006,7 @@
         rlToggleAddYard(null, true);
       })
       .catch(function() {
-        errEl.textContent = "Network error — please try again.";
+        errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
         errEl.style.display = "";
       });
   };

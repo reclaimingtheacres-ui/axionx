@@ -1312,7 +1312,7 @@ function saveBt() {
         list.appendChild(div);
       }
     })
-    .catch(function(){ document.getElementById('bt-save-btn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+    .catch(function(){ document.getElementById('bt-save-btn').disabled = false; errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; errEl.style.display = ''; });
 }
 
 function deleteBt(id) {
@@ -1387,7 +1387,7 @@ function saveTow() {
         tbody.appendChild(tr);
       }
     })
-    .catch(function(){ document.getElementById('towSaveBtn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+    .catch(function(){ document.getElementById('towSaveBtn').disabled = false; errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; errEl.style.display = ''; });
 }
 
 function deleteTow(id, btn) {
@@ -1496,7 +1496,7 @@ function saveYard() {
         tbody.appendChild(tr);
       }
     })
-    .catch(function(){ document.getElementById('yardSaveBtn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+    .catch(function(){ document.getElementById('yardSaveBtn').disabled = false; errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; errEl.style.display = ''; });
 }
 
 function deleteYard(id, btn) {
@@ -1545,7 +1545,7 @@ function lockoutLoad() {
       if (!d.ok) { lockoutShowStatus('Failed to load records.', 'danger'); return; }
       lockoutRender(d.entries || [], d.total || 0, d.locked_count || 0);
     })
-    .catch(function() { lockoutShowStatus('Network error loading records.', 'danger'); });
+    .catch(function() { lockoutShowStatus(navigator.onLine ? 'Could not load records — please try again.' : 'No internet connection.', 'danger'); });
 }
 
 function _lockoutFmtTime(utcStr) {
@@ -1641,7 +1641,7 @@ function lockoutRelease(key, btn) {
       lockoutLoad();
     })
     .catch(function() {
-      lockoutShowStatus('Network error.', 'danger');
+      lockoutShowStatus(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.', 'danger');
       if (btn) { btn.disabled = false; btn.textContent = origText; }
     });
 }
@@ -1656,7 +1656,7 @@ function lockoutClearExpired() {
       lockoutShowStatus(d.ok ? 'Inactive state records cleared.' : (d.error || 'Failed.'), d.ok ? 'success' : 'danger');
       lockoutLoad();
     })
-    .catch(function() { lockoutShowStatus('Network error.', 'danger'); });
+    .catch(function() { lockoutShowStatus(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.', 'danger'); });
 }
 
 function lockoutAuditClear() {
@@ -1679,7 +1679,7 @@ function lockoutAuditClear() {
     })
     .catch(function() {
       if (btn) { btn.disabled = false; btn.textContent = origText; }
-      lockoutShowStatus('Network error.', 'danger');
+      lockoutShowStatus(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.', 'danger');
     });
 }
 
@@ -1735,7 +1735,7 @@ function savePassword() {
     })
     .catch(function() {
       btn.disabled = false;
-      alertEl.textContent = 'Network error. Please try again.';
+      alertEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
       alertEl.classList.add('alert-danger');
       alertEl.style.display = '';
     });

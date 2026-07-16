@@ -1022,7 +1022,7 @@ function toggleParsed(btn) {
         applyTypeahead(_modalTarget, data);
         if (_bsModal) _bsModal.hide();
       })
-      .catch(function(){ if (errEl) { errEl.textContent = 'Network error.'; errEl.classList.remove('d-none'); } });
+      .catch(function(){ if (errEl) { errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; errEl.classList.remove('d-none'); } });
     });
   }
 

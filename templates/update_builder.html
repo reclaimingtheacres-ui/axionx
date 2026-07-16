@@ -539,7 +539,7 @@
         }
       }
     } catch (e) {
-      err.textContent = 'Network error — please try again.';
+      err.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
       err.style.display = 'block';
     } finally {
       $('btn_generate_text').textContent = '\u2728 Generate Update';
@@ -651,7 +651,7 @@
         setTimeout(() => { window.location.href = data.redirect; }, 800);
       }
     } catch (e) {
-      $('save_error').textContent = 'Network error — please try again.';
+      $('save_error').textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
       $('save_error').style.display = 'block';
       this.disabled = false;
       this.textContent = 'Save Update to Job';

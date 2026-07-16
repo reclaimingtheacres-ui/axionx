@@ -216,7 +216,7 @@ function saveTow() {
         tbody.appendChild(tr);
       }
     })
-    .catch(function(){ document.getElementById('towSaveBtn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+    .catch(function(){ document.getElementById('towSaveBtn').disabled = false; errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; errEl.style.display = ''; });
 }
 
 function deleteTow(id, btn) {
@@ -326,7 +326,7 @@ function saveYard() {
         tbody.appendChild(tr);
       }
     })
-    .catch(function(){ document.getElementById('yardSaveBtn').disabled = false; errEl.textContent = 'Network error.'; errEl.style.display = ''; });
+    .catch(function(){ document.getElementById('yardSaveBtn').disabled = false; errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'; errEl.style.display = ''; });
 }
 
 function deleteYard(id, btn) {

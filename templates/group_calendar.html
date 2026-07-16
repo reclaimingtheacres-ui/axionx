@@ -551,7 +551,7 @@
       body: JSON.stringify({status: status})
     }).then(function(r){return r.json();})
       .then(function(d){ if (d.ok) gcLoadEntries(); else alert(d.error || 'Error'); })
-      .catch(function(){ alert('Network error.'); });
+      .catch(function(){ alert(navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.'); });
   };
 
   /* ── Open create modal ── */
@@ -676,7 +676,7 @@
       .catch(function() {
         saveBtn.disabled = false;
         saveBtn.textContent = EDITABLE_ENTRY_ID ? 'Save Changes' : 'Save Entry';
-        errEl.textContent = 'Network error. Please try again.';
+        errEl.textContent = navigator.onLine ? 'Request failed — please try again.' : 'No internet connection.';
         errEl.style.display = '';
       });
   };
