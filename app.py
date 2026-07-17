@@ -813,6 +813,8 @@ def _startup_migrate():
         add_column_if_missing(_cur, "job_field_notes", "reporting_delay_minutes", "INTEGER")
         add_column_if_missing(_cur, "job_field_notes", "delay_reason",            "TEXT")
         add_column_if_missing(_cur, "job_field_notes", "delay_reviewed_at",       "TEXT")
+        add_column_if_missing(_cur, "job_field_notes", "approved_at",             "TEXT")
+        add_column_if_missing(_cur, "job_field_notes", "approved_by_user_id",     "INTEGER")
         add_column_if_missing(_cur, "repo_lock_records", "auction_yard_id",    "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "notice_delivery",    "TEXT")
         add_column_if_missing(_cur, "repo_lock_records", "tow_phone",          "TEXT")
