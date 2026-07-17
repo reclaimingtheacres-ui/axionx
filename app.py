@@ -636,6 +636,8 @@ def _schema_is_current():
             jfn_cols = [r[1] for r in conn.execute("PRAGMA table_info(job_field_notes)").fetchall()]
             if "activity_occurred_at" not in jfn_cols:
                 return False
+            if "approved_at" not in jfn_cols:
+                return False
             rl_cols = [r[1] for r in conn.execute("PRAGMA table_info(repo_lock_records)").fetchall()]
             if "auction_yard_id" not in rl_cols:
                 return False
@@ -1835,6 +1837,8 @@ def _migrate_update_builder():
     add_column_if_missing(cur, "job_field_notes",       "reporting_delay_minutes", "INTEGER")
     add_column_if_missing(cur, "job_field_notes",       "delay_reason",            "TEXT")
     add_column_if_missing(cur, "job_field_notes",       "delay_reviewed_at",       "TEXT")
+    add_column_if_missing(cur, "job_field_notes",       "approved_at",             "TEXT")
+    add_column_if_missing(cur, "job_field_notes",       "approved_by_user_id",     "INTEGER")
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS mobile_auth_tokens (
@@ -3655,6 +3659,17 @@ def mel_dt_filter(ts_str):
     hour = int(dt.strftime("%I"))          # strip leading zero
     ampm = dt.strftime("%p").lower()       # 'am' / 'pm'
     return dt.strftime("%d/%m/%Y ") + f"{hour}:{dt.strftime('%M')}{ampm}"
+
+
+@app.template_filter("mel_dt_at")
+def mel_dt_at_filter(ts_str):
+    """Format a stored timestamp as 'DD/MM/YYYY at H:mma' (Melbourne local time)."""
+    dt = to_melbourne_time(ts_str)
+    if not dt:
+        return ts_str or "—"
+    hour = int(dt.strftime("%I"))
+    ampm = dt.strftime("%p").lower()
+    return dt.strftime("%d/%m/%Y") + f" at {hour}:{dt.strftime('%M')}{ampm}"
 
 
 @app.template_filter("fmt_date")
@@ -6283,9 +6298,10 @@ def job_detail(job_id: int):
     all_customers_for_edit = cur.fetchall()
 
     cur.execute("""
-        SELECT fn.*, u.full_name author_name
+        SELECT fn.*, u.full_name author_name, a.full_name approved_by_name
         FROM job_field_notes fn
         LEFT JOIN users u ON u.id = fn.created_by_user_id
+        LEFT JOIN users a ON a.id = fn.approved_by_user_id
         WHERE fn.job_id = ?
         ORDER BY fn.created_at DESC
     """, (job_id,))
@@ -14600,6 +14616,10 @@ def edit_job_note(job_id: int, note_id: int):
                 fields["review_status"] = "published"
                 if not note["published_at"]:
                     fields["published_at"] = ts
+                if (note["review_status"] == "submitted_for_review"
+                        and not note["approved_at"]):
+                    fields["approved_at"] = ts
+                    fields["approved_by_user_id"] = caller_id
 
     set_clause = ", ".join(f"{k}=?" for k in fields)
     cur.execute(f"UPDATE job_field_notes SET {set_clause} WHERE id=?",
@@ -14655,9 +14675,10 @@ def note_detail_api(job_id: int, note_id: int):
     conn = db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT n.*, u.full_name AS author_name
+        SELECT n.*, u.full_name AS author_name, a.full_name AS approved_by_name
         FROM job_field_notes n
         LEFT JOIN users u ON u.id = n.created_by_user_id
+        LEFT JOIN users a ON a.id = n.approved_by_user_id
         WHERE n.id = ? AND n.job_id = ?
     """, (note_id, job_id))
     note = cur.fetchone()
@@ -14685,6 +14706,8 @@ def note_detail_api(job_id: int, note_id: int):
         "updated_at": note["updated_at"],
         "updated_by_name": updated_by_name,
         "note_category": note["note_category"] or "file_note",
+        "approved_at": note["approved_at"],
+        "approved_by_name": note["approved_by_name"],
         "files": files,
     })
 

@@ -1550,7 +1550,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div id="note-menu-{{ entry.note.id }}"
                          style="display:none;position:absolute;left:0;top:100%;margin-top:4px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:999;min-width:110px;overflow:hidden">
                       <button type="button"
-                              onclick='axOpenEditNote({{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson | e }}, {{ entry.note.created_at | tojson }}, {{ entry.note.created_by_user_id or 0 }})'
+                              onclick='axOpenEditNote({{ entry.note.id }}, {{ entry.note.note_text | strip_ai_prefix | tojson | e }}, {{ entry.note.created_at | tojson }}, {{ entry.note.created_by_user_id or 0 }}, {{ entry.note.approved_at | tojson }}, {{ entry.note.approved_by_name | tojson }})'
                               style="display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-size:.8rem;color:var(--text);cursor:pointer;font-weight:500;border-bottom:1px solid var(--line)">
                         ✏ Edit
                       </button>
@@ -1642,6 +1642,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="small mb-1" style="color:var(--muted);font-style:italic">Update submitted to agency for review.</div>
                     {% else %}
                     <div id="note-text-{{ entry.note.id }}" class="small mb-1" style="white-space:pre-wrap">{{ entry.note.note_text | strip_ai_prefix | note_render }}</div>
+                    {% if entry.note.approved_at %}
+                    <div id="note-approval-{{ entry.note.id }}" style="font-size:.72rem;color:var(--muted);margin-top:3px;margin-bottom:2px">Approved: {{ entry.note.approved_at | mel_dt_at }}{% if entry.note.approved_by_name %} by {{ entry.note.approved_by_name }}{% endif %}</div>
+                    {% endif %}
                     <div id="note-edit-{{ entry.note.id }}" style="display:none;margin-bottom:6px">
                       <textarea id="note-edit-ta-{{ entry.note.id }}"
                                 rows="4"
@@ -3596,8 +3599,17 @@ document.addEventListener('DOMContentLoaded', function(){
     if (wrap) wrap.style.display = '';
   });
 
+  function _anFmtApproval(ts) {
+    if (!ts || ts.length < 16) return ts || '\u2014';
+    var yr = ts.substring(0,4), mo = ts.substring(5,7), dy = ts.substring(8,10);
+    var hh = parseInt(ts.substring(11,13), 10), mn = ts.substring(14,16);
+    var ampm = hh >= 12 ? 'pm' : 'am';
+    var h12 = hh % 12 || 12;
+    return dy + '/' + mo + '/' + yr + ' at ' + h12 + ':' + mn + ampm;
+  }
+
   /* Open modal pre-populated for editing an existing note */
-  window.axOpenEditNote = function(noteId, noteText, createdAt, authorId) {
+  window.axOpenEditNote = function(noteId, noteText, createdAt, authorId, approvedAt, approvedByName) {
     var editIdEl = document.getElementById('an_edit_note_id');
     if (editIdEl) editIdEl.value = noteId;
 
@@ -3625,6 +3637,21 @@ document.addEventListener('DOMContentLoaded', function(){
     }
     var staffEl = document.getElementById('an_staff');
     if (staffEl && authorId) staffEl.value = String(authorId);
+
+    var apprSec = document.getElementById('an_approval_section');
+    var apprAtEl = document.getElementById('an_approved_at_val');
+    var apprByEl = document.getElementById('an_approved_by_val');
+    if (apprSec) {
+      if (approvedAt) {
+        if (apprAtEl) apprAtEl.textContent = _anFmtApproval(approvedAt);
+        if (apprByEl) apprByEl.textContent = approvedByName || '\u2014';
+        apprSec.style.display = '';
+      } else {
+        apprSec.style.display = 'none';
+        if (apprAtEl) apprAtEl.textContent = '';
+        if (apprByEl) apprByEl.textContent = '';
+      }
+    }
 
     bootstrap.Modal.getOrCreateInstance(modal).show();
     setTimeout(function(){
@@ -4327,6 +4354,15 @@ document.addEventListener('click', function(e) {
                       rows="2" placeholder="Why was this activity reported late?" style="font-size:.83rem;resize:none"></textarea>
           </div>
 
+          <!-- Approval audit (edit mode only, shown for approved notes) -->
+          <div class="an-row" id="an_approval_section" style="display:none">
+            <div class="an-label" style="color:var(--muted);padding-top:.15rem">Approved:</div>
+            <div style="font-size:.82rem;color:var(--muted);line-height:1.5">
+              <div id="an_approved_at_val"></div>
+              <div>By: <span id="an_approved_by_val"></span></div>
+            </div>
+          </div>
+
         </div>
         <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem;flex-wrap:wrap">
           {% if session.get('role') in ('admin', 'both', 'management') %}
@@ -4506,6 +4542,8 @@ if (_anModal) _anModal.addEventListener('hidden.bs.modal', function() {
     var h = document.getElementById('an_cat_hint'); if (h) h.textContent = '';
     var occ = document.getElementById('an_activity_occurred_at'); if (occ) occ.value = _anLocalNowDtl();
     var dr  = document.getElementById('an_delay_reason');          if (dr)  dr.value = '';
+    var apprSec = document.getElementById('an_approval_section');
+    if (apprSec) apprSec.style.display = 'none';
     anUpdateFarFields();
     anSetNow();
   };
