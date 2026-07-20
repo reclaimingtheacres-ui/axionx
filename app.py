@@ -11710,16 +11710,23 @@ def _repo_lock_wants_json():
 
 def _generated_pdf_json(job_id: int, attach: dict, message: str):
     uid = session.get("user_id") or 0
-    preview_args = {"doc_id": attach["document_id"]}
+    preview_args = {"doc_id": attach["document_id"], "_external": True}
     if uid:
         preview_args.update({"tok": _make_mobile_view_token(uid), "uid": uid})
     preview_url = url_for("m_doc_stream_job_doc", **preview_args)
+    download_url = url_for("download_job_document", job_id=job_id,
+                           doc_id=attach["document_id"], _external=True)
+    app.logger.info(
+        "[PDF_JSON] doc_type=%r filename=%r doc_id=%s preview_url=%r download_url=%r uid=%s",
+        message, attach["original_filename"], attach["document_id"],
+        preview_url, download_url, uid
+    )
     return jsonify({
         "ok": True,
         "message": message,
         "document_id": attach["document_id"],
         "note_id": attach["note_id"],
-        "download_url": url_for("download_job_document", job_id=job_id, doc_id=attach["document_id"]),
+        "download_url": download_url,
         "preview_url": preview_url,
         "filename": attach["original_filename"],
         "mime_type": "application/pdf"
@@ -12355,9 +12362,10 @@ def repo_lock_form_13_pdf(job_id: int, rec_id: int):
         attach = _attach_pdf_to_job(conn, job_id, session.get("user_id"), pdf_bytes,
                            orig_filename, form_label, ts)
         conn.commit()
-        download_url = url_for("download_job_document", job_id=job_id, doc_id=attach["document_id"])
         uid = session.get("user_id") or 0
-        preview_args = {"doc_id": attach["document_id"]}
+        download_url = url_for("download_job_document", job_id=job_id,
+                               doc_id=attach["document_id"], _external=True)
+        preview_args = {"doc_id": attach["document_id"], "_external": True}
         if uid:
             preview_args.update({"tok": _make_mobile_view_token(uid), "uid": uid})
         preview_url = url_for("m_doc_stream_job_doc", **preview_args)
@@ -13888,7 +13896,8 @@ def m_cash_receipt_save(job_id: int):
         result["document_id"] = attach["document_id"]
         result["preview_url"] = url_for("m_doc_stream_job_doc",
                                         doc_id=attach["document_id"],
-                                        tok=_make_mobile_view_token(uid), uid=uid)
+                                        tok=_make_mobile_view_token(uid), uid=uid,
+                                        _external=True)
     return jsonify(result)
 
 
