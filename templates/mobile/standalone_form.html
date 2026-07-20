@@ -12,13 +12,16 @@
     </div>
   </div>
 
-  {% if error %}
-  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:.82rem;color:#b91c1c;">
-    PDF generation failed: {{ error }}
-  </div>
-  {% endif %}
+  <div id="standaloneErrorBox" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:.82rem;color:#b91c1c;"></div>
 
-  <form method="POST" action="/m/forms/standalone/{{ form_type }}">
+  <form id="standaloneForm" method="POST" action="/m/forms/standalone/{{ form_type }}">
+
+    <input type="hidden" name="agent_sig"    id="agentSigData">
+    <input type="hidden" id="agentSigned"    value="0">
+    {% if form_type == 'vir' %}
+    <input type="hidden" name="customer_sig" id="customerSigData">
+    <input type="hidden" id="customerSigned" value="0">
+    {% endif %}
 
     {% macro fi(name, label, value='', type='text', required=false) %}
     <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
@@ -51,11 +54,34 @@
     <div style="background:#fff;border:1.5px solid #e5e7eb;border-top:none;border-radius:0 0 10px 10px;padding:14px;">
     {% endmacro %}
 
+    {% macro section_dark(title) %}
+    <div style="background:#374151;color:#fff;padding:9px 14px;font-weight:700;font-size:.78rem;letter-spacing:.05em;border-radius:10px 10px 0 0;margin-top:16px;">
+      {{ title }}
+    </div>
+    <div style="background:#fff;border:1.5px solid #e5e7eb;border-top:none;border-radius:0 0 10px 10px;padding:14px;">
+    {% endmacro %}
+
     {% macro section_amber(title) %}
     <div style="background:#d97706;color:#fff;padding:9px 14px;font-weight:700;font-size:.78rem;letter-spacing:.05em;border-radius:10px 10px 0 0;margin-top:16px;">
       {{ title }}
     </div>
     <div style="background:#fff;border:1.5px solid #fde68a;border-top:none;border-radius:0 0 10px 10px;padding:14px;">
+    {% endmacro %}
+
+    {% macro sig_canvas(canvas_id, data_id, signed_id, label, required=false) %}
+    <div>
+      <div style="font-size:.78rem;font-weight:700;color:#111;margin-bottom:6px;">
+        {{ label }}{% if required %} <span style="color:#dc2626;">*</span>{% endif %}
+        {% if not required %}<span style="font-size:.72rem;font-weight:400;color:#6b7280;"> (optional)</span>{% endif %}
+      </div>
+      <div style="position:relative;">
+        <canvas id="{{ canvas_id }}" width="440" height="120"
+                style="border:2px solid {% if required %}#d1d5db{% else %}#e5e7eb{% endif %};border-radius:8px;touch-action:none;cursor:crosshair;background:#fff;width:100%;height:120px;display:block;"></canvas>
+        <button type="button" onclick="clearSig('{{ canvas_id }}','{{ data_id }}','{{ signed_id }}')"
+                style="position:absolute;top:6px;right:6px;background:#f3f4f6;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;font-size:.72rem;cursor:pointer;color:#374151;">Clear</button>
+      </div>
+      {% if required %}<div id="{{ canvas_id }}Prompt" style="display:none;font-size:.75rem;color:#dc2626;margin-top:4px;">Signature is required.</div>{% endif %}
+    </div>
     {% endmacro %}
 
 
@@ -79,27 +105,59 @@
       </div>
 
       {{ section('TOW CONTRACTOR') }}
-      {{ fi('tow_company_name','Tow Company') }}
-      {{ fi('tow_phone',    'Phone') }}
-      {{ fi('tow_costs',    'Tow Costs', 'TBA') }}
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+        <label style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;">Tow Company</label>
+        <select id="towOpSelect"
+                style="border:1.5px solid #d1d5db;border-radius:10px;padding:11px 14px;font-size:.9rem;color:#111;background:#fff;width:100%;box-sizing:border-box;-webkit-appearance:none;">
+          <option value="">— Select Tow Operator —</option>
+          {% for op in tow_operators %}
+          <option value="{{ op.company_name }}" data-phone="{{ op.phone or op.mobile or '' }}">{{ op.company_name }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="tow_company_name" id="towCompanyName">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+        <label style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;">Phone</label>
+        <input type="tel" name="tow_phone" id="towPhone"
+               style="border:1.5px solid #d1d5db;border-radius:10px;padding:11px 14px;font-size:.9rem;color:#111;background:#fff;width:100%;box-sizing:border-box;-webkit-appearance:none;">
+      </div>
+      {{ fi('tow_costs', 'Tow Costs', 'TBA') }}
       </div>
 
-      {{ section('DELIVERY') }}
-      {{ fi('deliver_to',       'Deliver To (Auction Facility)') }}
-      {{ fi('delivery_address', 'Delivery Address') }}
+      {{ section('DELIVERY (AUCTION YARD)') }}
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+        <label style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;">Auction Facility</label>
+        <select id="auctionYardSelect"
+                style="border:1.5px solid #d1d5db;border-radius:10px;padding:11px 14px;font-size:.9rem;color:#111;background:#fff;width:100%;box-sizing:border-box;-webkit-appearance:none;">
+          <option value="">— Select Auction Yard —</option>
+          {% for yard in auction_yards %}
+          <option value="{{ yard.name }}" data-address="{{ yard.address or '' }}">{{ yard.name }}{% if yard.address %} — {{ yard.address }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="deliver_to" id="deliverTo">
       </div>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+        <label style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;">Delivery Address</label>
+        <input type="text" name="delivery_address" id="deliveryAddress"
+               style="border:1.5px solid #d1d5db;border-radius:10px;padding:11px 14px;font-size:.9rem;color:#111;background:#fff;width:100%;box-sizing:border-box;-webkit-appearance:none;">
+      </div>
+      </div>
+
+      {{ section_dark('AGENT SIGNATURE') }}
+      {{ sig_canvas('agentCanvas', 'agentSigData', 'agentSigned', 'Agent Signature', required=true) }}
+      </div>
+
 
     {# ═══════════════════════════════════════════════════════════ VIR #}
     {% elif form_type == 'vir' %}
 
       {{ section('JOB DETAILS') }}
-      {{ fi('swpi_ref',      'SWPI Reference') }}
+      {{ fi('swpi_ref',       'SWPI Reference') }}
       {{ fi('finance_company','Finance Company') }}
-      {{ fi('repo_date',    'Date', today, 'date') }}
-      {{ fi('customer_name','Customer Name') }}
-      {{ fi('repo_address', 'Address') }}
+      {{ fi('repo_date',     'Date', today, 'date') }}
+      {{ fi('customer_name', 'Customer Name') }}
+      {{ fi('repo_address',  'Address') }}
       {{ fi('account_number','Account Number') }}
-      {{ fi('agent_name',   'Agent Name') }}
       </div>
 
       {{ section('SECURITY DETAILS') }}
@@ -109,25 +167,47 @@
       {{ fi('colour',       'Colour') }}
       {{ fi('registration', 'Registration') }}
       {{ fi('vin',          'VIN / Chassis') }}
+      {{ fi('engine_number','Engine Number') }}
+      {{ fi('speedometer',  'Kilometres') }}
       </div>
 
       {{ section('REPOSSESSION') }}
-      {{ fsel('person_present',   'Person Present?',   ['YES','NO']) }}
-      {{ fsel('keys_obtained',    'Keys Obtained?',    ['YES','NO']) }}
-      {{ fsel('vol_surrender',    'Voluntary Surrender?', ['YES','NO']) }}
-      {{ fsel('security_drivable','Drivable?',         ['YES','NO']) }}
+      {{ fsel('person_present',          'Person Present?',           ['Yes','No','N/A']) }}
+      {{ fsel('keys_obtained',           'Keys Obtained?',            ['Yes','No','N/A']) }}
+      {{ fi(  'how_many_keys',           'How Many Keys?') }}
+      {{ fsel('vol_surrender',           'Voluntary Surrender?',      ['Yes','No','N/A']) }}
+      {{ fsel('form_13',                 'Form 13?',                  ['Yes','No','N/A']) }}
+      {{ fsel('security_drivable',       'Drivable?',                 ['Yes','No','N/A']) }}
+      {{ fsel('police_notified',         'Police Notified?',          ['Yes','No']) }}
+      {{ fi(  'station_officer',         'Station / Officer') }}
+      {{ fsel('personal_effects_removed','Personal Effects Removed?', ['Yes','No','N/A']) }}
+      {{ fi(  'personal_effects_list',   'Effects List (if any)') }}
       </div>
 
-      {{ section('CONDITION') }}
-      {{ fsel('tyres',      'Tyres',      ['Good','Fair','Poor','Flat']) }}
-      {{ fsel('body',       'Body',       ['Good','Fair','Poor','Damaged']) }}
-      {{ fsel('duco',       'Duco',       ['Good','Fair','Poor']) }}
-      {{ fsel('interior',   'Interior',   ['Good','Fair','Poor']) }}
-      {{ fsel('engine_condition','Engine',['Good','Fair','Poor']) }}
-      {{ fsel('transmission','Transmission',['Good','Fair','Poor']) }}
-      {{ fsel('fuel_level', 'Fuel Level', ['Full','3/4','Half','1/4','Empty']) }}
-      {{ fsel('any_damage', 'Any Damage?',['YES','NO']) }}
+      {{ section('CONDITION REPORT') }}
+      {% set cond_opts = ['Poor','Fair','Good','Excellent','N/A','Damaged'] %}
+      {{ fsel('tyres',           'Tyres',        cond_opts) }}
+      {{ fsel('body',            'Body',         cond_opts) }}
+      {{ fsel('duco',            'Duco / Paint', cond_opts) }}
+      {{ fsel('interior',        'Interior',     cond_opts) }}
+      {{ fsel('engine_condition','Engine',       ['Intact / Starts','Intact / No Start','Dismantled','Unknown','N/A']) }}
+      {{ fsel('transmission',    'Transmission', ['Intact / Moves','Intact / Not Move','Dismantled','Unknown','N/A']) }}
+      {{ fsel('fuel_level',      'Fuel Level',   ['Empty','1/4','1/2','3/4','Full','N/A']) }}
+      {{ fsel('any_damage',      'Any Damage?',  ['Yes','No','N/A']) }}
+      {{ fi(  'damage_list',     'Damage Description') }}
       </div>
+
+      {{ section('AGENT') }}
+      {{ fi('agent_name', 'Agent Name', agent_name) }}
+      </div>
+
+      {{ section_dark('SIGNATURES') }}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        {{ sig_canvas('agentCanvas',    'agentSigData',    'agentSigned',    'Agent Signature',    required=true) }}
+        {{ sig_canvas('customerCanvas', 'customerSigData', 'customerSigned', 'Customer Signature', required=false) }}
+      </div>
+      </div>
+
 
     {# ═══════════════════════════════════════════════════════════ FORM 13 #}
     {% elif form_type == 'form_13' %}
@@ -153,7 +233,7 @@
       {{ section('DETAILS') }}
       {{ fi('finance_company','Finance Company') }}
       {{ fi('account_number','Account / Reference Number') }}
-      {{ fi('agent_name',   'Agent Name') }}
+      {{ fi('agent_name',   'Agent Name', agent_name) }}
       </div>
 
       {{ section('SECURITY') }}
@@ -224,14 +304,176 @@
 
     {% endif %}
 
-    <button type="submit"
+    <button id="standaloneSubmitBtn" type="submit"
             style="width:100%;margin-top:20px;padding:15px;background:#2563eb;color:#fff;border:none;border-radius:12px;font-size:.95rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;">
-      Generate PDF
+      <span id="standaloneSubmitTxt">Generate PDF</span>
     </button>
     <p style="text-align:center;font-size:.75rem;color:#9ca3af;margin-top:8px;">
-      PDF will download to your device
+      PDF will open for download / sharing
     </p>
 
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var _drawing = {};
+
+  function _pos(canvas, e) {
+    var r = canvas.getBoundingClientRect();
+    var sx = canvas.width / r.width, sy = canvas.height / r.height;
+    var src = e.touches ? e.touches[0] : e;
+    return { x: (src.clientX - r.left) * sx, y: (src.clientY - r.top) * sy };
+  }
+
+  function _initSig(canvasId, dataId, signedId) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    _drawing[canvasId] = false;
+    function mark() {
+      document.getElementById(signedId).value = '1';
+      document.getElementById(dataId).value = canvas.toDataURL('image/png');
+    }
+    canvas.addEventListener('mousedown',  function(e){ e.preventDefault(); _drawing[canvasId]=true; var p=_pos(canvas,e); ctx.beginPath(); ctx.moveTo(p.x,p.y); });
+    canvas.addEventListener('mousemove',  function(e){ if(!_drawing[canvasId]) return; e.preventDefault(); var p=_pos(canvas,e); ctx.lineTo(p.x,p.y); ctx.stroke(); mark(); });
+    canvas.addEventListener('mouseup',    function(){ _drawing[canvasId]=false; });
+    canvas.addEventListener('mouseleave', function(){ _drawing[canvasId]=false; });
+    canvas.addEventListener('touchstart', function(e){ e.preventDefault(); _drawing[canvasId]=true; var p=_pos(canvas,e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }, {passive:false});
+    canvas.addEventListener('touchmove',  function(e){ if(!_drawing[canvasId]) return; e.preventDefault(); var p=_pos(canvas,e); ctx.lineTo(p.x,p.y); ctx.stroke(); mark(); }, {passive:false});
+    canvas.addEventListener('touchend',   function(){ _drawing[canvasId]=false; });
+  }
+
+  window.clearSig = function(canvasId, dataId, signedId) {
+    var canvas = document.getElementById(canvasId);
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    var s = document.getElementById(signedId); if (s) s.value = '0';
+    var d = document.getElementById(dataId);   if (d) d.value = '';
+    if (canvas) canvas.style.borderColor = '';
+    var p = document.getElementById(canvasId + 'Prompt'); if (p) p.style.display = 'none';
+  };
+
+  {% if form_type in ('vir', 'transport') %}
+  _initSig('agentCanvas', 'agentSigData', 'agentSigned');
+  {% endif %}
+  {% if form_type == 'vir' %}
+  _initSig('customerCanvas', 'customerSigData', 'customerSigned');
+  {% endif %}
+
+  {% if form_type == 'transport' %}
+  var _towOpSel = document.getElementById('towOpSelect');
+  if (_towOpSel) {
+    _towOpSel.addEventListener('change', function() {
+      var opt = this.options[this.selectedIndex];
+      document.getElementById('towCompanyName').value = opt.value || '';
+      document.getElementById('towPhone').value = (opt.dataset && opt.dataset.phone) ? opt.dataset.phone : '';
+    });
+  }
+  var _aySel = document.getElementById('auctionYardSelect');
+  if (_aySel) {
+    _aySel.addEventListener('change', function() {
+      var opt = this.options[this.selectedIndex];
+      document.getElementById('deliverTo').value = opt.value || '';
+      document.getElementById('deliveryAddress').value = (opt.dataset && opt.dataset.address) ? opt.dataset.address : '';
+    });
+  }
+  {% endif %}
+
+  document.getElementById('standaloneForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    {% if form_type in ('vir', 'transport') %}
+    var agentCanvas = document.getElementById('agentCanvas');
+    var agentSigned = document.getElementById('agentSigned');
+    if (agentSigned && agentSigned.value !== '1') {
+      var prompt = document.getElementById('agentCanvasPrompt');
+      if (prompt) prompt.style.display = 'block';
+      if (agentCanvas) { agentCanvas.style.borderColor = '#dc2626'; agentCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      return;
+    }
+    if (agentCanvas) {
+      document.getElementById('agentSigData').value = agentCanvas.toDataURL('image/png');
+    }
+    {% endif %}
+    {% if form_type == 'vir' %}
+    var custCanvas = document.getElementById('customerCanvas');
+    var custSigned = document.getElementById('customerSigned');
+    if (custCanvas && custSigned && custSigned.value === '1') {
+      document.getElementById('customerSigData').value = custCanvas.toDataURL('image/png');
+    }
+    {% endif %}
+
+    var errBox = document.getElementById('standaloneErrorBox');
+    errBox.style.display = 'none';
+    var btn = document.getElementById('standaloneSubmitBtn');
+    var txt = document.getElementById('standaloneSubmitTxt');
+    btn.disabled = true;
+    txt.textContent = 'Generating PDF\u2026';
+
+    try {
+      var resp = await fetch(this.action, {
+        method: 'POST',
+        body: new FormData(this),
+        headers: { 'Accept': 'application/pdf' }
+      });
+
+      if (!resp.ok) {
+        var msg = 'Unable to generate the document. HTTP ' + resp.status + '.';
+        try {
+          var ct = resp.headers.get('content-type') || '';
+          if (ct.indexOf('application/json') !== -1) {
+            var errData = await resp.json();
+            msg = errData.error || errData.message || msg;
+          }
+        } catch(_e) {}
+        errBox.textContent = msg;
+        errBox.style.display = 'block';
+        errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
+      var pdfBlob = await resp.blob();
+      var pdfUrl  = URL.createObjectURL(pdfBlob);
+
+      var disposition = resp.headers.get('content-disposition') || '';
+      var filename = '{{ form_name }}.pdf';
+      var fnMatch = disposition.match(/filename[^;=\n]*=([^;\n]*)/i);
+      if (fnMatch && fnMatch[1]) { filename = fnMatch[1].replace(/['"]/g, '').trim(); }
+
+      var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+      if (hasNative) {
+        try {
+          window.__AXION_PREVIEW_ACTIVE = true;
+          window.__AXION_PREVIEW_SOURCE_URL = window.location.href;
+          window.webkit.messageHandlers.documentPreview.postMessage({ url: pdfUrl, filename: filename, returnTo: window.location.href });
+          return;
+        } catch(_nativeErr) {
+          console.warn('Native document preview handoff failed', _nativeErr);
+        }
+      }
+
+      var a = document.createElement('a');
+      a.href = pdfUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function() { URL.revokeObjectURL(pdfUrl); }, 60000);
+
+    } catch(ex) {
+      errBox.textContent = navigator.onLine
+        ? 'Unable to generate the document. Please try again.'
+        : 'No internet connection.';
+      errBox.style.display = 'block';
+      errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } finally {
+      btn.disabled = false;
+      txt.textContent = 'Generate PDF';
+    }
+  });
+})();
+</script>
 {% endblock %}

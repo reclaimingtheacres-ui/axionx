@@ -13652,14 +13652,31 @@ def m_standalone_form(form_type: str):
 
     if request.method == "GET":
         from datetime import date as _date
+        _conn = db()
+        uid = session.get("user_id")
+        _urow = _conn.execute("SELECT full_name FROM users WHERE id=?", (uid,)).fetchone() if uid else None
+        _agent_name = _urow["full_name"] if _urow else ""
+        _tow_ops = [dict(r) for r in _conn.execute(
+            "SELECT id, company_name, phone, mobile FROM tow_operators WHERE active=1 ORDER BY company_name"
+        ).fetchall()]
+        _auction_yards = [dict(r) for r in _conn.execute(
+            "SELECT id, name, address FROM auction_yards WHERE active=1 ORDER BY name"
+        ).fetchall()]
+        _conn.close()
         return render_template("mobile/standalone_form.html",
                                form_type=form_type,
                                form_name=meta["name"],
-                               today=_date.today().isoformat())
+                               today=_date.today().isoformat(),
+                               agent_name=_agent_name,
+                               tow_operators=_tow_ops,
+                               auction_yards=_auction_yards)
 
     # POST — collect form fields and generate PDF
     def _f(name):
         return (request.form.get(name) or "").strip()
+
+    agent_sig    = (request.form.get("agent_sig")    or "").strip() or None
+    customer_sig = (request.form.get("customer_sig") or "").strip() or None
 
     data = {k: _f(k) for k in [
         "swpi_ref", "finance_company", "lender", "customer_name", "repo_address",
@@ -13669,15 +13686,17 @@ def m_standalone_form(form_type: str):
         "tow_company_name", "tow_phone", "tow_costs",
         "deliver_to", "delivery_address",
         "agent_name", "wise_case_number",
-        "person_present", "keys_obtained", "vol_surrender", "form_13",
-        "security_drivable", "any_damage", "damage_list",
+        "person_present", "keys_obtained", "how_many_keys", "vol_surrender", "form_13",
+        "security_drivable", "police_notified", "station_officer",
+        "personal_effects_removed", "personal_effects_list",
+        "any_damage", "damage_list",
         "tyres", "body", "duco", "interior", "engine_condition",
         "transmission", "fuel_level",
     ]}
 
     _GEN_MAP = {
-        "transport":      lambda d: _pg.generate_transport_pdf(d),
-        "vir":            lambda d: _pg.generate_vir_pdf(d),
+        "transport":      lambda d: _pg.generate_transport_pdf(d, agent_sig=agent_sig),
+        "vir":            lambda d: _pg.generate_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig),
         "form_13":        lambda d: _pg.generate_form_13_pdf(d),
         "auction_letter": lambda d: _pg.generate_auction_letter_pdf(d),
         "tow_letter":     lambda d: _pg.generate_tow_letter_pdf(d),
@@ -13693,12 +13712,7 @@ def m_standalone_form(form_type: str):
         pdf_bytes = gen_fn(data)
     except Exception as exc:
         _log.error("[m_standalone_form] PDF error type=%s: %s", form_type, exc, exc_info=True)
-        from datetime import date as _date
-        return render_template("mobile/standalone_form.html",
-                               form_type=form_type,
-                               form_name=meta["name"],
-                               error=str(exc),
-                               today=_f("repo_date") or _date.today().isoformat()), 500
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
     ref = (_f("swpi_ref") or _f("wise_case_number") or _f("registration") or "SWPI").replace("/", "-")
     from datetime import date as _date
