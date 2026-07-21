@@ -12,13 +12,27 @@
     </div>
   </div>
 
+  {# ── Wise form tab strip ── #}
+  {% if form_type in ('wise_vir', 'wise_auction', 'wise_tow') %}
+  <div style="display:flex;gap:6px;margin-bottom:14px;">
+    {% for tab_id, tab_label in [('wise_vir','VIR'),('wise_auction','Auction'),('wise_tow','Tow')] %}
+    {% if form_type == tab_id %}
+    <span style="flex:1;text-align:center;padding:9px 8px;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:9px;font-size:.8rem;font-weight:700;color:#92400e;">{{ tab_label }}</span>
+    {% else %}
+    <a href="/m/forms/standalone/{{ tab_id }}"
+       style="flex:1;text-align:center;padding:9px 8px;border:1.5px solid #e5e7eb;border-radius:9px;font-size:.8rem;font-weight:600;color:#6b7280;text-decoration:none;background:#fff;">{{ tab_label }}</a>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div id="standaloneErrorBox" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:.82rem;color:#b91c1c;"></div>
 
   <form id="standaloneForm" method="POST" action="/m/forms/standalone/{{ form_type }}">
 
     <input type="hidden" name="agent_sig"    id="agentSigData">
     <input type="hidden" id="agentSigned"    value="0">
-    {% if form_type == 'vir' %}
+    {% if form_type in ('vir', 'wise_vir') %}
     <input type="hidden" name="customer_sig" id="customerSigData">
     <input type="hidden" id="customerSigned" value="0">
     {% endif %}
@@ -209,6 +223,109 @@
       </div>
 
 
+    {# ═══════════════════════════════════════════════════════════ WISE VIR #}
+    {% elif form_type == 'wise_vir' %}
+
+      {{ section_amber('DEBTOR') }}
+      {{ fi('customer_name', 'Name of Debtor') }}
+      {{ fi('wise_case_number', 'Reference / Case Number') }}
+      </div>
+
+      {{ section('VEHICLE DESCRIPTION') }}
+      {{ fi('year',         'Year') }}
+      {{ fi('make',         'Make') }}
+      {{ fi('model',        'Model') }}
+      {{ fi('body_type',    'Body Type') }}
+      {{ fi('colour',       'Colour') }}
+      {{ fi('registration', 'Registration') }}
+      {{ fi('vin',          'VIN / Chassis') }}
+      {{ fi('engine_number','Engine Number') }}
+      </div>
+
+      {{ section('EXTERIOR CONDITION') }}
+      {% set cond4 = ['POOR','GOOD','EXCELLENT','DAMAGED'] %}
+      {{ fsel('body',    'Body',    cond4) }}
+      {{ fsel('duco',    'Paint',   cond4) }}
+      {{ fsel('bumpers', 'Bumpers', cond4) }}
+      {{ fsel('glass',   'Windows', ['BROKEN','CRACKED','GOOD']) }}
+      {{ fsel('tyres',   'Tyres',   ['BALD','FAIR','GOOD','EXCELLENT']) }}
+      </div>
+
+      {{ section('MECHANICAL') }}
+      {{ fsel('security_drivable', 'Does Vehicle Drive', ['YES','NO']) }}
+      {{ fsel('engine_condition',  'Engine Intact',      ['YES','NO','DAMAGED','POOR']) }}
+      </div>
+
+      {{ section('INTERIOR') }}
+      {{ fsel('interior', 'Trim / Carpet / Dash', ['POOR','GOOD','EXCELLENT']) }}
+      </div>
+
+      {{ section('OTHER') }}
+      {{ fi('speedometer',   "KM's on Clock") }}
+      {{ fsel('keys_obtained','Keys Secured', ['YES','NO']) }}
+      {{ fi('how_many_keys', 'Key Qty') }}
+      {{ fi('accessories',   'Accessories') }}
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px;">
+        <label style="font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;">Details of Any Damage</label>
+        <textarea name="damage_list" rows="3"
+                  style="border:1.5px solid #d1d5db;border-radius:10px;padding:11px 14px;font-size:.9rem;color:#111;background:#fff;width:100%;box-sizing:border-box;resize:vertical;"></textarea>
+      </div>
+      </div>
+
+      {{ section('TOW / DELIVERY') }}
+      {{ fi('tow_company_name', 'Towed By') }}
+      {{ fi('tow_costs',        'Towing Cost') }}
+      {{ fi('deliver_to',       'Delivered To') }}
+      {{ fi('delivery_address', 'Delivery Address') }}
+      {{ fsel('vol_surrender',  'Debtor Wishes to Redeem?', ['YES','NO']) }}
+      </div>
+
+      {{ section_dark('SIGNATURES') }}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        {{ sig_canvas('agentCanvas',    'agentSigData',    'agentSigned',    'Agent Signature',    required=true) }}
+        {{ sig_canvas('customerCanvas', 'customerSigData', 'customerSigned', 'Customer Signature', required=false) }}
+      </div>
+      </div>
+
+
+    {# ═══════════════════════════════════════════════════════════ WISE AUCTION #}
+    {% elif form_type == 'wise_auction' %}
+
+      {{ section_amber('WISE GROUP — AUCTION') }}
+      {{ fi('lender',          'Lender (On Behalf Of)') }}
+      {{ fi('third_party',     '3rd Party (if applicable)') }}
+      {{ fi('wise_case_number','Referral / Reference Number') }}
+      </div>
+
+      {{ section('VEHICLE DETAILS') }}
+      {{ fi('unit_details',  'Unit Details (Year / Make / Model)') }}
+      {{ fi('registration',  'Rego Number') }}
+      {{ fi('engine_number', 'Engine Number') }}
+      {{ fi('vin',           'VIN') }}
+      </div>
+
+
+    {# ═══════════════════════════════════════════════════════════ WISE TOW #}
+    {% elif form_type == 'wise_tow' %}
+
+      {{ section_amber('WISE GROUP — TOW') }}
+      {{ fi('wise_case_number','Reference Number') }}
+      {{ fi('customer_name',   'Matter Name') }}
+      </div>
+
+      {{ section('VEHICLE DETAILS') }}
+      {{ fi('unit_details',  'Unit Details (Year / Make / Model)') }}
+      {{ fi('registration',  'Rego Number') }}
+      {{ fi('engine_number', 'Engine Number') }}
+      {{ fi('vin',           'VIN / Chassis') }}
+      </div>
+
+      {{ section('DELIVERY') }}
+      {{ fi('auction_yard_name', 'Name of Auction Yard') }}
+      {{ fi('delivery_address',  'Delivery Address') }}
+      </div>
+
+
     {# ═══════════════════════════════════════════════════════════ FORM 13 #}
     {% elif form_type == 'form_13' %}
 
@@ -262,44 +379,6 @@
       {{ fi('registration', 'Registration') }}
       {{ fi('engine_number','Engine Number') }}
       {{ fi('vin',          'VIN') }}
-      </div>
-
-    {# ═══════════════════════════════════════════════════════════ WISE AUCTION #}
-    {% elif form_type == 'wise_auction' %}
-
-      {{ section_amber('WISE GROUP — AUCTION') }}
-      {{ fi('wise_case_number','Wise Case Number') }}
-      {{ fi('finance_company', 'Finance Company / Lender') }}
-      </div>
-
-      {{ section('SECURITY') }}
-      {{ fi('year',         'Year') }}
-      {{ fi('make',         'Make') }}
-      {{ fi('model',        'Model') }}
-      {{ fi('registration', 'Registration') }}
-      {{ fi('engine_number','Engine Number') }}
-      {{ fi('vin',          'VIN') }}
-      </div>
-
-    {# ═══════════════════════════════════════════════════════════ WISE TOW #}
-    {% elif form_type == 'wise_tow' %}
-
-      {{ section_amber('WISE GROUP — TOW') }}
-      {{ fi('wise_case_number','Wise Case Number') }}
-      {{ fi('customer_name',  'Customer Name') }}
-      </div>
-
-      {{ section('SECURITY') }}
-      {{ fi('year',         'Year') }}
-      {{ fi('make',         'Make') }}
-      {{ fi('model',        'Model') }}
-      {{ fi('registration', 'Registration') }}
-      {{ fi('vin',          'VIN') }}
-      </div>
-
-      {{ section('TOW CONTRACTOR') }}
-      {{ fi('tow_company_name','Tow Company') }}
-      {{ fi('tow_phone',    'Phone') }}
       </div>
 
     {% endif %}
@@ -356,10 +435,10 @@
     var p = document.getElementById(canvasId + 'Prompt'); if (p) p.style.display = 'none';
   };
 
-  {% if form_type in ('vir', 'transport') %}
+  {% if form_type in ('vir', 'transport', 'wise_vir') %}
   _initSig('agentCanvas', 'agentSigData', 'agentSigned');
   {% endif %}
-  {% if form_type == 'vir' %}
+  {% if form_type in ('vir', 'wise_vir') %}
   _initSig('customerCanvas', 'customerSigData', 'customerSigned');
   {% endif %}
 
@@ -385,7 +464,7 @@
   document.getElementById('standaloneForm').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    {% if form_type in ('vir', 'transport') %}
+    {% if form_type in ('vir', 'transport', 'wise_vir') %}
     var agentCanvas = document.getElementById('agentCanvas');
     var agentSigned = document.getElementById('agentSigned');
     if (agentSigned && agentSigned.value !== '1') {
@@ -398,7 +477,7 @@
       document.getElementById('agentSigData').value = agentCanvas.toDataURL('image/png');
     }
     {% endif %}
-    {% if form_type == 'vir' %}
+    {% if form_type in ('vir', 'wise_vir') %}
     var custCanvas = document.getElementById('customerCanvas');
     var custSigned = document.getElementById('customerSigned');
     if (custCanvas && custSigned && custSigned.value === '1') {

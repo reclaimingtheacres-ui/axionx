@@ -13221,6 +13221,12 @@ _STANDALONE_MOBILE_FORMS = [
         "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
     },
     {
+        "id":          "wise_vir",
+        "name":        "Wise VIR",
+        "description": "Wise Group — vehicle inspection report",
+        "icon":        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+    },
+    {
         "id":          "wise_auction",
         "name":        "Wise Auction Letter",
         "description": "Wise Group — auction form",
@@ -13679,18 +13685,20 @@ def m_standalone_form(form_type: str):
     customer_sig = (request.form.get("customer_sig") or "").strip() or None
 
     data = {k: _f(k) for k in [
-        "swpi_ref", "finance_company", "lender", "customer_name", "repo_address",
-        "repossession_address", "repo_date", "account_number", "client_name",
-        "client_email", "make", "model", "year", "colour", "registration",
+        "swpi_ref", "finance_company", "lender", "third_party", "customer_name",
+        "repo_address", "repossession_address", "repo_date", "account_number",
+        "client_name", "client_email",
+        "make", "model", "year", "colour", "body_type", "registration",
         "vin", "engine_number", "speedometer",
+        "unit_details", "accessories",
         "tow_company_name", "tow_phone", "tow_costs",
-        "deliver_to", "delivery_address",
+        "deliver_to", "delivery_address", "auction_yard_name",
         "agent_name", "wise_case_number",
         "person_present", "keys_obtained", "how_many_keys", "vol_surrender", "form_13",
         "security_drivable", "police_notified", "station_officer",
         "personal_effects_removed", "personal_effects_list",
         "any_damage", "damage_list",
-        "tyres", "body", "duco", "interior", "engine_condition",
+        "tyres", "body", "duco", "bumpers", "glass", "interior", "engine_condition",
         "transmission", "fuel_level",
     ]}
 
@@ -13700,6 +13708,7 @@ def m_standalone_form(form_type: str):
         "form_13":        lambda d: _pg.generate_form_13_pdf(d),
         "auction_letter": lambda d: _pg.generate_auction_letter_pdf(d),
         "tow_letter":     lambda d: _pg.generate_tow_letter_pdf(d),
+        "wise_vir":       lambda d: _pg.generate_wise_vir_pdf(d, agent_sig=agent_sig, customer_sig=customer_sig),
         "wise_auction":   lambda d: _pg.generate_wise_auction_pdf(d),
         "wise_tow":       lambda d: _pg.generate_wise_tow_pdf(d),
     }
