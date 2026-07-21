@@ -302,53 +302,30 @@
       var response = await fetch(this.action, {
         method: 'POST',
         body: new FormData(this),
-        headers: {'Accept': 'application/pdf'}
+        headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}
       });
-      if (!response.ok) {
-        var errMsg = 'Unable to generate the document. HTTP ' + response.status + '.';
-        try {
-          var errCt = (response.headers.get('content-type') || '');
-          if (errCt.indexOf('application/json') !== -1) {
-            var errData = await response.json();
-            errMsg = errData.error || errData.message || errMsg;
-          }
-        } catch(_e) {}
-        showTransportError(errMsg);
+      var data = {};
+      try { data = await response.json(); } catch(_e) {}
+      if (!response.ok || !data.ok) {
+        showTransportError(data.error || data.message || ('Unable to generate the document. HTTP ' + response.status + '.'));
         return;
       }
-      var pdfBlob = await response.blob();
-      var pdfUrl = URL.createObjectURL(pdfBlob);
-      var disposition = response.headers.get('content-disposition') || '';
-      var filename = 'Transport Instructions.pdf';
-      var fnMatch = disposition.match(/filename="?([^"]+)"?/i);
-      if (fnMatch && fnMatch[1]) { filename = fnMatch[1]; }
-      var notice = response.headers.get('X-Axion-Notice');
-      var hasNative = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
+      var previewUrl = data.preview_url;
+      var filename   = data.filename || 'Transport Instructions.pdf';
+      var hasNative  = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.documentPreview);
       if (hasNative) {
         try {
-          window.__AXION_PREVIEW_ACTIVE = true;
+          window.__AXION_PREVIEW_ACTIVE     = true;
           window.__AXION_PREVIEW_SOURCE_URL = window.location.href;
-          window.webkit.messageHandlers.documentPreview.postMessage({url: pdfUrl, filename: filename, returnTo: window.location.href});
-          if (notice) {
-            var nd = document.getElementById('rtNoticeTrans');
-            if (nd) { nd.textContent = notice; nd.style.display = 'block'; nd.scrollIntoView({behavior:'smooth',block:'center'}); }
-          }
+          window.webkit.messageHandlers.documentPreview.postMessage({url: previewUrl, filename: filename, returnTo: window.location.href});
+          var nd = document.getElementById('rtNoticeTrans');
+          if (nd && data.message) { nd.textContent = data.message; nd.style.display = 'block'; nd.scrollIntoView({behavior:'smooth',block:'center'}); }
           return;
         } catch(_e) {
           console.warn('Native document preview handoff failed', _e);
         }
       }
-      var a = document.createElement('a');
-      a.href = pdfUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(function() { URL.revokeObjectURL(pdfUrl); }, 60000);
-      if (notice) {
-        var nd = document.getElementById('rtNoticeTrans');
-        if (nd) { nd.textContent = notice; nd.style.display = 'block'; nd.scrollIntoView({behavior:'smooth',block:'center'}); }
-      }
+      window.location.href = previewUrl;
     } catch (ex) {
       showTransportError('Unable to generate the document. Please check your connection and try again.');
     } finally {
