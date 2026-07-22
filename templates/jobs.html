@@ -403,6 +403,9 @@
             {% endif %}
             <span style="font-size:.74rem;color:var(--line)">·</span>
             <span style="font-size:.74rem;color:var(--muted)">{{ j.job_type }}</span>
+            {% if q and j.id in note_match_ids %}
+            <span style="font-size:.64rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:1px 5px;font-weight:700;white-space:nowrap;" title="Search term matched text in a job note">Note</span>
+            {% endif %}
           </div>
         </div>
 

@@ -696,6 +696,12 @@ function serverSearch(q){
           meta.appendChild(regSpan);
         }
         main.appendChild(meta);
+        if(j.note_match){
+          const nmBadge = document.createElement('span');
+          nmBadge.textContent = 'Note match';
+          nmBadge.style.cssText = 'display:inline-block;font-size:.62rem;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:1px 6px;font-weight:700;margin-top:3px;';
+          main.appendChild(nmBadge);
+        }
         if(IS_ADMIN && j.assigned_agent_name){
           const agDiv = document.createElement('div');
           agDiv.style.cssText = 'font-size:.72rem;color:#6b7280;margin-top:3px;display:flex;align-items:center;gap:4px;';

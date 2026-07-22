@@ -5004,6 +5004,30 @@ def _jobs_list_inner():
                 "cpn.phone_number,' ',''),'-',''),'(',''),')',''),'+','') LIKE ?"
             )
             _phone_sql_extra = "".join(_phu for _ in _phone_params)
+        _note_sql_extra_w = ""
+        _note_params_w    = []
+        if len(_q_core) >= 3:
+            if role == "agent":
+                _note_sql_extra_w = (
+                    "\n         UNION"
+                    "\n         SELECT jfn_w.job_id FROM job_field_notes jfn_w"
+                    "\n           WHERE jfn_w.note_text LIKE ?"
+                    "\n           AND jfn_w.review_status = 'published'"
+                    "\n           AND jfn_w.note_category = 'field_note'"
+                )
+                _note_params_w = [like]
+            else:
+                _note_sql_extra_w = (
+                    "\n         UNION"
+                    "\n         SELECT jfn_w.job_id FROM job_field_notes jfn_w"
+                    "\n           WHERE jfn_w.note_text LIKE ?"
+                    "\n           AND jfn_w.review_status = 'published'"
+                    "\n         UNION"
+                    "\n         SELECT jon_w.job_id FROM job_office_notes jon_w"
+                    "\n           WHERE jon_w.note_body LIKE ?"
+                    "\n           AND jon_w.is_deleted = 0"
+                )
+                _note_params_w = [like, like]
         _search_ids_sql = f"""
          SELECT id FROM jobs WHERE internal_job_number LIKE ? OR client_reference LIKE ?
            OR client_job_number LIKE ? OR display_ref LIKE ?
@@ -5018,11 +5042,12 @@ def _jobs_list_inner():
          UNION
          SELECT ji2.job_id FROM job_items ji2
            WHERE ji2.reg LIKE ? OR ji2.vin LIKE ? OR ji2.description LIKE ?
-        {_phone_sql_extra}
+        {_phone_sql_extra}{_note_sql_extra_w}
         """
         where_clause += f" AND j.id IN ({_search_ids_sql})"
         params.extend([like] * 15)
         params.extend(_phone_params)
+        params.extend(_note_params_w)
 
     if filter_client:
         where_clause += " AND j.client_id = ?"
@@ -5135,6 +5160,27 @@ def _jobs_list_inner():
     else:
         rows = []
 
+    note_match_ids: set = set()
+    if q and page_ids and len(_q_core) >= 3:
+        _ph_nm = ','.join('?' for _ in page_ids)
+        if role == "agent":
+            _nm_rows = cur.execute(
+                f"SELECT DISTINCT job_id FROM job_field_notes"
+                f" WHERE job_id IN ({_ph_nm}) AND note_text LIKE ?"
+                f" AND review_status='published' AND note_category='field_note'",
+                page_ids + [like]
+            ).fetchall()
+        else:
+            _nm_rows = cur.execute(
+                f"SELECT DISTINCT job_id FROM job_field_notes"
+                f" WHERE job_id IN ({_ph_nm}) AND note_text LIKE ? AND review_status='published'"
+                f" UNION"
+                f" SELECT DISTINCT job_id FROM job_office_notes"
+                f" WHERE job_id IN ({_ph_nm}) AND note_body LIKE ? AND is_deleted=0",
+                page_ids + [like] + page_ids + [like]
+            ).fetchall()
+        note_match_ids = {r[0] for r in _nm_rows}
+
     clients_list = cur.execute(
         "SELECT id, COALESCE(nickname, name) AS name FROM clients ORDER BY name"
     ).fetchall()
@@ -5223,6 +5269,7 @@ def _jobs_list_inner():
         agent_counts=agent_counts,
         rt_hits=rt_hits,
         urgent_sent_sched_ids=urgent_sent_sched_ids,
+        note_match_ids=note_match_ids,
     )
 
 
@@ -24028,8 +24075,32 @@ def m_api_jobs_search():
         "  WHERE s.job_id=j.id AND s.assigned_to_user_id=?"
         "  AND s.status NOT IN ('Cancelled','Completed') AND s.hidden = 0"
         "))")
+    _note_unions_m  = ""
+    _note_m_params  = []
+    if len(_q_core) >= 3:
+        if is_admin:
+            _note_unions_m = (
+                "\n            UNION"
+                "\n            SELECT jfn_m.job_id FROM job_field_notes jfn_m"
+                "\n              WHERE jfn_m.note_text LIKE ?"
+                "\n              AND jfn_m.review_status = 'published'"
+                "\n            UNION"
+                "\n            SELECT jon_m.job_id FROM job_office_notes jon_m"
+                "\n              WHERE jon_m.note_body LIKE ?"
+                "\n              AND jon_m.is_deleted = 0"
+            )
+            _note_m_params = [like, like]
+        else:
+            _note_unions_m = (
+                "\n            UNION"
+                "\n            SELECT jfn_m.job_id FROM job_field_notes jfn_m"
+                "\n              WHERE jfn_m.note_text LIKE ?"
+                "\n              AND jfn_m.review_status = 'published'"
+                "\n              AND jfn_m.note_category = 'field_note'"
+            )
+            _note_m_params = [like]
     params = [] if is_admin else [uid, uid]
-    params += [like] * 15 + _phone_m_params
+    params += [like] * 15 + _phone_m_params + _note_m_params
     rows = conn.execute(f"""
         SELECT j.id, j.display_ref, j.internal_job_number, j.client_reference,
                j.account_number, j.status, j.job_address, j.lat, j.lng,
@@ -24066,11 +24137,32 @@ def m_api_jobs_search():
               OR (cu5.first_name || ' ' || cu5.last_name) LIKE ?
             UNION
             SELECT ji3.job_id FROM job_items ji3 WHERE ji3.reg LIKE ? OR ji3.vin LIKE ?
-            {_phone_unions}
+            {_phone_unions}{_note_unions_m}
           )
         ORDER BY j.created_at DESC
         LIMIT 50
     """, params).fetchall()
+    _note_match_ids_m: set = set()
+    if rows and len(_q_core) >= 3:
+        _ph_m_nm = ','.join('?' for _ in rows)
+        _row_ids_m = [r["id"] for r in rows]
+        if is_admin:
+            _nm_m = conn.execute(
+                f"SELECT DISTINCT job_id FROM job_field_notes"
+                f" WHERE job_id IN ({_ph_m_nm}) AND note_text LIKE ? AND review_status='published'"
+                f" UNION"
+                f" SELECT DISTINCT job_id FROM job_office_notes"
+                f" WHERE job_id IN ({_ph_m_nm}) AND note_body LIKE ? AND is_deleted=0",
+                _row_ids_m + [like] + _row_ids_m + [like]
+            ).fetchall()
+        else:
+            _nm_m = conn.execute(
+                f"SELECT DISTINCT job_id FROM job_field_notes"
+                f" WHERE job_id IN ({_ph_m_nm}) AND note_text LIKE ?"
+                f" AND review_status='published' AND note_category='field_note'",
+                _row_ids_m + [like]
+            ).fetchall()
+        _note_match_ids_m = {r[0] for r in _nm_m}
     results = []
     for r in rows:
         results.append({
@@ -24091,6 +24183,7 @@ def m_api_jobs_search():
             "customer_phone": r["customer_phone"] or "",
             "assigned_agent_name": r["assigned_agent_name"] or "" if is_admin else "",
             "pending_review_count": r["pending_review_count"] or 0,
+            "note_match": r["id"] in _note_match_ids_m,
         })
     rt_hits = _search_recovery_targets(conn, q)
     conn.close()
