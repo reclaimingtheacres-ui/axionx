@@ -8,7 +8,7 @@ DB_PATH = os.environ.get("DB_PATH", "axion.db")
 BACKUP_DIR = os.path.dirname(os.path.abspath(DB_PATH)) or "."
 CONTAINER = "axionx-backups"
 RETENTION_DAYS = 30
-LOCAL_KEEP = 3
+LOCAL_KEEP = int(os.environ.get("AXIONX_LOCAL_BACKUP_RETENTION", "3"))
 
 
 def _sqlite_backup(src_path, dst_path):
@@ -22,15 +22,21 @@ def _sqlite_backup(src_path, dst_path):
         src.close()
 
 
-def _rotate_local(backup_dir, keep=LOCAL_KEEP):
+def _rotate_local(backup_dir, keep=None):
+    if keep is None:
+        keep = int(os.environ.get("AXIONX_LOCAL_BACKUP_RETENTION", str(LOCAL_KEEP)))
     pattern = os.path.join(backup_dir, "axion_backup_*.db")
     files = sorted(glob.glob(pattern), key=os.path.getmtime, reverse=True)
-    for old in files[keep:]:
+    retained = files[:keep]
+    to_delete = files[keep:]
+    for f in retained:
+        print(f"[backup-rotate] Retained: {f}", flush=True)
+    for old in to_delete:
         try:
             os.remove(old)
-            print(f"Rotated local backup: {old}", flush=True)
+            print(f"[backup-rotate] Deleted: {old}", flush=True)
         except OSError as e:
-            print(f"Could not remove {old}: {e}", flush=True)
+            print(f"[backup-rotate] Could not delete {old}: {e}", flush=True)
 
 
 def backup_exists_today(backup_dir=None):

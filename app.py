@@ -980,6 +980,13 @@ def _startup_migrate():
             )
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_cr_job ON cash_receipts(job_id)")
+        # Drop the redundant single-column index on job_note_files(job_field_note_id):
+        # idx_jnf_note_file (UNIQUE on job_field_note_id, filename) already covers it
+        # as its leading column, making idx_jnf_note_id a pure duplicate.
+        _conn.execute("DROP INDEX IF EXISTS idx_jnf_note_id")
+        # Support note-text search: allows the planner to narrow to published rows
+        # before scanning for the leading-wildcard LIKE '%term%'.
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_jfn_review_status ON job_field_notes(review_status)")
         _conn.commit()
         _conn.close()
         import logging as _log
@@ -1247,7 +1254,8 @@ def init_db():
     )
     """)
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_jnf_note_file ON job_note_files(job_field_note_id, filename)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_jnf_note_id ON job_note_files(job_field_note_id)")
+    # idx_jnf_note_id removed — idx_jnf_note_file (job_field_note_id, filename) already covers
+    # the single-column (job_field_note_id) case as its leading column.
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_office_notes (
@@ -1300,14 +1308,7 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_cpn_entity ON contact_phone_numbers(entity_type, entity_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_jfn_job_review ON job_field_notes(job_id, review_status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_ji_job_type ON job_items(job_id, item_type)")
-    # Performance: missing indexes on messaging and queue tables
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_cp_user_id       ON conversation_participants(user_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_conv_job_id      ON conversations(job_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_conv_updated     ON conversations(updated_at)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_job_id        ON cue_items(job_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_visit_status  ON cue_items(visit_type, status)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_assigned_due  ON cue_items(assigned_user_id, due_date, status)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_ci_due_status    ON cue_items(due_date, status)")
+    # idx_cp_user_id, idx_conv_job_id, idx_conv_updated, idx_ci_* — created in _startup_migrate().
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS booking_types (
@@ -2074,8 +2075,7 @@ def _migrate_update_builder():
             FOREIGN KEY(approved_by) REFERENCES users(id)
         )
     """)
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_gce_dates ON group_calendar_entries(start_date, end_date)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_gce_user  ON group_calendar_entries(user_id)")
+    # idx_gce_dates, idx_gce_user — created in _startup_migrate().
 
     # Backfill status_changed_at for existing jobs that have no value yet.
     # Use the most recent lifecycle log entry where to_status = current status;
@@ -2114,7 +2114,7 @@ def _migrate_update_builder():
         updated_by_user_id INTEGER
     )
     """)
-    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_hp_lender ON hardship_providers(lender_name)")
+    # idx_hp_lender — created in _startup_migrate().
     cur.execute("""
     CREATE TABLE IF NOT EXISTS job_hardship_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2137,7 +2137,7 @@ def _migrate_update_builder():
         FOREIGN KEY(hardship_provider_id) REFERENCES hardship_providers(id)
     )
     """)
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_jhr_job ON job_hardship_records(job_id)")
+    # idx_jhr_job — created in _startup_migrate().
     _seed_hardship_providers(cur)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS cash_receipts (
@@ -2166,7 +2166,7 @@ def _migrate_update_builder():
         FOREIGN KEY(job_id) REFERENCES jobs(id)
     )
     """)
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_cr_job ON cash_receipts(job_id)")
+    # idx_cr_job — created in _startup_migrate().
 
     conn.commit()
     conn.close()
