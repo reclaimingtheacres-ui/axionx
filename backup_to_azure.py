@@ -57,18 +57,24 @@ def _release_backup_lock(lf):
 def _sqlite_backup(src_path, dst_path):
     """Copy src_path → dst_path using SQLite's online backup API.
 
-    Raises RuntimeError if the destination copy fails integrity_check.
+    Runs PRAGMA integrity_check and inspects every returned row.
+    A healthy database returns exactly one row: "ok".
+    Any other result (corruption, I/O error, partial write) raises RuntimeError.
     The caller is responsible for deleting dst_path on failure.
     """
     src = sqlite3.connect(src_path)
     dst = sqlite3.connect(dst_path)
     try:
         src.backup(dst)
-        row = dst.execute("PRAGMA integrity_check").fetchone()
-        if not row or row[0] != "ok":
+        rows = dst.execute("PRAGMA integrity_check").fetchall()
+        failures = [r[0] for r in rows if r[0] != "ok"]
+        if not rows:
+            raise RuntimeError("Integrity check returned no result — backup aborted.")
+        if failures:
+            detail = "; ".join(failures[:10])
+            suffix = f" (and {len(failures)-10} more)" if len(failures) > 10 else ""
             raise RuntimeError(
-                f"Integrity check failed on backup copy: "
-                f"{row[0] if row else 'no result'}"
+                f"Integrity check failed on backup copy: {detail}{suffix}"
             )
     finally:
         dst.close()

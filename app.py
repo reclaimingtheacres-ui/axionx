@@ -984,9 +984,14 @@ def _startup_migrate():
         # idx_jnf_note_file (UNIQUE on job_field_note_id, filename) already covers it
         # as its leading column, making idx_jnf_note_id a pure duplicate.
         _conn.execute("DROP INDEX IF EXISTS idx_jnf_note_id")
-        # Support note-text search: allows the planner to narrow to published rows
-        # before scanning for the leading-wildcard LIKE '%term%'.
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_jfn_review_status ON job_field_notes(review_status)")
+        # idx_jfn_review_status was trialled but removed: at 85%+ 'published' rows the
+        # single-column index has near-zero selectivity for the dominant value, costs
+        # ~930 KB and adds write overhead on every note INSERT/UPDATE.  The composite
+        # idx_jfn_job_review(job_id, review_status) already covers all actual query
+        # patterns (which always include a job_id predicate).  Measured on 50k
+        # representative rows: bare review_status scan with index 17 ms vs 105 ms, but
+        # job_id+review_status with composite index is 0.128 ms vs 105 ms (820×).
+        _conn.execute("DROP INDEX IF EXISTS idx_jfn_review_status")
         _conn.commit()
         _conn.close()
         import logging as _log
