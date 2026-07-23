@@ -8445,25 +8445,36 @@ _MY_TODAY_NOTICE_TYPES = frozenset([
 _GC_PERSONAL_TYPES = frozenset([
     "Proposed Leave", "Approved Leave", "Agent Unavailable",
 ])
-# Leave/day-off types that Agents may view (read-only) when the entry belongs
+# Personal entry types that agents may view (read-only) when the entry belongs
 # to an Admin or Management user — lets field agents know when office staff
-# are unavailable, without exposing other agents' personal leave requests.
+# are unavailable (including proposed leave), without exposing other agents'
+# personal entries.  Proposed Leave is included so agents see pending admin
+# leave as well as approved leave.
 _GC_STAFF_VISIBLE_TYPES = frozenset([
-    "Approved Leave", "Agent Unavailable",
+    "Proposed Leave", "Approved Leave", "Agent Unavailable",
 ])
 _GC_STAFF_ROLES = ("admin", "both", "management")
 
 
 def _gc_staff_visibility_sql(pt_list):
-    """Build the extra OR clause + params letting Agents view approved
-    Admin/Management leave entries. `pt_list` must be the same ordered
-    list used for the NOT IN (...) personal-types placeholder elsewhere,
-    so callers can share bind param ordering."""
+    """Build the OR clause + params that lets agents view personal entries
+    (leave, unavailable, proposed leave) belonging to Admin/Management users.
+
+    Rules:
+    • No status restriction — agents see proposed, approved, and other
+      non-rejected admin/management personal entries.
+    • Entries explicitly marked visibility = 'admin_only' remain hidden
+      regardless of the owning user's role.
+
+    `pt_list` is accepted for API compatibility but is no longer used
+    internally; callers continue to pass it so signatures stay consistent.
+    """
     _sv = sorted(_GC_STAFF_VISIBLE_TYPES)
     _sv_ph = ",".join("?" * len(_sv))
     _role_ph = ",".join("?" * len(_GC_STAFF_ROLES))
     clause = (
-        f"(gce.status = 'approved' AND gce.entry_type IN ({_sv_ph})"
+        f"(gce.entry_type IN ({_sv_ph})"
+        f" AND gce.visibility != 'admin_only'"
         f" AND EXISTS (SELECT 1 FROM users su WHERE su.id = gce.user_id"
         f" AND su.role IN ({_role_ph})))"
     )
@@ -22152,9 +22163,13 @@ def my_today():
         _pt       = sorted(_GC_PERSONAL_TYPES)
         _pt_ph    = ",".join("?" * len(_pt))
         _staff_clause, _staff_params = _gc_staff_visibility_sql(_pt)
+        # Per-clause visibility: own entries (any visibility), general non-personal
+        # entries visible to everyone, OR admin/management personal entries that are
+        # not admin_only (enforced inside _staff_clause).
         _vis_cond = (
-            "AND gce.visibility = 'everyone' "
-            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}) OR {_staff_clause})"
+            f"AND (gce.user_id = ?"
+            f" OR (gce.visibility = 'everyone' AND gce.entry_type NOT IN ({_pt_ph}))"
+            f" OR {_staff_clause})"
         )
         _vis_params = [session.get("user_id")] + _pt + _staff_params
     try:
@@ -23879,9 +23894,13 @@ def m_today():
         _pt       = sorted(_GC_PERSONAL_TYPES)
         _pt_ph    = ",".join("?" * len(_pt))
         _staff_clause, _staff_params = _gc_staff_visibility_sql(_pt)
+        # Per-clause visibility: own entries (any visibility), general non-personal
+        # entries visible to everyone, OR admin/management personal entries that are
+        # not admin_only (enforced inside _staff_clause).
         _vis_cond = (
-            "AND gce.visibility = 'everyone' "
-            f"AND (gce.user_id = ? OR gce.entry_type NOT IN ({_pt_ph}) OR {_staff_clause})"
+            f"AND (gce.user_id = ?"
+            f" OR (gce.visibility = 'everyone' AND gce.entry_type NOT IN ({_pt_ph}))"
+            f" OR {_staff_clause})"
         )
         _vis_params = [uid] + _pt + _staff_params
     try:
