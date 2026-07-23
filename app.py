@@ -46,49 +46,130 @@ INACTIVE_JOB_STATUSES = (
     "Archived - Invoiced", "Cold Stored",
 )
 
-_HEIC_EXTENSIONS = {"heic", "heif", "avif"}
-_HEIC_QUALITY = 88
+_HEIC_EXTENSIONS  = {"heic", "heif", "avif"}
+_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "heic", "heif", "avif", "bmp", "tiff", "tif"}
+_IMAGE_MAX_DIM    = 2048            # px — longest side ceiling
+_IMAGE_TARGET_Q   = 82             # first-pass JPEG quality
+_IMAGE_MAX_BYTES  = 2 * 1024 * 1024  # 2 MB hard cap
 
-def _convert_heic_to_jpeg(file_storage):
-    """Convert HEIC/HEIF file to JPEG bytes. Returns (jpeg_bytes, new_filename) or raises ValueError."""
-    raw = file_storage.read()
-    file_storage.seek(0)
-    if not raw:
-        raise ValueError("Empty HEIC/HEIF file — nothing to convert.")
+# Keep old constant name so any third-party references don't break.
+_HEIC_QUALITY = _IMAGE_TARGET_Q
+
+
+def _compress_image_bytes(data: bytes, filename: str):
+    """Compress raw image bytes to a JPEG ≤ 2 MB, longest-side ≤ 2048 px.
+
+    Processing pipeline:
+      1. Open with Pillow (HEIC/HEIF handled via the registered pillow_heif opener).
+      2. Apply EXIF orientation so rotation is baked into pixels.
+      3. Convert to RGB — strips alpha channel, palette, and all EXIF/GPS metadata.
+      4. Resize so longest side ≤ 2048 px (never upscale).
+      5. Encode as progressive JPEG at quality 82.
+      6. If result > 2 MB: reduce quality through (75, 65, 55, 45).
+      7. If still > 2 MB: halve dimensions and retry at (75, 65, 55).
+      8. Log a warning and return the best attempt if 2 MB is still not met.
+
+    Returns (jpeg_bytes: bytes, new_filename: str).
+    Raises ValueError with a user-facing message on unrecoverable failure.
+    """
+    import logging as _clog
+    if not data:
+        raise ValueError("Empty image file — nothing to compress.")
     try:
-        img = Image.open(io.BytesIO(raw))
+        img = Image.open(io.BytesIO(data))
+        img.load()
     except Exception as e:
-        raise ValueError(f"Could not open HEIC/HEIF image: {e}")
+        raise ValueError(f"Could not open image for compression: {e}")
+
+    # Step 1 — bake orientation into pixels (strips the orientation EXIF tag).
     try:
         img = ImageOps.exif_transpose(img) or img
     except Exception:
         pass
-    if img.mode in ("RGBA", "P"):
-        img = img.convert("RGB")
-    buf = io.BytesIO()
-    try:
-        img.save(buf, format="JPEG", quality=_HEIC_QUALITY, optimize=True)
-    except Exception as e:
-        raise ValueError(f"Failed to convert HEIC/HEIF to JPEG: {e}")
-    buf.seek(0)
-    orig = file_storage.filename or "photo.heic"
-    base = orig.rsplit(".", 1)[0] if "." in orig else orig
-    return buf.read(), f"{base}.jpg"
+
+    # Step 2 — normalise to RGB.
+    if img.mode != "RGB":
+        try:
+            img = img.convert("RGB")
+        except Exception as e:
+            raise ValueError(f"Could not normalise image colour mode ({img.mode}): {e}")
+
+    # Step 2b — strip all EXIF/GPS metadata.  Pillow copies the info dict through
+    # convert(), and for already-RGB images it is never cleared.  Clearing it here
+    # guarantees the encoded JPEG has no embedded metadata regardless of input format.
+    img.info = {}
+
+    # Step 3 — resize so longest side ≤ 2048 px (no upscale).
+    w, h = img.size
+    if max(w, h) > _IMAGE_MAX_DIM:
+        ratio    = _IMAGE_MAX_DIM / max(w, h)
+        new_size = (max(1, int(w * ratio)), max(1, int(h * ratio)))
+        img      = img.resize(new_size, Image.LANCZOS)
+
+    # Derive new filename.
+    orig     = filename or "photo.jpg"
+    base     = orig.rsplit(".", 1)[0] if "." in orig else orig
+    new_name = f"{base}.jpg"
+
+    def _encode(image, quality):
+        buf = io.BytesIO()
+        image.save(buf, format="JPEG", quality=quality, optimize=True, progressive=True)
+        return buf.getvalue()
+
+    # Step 4 — first attempt.
+    jpeg = _encode(img, _IMAGE_TARGET_Q)
+
+    # Step 5 — quality reduction passes.
+    if len(jpeg) > _IMAGE_MAX_BYTES:
+        for q in (75, 65, 55, 45):
+            jpeg = _encode(img, q)
+            if len(jpeg) <= _IMAGE_MAX_BYTES:
+                break
+
+    # Step 6 — dimension reduction if quality reduction alone is insufficient.
+    if len(jpeg) > _IMAGE_MAX_BYTES:
+        w2, h2  = img.size
+        smaller = img.resize((max(1, w2 // 2), max(1, h2 // 2)), Image.LANCZOS)
+        for q in (75, 65, 55):
+            jpeg = _encode(smaller, q)
+            if len(jpeg) <= _IMAGE_MAX_BYTES:
+                break
+
+    if len(jpeg) > _IMAGE_MAX_BYTES:
+        _clog.warning(
+            "[IMAGE-COMPRESS] Could not compress %s below 2 MB (final: %.2f MB) — saved best attempt.",
+            filename, len(jpeg) / (1024 * 1024),
+        )
+
+    return jpeg, new_name
+
 
 def _maybe_convert_heic(file_storage):
-    """If the file is HEIC/HEIF/AVIF, convert to JPEG and return (bytes, new_filename, converted=True).
-    Otherwise return (None, original_filename, converted=False).
-    Raises ValueError with a user-facing message on any failure."""
+    """Compress any supported image to JPEG and return (bytes, new_filename, True).
+    Non-image files (PDF, DOC, XLSX …) return (None, original_filename, False) unchanged.
+    Raises ValueError with a user-facing message on any failure.
+
+    Supported image types: JPEG, PNG, WEBP, HEIC, HEIF, AVIF, BMP, TIFF.
+    Processing: EXIF orientation corrected, GPS/metadata stripped, resized to ≤ 2048 px,
+    saved as progressive JPEG at ~82 % quality, hard cap at 2 MB.
+    """
     ext = ""
     if file_storage.filename and "." in file_storage.filename:
         ext = file_storage.filename.rsplit(".", 1)[1].lower()
-    if ext not in _HEIC_EXTENSIONS:
+    if ext not in _IMAGE_EXTENSIONS:
         return None, file_storage.filename, False
     if ext == "avif" and not _AVIF_AVAILABLE:
         raise ValueError("AVIF images are not supported on this server (missing pillow-avif-plugin).")
     if ext in {"heic", "heif"} and not _HEIF_AVAILABLE:
         raise ValueError("HEIC/HEIF images are not supported on this server (missing pillow-heif).")
-    jpeg_bytes, new_name = _convert_heic_to_jpeg(file_storage)
+    raw = file_storage.read()
+    file_storage.seek(0)
+    try:
+        jpeg_bytes, new_name = _compress_image_bytes(raw, file_storage.filename or "photo.jpg")
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Image could not be processed: {e}")
     return jpeg_bytes, new_name, True
 
 from security import throttle_check, throttle_fail, throttle_success, throttle_clear
@@ -26485,8 +26566,19 @@ def recovery_target_upload_document(target_id: int):
         ext = os.path.splitext(original)[1].lower()
         if ext and ext[1:] not in ALLOWED_EXTENSIONS:
             continue
-        stored = f"recovery_target_{target_id}_{uuid.uuid4().hex}_{original}"
-        size = upload_to_blob(file, stored)
+        try:
+            img_bytes, img_name, was_image = _maybe_convert_heic(file)
+        except ValueError as _ice:
+            flash(f"File '{file.filename}' could not be processed: {_ice}", "warning")
+            continue
+        stored = f"recovery_target_{target_id}_{uuid.uuid4().hex}_{img_name if was_image else original}"
+        if was_image:
+            _save_bytes_to_storage(img_bytes, stored, "image/jpeg")
+            mime_type = "image/jpeg"
+        else:
+            _save_bytes_to_storage(file.read(), stored,
+                                   file.mimetype or mimetypes.guess_type(original)[0] or "application/octet-stream")
+            mime_type = file.mimetype or mimetypes.guess_type(original)[0] or "application/octet-stream"
         conn.execute("""
             INSERT INTO recovery_target_documents
                 (target_id, asset_id, document_type, category, original_filename, stored_filename,
@@ -26494,8 +26586,7 @@ def recovery_target_upload_document(target_id: int):
             VALUES (?,?,?,?,?,?,?,?,?,?)
         """, (target_id, request.form.get("asset_id") or None, request.form.get("document_type") or "",
               request.form.get("category") or "General", file.filename, stored,
-              file.mimetype or mimetypes.guess_type(original)[0] or "application/octet-stream",
-              now_ts(), session.get("user_id"), request.form.get("description") or ""))
+              mime_type, now_ts(), session.get("user_id"), request.form.get("description") or ""))
         count += 1
     conn.commit()
     conn.close()

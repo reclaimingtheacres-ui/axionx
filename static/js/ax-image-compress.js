@@ -1,8 +1,8 @@
 (function(){
   'use strict';
 
-  var AX_COMPRESS_MAX_DIM = 1600;
-  var AX_COMPRESS_QUALITY = 0.7;
+  var AX_COMPRESS_MAX_DIM = 2048;
+  var AX_COMPRESS_QUALITY = 0.85;
 
   function _isImage(file) {
     return file && file.type && file.type.startsWith('image/');
