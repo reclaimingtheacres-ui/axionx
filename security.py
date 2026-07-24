@@ -185,6 +185,8 @@ def throttle_fail(conn, key, username=None, ip=None):
             key, count, _THROTTLE_LIMIT, username_val,
         )
 
+    return newly_locked
+
 
 def throttle_success(conn, key, username=None, ip=None, write_audit=True):
     """Record a successful login and clear the failed-attempt counter.

@@ -4496,6 +4496,180 @@ def break_glass():
     return redirect("/")
 
 
+def _send_ip_lock_alert(ip, trigger_username, user_agent, referrer, base_url):
+    """Send a one-time security alert email when an IP is permanently locked.
+
+    Called from a daemon background thread — no Flask request context.
+    All exceptions are caught; failure never blocks the login flow or lock.
+    """
+    import socket as _sock
+    import urllib.request as _ureq
+    from datetime import datetime, timezone as _tz
+
+    try:
+        # ── Timestamps ────────────────────────────────────────────────────
+        utc_now   = datetime.now(_tz.utc)
+        local_now = datetime.now()
+        utc_str   = utc_now.strftime("%Y-%m-%d %H:%M:%S UTC")
+        local_str = local_now.strftime("%Y-%m-%d %H:%M:%S (server local time)")
+
+        # ── Reverse DNS ───────────────────────────────────────────────────
+        try:
+            hostname = _sock.getfqdn(ip)
+            if hostname == ip:
+                hostname = "Not resolved"
+        except Exception:
+            hostname = "Not resolved"
+
+        # ── Geo lookup (ip-api.com, best effort) ─────────────────────────
+        country = city = region = "Unknown"
+        try:
+            _geo_req = _ureq.Request(
+                f"http://ip-api.com/json/{ip}?fields=status,country,regionName,city",
+                headers={"User-Agent": "AxionX-Security/1.0"}
+            )
+            with _ureq.urlopen(_geo_req, timeout=5) as _gr:
+                _geo = json.loads(_gr.read().decode("utf-8"))
+            if _geo.get("status") == "success":
+                country = _geo.get("country") or "Unknown"
+                city    = _geo.get("city") or "Unknown"
+                region  = _geo.get("regionName") or ""
+        except Exception:
+            pass
+        geo_str = (f"{city}, {region}, {country}" if (region and region != city)
+                   else f"{city}, {country}")
+
+        # ── DB: fail count + all usernames attempted from this IP ─────────
+        fail_count    = 3
+        all_usernames = [trigger_username] if trigger_username else []
+        try:
+            _ac = db()
+            _tr = _ac.execute(
+                "SELECT fail_count FROM login_throttle WHERE key=?", (f"ip:{ip}",)
+            ).fetchone()
+            if _tr:
+                fail_count = _tr["fail_count"]
+            _ur = _ac.execute(
+                "SELECT DISTINCT username_attempted FROM login_audit_log "
+                "WHERE ip_address=? AND username_attempted != '' ORDER BY id DESC LIMIT 20",
+                (ip,)
+            ).fetchall()
+            _ac.close()
+            _seen = set()
+            all_usernames = []
+            for _r in _ur:
+                _u = _r["username_attempted"]
+                if _u and _u not in _seen:
+                    _seen.add(_u); all_usernames.append(_u)
+            if trigger_username and trigger_username not in _seen:
+                all_usernames.insert(0, trigger_username)
+        except Exception:
+            pass
+
+        usernames_str = ", ".join(all_usernames) if all_usernames else "(unknown)"
+        referrer_str  = referrer or "(none)"
+        ua_str        = user_agent or "(unknown)"
+        lock_reason   = "IP address locked after reaching maximum failed login attempts."
+        trigger_str   = (f"IP address threshold reached "
+                         f"({fail_count} consecutive failed attempt"
+                         f"{'s' if fail_count != 1 else ''} from the same IP address)")
+        manage_link   = (base_url or "").rstrip("/") + "/admin/ip-locks"
+
+        # ── Plain-text body ───────────────────────────────────────────────
+        _sep = "=" * 55
+        txt = (
+            f"AxionX Security Alert \u2014 IP Address Permanently Locked\n{_sep}\n\n"
+            f"An IP address has been permanently locked due to repeated failed login attempts.\n\n"
+            f"LOCKED IP:          {ip}\n"
+            f"HOSTNAME:           {hostname}\n"
+            f"LOCATION:           {geo_str}\n"
+            f"DATE/TIME (UTC):    {utc_str}\n"
+            f"DATE/TIME (Local):  {local_str}\n\n"
+            f"LOGIN ATTEMPT DETAILS\n"
+            f"---------------------\n"
+            f"Failed attempts:    {fail_count}\n"
+            f"Lock trigger:       {trigger_str}\n"
+            f"Username(s) tried:  {usernames_str}\n"
+            f"User Agent:         {ua_str}\n"
+            f"Referrer:           {referrer_str}\n\n"
+            f"REASON\n"
+            f"------\n"
+            f"{lock_reason}\n\n"
+            f"IMPORTANT\n"
+            f"---------\n"
+            f"This IP address has been permanently blocked. No further login attempts\n"
+            f"from this IP will be processed until an administrator manually releases the lock.\n\n"
+            f"Review or release this IP:\n{manage_link}\n\n"
+            f"Do not release this lock unless you have verified the source is legitimate.\n"
+            f"This message was sent automatically by AxionX Security. Do not reply.\n"
+        )
+
+        # ── HTML body ─────────────────────────────────────────────────────
+        def _e(s): return str(s).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+        html = f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>AxionX Security Alert</title>
+<style>
+body{{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;background:#f5f5f5;margin:0;padding:0}}
+.wrap{{max-width:620px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.12)}}
+.hdr{{background:#c0392b;color:#fff;padding:22px 28px}}.hdr h1{{margin:0;font-size:19px}}.hdr p{{margin:4px 0 0;font-size:12px;opacity:.85}}
+.body{{padding:22px 28px}}
+table.info{{width:100%;border-collapse:collapse;margin:12px 0}}
+table.info td{{padding:7px 10px;border-bottom:1px solid #eee;vertical-align:top;font-size:13px}}
+table.info td:first-child{{width:42%;font-weight:600;color:#555;white-space:nowrap}}
+.sec{{margin:18px 0 6px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:#888;border-bottom:2px solid #eee;padding-bottom:3px}}
+.alert-box{{background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:12px 14px;margin:14px 0;font-size:13px}}
+.btn{{display:inline-block;background:#0d6efd;color:#fff!important;padding:10px 22px;border-radius:5px;text-decoration:none;font-weight:600;font-size:14px;margin:4px 0}}
+.warn{{color:#c0392b;font-weight:600;font-size:13px}}
+.ftr{{background:#f5f5f5;padding:12px 28px;font-size:11px;color:#888;text-align:center}}
+code{{background:#f0f0f0;padding:2px 5px;border-radius:3px;font-size:13px}}
+</style></head><body><div class="wrap">
+<div class="hdr"><h1>&#x1F6A8; AxionX Security Alert</h1><p>IP Address Permanently Locked</p></div>
+<div class="body">
+<p>An IP address has been <strong>permanently locked</strong> due to repeated failed login attempts.</p>
+<div class="sec">IP Address</div>
+<table class="info">
+<tr><td>IP Address</td><td><code>{_e(ip)}</code></td></tr>
+<tr><td>Hostname</td><td>{_e(hostname)}</td></tr>
+<tr><td>Location</td><td>{_e(geo_str)}</td></tr>
+<tr><td>Date / Time (UTC)</td><td>{_e(utc_str)}</td></tr>
+<tr><td>Date / Time (Local)</td><td>{_e(local_str)}</td></tr>
+</table>
+<div class="sec">Login Attempt Details</div>
+<table class="info">
+<tr><td>Failed Attempts</td><td>{_e(fail_count)}</td></tr>
+<tr><td>Lock Trigger</td><td>{_e(trigger_str)}</td></tr>
+<tr><td>Username(s) Tried</td><td>{_e(usernames_str)}</td></tr>
+<tr><td>User Agent</td><td style="word-break:break-all">{_e(ua_str)}</td></tr>
+<tr><td>Referrer</td><td>{_e(referrer_str)}</td></tr>
+</table>
+<div class="sec">Reason</div>
+<p style="font-size:13px">{_e(lock_reason)}</p>
+<div class="alert-box">&#x26A0;&#xFE0F; <strong>This IP address has been permanently blocked.</strong>
+No further login attempts from this IP will be processed until an administrator manually releases the lock.</div>
+<p><strong>Review or release this IP:</strong></p>
+<p><a href="{_e(manage_link)}" class="btn">Review or release this IP</a></p>
+<p style="font-size:11px;color:#888">{_e(manage_link)}</p>
+<p class="warn">&#x26D4; Do not release this IP lock unless you have verified the source is legitimate.</p>
+</div>
+<div class="ftr">This message was sent automatically by AxionX Security. Do not reply to this email.</div>
+</div></body></html>"""
+
+        send_email(
+            to_list=["grantc@swpirecoveries.com"],
+            subject="AxionX Security Alert \u2013 IP Address Locked",
+            body_txt=txt,
+            body_html=html,
+        )
+        app.logger.warning("[IP-LOCK-ALERT] Security alert sent for locked IP %s", ip)
+
+    except Exception as _exc:
+        app.logger.error(
+            "[IP-LOCK-ALERT] Failed to send alert for IP %s: %s: %s",
+            ip, type(_exc).__name__, _exc
+        )
+
+
 @app.post("/login")
 def login_post():
     import logging as _login_log
@@ -4535,11 +4709,20 @@ def login_post():
     user = cur.fetchone()
 
     if not user or not check_password_hash(user["password"], password):
-        throttle_fail(conn, ip_key,   username=email, ip=ip)
+        _ip_newly_locked = throttle_fail(conn, ip_key,   username=email, ip=ip)
         throttle_fail(conn, user_key, username=email, ip=ip)
         conn.commit()
         conn.close()
         audit("auth", None, "login_failed", f"Failed login attempt for '{email}'", {"ip": ip})
+        if _ip_newly_locked:
+            _ua_hdr  = request.headers.get("User-Agent", "")
+            _ref_hdr = request.headers.get("Referer", "")
+            _base    = request.url_root
+            threading.Thread(
+                target=_send_ip_lock_alert,
+                args=(ip, email, _ua_hdr, _ref_hdr, _base),
+                daemon=True,
+            ).start()
         flash("Invalid email or password.", "danger")
         return redirect(url_for("login"))
 
@@ -23775,11 +23958,20 @@ def m_login_post():
     user = conn.execute("SELECT * FROM users WHERE LOWER(email)=? AND active=1", (email,)).fetchone()
 
     if not user or not check_password_hash(user["password"], password):
-        throttle_fail(conn, ip_key,   username=email, ip=ip)
+        _ip_newly_locked_m = throttle_fail(conn, ip_key,   username=email, ip=ip)
         throttle_fail(conn, user_key, username=email, ip=ip)
         conn.commit()
         conn.close()
         audit("auth", None, "login_failed", f"Failed mobile login attempt for '{email}'", {"ip": ip})
+        if _ip_newly_locked_m:
+            _ua_hdr_m  = request.headers.get("User-Agent", "")
+            _ref_hdr_m = request.headers.get("Referer", "")
+            _base_m    = request.url_root
+            threading.Thread(
+                target=_send_ip_lock_alert,
+                args=(ip, email, _ua_hdr_m, _ref_hdr_m, _base_m),
+                daemon=True,
+            ).start()
         return render_template("mobile/login.html", error="Invalid email or password.",
                                prefill_email=email, next=next_path)
 
