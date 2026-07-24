@@ -747,6 +747,9 @@ def _schema_is_current():
             ).fetchone()
             if not cr_tbl:
                 return False
+            lal_cols = [r[1] for r in conn.execute("PRAGMA table_info(login_audit_log)").fetchall()]
+            if "user_agent" not in lal_cols:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -905,6 +908,13 @@ def _startup_migrate():
         add_column_if_missing(_cur, "login_throttle", "released_by",            "TEXT")
         add_column_if_missing(_cur, "login_throttle", "released_at",            "TEXT")
         add_column_if_missing(_cur, "jobs", "last_assigned_user_id",            "INTEGER")
+        # ── login_audit_log — user_agent and referrer ────────────────────────
+        _lal_exists = _conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='login_audit_log'"
+        ).fetchone()
+        if _lal_exists:
+            add_column_if_missing(_cur, "login_audit_log", "user_agent", "TEXT")
+            add_column_if_missing(_cur, "login_audit_log", "referrer",   "TEXT")
         # Backfill last_assigned_user_id for historical terminal-status jobs.
         # Priority: (1) repo_lock agent, (2) last schedule agent, (3) last field note author.
         # Runs every startup but is a no-op once all rows are populated (WHERE IS NULL guard).
@@ -941,7 +951,9 @@ def _startup_migrate():
                 is_locked           INTEGER DEFAULT 0,
                 released_by         TEXT,
                 released_at         TEXT,
-                notes               TEXT
+                notes               TEXT,
+                user_agent          TEXT,
+                referrer            TEXT
             )
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS ix_lal_ts   ON login_audit_log(event_ts DESC)")
@@ -4689,13 +4701,20 @@ def login_post():
     allowed_user, locked_user = throttle_check(conn, user_key)
     if not allowed_ip or not allowed_user:
         block_key = ip_key if not allowed_ip else user_key
-        throttle_blocked_attempt(conn, block_key, username=email, ip=ip)
+        _ua  = request.headers.get("User-Agent", "")
+        _ref = request.headers.get("Referer", "")
+        throttle_blocked_attempt(conn, block_key, username=email, ip=ip,
+                                 user_agent=_ua, referrer=_ref)
         conn.commit()
         conn.close()
         _ll.warning("[LOGIN BLOCKED] ip=%r email=%r ip_status=%r user_status=%r",
                     ip, email, locked_ip, locked_user)
-        audit("auth", None, "login_blocked",
-              f"Login blocked for '{email}' — {'IP address' if not allowed_ip else 'account'} is permanently locked.",
+        if email:
+            _block_desc = (f"Login blocked for '{email}' — "
+                           f"{'IP address' if not allowed_ip else 'account'} is permanently locked.")
+        else:
+            _block_desc = "Login blocked — locked IP address"
+        audit("auth", None, "login_blocked", _block_desc,
               {"ip": ip, "block_key": block_key})
         if not allowed_ip:
             flash("Access from your network has been blocked due to multiple failed login attempts. "
@@ -19020,6 +19039,8 @@ def admin_api_lockouts():
                     ''                                            AS released_by,
                     ''                                            AS released_at,
                     ''                                            AS notes,
+                    ''                                            AS user_agent,
+                    ''                                            AS referrer,
                     lt.locked_until                               AS current_lock_status
                 FROM login_throttle lt
                 {where}
@@ -19056,6 +19077,8 @@ def admin_api_lockouts():
                     al.released_by,
                     al.released_at,
                     al.notes,
+                    al.user_agent,
+                    al.referrer,
                     COALESCE(lt.locked_until, '') AS current_lock_status
                 FROM login_audit_log al
                 LEFT JOIN login_throttle lt ON lt.key = al.throttle_key
@@ -19085,6 +19108,8 @@ def admin_api_lockouts():
             "released_by":        r["released_by"] or "",
             "released_at":        r["released_at"] or "",
             "notes":              r["notes"] or "",
+            "user_agent":         r["user_agent"] or "",
+            "referrer":           r["referrer"] or "",
             "current_lock_status":  current_lock,
             "is_currently_locked":  (current_lock == _LS),
         })
@@ -23942,14 +23967,24 @@ def m_login_post():
     allowed_ip,   locked_ip   = throttle_check(conn, ip_key)
     allowed_user, locked_user = throttle_check(conn, user_key)
     if not allowed_ip or not allowed_user:
+        block_key_m = ip_key if not allowed_ip else user_key
+        _ua_m  = request.headers.get("User-Agent", "")
+        _ref_m = request.headers.get("Referer", "")
+        throttle_blocked_attempt(conn, block_key_m, username=email, ip=ip,
+                                 user_agent=_ua_m, referrer=_ref_m)
+        conn.commit()
         conn.close()
         import logging as _mll
         _mll.getLogger("axionx.security").warning(
             "[LOGIN BLOCKED/mobile] ip=%r email=%r ip_status=%r user_status=%r",
             ip, email, locked_ip, locked_user)
-        audit("auth", None, "login_blocked",
-              f"Mobile login blocked for '{email}' — account or IP is locked.",
-              {"ip": ip})
+        if email:
+            _block_desc_m = (f"Mobile login blocked for '{email}' — "
+                             f"{'IP address' if not allowed_ip else 'account'} is permanently locked.")
+        else:
+            _block_desc_m = "Login blocked — locked IP address"
+        audit("auth", None, "login_blocked", _block_desc_m,
+              {"ip": ip, "block_key": block_key_m})
         return render_template("mobile/login.html",
                                error="This account has been locked due to multiple failed login "
                                      "attempts. Please contact an administrator to regain access.",

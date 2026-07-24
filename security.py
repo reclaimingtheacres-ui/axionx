@@ -53,7 +53,9 @@ def _ensure_audit_table(cur):
             is_locked           INTEGER DEFAULT 0,
             released_by         TEXT,
             released_at         TEXT,
-            notes               TEXT
+            notes               TEXT,
+            user_agent          TEXT,
+            referrer            TEXT
         )
     """)
     for idx_sql in (
@@ -65,17 +67,23 @@ def _ensure_audit_table(cur):
             cur.execute(idx_sql)
         except Exception:
             pass
+    for _col, _def in (("user_agent", "TEXT"), ("referrer", "TEXT")):
+        try:
+            cur.execute(f"ALTER TABLE login_audit_log ADD COLUMN {_col} {_def}")
+        except Exception:
+            pass
 
 
 def _write_audit(cur, event_type, key, ip_address=None, username=None,
                  fail_count=0, is_locked=False, released_by=None,
-                 released_at=None, notes=None):
+                 released_at=None, notes=None, user_agent=None, referrer=None):
     _ensure_audit_table(cur)
     cur.execute("""
         INSERT INTO login_audit_log
             (event_ts, event_type, throttle_key, ip_address, username_attempted,
-             fail_count, is_locked, released_by, released_at, notes)
-        VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             fail_count, is_locked, released_by, released_at, notes,
+             user_agent, referrer)
+        VALUES (datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         event_type,
         key or "",
@@ -86,6 +94,8 @@ def _write_audit(cur, event_type, key, ip_address=None, username=None,
         released_by or "",
         released_at or "",
         notes or "",
+        (user_agent or "").strip(),
+        (referrer or "").strip(),
     ))
 
 
@@ -257,7 +267,8 @@ def throttle_clear(conn, key, released_by=None):
                  notes=f"Lock released by {released_by or 'admin'}.")
 
 
-def throttle_blocked_attempt(conn, key, username=None, ip=None):
+def throttle_blocked_attempt(conn, key, username=None, ip=None,
+                              user_agent=None, referrer=None):
     """Record a blocked login attempt against an already-locked key.
 
     Does NOT increment fail_count — the permanent lock is already in place.
@@ -295,7 +306,7 @@ def throttle_blocked_attempt(conn, key, username=None, ip=None):
     _write_audit(cur, "blocked_attempt", key,
                  ip_address=ip_address, username=username_val,
                  fail_count=fail_count, is_locked=True,
-                 notes=notes)
+                 notes=notes, user_agent=user_agent, referrer=referrer)
 
     if key.startswith("ip:"):
         _logger.warning(
