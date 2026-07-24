@@ -18918,9 +18918,15 @@ def admin_api_lockout_clear():
     key = ((request.get_json(silent=True) or {}).get("key") or "").strip()
     if not key:
         return jsonify({"ok": False, "error": "Key required."}), 400
-    released_by = str(session.get("user_name") or session.get("user_id") or "admin")
     conn = db()
     try:
+        _rb_name  = session.get("user_name") or str(session.get("user_id") or "admin")
+        _uid      = session.get("user_id")
+        _rb_email = ""
+        if _uid:
+            _eu = conn.execute("SELECT email FROM users WHERE id=?", (_uid,)).fetchone()
+            _rb_email = _eu["email"] if _eu else ""
+        released_by = f"{_rb_name} ({_rb_email})" if _rb_email else _rb_name
         throttle_clear(conn, key, released_by=released_by)
         conn.commit()
     finally:
@@ -19062,7 +19068,13 @@ def admin_api_ip_lock_release():
             conn.close()
             return _no_store_json({"ok": False, "error": "IP lock not found or already released."}), 404
 
-        released_by = str(session.get("user_name") or session.get("user_id") or "admin")
+        _rb_name  = session.get("user_name") or str(session.get("user_id") or "admin")
+        _uid      = session.get("user_id")
+        _rb_email = ""
+        if _uid:
+            _eu = conn.execute("SELECT email FROM users WHERE id=?", (_uid,)).fetchone()
+            _rb_email = _eu["email"] if _eu else ""
+        released_by = f"{_rb_name} ({_rb_email})" if _rb_email else _rb_name
         throttle_clear(conn, key, released_by=released_by)
         conn.commit()
     finally:
@@ -19073,7 +19085,8 @@ def admin_api_ip_lock_release():
           f"IP lock released for {ip_addr} by {released_by}.",
           {"ip": ip_addr, "released_by": released_by,
            "performed_by_id": session.get("user_id"),
-           "performed_by_name": session.get("user_name")})
+           "performed_by_name": session.get("user_name"),
+           "performed_by_email": _rb_email})
     return _no_store_json({"ok": True, "message": f"IP lock for {ip_addr} has been released."})
 
 
