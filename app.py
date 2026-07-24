@@ -19206,7 +19206,7 @@ def admin_api_ip_locks():
                 lt.updated_at                                               AS last_attempt_at,
                 (SELECT MIN(event_ts) FROM login_audit_log
                  WHERE throttle_key = lt.key AND is_locked = 1)             AS locked_at,
-                (SELECT GROUP_CONCAT(DISTINCT username_attempted ORDER BY username_attempted)
+                (SELECT GROUP_CONCAT(DISTINCT username_attempted)
                  FROM login_audit_log
                  WHERE throttle_key = lt.key
                    AND username_attempted IS NOT NULL
