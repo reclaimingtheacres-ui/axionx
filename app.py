@@ -4509,9 +4509,9 @@ def _send_ip_lock_alert(ip, trigger_username, user_agent, referrer, base_url):
     try:
         # ── Timestamps ────────────────────────────────────────────────────
         utc_now   = datetime.now(_tz.utc)
-        local_now = datetime.now()
-        utc_str   = utc_now.strftime("%Y-%m-%d %H:%M:%S UTC")
-        local_str = local_now.strftime("%Y-%m-%d %H:%M:%S (server local time)")
+        melb_now  = utc_now.astimezone(_melbourne)
+        utc_str   = utc_now.strftime("%d/%m/%Y %H:%M:%S")
+        local_str = melb_now.strftime("%d/%m/%Y %H:%M:%S")
 
         # ── Reverse DNS ───────────────────────────────────────────────────
         try:
@@ -4583,8 +4583,8 @@ def _send_ip_lock_alert(ip, trigger_username, user_agent, referrer, base_url):
             f"LOCKED IP:          {ip}\n"
             f"HOSTNAME:           {hostname}\n"
             f"LOCATION:           {geo_str}\n"
-            f"DATE/TIME (UTC):    {utc_str}\n"
-            f"DATE/TIME (Local):  {local_str}\n\n"
+            f"UTC time:           {utc_str}\n"
+            f"Melbourne time:     {local_str}\n\n"
             f"LOGIN ATTEMPT DETAILS\n"
             f"---------------------\n"
             f"Failed attempts:    {fail_count}\n"
@@ -4632,8 +4632,8 @@ code{{background:#f0f0f0;padding:2px 5px;border-radius:3px;font-size:13px}}
 <tr><td>IP Address</td><td><code>{_e(ip)}</code></td></tr>
 <tr><td>Hostname</td><td>{_e(hostname)}</td></tr>
 <tr><td>Location</td><td>{_e(geo_str)}</td></tr>
-<tr><td>Date / Time (UTC)</td><td>{_e(utc_str)}</td></tr>
-<tr><td>Date / Time (Local)</td><td>{_e(local_str)}</td></tr>
+<tr><td>UTC time</td><td>{_e(utc_str)}</td></tr>
+<tr><td>Melbourne time</td><td>{_e(local_str)}</td></tr>
 </table>
 <div class="sec">Login Attempt Details</div>
 <table class="info">
