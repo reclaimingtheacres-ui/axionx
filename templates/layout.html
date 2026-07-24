@@ -379,7 +379,7 @@
 
         {% if session.get('role') in ('admin', 'both', 'management') and not is_demo_client %}
           <div class="hint">Admin</div>
-          <button type="button" class="ax-menu-btn{% if request.path == '/admin' or request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/reports') or request.path.startswith('/forms') or request.path.startswith('/recovery-targets') or request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} active{% endif %}" data-popup="ax-admin-popup">
+          <button type="button" class="ax-menu-btn{% if request.path == '/admin' or request.path.startswith('/contacts') or request.path.startswith('/clients') or request.path.startswith('/customers') or request.path.startswith('/users') or request.path.startswith('/reports') or request.path.startswith('/forms') or request.path.startswith('/recovery-targets') or request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' or request.path.startswith('/admin/ip-locks') %} active{% endif %}" data-popup="ax-admin-popup">
             Admin
             <svg class="ax-menu-arrow" width="14" height="14" fill="none" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
@@ -593,6 +593,7 @@
     <a href="/reports/monthly"{% if request.path == '/reports/monthly' %} class="active"{% endif %}>Monthly Report</a>
     <a href="/reports/aged-suspended"{% if request.path.startswith('/reports/aged') %} class="active"{% endif %}>Aged Suspended</a>
     <div class="ax-popup-divider"></div>
+    <a href="/admin/ip-locks"{% if request.path.startswith('/admin/ip-locks') %} class="active"{% endif %}>IP Lock Management</a>
     <a href="/admin/settings"{% if request.path.startswith('/admin/settings') or request.path.startswith('/admin/archive') or request.path.startswith('/import') or request.path == '/resources' %} class="active"{% endif %}>Settings & Resources</a>
   </div>
   {% endif %}
