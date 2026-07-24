@@ -152,9 +152,15 @@ def throttle_fail(conn, key, username=None, ip=None):
         )
 
     if newly_locked:
-        notes = "Account locked after reaching maximum failed attempts."
+        if key.startswith("ip:"):
+            notes = "IP address locked after reaching maximum failed login attempts."
+        else:
+            notes = "Account locked after reaching maximum failed login attempts."
     elif already_locked:
-        notes = "Login attempt while account was locked."
+        if key.startswith("ip:"):
+            notes = "Login attempt while IP address was already locked."
+        else:
+            notes = "Login attempt while account was already locked."
     else:
         notes = None
 
@@ -247,3 +253,55 @@ def throttle_clear(conn, key, released_by=None):
                  released_by=released_by,
                  released_at=now_ts,
                  notes=f"Lock released by {released_by or 'admin'}.")
+
+
+def throttle_blocked_attempt(conn, key, username=None, ip=None):
+    """Record a blocked login attempt against an already-locked key.
+
+    Does NOT increment fail_count — the permanent lock is already in place.
+    Writes a 'blocked_attempt' event to login_audit_log and refreshes
+    updated_at on the throttle row so 'most recent attempt' timestamps remain
+    accurate.  Called from login_post before password validation when the IP
+    or account key is already permanently locked.
+    """
+    cur = conn.cursor()
+    _ensure_throttle_table(cur)
+    _ensure_audit_table(cur)
+
+    username_val = (username or "").lower().strip()
+    ip_address = key[3:] if key.startswith("ip:") else (ip or "")
+
+    cur.execute(
+        "SELECT fail_count FROM login_throttle WHERE key=?", (key,)
+    )
+    row = cur.fetchone()
+    fail_count = row["fail_count"] if row else 0
+
+    cur.execute(
+        """UPDATE login_throttle
+           SET updated_at=datetime('now'),
+               last_attempted_username=?
+           WHERE key=?""",
+        (username_val, key),
+    )
+
+    if key.startswith("ip:"):
+        notes = "Login attempt blocked — IP address is permanently locked."
+    else:
+        notes = "Login attempt blocked — account is permanently locked."
+
+    _write_audit(cur, "blocked_attempt", key,
+                 ip_address=ip_address, username=username_val,
+                 fail_count=fail_count, is_locked=True,
+                 notes=notes)
+
+    if key.startswith("ip:"):
+        _logger.warning(
+            "[IP BLOCKED] ip=%r username=%r — IP is permanently locked; attempt recorded",
+            ip_address, username_val,
+        )
+    else:
+        _logger.warning(
+            "[ACCOUNT BLOCKED] key=%r username=%r — account is permanently locked; attempt recorded",
+            key, username_val,
+        )

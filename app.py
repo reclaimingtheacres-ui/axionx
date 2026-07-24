@@ -172,7 +172,7 @@ def _maybe_convert_heic(file_storage):
         raise ValueError(f"Image could not be processed: {e}")
     return jpeg_bytes, new_name, True
 
-from security import throttle_check, throttle_fail, throttle_success, throttle_clear
+from security import throttle_check, throttle_fail, throttle_success, throttle_clear, throttle_blocked_attempt
 from datetime import timedelta as _td
 
 app = Flask(__name__)
@@ -4514,14 +4514,21 @@ def login_post():
     allowed_ip,   locked_ip   = throttle_check(conn, ip_key)
     allowed_user, locked_user = throttle_check(conn, user_key)
     if not allowed_ip or not allowed_user:
+        block_key = ip_key if not allowed_ip else user_key
+        throttle_blocked_attempt(conn, block_key, username=email, ip=ip)
+        conn.commit()
         conn.close()
         _ll.warning("[LOGIN BLOCKED] ip=%r email=%r ip_status=%r user_status=%r",
                     ip, email, locked_ip, locked_user)
         audit("auth", None, "login_blocked",
-              f"Login blocked for '{email}' — account or IP is locked.",
-              {"ip": ip})
-        flash("This account has been locked due to multiple failed login attempts. "
-              "Please contact an administrator to regain access.", "danger")
+              f"Login blocked for '{email}' — {'IP address' if not allowed_ip else 'account'} is permanently locked.",
+              {"ip": ip, "block_key": block_key})
+        if not allowed_ip:
+            flash("Access from your network has been blocked due to multiple failed login attempts. "
+                  "Please contact an administrator to regain access.", "danger")
+        else:
+            flash("This account has been locked due to multiple failed login attempts. "
+                  "Please contact an administrator to regain access.", "danger")
         return redirect(url_for("login"))
 
     cur.execute("SELECT * FROM users WHERE email = ? AND active = 1", (email,))
@@ -18946,6 +18953,128 @@ def admin_api_lockout_clear_expired():
           "Bulk-cleared inactive (unlocked) throttle state records.",
           {"cleared_by": session.get("user_id")})
     return jsonify({"ok": True})
+
+
+# ── IP Lock Management ──────────────────────────────────────────────────────
+
+@app.get("/admin/ip-locks")
+@login_required
+@admin_required
+def admin_ip_locks():
+    resp = make_response(render_template("admin_ip_locks.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.get("/admin/api/ip-locks")
+@login_required
+@admin_required
+def admin_api_ip_locks():
+    """Return all currently locked IP addresses with full detail."""
+    from security import (_LOCKED_SENTINEL as _LS_ip,
+                          _ensure_throttle_table as _ett_ip,
+                          _ensure_audit_table as _eat_ip)
+    conn = db()
+    try:
+        cur = conn.cursor()
+        _ett_ip(cur)
+        _eat_ip(cur)
+        conn.commit()
+
+        rows = conn.execute("""
+            SELECT
+                lt.key,
+                SUBSTR(lt.key, 4)                                           AS ip_address,
+                lt.fail_count,
+                lt.locked_until,
+                lt.last_attempted_username,
+                lt.updated_at                                               AS last_attempt_at,
+                (SELECT MIN(event_ts) FROM login_audit_log
+                 WHERE throttle_key = lt.key AND is_locked = 1)             AS locked_at,
+                (SELECT GROUP_CONCAT(DISTINCT username_attempted ORDER BY username_attempted)
+                 FROM login_audit_log
+                 WHERE throttle_key = lt.key
+                   AND username_attempted IS NOT NULL
+                   AND username_attempted != '')                             AS targeted_accounts,
+                (SELECT MAX(event_ts) FROM login_audit_log
+                 WHERE throttle_key = lt.key
+                   AND event_type IN ('failed_login','blocked_attempt'))    AS most_recent_attempt,
+                (SELECT COUNT(*) FROM login_audit_log
+                 WHERE throttle_key = lt.key
+                   AND event_type = 'blocked_attempt')                      AS blocked_attempt_count,
+                (SELECT notes FROM login_audit_log
+                 WHERE throttle_key = lt.key AND is_locked = 1
+                 ORDER BY event_ts ASC LIMIT 1)                             AS lock_reason
+            FROM login_throttle lt
+            WHERE lt.key LIKE 'ip:%'
+              AND lt.locked_until = ?
+            ORDER BY locked_at DESC
+        """, (_LS_ip,)).fetchall()
+
+    except Exception as _e:
+        import logging as _ell2
+        _ell2.getLogger("axionx").error("[admin_api_ip_locks] %s", _e)
+        rows = []
+    finally:
+        conn.close()
+
+    ip_locks = []
+    for r in rows:
+        targeted = []
+        if r["targeted_accounts"]:
+            targeted = [t.strip() for t in r["targeted_accounts"].split(",") if t.strip()]
+        ip_locks.append({
+            "key":                   r["key"],
+            "ip_address":            r["ip_address"] or "",
+            "fail_count":            r["fail_count"] or 0,
+            "locked_at":             r["locked_at"] or "",
+            "last_attempt_at":       r["last_attempt_at"] or "",
+            "targeted_accounts":     targeted,
+            "most_recent_attempt":   r["most_recent_attempt"] or "",
+            "blocked_attempt_count": r["blocked_attempt_count"] or 0,
+            "lock_reason":           r["lock_reason"] or "IP address locked after reaching maximum failed login attempts.",
+        })
+
+    return jsonify({"ok": True, "ip_locks": ip_locks, "total": len(ip_locks)})
+
+
+@app.post("/admin/api/ip-locks/release")
+@login_required
+@admin_required
+@csrf_protect
+def admin_api_ip_lock_release():
+    """Release a permanently locked IP address. Records who released it and when."""
+    from security import _LOCKED_SENTINEL as _LS_rel
+    data = request.get_json(silent=True) or {}
+    key = (data.get("key") or "").strip()
+    if not key:
+        return _no_store_json({"ok": False, "error": "Key required."}), 400
+    if not key.startswith("ip:"):
+        return _no_store_json({"ok": False, "error": "Only IP locks can be released via this endpoint."}), 400
+
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT locked_until FROM login_throttle WHERE key=?", (key,)
+        ).fetchone()
+        if not row or row["locked_until"] != _LS_rel:
+            conn.close()
+            return _no_store_json({"ok": False, "error": "IP lock not found or already released."}), 404
+
+        released_by = str(session.get("user_name") or session.get("user_id") or "admin")
+        throttle_clear(conn, key, released_by=released_by)
+        conn.commit()
+    finally:
+        conn.close()
+
+    ip_addr = key[3:]
+    audit("auth", None, "ip_lock_released",
+          f"IP lock released for {ip_addr} by {released_by}.",
+          {"ip": ip_addr, "released_by": released_by,
+           "performed_by_id": session.get("user_id"),
+           "performed_by_name": session.get("user_name")})
+    return _no_store_json({"ok": True, "message": f"IP lock for {ip_addr} has been released."})
 
 
 @app.post("/admin/api/login-audit/clear")
