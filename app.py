@@ -19256,7 +19256,6 @@ def admin_api_ip_locks():
 @app.post("/admin/api/ip-locks/release")
 @login_required
 @admin_required
-@csrf_protect
 def admin_api_ip_lock_release():
     """Release a permanently locked IP address. Records who released it and when."""
     from security import _LOCKED_SENTINEL as _LS_rel
