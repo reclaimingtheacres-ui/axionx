@@ -1,0 +1,377 @@
+{% extends "layout.html" %}
+{% block title %}Automatic Scanner Blocks — AxionX{% endblock %}
+{% block content %}
+<style>
+  .sb-card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:1.25rem 1.5rem; margin-bottom:1.1rem; }
+  .sb-ip { font-family:monospace; font-size:1.05rem; font-weight:700; color:#dc2626; letter-spacing:.02em; }
+  .sb-meta-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.55rem 1.4rem; margin:.75rem 0; }
+  .sb-meta-label { font-size:.74rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:.1rem; }
+  .sb-meta-val { font-size:.88rem; color:var(--text); font-weight:500; word-break:break-all; }
+  .badge-active   { display:inline-flex;align-items:center;gap:.3rem;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:5px;padding:.15rem .55rem;font-size:.76rem;font-weight:600; }
+  .badge-expired  { display:inline-flex;align-items:center;gap:.3rem;background:#f9fafb;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:.15rem .55rem;font-size:.76rem; }
+  .badge-inactive { display:inline-flex;align-items:center;gap:.3rem;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:5px;padding:.15rem .55rem;font-size:.76rem; }
+  .sb-actions { display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.85rem; }
+  .btn-sb-unblock  { background:#16a34a;color:#fff;border:none;border-radius:6px;padding:.35rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer; }
+  .btn-sb-unblock:hover { background:#15803d; }
+  .btn-sb-extend   { background:var(--accent);color:#fff;border:none;border-radius:6px;padding:.35rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer; }
+  .btn-sb-extend:hover { opacity:.9; }
+  .btn-sb-promote  { background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:.35rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer; }
+  .btn-sb-promote:hover { background:#6d28d9; }
+  .spinner { width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #sbStatus { margin-bottom:.85rem; }
+  .tip-pill { display:inline-flex;align-items:center;gap:.35rem;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;padding:.25rem .7rem;font-size:.8rem;margin-bottom:1.1rem; }
+  .section-divider { font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:1.5rem 0 .75rem;padding-bottom:.4rem;border-bottom:1px solid var(--line); }
+  .trusted-row { display:flex;align-items:center;gap:.6rem;padding:.5rem .65rem;border-radius:7px;background:var(--hover);margin-bottom:.35rem; }
+  .trusted-ip  { font-family:monospace;font-size:.9rem;font-weight:600;flex:0 0 auto; }
+  .trusted-lbl { font-size:.85rem;color:var(--muted);flex:1; }
+  .btn-trusted-remove { background:none;border:none;color:#dc2626;font-size:.85rem;cursor:pointer;padding:.2rem .45rem;border-radius:4px; }
+  .btn-trusted-remove:hover { background:#fef2f2; }
+</style>
+
+<div class="container-fluid py-3" style="max-width:1100px">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.1rem">
+    <div>
+      <h5 style="font-weight:700;margin:0">Automatic Scanner Blocks</h5>
+      <div style="font-size:.85rem;color:var(--muted);margin-top:.2rem">
+        IPs automatically blocked after {{ threshold }} suspicious requests in {{ window }}s.
+        Block duration: {{ duration }}h.
+        <a href="/admin/ip-locks" style="color:var(--accent);margin-left:.6rem">&#8592; IP Lock Management</a>
+      </div>
+    </div>
+    <div style="display:flex;gap:.5rem">
+      <button class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" onclick="sbLoad()">&#8635; Refresh</button>
+    </div>
+  </div>
+
+  <div id="sbStatus"></div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-3" id="sbTabs">
+    <li class="nav-item"><a class="nav-link active" href="#" onclick="sbSetTab('active',this);return false">Active Blocks</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" onclick="sbSetTab('all',this);return false">All History</a></li>
+    <li class="nav-item"><a class="nav-link" href="#" onclick="sbSetTab('trusted',this);return false">Trusted IPs</a></li>
+  </ul>
+
+  <div id="sbContent"><div style="display:flex;justify-content:center;padding:3rem"><div class="spinner"></div></div></div>
+</div>
+
+<!-- Extend Modal -->
+<div class="modal fade" id="extendModal" tabindex="-1" aria-labelledby="extendModalLabel" aria-modal="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content" style="border-radius:12px;border:1px solid var(--line)">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" id="extendModalLabel" style="font-weight:700;font-size:1rem">Extend Block</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div style="font-family:monospace;font-size:.95rem;font-weight:700;color:#dc2626;margin-bottom:.75rem" id="extendModalIp"></div>
+        <label class="form-label" style="font-size:.85rem">Additional hours</label>
+        <input type="number" id="extendHours" class="form-control form-control-sm" value="24" min="1" max="8760">
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
+        <button type="button" class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn-sb-extend" id="extendConfirmBtn" onclick="sbExtendConfirm()">Extend Block</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Promote Modal -->
+<div class="modal fade" id="promoteModal" tabindex="-1" aria-labelledby="promoteModalLabel" aria-modal="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:12px;border:1px solid var(--line)">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" id="promoteModalLabel" style="font-weight:700;font-size:1rem">Promote to Permanent IP Lock</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div style="font-family:monospace;font-size:.95rem;font-weight:700;color:#dc2626;margin-bottom:.75rem" id="promoteModalIp"></div>
+        <p class="small" style="color:var(--muted);margin:0">
+          This will permanently add this IP to the manual IP Lock system (like a failed-login lockout).
+          The scanner block will be removed. The permanent lock requires a manual admin release.
+          This action is recorded in the security audit log.
+        </p>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
+        <button type="button" class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn-sb-promote" id="promoteConfirmBtn" onclick="sbPromoteConfirm()">Permanently Lock IP</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Trusted IP Modal -->
+<div class="modal fade" id="addTrustedModal" tabindex="-1" aria-modal="true" role="dialog">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content" style="border-radius:12px;border:1px solid var(--line)">
+      <div class="modal-header" style="border-bottom:1px solid var(--line)">
+        <h5 class="modal-title" style="font-weight:700;font-size:1rem">Add Trusted IP</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label" style="font-size:.85rem">IP Address</label>
+          <input type="text" id="addTrustedIp" class="form-control form-control-sm" placeholder="e.g. 203.123.106.68">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:.85rem">Label (optional)</label>
+          <input type="text" id="addTrustedLabel" class="form-control form-control-sm" placeholder="e.g. Grant">
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid var(--line);gap:.5rem">
+        <button type="button" class="btn btn-sm" style="background:var(--hover);color:var(--text);border:1px solid var(--line)" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn-sb-extend" id="addTrustedConfirmBtn" onclick="sbAddTrustedConfirm()">Add IP</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var _sbTab = 'active';
+var _pendingIp = null;
+var _extendModal = null;
+var _promoteModal = null;
+var _addTrustedModal = null;
+var _allBlocks = [];
+var _trustedList = [];
+
+function _getCsrfToken() {
+  var m = document.querySelector('meta[name="csrf-token"]');
+  return m ? m.getAttribute('content') : '';
+}
+
+function sbSetTab(tab, el) {
+  _sbTab = tab;
+  document.querySelectorAll('#sbTabs .nav-link').forEach(function(a){ a.classList.remove('active'); });
+  el.classList.add('active');
+  sbRender();
+}
+
+function sbShowStatus(msg, type) {
+  var el = document.getElementById('sbStatus');
+  el.innerHTML = '<div class="alert alert-' + type + ' py-2 px-3" style="font-size:.88rem">' + msg + '</div>';
+  el.style.display = '';
+  if (type === 'success') setTimeout(function(){ el.style.display='none'; }, 4000);
+}
+
+function sbFmt(s) {
+  if (!s) return '—';
+  var d = new Date((s + 'Z').replace(' ', 'T'));
+  if (isNaN(d)) return s;
+  return d.toLocaleString(undefined,{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function sbLoad() {
+  var content = document.getElementById('sbContent');
+  content.innerHTML = '<div style="display:flex;justify-content:center;padding:3rem"><div class="spinner"></div></div>';
+  var p1 = fetch('/admin/api/scanner-blocks').then(function(r){ return r.json(); });
+  var p2 = fetch('/admin/api/scanner-trusted-ips').then(function(r){ return r.json(); });
+  Promise.all([p1, p2]).then(function(results) {
+    if (results[0].ok) _allBlocks = results[0].blocks || [];
+    if (results[1].ok) _trustedList = results[1].trusted_ips || [];
+    sbRender();
+  }).catch(function(){
+    content.innerHTML = '<div class="alert alert-danger">Could not connect to server.</div>';
+  });
+}
+
+function sbRender() {
+  var content = document.getElementById('sbContent');
+  if (_sbTab === 'trusted') {
+    sbRenderTrusted(content);
+  } else {
+    var blocks = _sbTab === 'active'
+      ? _allBlocks.filter(function(b){ return b.status === 'active'; })
+      : _allBlocks;
+    sbRenderBlocks(content, blocks);
+  }
+}
+
+function sbRenderBlocks(content, blocks) {
+  if (blocks.length === 0) {
+    content.innerHTML = '<div class="sb-card"><div style="text-align:center;padding:2.5rem 1rem;color:var(--muted)">'
+      + '<div style="font-size:2rem;margin-bottom:.5rem">&#9989;</div>'
+      + '<div style="font-weight:600;color:var(--text);margin-bottom:.25rem">'
+      + (_sbTab === 'active' ? 'No active scanner blocks' : 'No scanner block history')
+      + '</div><div class="small">All addresses are currently unrestricted by the scanner.</div>'
+      + '</div></div>';
+    return;
+  }
+
+  var html = '';
+  for (var i = 0; i < blocks.length; i++) {
+    var b = blocks[i];
+    var badgeCls = b.status === 'active' ? 'badge-active'
+                 : b.status === 'expired' ? 'badge-expired'
+                 : 'badge-inactive';
+    var badgeIcon = b.status === 'active' ? '&#128683;' : b.status === 'expired' ? '&#8987;' : '&#9989;';
+    var badgeText = b.status === 'active' ? 'Active Block' : b.status === 'expired' ? 'Expired' : 'Released';
+
+    html += '<div class="sb-card">';
+    html += '<div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap">';
+    html += '<span class="sb-ip">' + esc(b.ip_address) + '</span>';
+    html += '<span class="' + badgeCls + '">' + badgeIcon + ' ' + badgeText + '</span>';
+    html += '</div>';
+
+    html += '<div class="sb-meta-row">';
+    html += '<div><div class="sb-meta-label">First Detected</div><div class="sb-meta-val">' + esc(sbFmt(b.first_detected_at)) + '</div></div>';
+    html += '<div><div class="sb-meta-label">Last Detected</div><div class="sb-meta-val">' + esc(sbFmt(b.last_detected_at)) + '</div></div>';
+    html += '<div><div class="sb-meta-label">Blocked Until</div><div class="sb-meta-val">' + (b.blocked_until ? esc(sbFmt(b.blocked_until)) : '—') + '</div></div>';
+    html += '<div><div class="sb-meta-label">Suspicious Requests</div><div class="sb-meta-val" style="color:#dc2626;font-weight:700">' + (b.request_count || 0) + '</div></div>';
+    html += '<div><div class="sb-meta-label">Last Path</div><div class="sb-meta-val" style="font-family:monospace;font-size:.83rem">' + esc(b.last_requested_path) + '</div></div>';
+    html += '<div><div class="sb-meta-label">User Agent</div><div class="sb-meta-val" style="font-size:.82rem">' + esc(b.user_agent) + '</div></div>';
+    html += '</div>';
+
+    if (b.reason) {
+      html += '<div style="font-size:.82rem;color:var(--muted);margin-bottom:.7rem">' + esc(b.reason) + '</div>';
+    }
+
+    if (b.status === 'active') {
+      html += '<div class="sb-actions">';
+      html += '<button class="btn-sb-unblock" onclick="sbUnblock(' + JSON.stringify(b.ip_address) + ')">&#10003; Unblock Now</button>';
+      html += '<button class="btn-sb-extend"  onclick="sbExtend('  + JSON.stringify(b.ip_address) + ')">&#43; Extend Block</button>';
+      html += '<button class="btn-sb-promote" onclick="sbPromote(' + JSON.stringify(b.ip_address) + ')">&#128274; Permanently Lock</button>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+  content.innerHTML = html;
+}
+
+function sbRenderTrusted(content) {
+  var html = '<div class="sb-card">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem">';
+  html += '<div style="font-weight:600">Trusted IP Addresses</div>';
+  html += '<button class="btn-sb-extend" style="font-size:.8rem;padding:.28rem .7rem" onclick="sbAddTrusted()">&#43; Add IP</button>';
+  html += '</div>';
+  html += '<div class="tip-pill">&#8505; Private and loopback addresses are always trusted and do not appear here.</div>';
+
+  var active = _trustedList.filter(function(t){ return t.is_active; });
+  if (active.length === 0) {
+    html += '<div style="color:var(--muted);font-size:.88rem;padding:.75rem 0">No trusted IPs configured. Add IPs that should never be scanner-blocked.</div>';
+  } else {
+    for (var i = 0; i < active.length; i++) {
+      var t = active[i];
+      html += '<div class="trusted-row">';
+      html += '<span class="trusted-ip">' + esc(t.ip_address) + '</span>';
+      html += '<span class="trusted-lbl">' + esc(t.label || '') + (t.added_by ? ' <span style="color:var(--muted);font-size:.78rem">(added by ' + esc(t.added_by) + ')</span>' : '') + '</span>';
+      html += '<button class="btn-trusted-remove" title="Remove" onclick="sbRemoveTrusted(' + JSON.stringify(t.ip_address) + ')">&#215; Remove</button>';
+      html += '</div>';
+    }
+  }
+
+  html += '</div>';
+  content.innerHTML = html;
+}
+
+function sbUnblock(ip) {
+  if (!confirm('Unblock ' + ip + ' now?')) return;
+  fetch('/admin/api/scanner-blocks/unblock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _getCsrfToken() },
+    body: JSON.stringify({ ip: ip })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.ok) { sbShowStatus(d.message || 'IP unblocked.', 'success'); sbLoad(); }
+    else sbShowStatus(d.error || 'Unblock failed.', 'danger');
+  }).catch(function(){ sbShowStatus('Network error.', 'danger'); });
+}
+
+function sbExtend(ip) {
+  _pendingIp = ip;
+  document.getElementById('extendModalIp').textContent = ip;
+  document.getElementById('extendHours').value = '24';
+  if (!_extendModal) _extendModal = new bootstrap.Modal(document.getElementById('extendModal'));
+  _extendModal.show();
+}
+
+function sbExtendConfirm() {
+  if (!_pendingIp) return;
+  var hours = parseInt(document.getElementById('extendHours').value) || 24;
+  var btn = document.getElementById('extendConfirmBtn');
+  btn.disabled = true;
+  fetch('/admin/api/scanner-blocks/extend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _getCsrfToken() },
+    body: JSON.stringify({ ip: _pendingIp, hours: hours })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (_extendModal) _extendModal.hide();
+    btn.disabled = false;
+    _pendingIp = null;
+    if (d.ok) { sbShowStatus(d.message || 'Block extended.', 'success'); sbLoad(); }
+    else sbShowStatus(d.error || 'Extend failed.', 'danger');
+  }).catch(function(){ btn.disabled=false; sbShowStatus('Network error.', 'danger'); });
+}
+
+function sbPromote(ip) {
+  _pendingIp = ip;
+  document.getElementById('promoteModalIp').textContent = ip;
+  if (!_promoteModal) _promoteModal = new bootstrap.Modal(document.getElementById('promoteModal'));
+  _promoteModal.show();
+}
+
+function sbPromoteConfirm() {
+  if (!_pendingIp) return;
+  var btn = document.getElementById('promoteConfirmBtn');
+  btn.disabled = true;
+  fetch('/admin/api/scanner-blocks/promote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _getCsrfToken() },
+    body: JSON.stringify({ ip: _pendingIp })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (_promoteModal) _promoteModal.hide();
+    btn.disabled = false;
+    _pendingIp = null;
+    if (d.ok) { sbShowStatus(d.message || 'IP permanently locked.', 'success'); sbLoad(); }
+    else sbShowStatus(d.error || 'Promote failed.', 'danger');
+  }).catch(function(){ btn.disabled=false; sbShowStatus('Network error.', 'danger'); });
+}
+
+function sbAddTrusted() {
+  document.getElementById('addTrustedIp').value = '';
+  document.getElementById('addTrustedLabel').value = '';
+  if (!_addTrustedModal) _addTrustedModal = new bootstrap.Modal(document.getElementById('addTrustedModal'));
+  _addTrustedModal.show();
+}
+
+function sbAddTrustedConfirm() {
+  var ip  = (document.getElementById('addTrustedIp').value || '').trim();
+  var lbl = (document.getElementById('addTrustedLabel').value || '').trim();
+  if (!ip) { alert('IP address is required.'); return; }
+  var btn = document.getElementById('addTrustedConfirmBtn');
+  btn.disabled = true;
+  fetch('/admin/api/scanner-trusted-ips/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _getCsrfToken() },
+    body: JSON.stringify({ ip: ip, label: lbl })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (_addTrustedModal) _addTrustedModal.hide();
+    btn.disabled = false;
+    if (d.ok) { sbShowStatus(d.message || 'Trusted IP added.', 'success'); sbLoad(); }
+    else sbShowStatus(d.error || 'Failed to add trusted IP.', 'danger');
+  }).catch(function(){ btn.disabled=false; sbShowStatus('Network error.', 'danger'); });
+}
+
+function sbRemoveTrusted(ip) {
+  if (!confirm('Remove ' + ip + ' from trusted IPs?')) return;
+  fetch('/admin/api/scanner-trusted-ips/remove', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _getCsrfToken() },
+    body: JSON.stringify({ ip: ip })
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.ok) { sbShowStatus('Trusted IP removed.', 'success'); sbLoad(); }
+    else sbShowStatus(d.error || 'Failed.', 'danger');
+  }).catch(function(){ sbShowStatus('Network error.', 'danger'); });
+}
+
+document.addEventListener('DOMContentLoaded', function(){ sbLoad(); });
+</script>
+{% endblock %}

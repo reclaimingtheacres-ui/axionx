@@ -173,6 +173,7 @@ def _maybe_convert_heic(file_storage):
     return jpeg_bytes, new_name, True
 
 from security import throttle_check, throttle_fail, throttle_success, throttle_clear, throttle_blocked_attempt
+import scanner as _scanner
 from datetime import timedelta as _td
 
 app = Flask(__name__)
@@ -288,6 +289,61 @@ def add_security_headers(resp):
         "style-src 'self' 'unsafe-inline' https:;"
     )
     return resp
+
+
+# ── Automatic scanner detection — before every request ────────────────────────
+_SCANNER_SKIP_PREFIXES = ("/static/", "/uploads/", "/favicon")
+_SCANNER_SKIP_EXACT    = {"/health", "/demo/health"}
+
+@app.before_request
+def _scanner_guard():
+    path = request.path
+
+    # Skip health checks and static assets immediately — no session, no IP needed
+    if path in _SCANNER_SKIP_EXACT:
+        return None
+    for _pfx in _SCANNER_SKIP_PREFIXES:
+        if path.startswith(_pfx):
+            return None
+
+    # Skip authenticated sessions — no DB needed, session is in signed cookie
+    if session.get("user_id"):
+        return None
+
+    # Extract client IP using the same trusted method as login throttling
+    _sc_ip = _client_ip()
+
+    # Trusted IPs (private/loopback + DB-configured) are never scanner-blocked
+    if _scanner.is_trusted(_sc_ip):
+        return None
+
+    # Already blocked? Return minimal response — no DB, no template, no session
+    if _scanner.is_blocked(_sc_ip):
+        from flask import Response as _Resp
+        return _Resp(
+            "Forbidden", status=403,
+            headers={
+                "Content-Type":  "text/plain; charset=utf-8",
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Pragma":        "no-cache",
+            },
+        )
+
+    # Suspicious path? Record the hit; block if threshold is reached
+    if _scanner.is_suspicious_path(path):
+        _ua = request.headers.get("User-Agent", "")
+        if _scanner.record_hit(_sc_ip, path, _ua):
+            from flask import Response as _Resp
+            return _Resp(
+                "Forbidden", status=403,
+                headers={
+                    "Content-Type":  "text/plain; charset=utf-8",
+                    "Cache-Control": "no-store, no-cache, must-revalidate",
+                    "Pragma":        "no-cache",
+                },
+            )
+
+    return None
 
 
 @app.errorhandler(404)
@@ -750,6 +806,11 @@ def _schema_is_current():
             lal_cols = [r[1] for r in conn.execute("PRAGMA table_info(login_audit_log)").fetchall()]
             if "user_agent" not in lal_cols:
                 return False
+            sb_tbl = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='scanner_blocks'"
+            ).fetchone()
+            if not sb_tbl:
+                return False
             return True
         except Exception:
             if attempt < 2:
@@ -1085,6 +1146,9 @@ def _startup_migrate():
         # representative rows: bare review_status scan with index 17 ms vs 105 ms, but
         # job_id+review_status with composite index is 0.128 ms vs 105 ms (820×).
         _conn.execute("DROP INDEX IF EXISTS idx_jfn_review_status")
+        # ── Automatic scanner detection tables ───────────────────────────────
+        from scanner import _ensure_scanner_tables as _est_sc
+        _est_sc(_conn.cursor())
         _conn.commit()
         _conn.close()
         import logging as _log
@@ -1095,6 +1159,7 @@ def _startup_migrate():
 
 
 _startup_migrate()
+_scanner.init(DB_PATH)
 
 
 def init_db():
@@ -19295,6 +19360,169 @@ def admin_api_ip_lock_release():
            "performed_by_name": session.get("user_name"),
            "performed_by_email": _rb_email})
     return _no_store_json({"ok": True, "message": f"IP lock for {ip_addr} has been released."})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Automatic Scanner Blocks — admin page + API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/admin/security/scanner-blocks")
+@login_required
+@admin_required
+def admin_scanner_blocks_page():
+    from scanner import SCANNER_THRESHOLD, SCANNER_WINDOW_SECS, SCANNER_BLOCK_HOURS
+    resp = make_response(render_template(
+        "admin_scanner_blocks.html",
+        threshold=SCANNER_THRESHOLD,
+        window=SCANNER_WINDOW_SECS,
+        duration=SCANNER_BLOCK_HOURS,
+    ))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return resp
+
+
+@app.get("/admin/api/scanner-blocks")
+@login_required
+@admin_required
+def admin_api_scanner_blocks():
+    blocks = _scanner.get_all_blocks(active_only=False)
+    return _no_store_json({"ok": True, "blocks": blocks, "total": len(blocks)})
+
+
+@app.post("/admin/api/scanner-blocks/unblock")
+@login_required
+@admin_required
+def admin_api_scanner_unblock():
+    data = request.get_json(silent=True) or {}
+    ip   = (data.get("ip") or "").strip()
+    if not ip:
+        return _no_store_json({"ok": False, "error": "IP required."}), 400
+    _rb  = session.get("user_name") or str(session.get("user_id") or "admin")
+    ok   = _scanner.unblock(ip, _rb)
+    if ok:
+        audit("auth", None, "scanner_unblock",
+              f"Scanner block released for {ip} by {_rb}.",
+              {"ip": ip, "released_by": _rb})
+        return _no_store_json({"ok": True, "message": f"Scanner block for {ip} has been removed."})
+    return _no_store_json({"ok": False, "error": "Unblock failed."}), 500
+
+
+@app.post("/admin/api/scanner-blocks/extend")
+@login_required
+@admin_required
+def admin_api_scanner_extend():
+    data  = request.get_json(silent=True) or {}
+    ip    = (data.get("ip") or "").strip()
+    hours = int(data.get("hours") or 24)
+    if not ip:
+        return _no_store_json({"ok": False, "error": "IP required."}), 400
+    if hours < 1 or hours > 8760:
+        return _no_store_json({"ok": False, "error": "Hours must be 1–8760."}), 400
+    _rb = session.get("user_name") or str(session.get("user_id") or "admin")
+    ok  = _scanner.extend_block(ip, hours, _rb)
+    if ok:
+        audit("auth", None, "scanner_extend",
+              f"Scanner block for {ip} extended by {hours}h by {_rb}.",
+              {"ip": ip, "hours": hours, "extended_by": _rb})
+        return _no_store_json({"ok": True, "message": f"Scanner block for {ip} extended by {hours}h."})
+    return _no_store_json({"ok": False, "error": "Extend failed."}), 500
+
+
+@app.post("/admin/api/scanner-blocks/promote")
+@login_required
+@admin_required
+def admin_api_scanner_promote():
+    """Promote a scanner block to a permanent manual IP lock (login_throttle)."""
+    from security import (_LOCKED_SENTINEL as _LS_prm,
+                          _ensure_throttle_table as _ett_prm,
+                          _write_audit as _wa_prm)
+    data = request.get_json(silent=True) or {}
+    ip   = (data.get("ip") or "").strip()
+    if not ip:
+        return _no_store_json({"ok": False, "error": "IP required."}), 400
+    _rb  = session.get("user_name") or str(session.get("user_id") or "admin")
+    key  = f"ip:{ip}"
+
+    conn = db()
+    try:
+        cur = conn.cursor()
+        _ett_prm(cur)
+        existing = conn.execute(
+            "SELECT locked_until FROM login_throttle WHERE key=?", (key,)
+        ).fetchone()
+        if existing and existing["locked_until"] == _LS_prm:
+            conn.close()
+            return _no_store_json({"ok": False, "error": "This IP is already permanently locked."}), 409
+        now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        if existing:
+            cur.execute(
+                "UPDATE login_throttle SET fail_count=fail_count+1, locked_until=?, updated_at=? WHERE key=?",
+                (_LS_prm, now_str, key),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO login_throttle (key, fail_count, locked_until, updated_at) VALUES (?,1,?,?)",
+                (key, _LS_prm, now_str),
+            )
+        _wa_prm(cur, "locked", key, ip_address=ip,
+                notes=f"Promoted from scanner block by {_rb}.")
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Remove scanner block and clear in-memory cache
+    _scanner.unblock(ip, _rb)
+    audit("auth", None, "scanner_promote",
+          f"Scanner block for {ip} promoted to permanent IP lock by {_rb}.",
+          {"ip": ip, "promoted_by": _rb})
+    return _no_store_json({
+        "ok": True,
+        "message": f"{ip} has been permanently locked. Release via IP Lock Management.",
+    })
+
+
+@app.get("/admin/api/scanner-trusted-ips")
+@login_required
+@admin_required
+def admin_api_scanner_trusted_get():
+    return _no_store_json({"ok": True, "trusted_ips": _scanner.get_trusted_ips()})
+
+
+@app.post("/admin/api/scanner-trusted-ips/add")
+@login_required
+@admin_required
+def admin_api_scanner_trusted_add():
+    data  = request.get_json(silent=True) or {}
+    ip    = (data.get("ip") or "").strip()
+    label = (data.get("label") or "").strip()
+    if not ip:
+        return _no_store_json({"ok": False, "error": "IP address required."}), 400
+    _rb = session.get("user_name") or str(session.get("user_id") or "admin")
+    ok, err = _scanner.add_trusted_ip(ip, label, _rb)
+    if ok:
+        audit("auth", None, "scanner_trusted_add",
+              f"Trusted IP {ip} added by {_rb}.",
+              {"ip": ip, "label": label})
+        return _no_store_json({"ok": True, "message": f"{ip} added to trusted IPs."})
+    return _no_store_json({"ok": False, "error": err or "Failed to add trusted IP."}), 400
+
+
+@app.post("/admin/api/scanner-trusted-ips/remove")
+@login_required
+@admin_required
+def admin_api_scanner_trusted_remove():
+    data = request.get_json(silent=True) or {}
+    ip   = (data.get("ip") or "").strip()
+    if not ip:
+        return _no_store_json({"ok": False, "error": "IP required."}), 400
+    _rb = session.get("user_name") or str(session.get("user_id") or "admin")
+    ok  = _scanner.remove_trusted_ip(ip)
+    if ok:
+        audit("auth", None, "scanner_trusted_remove",
+              f"Trusted IP {ip} removed by {_rb}.",
+              {"ip": ip})
+        return _no_store_json({"ok": True})
+    return _no_store_json({"ok": False, "error": "Failed to remove."}), 500
 
 
 @app.post("/admin/api/login-audit/clear")
