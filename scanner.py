@@ -192,9 +192,10 @@ def record_hit(ip: str, path: str, user_agent: str) -> bool:
     if random.random() < _CLEANUP_PROBABILITY:
         _cleanup_counters(now)
 
-    should_block  = False
-    should_audit  = False
-    block_context = None   # dict with data needed for the DB write, set outside lock
+    should_block     = False
+    should_audit     = False
+    _already_blocked = False
+    block_context    = None   # dict with data needed for the DB write, set outside lock
 
     with _lock:
         # ── Already blocked? ──────────────────────────────────────────────────
@@ -215,43 +216,44 @@ def record_hit(ip: str, path: str, user_agent: str) -> bool:
                         "last_path":     path,
                         "user_agent":    user_agent,
                     }
-                return True  # still True — early return releases lock
+                _already_blocked = True
 
-        # ── Increment window counter ──────────────────────────────────────────
-        entry = _ip_counters.get(ip)
-        if entry is None or (now - entry["window_start"]) > SCANNER_WINDOW_SECS:
-            _ip_counters[ip] = {
-                "count":        1,
-                "window_start": now,
-                "last_path":    path,
-                "last_ua":      user_agent,
-            }
-            return False  # first hit in a new window — let through
+        # Counter logic only runs when IP is not currently blocked.
+        # (Expired entries were deleted above, so they fall through correctly.)
+        if not _already_blocked:
+            # ── Increment window counter ──────────────────────────────────────
+            entry = _ip_counters.get(ip)
+            if entry is None or (now - entry["window_start"]) > SCANNER_WINDOW_SECS:
+                # First hit in a new window — start fresh counter
+                _ip_counters[ip] = {
+                    "count":        1,
+                    "window_start": now,
+                    "last_path":    path,
+                    "last_ua":      user_agent,
+                }
+            else:
+                entry["count"]    += 1
+                entry["last_path"]  = path
+                entry["last_ua"]    = user_agent
+                count = entry["count"]
 
-        entry["count"]     += 1
-        entry["last_path"]  = path
-        entry["last_ua"]    = user_agent
-        count = entry["count"]
-
-        if count < SCANNER_THRESHOLD:
-            return False  # below threshold — let through
-
-        # ── Threshold reached — block ─────────────────────────────────────────
-        blocked_until_ts = now + SCANNER_BLOCK_HOURS * 3600
-        _blocked_cache[ip] = {
-            "until":          blocked_until_ts,
-            "last_audit_at":  now,
-            "request_count":  count,
-        }
-        del _ip_counters[ip]
-        should_block = True
-        block_context = {
-            "kind":             "new",
-            "count":            count,
-            "path":             path,
-            "user_agent":       user_agent,
-            "blocked_until_ts": blocked_until_ts,
-        }
+                if count >= SCANNER_THRESHOLD:
+                    # ── Threshold reached — block ─────────────────────────────
+                    blocked_until_ts = now + SCANNER_BLOCK_HOURS * 3600
+                    _blocked_cache[ip] = {
+                        "until":          blocked_until_ts,
+                        "last_audit_at":  now,
+                        "request_count":  count,
+                    }
+                    del _ip_counters[ip]
+                    should_block = True
+                    block_context = {
+                        "kind":             "new",
+                        "count":            count,
+                        "path":             path,
+                        "user_agent":       user_agent,
+                        "blocked_until_ts": blocked_until_ts,
+                    }
 
     # ── DB write + logging (outside lock) ────────────────────────────────────
     if should_block and block_context:
@@ -269,7 +271,7 @@ def record_hit(ip: str, path: str, user_agent: str) -> bool:
         bc = block_context
         _update_block_record(ip, bc["last_path"], bc["user_agent"], bc["request_count"])
 
-    return should_block
+    return should_block or _already_blocked
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────

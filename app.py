@@ -295,6 +295,18 @@ def add_security_headers(resp):
 _SCANNER_SKIP_PREFIXES = ("/static/", "/uploads/", "/favicon")
 _SCANNER_SKIP_EXACT    = {"/health", "/demo/health"}
 
+def _scanner_403():
+    from flask import Response as _R
+    return _R(
+        "Forbidden", status=403,
+        headers={
+            "Content-Type":  "text/plain; charset=utf-8",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma":        "no-cache",
+        },
+    )
+
+
 @app.before_request
 def _scanner_guard():
     path = request.path
@@ -319,29 +331,13 @@ def _scanner_guard():
 
     # Already blocked? Return minimal response — no DB, no template, no session
     if _scanner.is_blocked(_sc_ip):
-        from flask import Response as _Resp
-        return _Resp(
-            "Forbidden", status=403,
-            headers={
-                "Content-Type":  "text/plain; charset=utf-8",
-                "Cache-Control": "no-store, no-cache, must-revalidate",
-                "Pragma":        "no-cache",
-            },
-        )
+        return _scanner_403()
 
     # Suspicious path? Record the hit; block if threshold is reached
     if _scanner.is_suspicious_path(path):
         _ua = request.headers.get("User-Agent", "")
         if _scanner.record_hit(_sc_ip, path, _ua):
-            from flask import Response as _Resp
-            return _Resp(
-                "Forbidden", status=403,
-                headers={
-                    "Content-Type":  "text/plain; charset=utf-8",
-                    "Cache-Control": "no-store, no-cache, must-revalidate",
-                    "Pragma":        "no-cache",
-                },
-            )
+            return _scanner_403()
 
     return None
 
@@ -19413,7 +19409,10 @@ def admin_api_scanner_unblock():
 def admin_api_scanner_extend():
     data  = request.get_json(silent=True) or {}
     ip    = (data.get("ip") or "").strip()
-    hours = int(data.get("hours") or 24)
+    try:
+        hours = int(data.get("hours") or 24)
+    except (TypeError, ValueError):
+        hours = -1
     if not ip:
         return _no_store_json({"ok": False, "error": "IP required."}), 400
     if hours < 1 or hours > 8760:
