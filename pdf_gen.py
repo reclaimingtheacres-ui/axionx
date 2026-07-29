@@ -84,9 +84,58 @@ def _trunc(val, max_ch=40):
 
 
 def _sig_to_img(sig_b64):
-    raw_b64 = sig_b64.split(',')[-1]
-    raw = base64.b64decode(raw_b64)
-    return ImageReader(io.BytesIO(raw))
+    return _sig_img_flat(sig_b64)
+
+
+def _sig_img_flat(sig_b64):
+    """Decode a base64 signature, composite RGBA onto white, return JPEG ImageReader.
+    Eliminates alpha-channel transparency so no SMask XObject is emitted."""
+    try:
+        from PIL import Image as _PIL
+        raw = base64.b64decode(sig_b64.split(',')[-1])
+        pil = _PIL.open(io.BytesIO(raw)).convert('RGBA')
+        bg = _PIL.new('RGBA', pil.size, (255, 255, 255, 255))
+        bg.paste(pil, mask=pil.split()[3])
+        flat = io.BytesIO()
+        bg.convert('RGB').save(flat, 'JPEG', quality=92)
+        flat.seek(0)
+        return ImageReader(flat)
+    except Exception:
+        raw = base64.b64decode(sig_b64.split(',')[-1])
+        return ImageReader(io.BytesIO(raw))
+
+
+def _finalise_writer(writer, title=''):
+    """Add document /ID and full metadata to a PdfWriter before output.
+    Fixes missing /ID (causes portal rejection), empty Info dict, and absent timestamps."""
+    from datetime import datetime as _dt, timezone as _tz
+    now_pdf = _dt.now(_tz.utc).strftime("D:%Y%m%d%H%M%S+00'00'")
+    meta = {
+        '/Producer':     'AxionX',
+        '/Creator':      'AxionX',
+        '/CreationDate': now_pdf,
+        '/ModDate':      now_pdf,
+    }
+    if title:
+        meta['/Title'] = title
+    try:
+        writer.add_metadata(meta)
+    except Exception:
+        pass
+    try:
+        writer.generate_file_identifiers()
+    except Exception:
+        pass
+
+
+def _patch_pdf_header(data: bytes) -> bytes:
+    """Upgrade PDF version header from 1.3 to 1.4.
+    PDF 1.4 is the minimum spec version that formally supports SMask transparency
+    present in template background images.  A 1.3 header with SMask objects is
+    technically invalid and triggers rejection by strict validators."""
+    if data[:8] == b'%PDF-1.3':
+        return b'%PDF-1.4' + data[8:]
+    return data
 
 
 def _sig_box(c, x, y, w, h, label, sig_b64=None, date_str=''):
@@ -95,11 +144,9 @@ def _sig_box(c, x, y, w, h, label, sig_b64=None, date_str=''):
     c.rect(x, y - h, w, h, fill=0, stroke=1)
     if sig_b64:
         try:
-            raw_b64 = sig_b64.split(',')[-1]
-            raw = base64.b64decode(raw_b64)
-            img = ImageReader(io.BytesIO(raw))
+            img = _sig_img_flat(sig_b64)
             c.drawImage(img, x + 4, y - h + 22, width=w - 8, height=h - 30,
-                        preserveAspectRatio=True, mask='auto')
+                        preserveAspectRatio=True)
         except Exception:
             pass
     c.setStrokeColor(MUTED)
@@ -176,11 +223,9 @@ def _overlay_sig(c, x, y, w, h, sig_b64):
     if not sig_b64:
         return
     try:
-        raw_b64 = sig_b64.split(',')[-1]
-        raw = base64.b64decode(raw_b64)
-        img = ImageReader(io.BytesIO(raw))
+        img = _sig_img_flat(sig_b64)
         c.drawImage(img, x, y, width=w, height=h,
-                    preserveAspectRatio=True, mask='auto')
+                    preserveAspectRatio=True)
     except Exception:
         pass
 
@@ -338,10 +383,10 @@ def generate_vir_pdf(data, agent_sig=None, customer_sig=None):
 
     writer = _PdfWriter()
     writer.add_page(template_page)
+    _finalise_writer(writer, 'SWPI Vehicle Inspection Report')
     out_buf = io.BytesIO()
     writer.write(out_buf)
-    out_buf.seek(0)
-    return out_buf.read()
+    return _patch_pdf_header(out_buf.getvalue())
 
 
 def _generate_vir_pdf_fallback(data, agent_sig=None, customer_sig=None):
@@ -568,8 +613,7 @@ def _generate_vir_pdf_fallback(data, agent_sig=None, customer_sig=None):
              f'Agent / Mercantile Agent: {agent_name}', agent_sig, date_str)
 
     c.save()
-    buf.seek(0)
-    return buf.read()
+    return _patch_pdf_header(buf.getvalue())
 
 
 # =============================================================================
@@ -736,8 +780,7 @@ def generate_transport_pdf(data, agent_sig=None, tow_sig=None):
     _sig_box(c, ML + sig_w + 14, y, sig_w, sig_h, 'TOW SIGNATURE:', tow_sig, date_str)
 
     c.save()
-    buf.seek(0)
-    return buf.read()
+    return _patch_pdf_header(buf.getvalue())
 
 
 # =============================================================================
@@ -952,17 +995,17 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
 
     if agent_sig:
         try:
-            sig_img = _sig_to_img(agent_sig)
+            sig_img = _sig_img_flat(agent_sig)
             c.drawImage(sig_img, 57, 65, width=120, height=35,
-                        preserveAspectRatio=True, mask='auto')
+                        preserveAspectRatio=True)
         except Exception:
             pass
 
     if customer_sig:
         try:
-            sig_img = _sig_to_img(customer_sig)
+            sig_img = _sig_img_flat(customer_sig)
             c.drawImage(sig_img, 310, 65, width=120, height=35,
-                        preserveAspectRatio=True, mask='auto')
+                        preserveAspectRatio=True)
         except Exception:
             pass
 
@@ -974,9 +1017,10 @@ def generate_wise_vir_pdf(data, agent_sig=None, customer_sig=None):
 
     writer = PdfWriter()
     writer.add_page(tmpl_page)
+    _finalise_writer(writer, 'Vehicle Inspection Report')
     out = io.BytesIO()
     writer.write(out)
-    return out.getvalue()
+    return _patch_pdf_header(out.getvalue())
 
 
 def generate_wise_auction_pdf(data):
@@ -1042,9 +1086,10 @@ def generate_wise_auction_pdf(data):
 
     writer = PdfWriter()
     writer.add_page(tmpl_page)
+    _finalise_writer(writer, 'Wise Auction Report')
     out = io.BytesIO()
     writer.write(out)
-    return out.getvalue()
+    return _patch_pdf_header(out.getvalue())
 
 
 def generate_wise_tow_pdf(data):
@@ -1103,9 +1148,10 @@ def generate_wise_tow_pdf(data):
 
     writer = PdfWriter()
     writer.add_page(tmpl_page)
+    _finalise_writer(writer, 'Wise Tow Receipt')
     out = io.BytesIO()
     writer.write(out)
-    return out.getvalue()
+    return _patch_pdf_header(out.getvalue())
 
 
 # =============================================================================
@@ -1201,9 +1247,9 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
 
     if occupant_sig:
         try:
-            sig_img = _sig_to_img(occupant_sig)
+            sig_img = _sig_img_flat(occupant_sig)
             c.drawImage(sig_img, 240, 245, width=130, height=40,
-                        preserveAspectRatio=True, mask='auto')
+                        preserveAspectRatio=True)
         except Exception:
             pass
 
@@ -1215,9 +1261,9 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
 
     if agent_sig:
         try:
-            sig_img = _sig_to_img(agent_sig)
+            sig_img = _sig_img_flat(agent_sig)
             c.drawImage(sig_img, 380, 180, width=130, height=40,
-                        preserveAspectRatio=True, mask='auto')
+                        preserveAspectRatio=True)
         except Exception:
             pass
 
@@ -1235,10 +1281,10 @@ def generate_form_13_pdf(data, occupant_sig=None, agent_sig=None):
 
     writer = PdfWriter()
     writer.add_page(tmpl_page)
+    _finalise_writer(writer, 'Form 13 — Consent to Enter Premises')
     out_buf = io.BytesIO()
     writer.write(out_buf)
-    out_buf.seek(0)
-    return out_buf.read()
+    return _patch_pdf_header(out_buf.getvalue())
 
 
 # =============================================================================
@@ -1360,8 +1406,7 @@ def generate_voluntary_surrender_pdf(data, customer_sig=None, agent_sig=None):
                  f'Witness (Agent): {_v(data, "agent_name")}', agent_sig, date_str)
 
     c.save()
-    buf.seek(0)
-    return buf.read()
+    return _patch_pdf_header(buf.getvalue())
 
 
 # =============================================================================
@@ -1450,8 +1495,7 @@ def generate_auction_letter_pdf(data):
     c.drawString(ML, y, 'PO Box 651, Sunshine VIC 3020')
 
     c.save()
-    buf.seek(0)
-    return buf.read()
+    return _patch_pdf_header(buf.getvalue())
 
 
 # =============================================================================
@@ -1562,8 +1606,7 @@ def generate_tow_letter_pdf(data):
     c.drawString(ML, y, 'Should you have any further queries, please contact this office.')
 
     c.save()
-    buf.seek(0)
-    return buf.read()
+    return _patch_pdf_header(buf.getvalue())
 
 
 # =============================================================================
@@ -2064,10 +2107,10 @@ def generate_repo_pack_pdf(pdfs: list[bytes]) -> bytes:
             reader = PdfReader(io.BytesIO(pdf_bytes))
             for page in reader.pages:
                 writer.add_page(page)
+        _finalise_writer(writer, 'Repo Pack')
         out = io.BytesIO()
         writer.write(out)
-        out.seek(0)
-        return out.read()
+        return _patch_pdf_header(out.getvalue())
     except Exception:
         # Fallback: just return the first PDF if merge fails
         return pdfs[0] if pdfs else b''
