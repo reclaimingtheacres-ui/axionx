@@ -307,6 +307,10 @@ def _scanner_403():
     )
 
 
+import logging as _sc_logging
+_sc_log = _sc_logging.getLogger("axionx.scanner")
+
+
 @app.before_request
 def _scanner_guard():
     path = request.path
@@ -329,14 +333,26 @@ def _scanner_guard():
     if _scanner.is_trusted(_sc_ip):
         return None
 
-    # Already blocked? Return minimal response — no DB, no template, no session
+    # Already blocked? Log and return minimal response — no DB, no template, no session
     if _scanner.is_blocked(_sc_ip):
+        _sc_log.info(
+            "SCANNER ip=%s path=%r suspicious=- score=>=%d threshold=%d blocked=YES",
+            _sc_ip, path, _scanner.SCANNER_THRESHOLD, _scanner.SCANNER_THRESHOLD,
+        )
         return _scanner_403()
 
     # Suspicious path? Record the hit; block if threshold is reached
-    if _scanner.is_suspicious_path(path):
+    suspicious = _scanner.is_suspicious_path(path)
+    if suspicious:
         _ua = request.headers.get("User-Agent", "")
-        if _scanner.record_hit(_sc_ip, path, _ua):
+        blocked_now = _scanner.record_hit(_sc_ip, path, _ua)
+        score = _scanner.SCANNER_THRESHOLD if blocked_now else _scanner.get_counter(_sc_ip)
+        _sc_log.info(
+            "SCANNER ip=%s path=%r suspicious=YES score=%d threshold=%d blocked=%s",
+            _sc_ip, path, score, _scanner.SCANNER_THRESHOLD,
+            "YES" if blocked_now else "NO",
+        )
+        if blocked_now:
             return _scanner_403()
 
     return None

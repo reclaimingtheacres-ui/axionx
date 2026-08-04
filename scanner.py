@@ -24,6 +24,7 @@ import random
 from datetime import datetime, timezone
 
 _logger = logging.getLogger("axionx.scanner")
+_logger.setLevel(logging.INFO)  # ensure INFO is captured regardless of root logger level
 
 # ── Tunable thresholds ────────────────────────────────────────────────────────
 SCANNER_THRESHOLD        = 10     # suspicious hits before block
@@ -34,23 +35,44 @@ _CLEANUP_PROBABILITY     = 0.02   # fraction of hits that trigger in-memory clea
 
 # ── Suspicious path patterns ──────────────────────────────────────────────────
 _SUSPICIOUS_PATTERNS = [
-    re.compile(r'\.php',                     re.I),
-    re.compile(r'^/wp-admin',                re.I),
-    re.compile(r'^/wp-login',                re.I),
-    re.compile(r'^/wp-content',              re.I),
-    re.compile(r'^/wp-includes',             re.I),
-    re.compile(r'^/xmlrpc\.php',             re.I),
-    re.compile(r'^/cgi-bin',                 re.I),
-    re.compile(r'^/phpmyadmin',              re.I),
-    re.compile(r'^/pma(/|$)',                re.I),
-    re.compile(r'shell',                     re.I),
-    re.compile(r'c99|r57|b374k|wso|alfa',   re.I),
-    re.compile(r'^/\.env$',                  re.I),
-    re.compile(r'^/config\.php',             re.I),
-    re.compile(r'^/admin\.php',              re.I),
-    re.compile(r'^/setup\.php',              re.I),
-    re.compile(r'^/install\.php',            re.I),
-    re.compile(r'^/backup',                  re.I),
+    # ── WordPress / PHP probes ─────────────────────────────────────────────
+    re.compile(r'\.php',                              re.I),
+    re.compile(r'^/wp-admin',                         re.I),
+    re.compile(r'^/wp-login',                         re.I),
+    re.compile(r'^/wp-content',                       re.I),
+    re.compile(r'^/wp-includes',                      re.I),
+    re.compile(r'^/xmlrpc\.php',                      re.I),
+    re.compile(r'^/cgi-bin',                          re.I),
+    re.compile(r'^/phpmyadmin',                       re.I),
+    re.compile(r'^/pma(/|$)',                         re.I),
+    re.compile(r'shell',                              re.I),
+    re.compile(r'c99|r57|b374k|wso|alfa',            re.I),
+    re.compile(r'^/backup',                           re.I),
+
+    # ── .env files — any location, any suffix (.env, .env.local, etc.) ───
+    re.compile(r'(^|/)\.env($|\.)',                   re.I),
+
+    # ── Terraform / IaC variable files ────────────────────────────────────
+    re.compile(r'\.tfvars',                           re.I),
+
+    # ── Sensitive credential / secret filenames ────────────────────────────
+    re.compile(r'(credentials|secrets|private)\.(json|ini|yaml|yml|key|pem)', re.I),
+    re.compile(r'aws(-config|-credentials)?\.json',   re.I),
+    re.compile(r'id_rsa|id_dsa|id_ecdsa',             re.I),
+    re.compile(r'\.(pem|p12|pfx|key)$',               re.I),
+
+    # ── Azure Functions / .NET sensitive config files ─────────────────────
+    re.compile(r'local\.settings\.json',              re.I),
+    re.compile(r'appsettings\.(Development|Staging|Production)\.json', re.I),
+
+    # ── Docker / Fly.io / Heroku / generic DevOps files ───────────────────
+    re.compile(r'^/docker-compose\.',                 re.I),
+    re.compile(r'^/fly\.toml',                        re.I),
+    re.compile(r'^/Procfile($|/)',                    re.I),
+
+    # ── Git / SVN repository exposure ─────────────────────────────────────
+    re.compile(r'^/\.git(/|$)',                       re.I),
+    re.compile(r'^/\.svn(/|$)',                       re.I),
 ]
 
 # ── Module state ──────────────────────────────────────────────────────────────
@@ -124,6 +146,16 @@ def is_suspicious_path(path: str) -> bool:
         if pattern.search(path):
             return True
     return False
+
+
+def get_counter(ip: str) -> int:
+    """Return the current suspicious-hit count for ip within the active window (0 if none)."""
+    now = time.time()
+    with _lock:
+        entry = _ip_counters.get(ip)
+        if entry is None or (now - entry["window_start"]) > SCANNER_WINDOW_SECS:
+            return 0
+        return entry["count"]
 
 
 # ── Block cache ───────────────────────────────────────────────────────────────
